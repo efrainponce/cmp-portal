@@ -1,0 +1,79 @@
+// Full-board table with search — powers Productos, Instituciones, Contactos.
+import { useState } from 'react';
+import { useBoards, usePoll, colForBoard, type BoardSlug } from '../../lib/api';
+import { BoardTable } from '../../components/board/BoardTable';
+import { BoardStatus } from '../../components/board/BoardStatus';
+import { SearchInput } from '../../components/forms/SearchInput';
+import { SyncIndicator } from '../../components/board/SyncIndicator';
+import { Button } from '../../components/core/Button';
+import { IconPlus } from '../../components/icons';
+import { syncStatusFromItems } from '../../lib/syncStatus';
+import { isCreatable } from '../../../shared/createFields';
+import { CreateRecordModal } from './CreateRecordModal';
+import { EditInstitucionModal } from './EditInstitucionModal';
+import type { ItemDTO } from '../../lib/api';
+
+interface Props {
+  slug: BoardSlug;
+  title: string;
+}
+
+const CREATE_LABEL: Record<string, string> = { instituciones: 'Nueva institución', contactos: 'Nuevo contacto' };
+
+export function GenericBoardView({ slug, title }: Props) {
+  const [q, setQ] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [editingContact, setEditingContact] = useState<ItemDTO | null>(null);
+  const { boards } = useBoards();
+  const cols = colForBoard(boards, slug);
+  const { status, data, refetch } = usePoll(slug, q);
+  const items = data?.items ?? [];
+  const sync = syncStatusFromItems(items);
+  const creatable = isCreatable(slug);
+  const canEditInstitucion = slug === 'contactos' && !!cols.find((c) => c.id === 'contact_account')?.w;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <div style={{ padding: '26px 32px 16px', borderBottom: '1px solid var(--border)', flex: 'none' }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ font: 'var(--text-title)', color: 'var(--ink)' }}>{title}</div>
+            <div style={{ font: 'var(--text-label)', color: 'var(--ink-tertiary)', marginTop: 2 }}>{data?.total ?? items.length} registros</div>
+          </div>
+          <SyncIndicator syncedAt={sync.syncedAt} pending={sync.pending} />
+        </div>
+        <div style={{ marginTop: 14, display: 'flex', gap: 10 }}>
+          <SearchInput value={q} onChange={(e) => setQ(e.target.value)} placeholder={`Buscar en ${title.toLowerCase()}…`} />
+          {creatable && (
+            <Button variant="primary" onClick={() => setCreating(true)}>
+              <IconPlus /> {CREATE_LABEL[slug]}
+            </Button>
+          )}
+        </div>
+      </div>
+
+      <div style={{ overflowY: 'auto', flex: 1 }}>
+        <BoardStatus status={status}>
+          <BoardTable cols={cols} items={items} onRowClick={canEditInstitucion ? setEditingContact : undefined} />
+        </BoardStatus>
+      </div>
+
+      {creating && isCreatable(slug) && (
+        <CreateRecordModal
+          slug={slug}
+          title={CREATE_LABEL[slug]}
+          onClose={() => setCreating(false)}
+          onCreated={refetch}
+        />
+      )}
+
+      {editingContact && (
+        <EditInstitucionModal
+          contact={editingContact}
+          onClose={() => setEditingContact(null)}
+          onSaved={refetch}
+        />
+      )}
+    </div>
+  );
+}

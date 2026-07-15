@@ -1,0 +1,22 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+
+:root {
+  --font-ui: 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  /* scale as used in the boards — dense, data-heavy UI. Sizes are irregular
+     by design (.5px steps), not snapped to a rounder scale. */
+  --text-display: 700 24px var(--font-ui);
+  --text-title: 700 22px var(--font-ui);
+  --text-subtitle: 700 16px var(--font-ui);
+  --text-body-strong: 600 13px var(--font-ui);
+  --text-body: 400 13px var(--font-ui);
+  --text-label-strong: 600 12.5px var(--font-ui);
+  --text-label: 400 12.5px var(--font-ui);
+  --text-caption: 400 12px var(--font-ui);
+  --text-small-strong: 600 11.5px var(--font-ui);
+  --text-eyebrow: 700 11.5px var(--font-ui); /* uppercase, letter-spacing .5px */
+  --text-chip: 600 10.5px var(--font-ui);
+  --text-micro: 700 10px var(--font-ui); /* uppercase table headers */
+  --text-mono: 500 11px var(--font-mono); /* SKUs, folios */
+}

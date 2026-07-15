@@ -1,0 +1,31 @@
+@import './tokens/colors.css';
+@import './tokens/typography.css';
+@import './tokens/effects.css';
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  font-family: var(--font-ui);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+input, textarea, select, button {
+  font-family: inherit;
+}
+
+.row-hover:hover {
+  background: #faf7f0;
+}
+
+.nav-item:hover {
+  background: rgba(43, 41, 37, .05);
+}

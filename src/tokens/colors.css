@@ -1,0 +1,37 @@
+:root {
+  /* canvas & surfaces (warm neutral) */
+  --bg: #f7f4ee;
+  --bg-raised: #ffffff;
+  --bg-sunken: #efeae0;
+  --surface-sidebar: #efeae0;
+  --border: #e2ded3;
+  --border-subtle: #f0ebe0;
+
+  /* ink (warm near-black, on warm-white) */
+  --ink: #2b2925;
+  --ink-secondary: #726d61;
+  --ink-tertiary: #918b7c;
+  --ink-quiet: #a49d8e;
+  --ink-faint: #c4bcaa;
+  --ink-on-accent: #ffffff;
+
+  /* brand accent + alternates (same family, offered as a Tweak) */
+  --accent: #c96f3e;
+  --accent-blue: #5b7794;
+  --accent-green: #6f7f57;
+  --accent-red: #9c4c3d;
+
+  /* semantic status colors (color + tint pairs used on chips/badges) */
+  --status-nueva: #9a958a;         --status-nueva-tint: #eeece7;
+  --status-en-coste: #a97c3a;      --status-en-coste-tint: #f3e9d8;
+  --status-confirmado: #6f7f57;    --status-confirmado-tint: #e9eee2;
+  --status-seguimiento: #5b7794;   --status-seguimiento-tint: #e6ebf0;
+  --status-esperando: #b6842f;     --status-esperando-tint: #f5ecd9;
+  --status-ganada: #4f7a41;        --status-ganada-tint: #e6efe1;
+  --status-perdida: #9c4c3d;       --status-perdida-tint: #f3e5e1;
+  --status-cancelada: #8f897b;     --status-cancelada-tint: #efece7;
+
+  /* overlays */
+  --overlay-scrim: rgba(43, 41, 37, .35);
+  --shadow-modal: 0 12px 32px rgba(43, 41, 37, .2);
+}

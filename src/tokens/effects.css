@@ -1,0 +1,15 @@
+:root {
+  /* radii */
+  --radius-sm: 5px;   /* mono tags */
+  --radius-md: 6px;   /* mark / small controls */
+  --radius-lg: 8px;   /* buttons, inputs, flat cards */
+  --radius-xl: 10px;  /* dropdown panels, table containers */
+  --radius-2xl: 12px; /* group cards, modals */
+  --radius-pill: 20px;/* status chips, count badges */
+  --radius-full: 50%; /* status dots */
+
+  /* motion: this UI uses no eased/bounce animation — state changes (tab
+     switch, drawer open, sidebar collapse) are instant or a plain width/opacity
+     transition. Keep it that way — don't add spring/bounce easing. */
+  --transition-collapse: width .18s ease;
+}
