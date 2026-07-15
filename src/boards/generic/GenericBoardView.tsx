@@ -8,7 +8,6 @@ import { SyncIndicator } from '../../components/board/SyncIndicator';
 import { Button } from '../../components/core/Button';
 import { IconPlus } from '../../components/icons';
 import { syncStatusFromItems } from '../../lib/syncStatus';
-import { isCreatable } from '../../../shared/createFields';
 import { CreateRecordModal } from './CreateRecordModal';
 import { EditInstitucionModal } from './EditInstitucionModal';
 import type { ItemDTO } from '../../lib/api';
@@ -29,7 +28,10 @@ export function GenericBoardView({ slug, title }: Props) {
   const { status, data, refetch } = usePoll(slug, q);
   const items = data?.items ?? [];
   const sync = syncStatusFromItems(items);
-  const creatable = isCreatable(slug);
+  // Oportunidades también es creatable, pero tiene su propio modal en su board —
+  // aquí solo aplican los dos catálogos genéricos.
+  const createSlug = slug === 'instituciones' || slug === 'contactos' ? slug : null;
+  const creatable = createSlug !== null;
   const canEditInstitucion = slug === 'contactos' && !!cols.find((c) => c.id === 'contact_account')?.w;
 
   return (
@@ -58,10 +60,10 @@ export function GenericBoardView({ slug, title }: Props) {
         </BoardStatus>
       </div>
 
-      {creating && isCreatable(slug) && (
+      {creating && createSlug && (
         <CreateRecordModal
-          slug={slug}
-          title={CREATE_LABEL[slug]}
+          slug={createSlug}
+          title={CREATE_LABEL[createSlug]}
           onClose={() => setCreating(false)}
           onCreated={refetch}
         />

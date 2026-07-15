@@ -20,6 +20,7 @@ import { toItemDTO, toColMeta } from './lib/serialize';
 import { submitWrite, flushOutbox, OutboxError } from './lib/outbox';
 import { submitCreate, CreateError } from './lib/createRecord';
 import { generateCotizacion, AutomationError } from './lib/automations';
+import { enviarACosteo, CosteoError } from './lib/costeo';
 import { fetchUpdates, createUpdate, fetchUsers } from './lib/monday';
 
 const app = new Hono<{ Bindings: Env }>();
@@ -53,7 +54,7 @@ app.get('/api/boards', c => {
 });
 
 app.get('/api/vendedores', async c => {
-  const rows = await listVendedores(c.env);
+  const rows = await listVendedores(c.env, c.req.query('role') ?? 'vendedor');
   const dto: VendedorDTO[] = rows.map(r => ({ id: r.monday_user_id, nombre: r.nombre }));
   return c.json(dto);
 });
@@ -84,8 +85,10 @@ app.get('/api/boards/:slug/items', async c => {
   c.header('ETag', etag);
   if (c.req.header('If-None-Match') === etag) return c.body(null, 304);
 
-  const rows = await listItems(c.env, slug, viewer, q);
-  const pending = await pendingItemIds(c.env, BOARDS[slug].id);
+  const [rows, pending] = await Promise.all([
+    listItems(c.env, slug, viewer, q),
+    pendingItemIds(c.env, BOARDS[slug].id),
+  ]);
   const items = rows.map(r => toItemDTO(r, slug, viewer.role, pending.has(r.item_id)));
   const body: ListResponse = { board: slug, items, total: items.length, etag };
   return c.json(body);
@@ -98,16 +101,17 @@ app.get('/api/boards/:slug/items/:id', async c => {
   if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
   const viewer = c.get('viewer');
 
-  const row = await getItem(c.env, slug, itemId, viewer);
+  const childSlug = childSlugOf(slug);
+  const [row, pending, children, childPending] = await Promise.all([
+    getItem(c.env, slug, itemId, viewer),
+    pendingItemIds(c.env, BOARDS[slug].id),
+    childSlug ? childrenOf(c.env, slug, itemId, viewer) : Promise.resolve([]),
+    childSlug ? pendingItemIds(c.env, BOARDS[childSlug].id) : Promise.resolve(new Set<number>()),
+  ]);
   if (!row) return c.json({ error: 'not found' }, 404);
 
-  const pending = await pendingItemIds(c.env, BOARDS[slug].id);
   const dto: ItemDetailDTO = toItemDTO(row, slug, viewer.role, pending.has(row.item_id));
-
-  const childSlug = childSlugOf(slug);
   if (childSlug) {
-    const children = await childrenOf(c.env, slug, itemId, viewer);
-    const childPending = await pendingItemIds(c.env, BOARDS[childSlug].id);
     dto.children = children.map(r => toItemDTO(r, childSlug, viewer.role, childPending.has(r.item_id)));
   }
   return c.json(dto);
@@ -239,6 +243,22 @@ app.get('/api/admin/monday-users', async c => {
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
     return c.json({ error: `monday fetch failed: ${detail}` }, 502);
+  }
+});
+
+// Mandar a costeo con validaciones automáticas (líneas presentes, cantidad > 0,
+// color elegido de la lista del catálogo). 422 con la lista de errores si algo falta.
+app.post('/api/oportunidades/:id/enviar-costeo', async c => {
+  const itemId = Number(c.req.param('id'));
+  if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
+
+  try {
+    const result = await enviarACosteo(c.env, c.executionCtx, itemId, c.get('viewer'));
+    return result.ok ? c.json(result) : jsonStatus(result, 422);
+  } catch (err) {
+    if (err instanceof CosteoError) return jsonStatus({ ok: false, errors: [err.message] }, err.status);
+    if (err instanceof OutboxError) return jsonStatus({ ok: false, errors: [err.message] }, err.status);
+    return jsonStatus({ ok: false, errors: ['internal error'] }, 500);
   }
 });
 

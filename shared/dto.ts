@@ -40,6 +40,10 @@ export interface CreateResponse { ok: boolean; id?: string; error?: string }
 
 export interface VendedorDTO { id: number; nombre: string }
 
+// POST /api/oportunidades/:id/enviar-costeo — 422 con errores legibles cuando
+// las líneas no pasan las validaciones (producto, cantidad, color de la lista).
+export interface EnviarCosteoResponse { ok: boolean; errors?: string[] }
+
 // Monday item updates (comments) — read/posted live, never mirrored to D1.
 export interface UpdateDTO { id: string; body: string; author: string; createdAt: string }
 export interface CreateUpdateRequest { body: string }

@@ -59,9 +59,11 @@ interface Props {
   q: string;
   onSearch: (q: string) => void;
   onOpen: (id: string) => void;
+  /** Botón/acción a la derecha del buscador (p.ej. "Nueva oportunidad"). */
+  headerAction?: React.ReactNode;
 }
 
-export function StageBoardList({ config, groupColId = 'deal_stage', q, onSearch, onOpen }: Props) {
+export function StageBoardList({ config, groupColId = 'deal_stage', q, onSearch, onOpen, headerAction }: Props) {
   const { boards } = useBoards();
   const cols = colForBoard(boards, 'oportunidades');
   const groupCol = cols.find((c) => c.id === groupColId);
@@ -121,8 +123,9 @@ export function StageBoardList({ config, groupColId = 'deal_stage', q, onSearch,
           </div>
           <SyncIndicator syncedAt={sync.syncedAt} pending={sync.pending} />
         </div>
-        <div style={{ marginTop: 14 }}>
+        <div style={{ marginTop: 14, display: 'flex', gap: 10 }}>
           <SearchInput value={q} onChange={(e) => onSearch(e.target.value)} placeholder="Buscar cliente, vendedor o compras…" />
+          {headerAction}
         </div>
         <FilterBar
           vendedor={vendedorFilter} onVendedorChange={setVendedorFilter} vendedorOptions={vendedorOptions}

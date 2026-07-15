@@ -33,6 +33,10 @@ export function encodeColumnValue(type: string, raw: string): unknown {
     case 'people':
       return { personsAndTeams: [{ id: Number(value), kind: 'person' }] };
     case 'status':
+      // Status quiere {label} singular — {labels:[...]} es el shape de dropdown;
+      // Monday no lo rechaza pero asigna un label arbitrario (visto en vivo
+      // 2026-07-15: deal_stage terminó en "Cancelada").
+      return { label: value };
     case 'dropdown':
       return { labels: [value] };
     default:

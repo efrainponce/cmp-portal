@@ -55,6 +55,20 @@ writable by vendedor/admin (`shared/visibility.ts`). Still excluded from the *cr
 form (`shared/createFields.ts`) — that needs an Instituciones picker in `FormField`,
 a separate change; editing an existing contact's Institución works today.
 
+**Creación de Oportunidades desde el portal (2026-07-15, pedido de Efraín):**
+`CREATE_FIELDS.oportunidades` = Nombre* · Vendedor* (`deal_owner`) · Compras
+(`multiple_person_mm03qyw9`) · Contacto (`deal_contact`) · Zona (`dropdown_mm03g067`) ·
+Tipo de cotización (`color_mm47f0ca`) · ¿Nuevos productos? (`color_mm0ex0ed`) · Fecha
+límite (`deal_expected_close_date`). `deal_stage` inicia en "Nueva oportunidad"
+(default server-side). **Cambios de visibilidad PROPUESTOS con esto**: `color_mm0ex0ed`
+y `multiple_person_mm03qyw9` pasaron de 🔒/no-listado a ✅ (necesarios para el form y
+los filtros de la lista) — revertir es una línea en `shared/visibility.ts`.
+
+**Validación enviar-costeo (2026-07-15):** POST /api/oportunidades/:id/enviar-costeo
+exige ≥1 línea, producto asignado (`board_relation_mkzmafgp` o `text_mm0bkm1j`),
+cantidad>0 (`numeric_mkzm6399`) y color (`text_mm07s2mg`) dentro de "Colores
+disponibles" (`lookup_mkznm0h3`, mirror del catálogo) cuando la lista existe.
+
 ## Oportunidades (18395657596) — item level
 
 | Vis | Column | ID | Type |

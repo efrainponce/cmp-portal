@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 import { Button } from '../../components/core/Button';
 import { IconBack } from '../../components/icons';
 import { SyncIndicator } from '../../components/board/SyncIndicator';
-import { useBoards, colForBoard, getItemDetail, refreshItem, type ItemDetailDTO } from '../../lib/api';
+import { useBoards, colForBoard, enviarCosteo, getItemDetail, refreshItem, type ItemDetailDTO } from '../../lib/api';
 import { statusIndex } from '../../lib/statusValue';
 import { stageAtOrAfter, type StageBoardKey } from '../../lib/dealStages';
 import { BoardTabsBar, type DrawerTabKey } from './BoardTabsBar';
@@ -36,6 +36,8 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey 
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [tab, setTab] = useState<DrawerTabKey>(defaultTab as DrawerTabKey);
+  const [sending, setSending] = useState(false);
+  const [costeoErrors, setCosteoErrors] = useState<string[] | null>(null);
 
   const load = () => {
     setError(null);
@@ -51,6 +53,22 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey 
     try { await refreshItem('oportunidades', id); } catch { /* offline demo: ignore */ }
     load();
     setRefreshing(false);
+  };
+
+  // Validaciones automáticas del lado del servidor: sin líneas, sin cantidad o
+  // con color fuera de la lista del catálogo, la oportunidad NO pasa a costeo.
+  const onEnviarCosteo = async () => {
+    setSending(true);
+    setCosteoErrors(null);
+    try {
+      const res = await enviarCosteo(id);
+      if (res.ok) load();
+      else setCosteoErrors(res.errors ?? ['No se pudo mandar a costeo.']);
+    } catch {
+      setCosteoErrors(['No se pudo mandar a costeo. Verifica tu conexión.']);
+    } finally {
+      setSending(false);
+    }
   };
 
   if (error) return <div style={{ padding: 32, color: 'var(--ink-quiet)' }}>{error}</div>;
@@ -79,8 +97,29 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey 
           <div style={{ font: 'var(--text-subtitle)', color: 'var(--ink)' }}>{item.name}</div>
           <SyncIndicator syncedAt={item.syncedAt} pending={item.pendingWrite ? 1 : 0} style={{ marginTop: 4 }} />
         </div>
-        <Button variant="secondary" onClick={onRefresh}>{refreshing ? 'Actualizando…' : 'Actualizar'}</Button>
+        <div style={{ display: 'flex', gap: 10 }}>
+          {stage === '4' && (
+            <Button variant="primary" onClick={sending ? undefined : onEnviarCosteo}>
+              {sending ? 'Validando…' : 'Mandar a costeo'}
+            </Button>
+          )}
+          <Button variant="secondary" onClick={onRefresh}>{refreshing ? 'Actualizando…' : 'Actualizar'}</Button>
+        </div>
       </div>
+
+      {costeoErrors && (
+        <div style={{
+          margin: '14px 32px 0', padding: '12px 16px', border: '1px solid var(--status-perdida)',
+          borderRadius: 'var(--radius-lg)', background: 'var(--bg-raised)',
+        }}>
+          <div style={{ font: 'var(--text-label-strong)', color: 'var(--status-perdida)', marginBottom: 6 }}>
+            No se puede mandar a costeo todavía:
+          </div>
+          {costeoErrors.map((e, i) => (
+            <div key={i} style={{ font: 'var(--text-label)', color: 'var(--ink-secondary)', marginTop: 2 }}>• {e}</div>
+          ))}
+        </div>
+      )}
 
       <BoardTabsBar active={activeTab} onChange={setTab} showPostventa={showPostventa} showProyectos={showProyectos} />
 

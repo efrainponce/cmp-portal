@@ -6,7 +6,20 @@
 
 export interface CreateField { id: string; required?: boolean }
 
-export const CREATE_FIELDS: Record<'instituciones' | 'contactos', CreateField[]> = {
+export const CREATE_FIELDS: Record<'instituciones' | 'contactos' | 'oportunidades', CreateField[]> = {
+  // Requested by Efraín 2026-07-15: exactly these fields, "super fácil". Product
+  // lines are NOT captured at creation — the enviar-costeo validation blocks the
+  // costeo hand-off until lines with cantidad y color válido exist.
+  oportunidades: [
+    { id: 'name', required: true },
+    { id: 'deal_owner', required: true },       // Vendedor (authz key)
+    { id: 'multiple_person_mm03qyw9' },         // Compras
+    { id: 'deal_contact' },                     // Contacto (cliente) → Contactos
+    { id: 'dropdown_mm03g067' },                // Zona
+    { id: 'color_mm47f0ca' },                   // Tipo de cotización
+    { id: 'color_mm0ex0ed' },                   // ¿Quieres cotizar nuevos productos?
+    { id: 'deal_expected_close_date' },         // Fecha límite
+  ],
   instituciones: [
     { id: 'name', required: true },
     { id: 'dropdown_mm1bajsm', required: true }, // Tipo
@@ -30,6 +43,12 @@ export const CREATE_FIELDS: Record<'instituciones' | 'contactos', CreateField[]>
     { id: 'multiple_person_mm03vqwx' }, // Vendedor
     { id: 'long_text4' },          // Comentarios
   ],
+};
+
+// Server-side values stamped on every new record of a board — never client-sent
+// (deal_stage isn't in CREATE_FIELDS, so the route rejects it if the client tries).
+export const CREATE_DEFAULTS: Partial<Record<keyof typeof CREATE_FIELDS, Record<string, string>>> = {
+  oportunidades: { deal_stage: 'Nueva oportunidad' },
 };
 
 export const CREATABLE_SLUGS = Object.keys(CREATE_FIELDS) as (keyof typeof CREATE_FIELDS)[];

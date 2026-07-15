@@ -72,6 +72,9 @@ ACCESS_TEAM_DOMAIN/ACCESS_AUD when ENVIRONMENT==='prod'; DEV_EMAIL — plus opti
 | PATCH /api/boards/:slug/items/:id | body WriteRequest; every col must pass `canWrite(slug,col,role)` else 403; optimistic: merge into mirror `columns` (text=value), outbox insert, waitUntil flush; ⇒ `{ok:true,pending:true}` |
 | POST /api/boards/:slug/items/:id/refresh | rate-limit: skip if synced_at<30s; calls A.refetchItem |
 | POST /api/oportunidades/:id/cotizacion | automations client → Vercel generate_cotizacion with X-CMP-Secret; 501 if CMP_TALLAS_BASE unset; refetch after |
+| POST /api/oportunidades/:id/enviar-costeo | (2026-07-15) valida líneas en D1 (≥1 línea; producto asignado; cantidad>0; color no vacío y ∈ "Colores disponibles" `lookup_mkznm0h3` cuando hay lista) → 422 `{ok:false,errors[]}`; si pasa, deal_stage→"En costeo" vía outbox (trusted write, salta canWrite SOLO para esta columna fija) |
+| POST /api/boards/oportunidades/items | (2026-07-15) creación desde el portal — CREATE_FIELDS.oportunidades (8 campos); CREATE_DEFAULTS stampa deal_stage="Nueva oportunidad" server-side (el cliente no puede mandarla) |
+| GET /api/vendedores?role=compras | (2026-07-15) filtro por rol (vendedor default) — alimenta el select de Compras del form |
 | GET/POST /api/boards/:slug/items/:id/updates | Monday item updates (comments) — live, never mirrored; scoped by the same getItem ownership check; POST backs Actualizaciones + payment-request buttons (2026-07-14) |
 | GET /api/admin/identities, PUT /api/admin/identities/:email | admin-only roster CRUD (phone/role/active); 403 for non-admin (2026-07-14) |
 | GET /api/admin/monday-users | admin-only Monday user directory (name/email/phone/teams) for Settings import (2026-07-14) |
@@ -87,6 +90,17 @@ only. ColVal = {text, value?, type}. Formula/mirror cols: use `text`/`display_va
 
 `export default { fetch: app.fetch, scheduled }` — scheduled: reconcileAll + outbox retry.
 Non-/api routes fall through to env.ASSETS.fetch(request).
+
+## Ahorro de llamadas a Monday (2026-07-15)
+
+- **reconcileAll gated**: 1 query ligera (`boards{id updated_at}`) para los 7 boards;
+  solo se pagina un board si su `updated_at` cambió vs `board_state` (D1) o si el
+  último full pass tiene >24h. Estado en tabla `board_state` (schema.sql).
+- **flushOutbox agrupado**: filas pendientes del mismo item se funden en UNA
+  `change_multiple_column_values` + UN refetch (la fila más reciente gana por columna).
+- **encodeColumnValue**: status = `{label}` singular; `{labels:[...]}` es SOLO dropdown
+  (bug visto en vivo: status con shape de dropdown asigna un label arbitrario).
+- Creación de líneas de oportunidad (WA bot) en paralelo con `Promise.all`.
 
 ## Module C — UI (src/**)
 

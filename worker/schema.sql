@@ -50,6 +50,12 @@ CREATE TABLE IF NOT EXISTS wa_processed (      -- WhatsApp webhook dedupe (Meta 
   at     TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS board_state (  -- reconcile gate: skip boards whose updated_at didn't move
+  board_id          INTEGER PRIMARY KEY,
+  monday_updated_at TEXT NOT NULL,
+  reconciled_at     TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS sync_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   kind TEXT NOT NULL,                 -- webhook|reconcile|manual|outbox

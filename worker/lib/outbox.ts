@@ -28,11 +28,17 @@ export async function submitWrite(
   itemId: number,
   cols: Record<string, string>,
   viewer: Identity,
+  // trusted: caller already validated the write itself (e.g. the enviar-costeo
+  // route, whose stage change isn't a user-writable column). Never expose to
+  // a route that forwards client-chosen column ids.
+  opts: { trusted?: boolean } = {},
 ): Promise<WriteResponse> {
   const colIds = Object.keys(cols ?? {});
   if (colIds.length === 0) throw new OutboxError(400, 'no columns');
-  for (const colId of colIds) {
-    if (!canWrite(slug, colId, viewer.role)) throw new OutboxError(403, `cannot write ${colId}`);
+  if (!opts.trusted) {
+    for (const colId of colIds) {
+      if (!canWrite(slug, colId, viewer.role)) throw new OutboxError(403, `cannot write ${colId}`);
+    }
   }
 
   const row = await getItem(env, slug, itemId, viewer);
@@ -92,14 +98,26 @@ export async function flushOutbox(env: Env): Promise<void> {
        WHERE status = 'pending' AND attempts < 5 ORDER BY created_at LIMIT 20`,
     )
     .all<OutboxRow>();
-  for (const row of res.results ?? []) await flushOne(env, row);
+  // Group by item: one change_multiple_column_values + one refetch per item,
+  // however many pending rows piled up (rows are created_at-ordered, so a
+  // later edit to the same column wins in the merge).
+  const groups = new Map<string, OutboxRow[]>();
+  for (const row of res.results ?? []) {
+    const key = `${row.board_id}:${row.item_id}`;
+    const g = groups.get(key);
+    if (g) g.push(row);
+    else groups.set(key, [row]);
+  }
+  for (const group of groups.values()) await flushGroup(env, group);
 }
 
-async function flushOne(env: Env, row: OutboxRow): Promise<void> {
+async function flushGroup(env: Env, group: OutboxRow[]): Promise<void> {
+  const { board_id, item_id } = group[0];
   const now = new Date().toISOString();
   try {
-    const cols: Record<string, string> = JSON.parse(row.cols);
-    const slug = boardById(row.board_id)?.slug;
+    const cols: Record<string, string> = {};
+    for (const row of group) Object.assign(cols, JSON.parse(row.cols) as Record<string, string>);
+    const slug = boardById(board_id)?.slug;
     const boardMeta = slug ? (COLUMN_META[slug] ?? {}) : {};
     // Structured per-type encoding (not canonValue's flattened scalar) — Monday
     // rejects/no-ops complex types like board_relation without {item_ids:[...]}.
@@ -107,27 +125,30 @@ async function flushOne(env: Env, row: OutboxRow): Promise<void> {
     for (const [colId, raw] of Object.entries(cols)) {
       values[colId] = encodeColumnValue(boardMeta[colId]?.type ?? 'text', raw);
     }
-    await mondayMutate(env, row.board_id, row.item_id, values);
+    await mondayMutate(env, board_id, item_id, values);
+    const ids = group.map(r => r.id);
     await env.DB
-      .prepare(`UPDATE outbox SET status = 'sent', attempts = attempts + 1, updated_at = ? WHERE id = ?`)
-      .bind(now, row.id)
+      .prepare(`UPDATE outbox SET status = 'sent', attempts = attempts + 1, updated_at = ? WHERE id IN (${ids.map(() => '?').join(',')})`)
+      .bind(now, ...ids)
       .run();
     await env.DB
-      .prepare(`INSERT INTO sync_log (kind, board_id, item_id, ok, detail, at) VALUES ('outbox', ?, ?, 1, 'sent', ?)`)
-      .bind(row.board_id, row.item_id, now)
+      .prepare(`INSERT INTO sync_log (kind, board_id, item_id, ok, detail, at) VALUES ('outbox', ?, ?, 1, ?, ?)`)
+      .bind(board_id, item_id, `sent (${ids.length} row${ids.length > 1 ? 's' : ''})`, now)
       .run();
-    await refetchItem(env, row.board_id, row.item_id);
+    await refetchItem(env, board_id, item_id);
   } catch (err) {
-    const attempts = row.attempts + 1;
-    const status = attempts >= 5 ? 'failed' : 'pending';
     const detail = err instanceof Error ? err.message : String(err);
-    await env.DB
-      .prepare(`UPDATE outbox SET status = ?, attempts = ?, updated_at = ? WHERE id = ?`)
-      .bind(status, attempts, now, row.id)
-      .run();
+    for (const row of group) {
+      const attempts = row.attempts + 1;
+      const status = attempts >= 5 ? 'failed' : 'pending';
+      await env.DB
+        .prepare(`UPDATE outbox SET status = ?, attempts = ?, updated_at = ? WHERE id = ?`)
+        .bind(status, attempts, now, row.id)
+        .run();
+    }
     await env.DB
       .prepare(`INSERT INTO sync_log (kind, board_id, item_id, ok, detail, at) VALUES ('outbox', ?, ?, 0, ?, ?)`)
-      .bind(row.board_id, row.item_id, detail, now)
+      .bind(board_id, item_id, detail, now)
       .run();
   }
 }

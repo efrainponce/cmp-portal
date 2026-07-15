@@ -1,8 +1,8 @@
 // Plain (non-hook) typed client for the worker API — see docs/dev-contracts.md.
 import type { BoardSlug } from '../../shared/boards';
 import type {
-  ColMeta, ColVal, CreateResponse, IdentityDTO, ItemDTO, ItemDetailDTO, ListResponse, MeDTO,
-  MondayUserDTO, UpdateDTO, VendedorDTO, WriteResponse,
+  ColMeta, ColVal, CreateResponse, EnviarCosteoResponse, IdentityDTO, ItemDTO, ItemDetailDTO,
+  ListResponse, MeDTO, MondayUserDTO, UpdateDTO, VendedorDTO, WriteResponse,
 } from '../../shared/dto';
 import { mockBoardMeta, mockItemDetail, mockPatch } from './mockFallback';
 
@@ -66,10 +66,19 @@ export async function createItem(slug: BoardSlug, name: string, cols: Record<str
   return body;
 }
 
-export async function getVendedores(): Promise<VendedorDTO[]> {
-  const res = await apiFetch('/vendedores');
+export async function getVendedores(role: 'vendedor' | 'compras' = 'vendedor'): Promise<VendedorDTO[]> {
+  const res = await apiFetch(`/vendedores?role=${role}`);
   if (!res.ok) return [];
   return res.json();
+}
+
+/** Mandar a costeo — el servidor valida las líneas (producto, cantidad, color de
+ * la lista) y responde 422 con errores legibles cuando algo falta. */
+export async function enviarCosteo(id: string): Promise<EnviarCosteoResponse> {
+  const res = await apiFetch(`/oportunidades/${id}/enviar-costeo`, { method: 'POST' });
+  const body: EnviarCosteoResponse = await res.json();
+  if (!res.ok && !body.errors) throw new Error('enviar a costeo failed: ' + res.status);
+  return body;
 }
 
 export async function refreshItem(slug: BoardSlug, id: string): Promise<{ ok: boolean }> {

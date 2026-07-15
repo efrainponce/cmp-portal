@@ -85,6 +85,17 @@ export async function gql(
 
 export interface ItemsPage { cursor: string | null; items: MondayItem[] }
 
+/** Board-level updated_at for many boards in ONE call — Monday bumps it on any
+ * item/column change, so an unchanged value lets reconcile skip paging the
+ * whole board (the webhook path covers real-time updates anyway). */
+export async function fetchBoardsUpdatedAt(env: Env, boardIds: number[]): Promise<Map<number, string>> {
+  const query = `query($ids:[ID!]){ boards(ids:$ids){ id updated_at } }`;
+  const data = await gql(env, query, { ids: boardIds.map(String) });
+  const out = new Map<number, string>();
+  for (const b of data?.boards ?? []) out.set(Number(b.id), String(b.updated_at ?? ''));
+  return out;
+}
+
 /** One page of items for a board (100/page). Pass `cursor` from the previous call to continue. */
 export async function fetchItems(env: Env, boardId: number, cursor?: string | null): Promise<ItemsPage> {
   const query = `query($board:[ID!],$cursor:String){ boards(ids:$board){ items_page(limit:100,cursor:$cursor){

@@ -25,13 +25,16 @@ export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
       'lookup_mkznd66k', 'lookup_mm00p07m', 'date_mm09mv5b', 'file_mm0fgrzq',
       'file_mm0zjras', 'color_mm47f0ca', 'dropdown_mm0mg00', 'text_mm47xmh',
       'lookup_mm087at6', 'file_mm0z6rze', 'date_mm094kzf', 'date_mm09b6nz',
-      'date_mm0mc3dj'], V),
+      'date_mm0mc3dj',
+      // PROPOSED 2026-07-15 (create-oportunidad form): ambos son datos de flujo,
+      // no de costos — ¿nuevos productos? y quién lleva Compras. Revisar.
+      'color_mm0ex0ed', 'multiple_person_mm03qyw9'], V),
     // PROPOSED writable (per write-path discussion; flip = one-line change):
     text_mm0gje0:       { vis: V, w: WV },   // Vigencia de la cotización
     text_mm0gjrrd:      { vis: V, w: WV },   // Tiempo de entrega
     long_text_mm1m416j: { vis: V, w: WV },   // Comentarios cotización
     ...vis(['lookup_mm4g2hqf', 'lookup_mm35sk4e', 'lookup_mm0cvyfc',
-      'lookup_mm1w47fq', 'multiple_person_mm03qyw9', 'multiple_person_mm1m73qp'], AC),
+      'lookup_mm1w47fq', 'multiple_person_mm1m73qp'], AC),
   },
 
   oportunidades_sub: {

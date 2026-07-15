@@ -90,9 +90,9 @@ export async function createOportunidad(
   await upsertItem(env, 'oportunidades', item);
   const itemId = Number(item.id);
 
-  const warnings: string[] = [];
-  const lineas: { id: number; nombre: string }[] = [];
-  for (const l of input.lineas) {
+  // Las líneas se crean en paralelo — mismas mutaciones a Monday, mucha menos
+  // latencia total; el orden de lineas/warnings sigue el orden del input.
+  const results = await Promise.all(input.lineas.map(async l => {
     const subCols: Record<string, unknown> = { [SUB_CANTIDAD]: String(l.cantidad) };
     if (l.productoItemId) subCols[SUB_PRODUCTO_REL] = { item_ids: [Number(l.productoItemId)] };
     if (l.color?.trim()) subCols[SUB_COLOR] = l.color.trim();
@@ -105,12 +105,14 @@ export async function createOportunidad(
     try {
       const sub = await createSubitem(env, itemId, l.nombre.trim(), subCols);
       await upsertItem(env, 'oportunidades_sub', sub);
-      lineas.push({ id: Number(sub.id), nombre: l.nombre.trim() });
+      return { linea: { id: Number(sub.id), nombre: l.nombre.trim() } };
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
-      warnings.push(`La línea "${l.nombre}" no se pudo crear: ${detail}`);
+      return { warning: `La línea "${l.nombre}" no se pudo crear: ${detail}` };
     }
-  }
+  }));
+  const lineas = results.flatMap(r => (r.linea ? [r.linea] : []));
+  const warnings = results.flatMap(r => (r.warning ? [r.warning] : []));
 
   if (lineas.length === 0) {
     warnings.push('La oportunidad se creó pero ninguna línea de producto se pudo agregar.');

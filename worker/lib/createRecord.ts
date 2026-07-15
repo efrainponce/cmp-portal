@@ -4,7 +4,7 @@ import type { Env } from '../env';
 import type { Identity } from '../../shared/types';
 import type { CreateResponse } from '../../shared/dto';
 import { BOARDS } from '../../shared/boards';
-import { CREATE_FIELDS, isCreatable } from '../../shared/createFields';
+import { CREATE_DEFAULTS, CREATE_FIELDS, isCreatable } from '../../shared/createFields';
 import { COLUMN_META } from '../../shared/column-meta.gen';
 import { encodeColumnValue } from './columnEncode';
 import { createItem } from './monday';
@@ -50,6 +50,11 @@ export async function submitCreate(
     const type = boardMeta[id]?.type ?? 'text';
     const encoded = encodeColumnValue(type, cols[id]);
     if (encoded !== '') columnValues[id] = encoded;
+  }
+  // Server-stamped defaults (e.g. oportunidades start at "Nueva oportunidad") —
+  // outside CREATE_FIELDS, so a client can neither set nor override them.
+  for (const [id, raw] of Object.entries(CREATE_DEFAULTS[slug] ?? {})) {
+    columnValues[id] = encodeColumnValue(boardMeta[id]?.type ?? 'text', raw);
   }
 
   const board = BOARDS[slug];
