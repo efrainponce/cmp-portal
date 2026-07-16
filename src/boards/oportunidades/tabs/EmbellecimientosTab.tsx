@@ -2,12 +2,13 @@
 // técnica/tamaño editor needs structured zone data that only exists on the
 // Subelementos de Proyectos board (out of scope here); this renders the real
 // Oportunidades-subitem embellishment status + free-text description instead.
-// The oportunidades_sub board has no file column for embellecimiento reference
-// images, so the per-zone image attach below is client-state only — a visual
-// placeholder, lost on refresh, until a real column + upload endpoint exist.
-import { useState } from 'react';
+// Per-zone reference images persist to Monday's file_mm5akjy5 column (worker/
+// lib/embellecimientoImagenes.ts) — the zone is filename-prefixed since that's
+// the only file column on oportunidades_sub, not one per zone.
+import { useEffect, useState } from 'react';
 import type { ChangeEvent } from 'react';
 import type { ColMeta, ItemDTO } from '../../../lib/api';
+import { getZoneImages, uploadZoneImage } from '../../../lib/api';
 import { StatusBadge, MonoTag } from '../../../components/core/Badges';
 import { chipFor } from '../../../components/board/cellHelpers';
 import { explodeEmbellecimiento } from '../../../lib/embellecimiento';
@@ -25,33 +26,42 @@ const ImageIcon = ({ size = 14, color = '#918b7c' }: { size?: number; color?: st
   </svg>
 );
 
-function ZoneImage({ imageUrl, onChange }: { imageUrl?: string; onChange: (dataUrl: string) => void }) {
+function ZoneImage({ imageUrl, uploading, error, onUpload }: {
+  imageUrl?: string; uploading: boolean; error?: string; onUpload: (file: File) => void;
+}) {
   const handleFile = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => { if (typeof reader.result === 'string') onChange(reader.result); };
-    reader.readAsDataURL(file);
+    if (file) onUpload(file);
     e.target.value = '';
   };
 
   if (imageUrl) {
     return (
-      <label style={{ cursor: 'pointer', flex: 'none' }} title="Cambiar imagen">
-        <img src={imageUrl} alt="" style={{ width: 28, height: 28, objectFit: 'cover', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }} />
-        <input type="file" accept="image/*" onChange={handleFile} style={{ display: 'none' }} />
+      <label style={{ cursor: uploading ? 'default' : 'pointer', flex: 'none', opacity: uploading ? 0.6 : 1 }} title={error || 'Cambiar imagen'}>
+        <img
+          src={imageUrl}
+          alt=""
+          style={{ width: 28, height: 28, objectFit: 'cover', borderRadius: 'var(--radius-md)', border: '1px solid ' + (error ? 'var(--status-perdida)' : 'var(--border)') }}
+        />
+        <input type="file" accept="image/*" onChange={handleFile} style={{ display: 'none' }} disabled={uploading} />
       </label>
     );
   }
 
   return (
-    <label style={{
-      display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', flex: 'none',
-      border: '1px dashed var(--ink-faint)', borderRadius: 'var(--radius-md)', padding: '3px 7px',
-    }}>
+    <label
+      title={error}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 4, cursor: uploading ? 'default' : 'pointer', flex: 'none',
+        border: '1px dashed ' + (error ? 'var(--status-perdida)' : 'var(--ink-faint)'), borderRadius: 'var(--radius-md)',
+        padding: '3px 7px', opacity: uploading ? 0.6 : 1,
+      }}
+    >
       <ImageIcon size={12} />
-      <span style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)' }}>+ imagen</span>
-      <input type="file" accept="image/*" onChange={handleFile} style={{ display: 'none' }} />
+      <span style={{ font: 'var(--text-caption)', color: error ? 'var(--status-perdida)' : 'var(--ink-tertiary)' }}>
+        {uploading ? 'Subiendo…' : error ? 'Error — reintentar' : '+ imagen'}
+      </span>
+      <input type="file" accept="image/*" onChange={handleFile} style={{ display: 'none' }} disabled={uploading} />
     </label>
   );
 }
@@ -59,8 +69,39 @@ function ZoneImage({ imageUrl, onChange }: { imageUrl?: string; onChange: (dataU
 export function EmbellecimientosTab({ subCols, products }: { subCols: ColMeta[]; products: ItemDTO[] }) {
   const statusCol = subCols.find((c) => c.id === STATUS_COL);
   const [zoneImages, setZoneImages] = useState<Record<string, string>>({});
+  const [uploading, setUploading] = useState<Record<string, boolean>>({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const setZoneImage = (key: string, dataUrl: string) => setZoneImages((imgs) => ({ ...imgs, [key]: dataUrl }));
+  const productIds = products.map((p) => p.id).join(',');
+  useEffect(() => {
+    let cancelled = false;
+    for (const id of productIds ? productIds.split(',') : []) {
+      getZoneImages(id).then((imgs) => {
+        if (cancelled) return;
+        setZoneImages((cur) => {
+          const next = { ...cur };
+          for (const [zone, url] of Object.entries(imgs)) next[`${id}:${zone}`] = url;
+          return next;
+        });
+      }).catch(() => {});
+    }
+    return () => { cancelled = true; };
+  }, [productIds]);
+
+  const handleUpload = async (productId: string, zone: string, file: File) => {
+    const key = `${productId}:${zone}`;
+    setUploading((u) => ({ ...u, [key]: true }));
+    setErrors((e) => { const next = { ...e }; delete next[key]; return next; });
+
+    const res = await uploadZoneImage(productId, zone, file);
+
+    setUploading((u) => ({ ...u, [key]: false }));
+    if (res.ok && res.url) {
+      setZoneImages((imgs) => ({ ...imgs, [key]: res.url! }));
+    } else {
+      setErrors((e) => ({ ...e, [key]: res.error ?? 'No se pudo subir la imagen.' }));
+    }
+  };
 
   if (products.length === 0) {
     return (
@@ -94,7 +135,12 @@ export function EmbellecimientosTab({ subCols, products }: { subCols: ColMeta[];
                       <div style={{ font: 'var(--text-body)', color: 'var(--ink-secondary)', flex: 1 }}>
                         <span style={{ color: 'var(--ink)' }}>{z.label}:</span> {z.value}
                       </div>
-                      <ZoneImage imageUrl={zoneImages[key]} onChange={(dataUrl) => setZoneImage(key, dataUrl)} />
+                      <ZoneImage
+                        imageUrl={zoneImages[key]}
+                        uploading={!!uploading[key]}
+                        error={errors[key]}
+                        onUpload={(file) => handleUpload(p.id, z.label, file)}
+                      />
                     </div>
                   );
                 })}

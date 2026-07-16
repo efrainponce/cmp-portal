@@ -31,6 +31,7 @@ import { fetchUpdates, createUpdate } from './lib/monday';
 import { cachedFetchUsers } from './lib/rosterCache';
 import { listWarehouses, listMovements, listStock, createMovement, InventoryError } from './lib/inventory';
 import type { CreateMovementRequest, CreateMovementResponse } from '../shared/inventory';
+import { listZoneImages, uploadZoneImage, EmbellImageError } from './lib/embellecimientoImagenes';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -370,6 +371,44 @@ app.post('/api/oportunidades/:id/version', async c => {
     if (err instanceof QuoteVersionError) return jsonStatus({ ok: false, changed: false, error: err.message } satisfies QuoteVersionResponse, err.status);
     if (err instanceof OutboxError) return jsonStatus({ ok: false, changed: false, error: err.message } satisfies QuoteVersionResponse, err.status);
     return jsonStatus({ ok: false, changed: false, error: 'internal error' } satisfies QuoteVersionResponse, 500);
+  }
+});
+
+// Imágenes de referencia por zona de embellecimiento — :id es la línea
+// (subitem de oportunidades_sub), no la oportunidad. Monday no tiene una
+// columna por zona; la zona va codificada en el nombre del archivo
+// (ver worker/lib/embellecimientoImagenes.ts).
+app.get('/api/oportunidades/lineas/:id/embellecimiento-imagenes', async c => {
+  const itemId = Number(c.req.param('id'));
+  if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
+  const viewer = c.get('viewer');
+
+  try {
+    const images = await listZoneImages(c.env, itemId, viewer);
+    return c.json(images);
+  } catch (err) {
+    if (err instanceof EmbellImageError) return jsonStatus({ error: err.message }, err.status);
+    return c.json({ error: 'internal error' }, 500);
+  }
+});
+
+app.post('/api/oportunidades/lineas/:id/embellecimiento-imagen', async c => {
+  const itemId = Number(c.req.param('id'));
+  if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
+  const viewer = c.get('viewer');
+
+  const form = await c.req.formData();
+  const zone = String(form.get('zone') ?? '');
+  const file = form.get('file');
+  if (!(file instanceof File)) return c.json({ error: 'file is required' }, 400);
+  if (!file.type.startsWith('image/')) return c.json({ error: 'solo se permiten imágenes' }, 400);
+
+  try {
+    const result = await uploadZoneImage(c.env, c.executionCtx, itemId, viewer, zone, file, file.name);
+    return c.json({ ok: true, ...result });
+  } catch (err) {
+    if (err instanceof EmbellImageError) return jsonStatus({ error: err.message }, err.status);
+    return c.json({ error: 'internal error' }, 500);
   }
 });
 

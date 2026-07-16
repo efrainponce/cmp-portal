@@ -135,6 +135,26 @@ export async function submitVersion(id: string, lines: QuoteLineInput[]): Promis
   return body;
 }
 
+/** Zona -> URL de imagen (firmada, corta vigencia) para una línea de oportunidad. */
+export async function getZoneImages(lineaId: string): Promise<Record<string, string>> {
+  const res = await apiFetch(`/oportunidades/lineas/${lineaId}/embellecimiento-imagenes`);
+  if (!res.ok) throw new Error('GET embellecimiento-imagenes failed: ' + res.status);
+  return res.json();
+}
+
+/** Sube una imagen de referencia para una zona de embellecimiento de una línea. */
+export async function uploadZoneImage(
+  lineaId: string, zone: string, file: File,
+): Promise<{ ok: boolean; zone?: string; url?: string; error?: string }> {
+  const form = new FormData();
+  form.append('zone', zone);
+  form.append('file', file);
+  const res = await apiFetch(`/oportunidades/lineas/${lineaId}/embellecimiento-imagen`, { method: 'POST', body: form });
+  const body = await res.json();
+  if (!res.ok) return { ok: false, error: body.error ?? 'No se pudo subir la imagen.' };
+  return body;
+}
+
 /** El Proyecto ligado a la oportunidad (con sus subitems de tallas); null si no existe. */
 export async function getProyecto(oppId: string): Promise<ItemDetailDTO | null> {
   const res = await apiFetch(`/oportunidades/${oppId}/proyecto`);

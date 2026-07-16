@@ -62,6 +62,7 @@ export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
     numeric_mkzm6399:     { vis: V, w: WV },   // Cantidad
     color_mm1b34bg:       { vis: V, w: WV },   // Embellecimiento (status)
     long_text_mm1bj4pt:   { vis: V, w: WV },   // Descripción Embellecimientos
+    file_mm5akjy5:        { vis: V, w: WV },   // Imagen embellecimiento (per-zona, filename-prefixed)
     ...vis(['lookup_mm11t8gj',
       'lookup_mm0bdwb5', 'formula_mkznqx51', 'formula_mkzngnjm',
       'formula_mm0rqjv1', 'lookup_mm0bbz02', 'long_text_mm1b9bh8',

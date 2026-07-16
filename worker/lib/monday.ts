@@ -212,6 +212,46 @@ export async function fetchItem(env: Env, itemId: number): Promise<MondayItem | 
   return { ...raw, column_values: normalizeCols(raw.column_values ?? []) };
 }
 
+/** Uploads a file to a file-type column — Monday's dedicated multipart endpoint
+ * (v2/file), separate from the JSON /v2 endpoint every other mutation uses.
+ * public_url is a presigned S3 link that expires in ~1h — fine for the upload
+ * response's immediate preview, but callers must re-resolve it later via
+ * fetchAssetPublicUrls rather than caching this one. */
+export async function addFileToColumn(
+  env: Env,
+  itemId: number,
+  columnId: string,
+  file: Blob,
+  filename: string,
+): Promise<{ id: string; name: string; publicUrl: string }> {
+  const form = new FormData();
+  form.append(
+    'query',
+    `mutation($file: File!){ add_file_to_column(item_id:${itemId}, column_id:"${columnId}", file:$file){ id name public_url } }`,
+  );
+  form.append('variables[file]', file, filename);
+  const res = await fetch('https://api.monday.com/v2/file', {
+    method: 'POST',
+    headers: { Authorization: env.MONDAY_API_KEY, 'API-Version': API_VERSION },
+    body: form,
+  });
+  const json: any = await res.json();
+  if (json.errors) throw new Error(`Monday file upload error: ${JSON.stringify(json.errors)}`);
+  const a = json.data.add_file_to_column;
+  return { id: a.id, name: a.name, publicUrl: a.public_url };
+}
+
+/** Fresh presigned public_url per asset id (batch) — resolve on demand, not at
+ * write time, since the S3 link Monday hands back expires in ~1h. */
+export async function fetchAssetPublicUrls(env: Env, assetIds: string[]): Promise<Map<string, string>> {
+  if (assetIds.length === 0) return new Map();
+  const query = `query($ids:[ID!]!){ assets(ids:$ids){ id public_url } }`;
+  const data = await gql(env, query, { ids: assetIds });
+  const out = new Map<string, string>();
+  for (const a of data?.assets ?? []) out.set(String(a.id), a.public_url);
+  return out;
+}
+
 /** Item + ALL its subitems in one round-trip — for flows where cmp-tallas
  * rewrites the subitems wholesale (import_tallas) or snapshots columns on them
  * (validar_costeo) and the mirror must catch up immediately. */
