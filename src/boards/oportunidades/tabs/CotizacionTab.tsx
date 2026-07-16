@@ -28,7 +28,10 @@ const PRODUCTO_COL = 'lookup_mm0x4kda';        // mirror del producto ligado —
 const PRODUCTO_TXT_COL = 'text_mm0bkm1j';      // Producto (texto libre) — fallback sin catálogo
 const PRODUCTO_REL_COL = 'board_relation_mkzmafgp'; // relación real a Productos — puebla el mirror
 const COLOR_COL = 'text_mm07s2mg';
-const COLORES_DISP_COL = 'lookup_mkznm0h3';    // mirror: colores disponibles del producto ligado
+const COLORES_DISP_COL = 'lookup_mkznm0h3';    // mirror: colores disponibles del producto ligado (asíncrono)
+const PRODUCTO_COLOR_DROPDOWN_COL = 'dropdown_mkztty4b'; // Color del producto en el catálogo — misma
+// fuente que valida enviarCosteo. Se lee directo del `catalog` ya cargado en memoria (sin esperar
+// al mirror asíncrono del subitem, que solo se puebla después de que Monday recompute la relación).
 
 // Determina qué columnas son editables inline según la etapa de la oportunidad.
 // En "Nueva oportunidad" (stage 4): vendedor edita producto/color/cantidad inline.
@@ -61,7 +64,7 @@ const ETAPA_COSTEO_COLORS: Record<string, { color: string; tint: string }> = {
  * instantánea (solo lectura, sin fórmulas: esas solo existen para la vigente).
  * "Enviar a costeo" junto a la vigente abre el draft de nueva versión — crear
  * una versión ES la forma de mandar cambios de línea a costeo otra vez. */
-function VersionChips({
+export function VersionChips({
   versions, selected, onSelect, onNuevaVersion,
 }: {
   versions: QuoteVersionDTO[]; selected: number | null; onSelect: (id: number | null) => void;
@@ -312,17 +315,13 @@ export function CotizacionTab({
     patchRow(product.id, { editing: { ...state.editing, [colId]: raw }, error: undefined });
   };
 
-  const onColorBlur = async (product: ItemDTO) => {
+  // Color es un <select> — se guarda al elegir (onChange), no al perder foco:
+  // un <select> no tiene un "blur para confirmar" natural como un input de texto.
+  const onColorChange = async (product: ItemDTO, raw: string) => {
     const state = rowState(product.id);
-    const raw = state.editing[COLOR_COL];
-    if (raw === undefined) return;
     const current = product.cols[COLOR_COL]?.text ?? '';
-    if (raw.trim() === '' || raw === current) {
-      const editing = { ...state.editing };
-      delete editing[COLOR_COL];
-      patchRow(product.id, { editing });
-      return;
-    }
+    patchRow(product.id, { editing: { ...state.editing, [COLOR_COL]: raw } });
+    if (raw === current) return;
     patchRow(product.id, { saving: { ...state.saving, [COLOR_COL]: true }, error: undefined });
     try {
       await patchItem('oportunidades_sub', product.id, { [COLOR_COL]: raw });
@@ -334,11 +333,9 @@ export function CotizacionTab({
       return;
     }
     const after = rowState(product.id);
-    const editing = { ...after.editing };
-    delete editing[COLOR_COL];
     const saving = { ...after.saving };
     delete saving[COLOR_COL];
-    patchRow(product.id, { editing, saving });
+    patchRow(product.id, { saving });
     onSaved?.();
   };
 
@@ -468,24 +465,31 @@ export function CotizacionTab({
                     }
                     if (writable && c.id === COLOR_COL) {
                       const raw = state.editing[COLOR_COL] ?? (p.cols[COLOR_COL]?.text ?? '');
-                      const disponibles = (p.cols[COLORES_DISP_COL]?.text ?? '')
+                      // Fuente primaria: el Color del producto en el catálogo (ya cargado en
+                      // memoria, instantáneo). Fallback: el mirror del subitem (lookup_mkznm0h3),
+                      // que solo se puebla después de que Monday recompute la relación.
+                      const productoNombre = displayProducto(p, state.preview);
+                      const productoMatch = catalog.find(
+                        (c2) => c2.name.trim().toLowerCase() === productoNombre.trim().toLowerCase(),
+                      );
+                      const catalogColores = (productoMatch?.cols[PRODUCTO_COLOR_DROPDOWN_COL]?.text ?? '')
                         .split(',').map((s) => s.trim()).filter(Boolean);
+                      const mirrorColores = (p.cols[COLORES_DISP_COL]?.text ?? '')
+                        .split(',').map((s) => s.trim()).filter(Boolean);
+                      const disponibles = catalogColores.length > 0 ? catalogColores : mirrorColores;
                       return (
                         <div key={c.id} style={{ textAlign: c.align }}>
-                          <input
-                            list={disponibles.length > 0 ? `colores-disponibles-${p.id}` : undefined}
+                          <select
                             value={raw}
-                            disabled={!!state.saving[COLOR_COL]}
-                            onChange={(e) => onTextEdit(p, COLOR_COL, e.target.value)}
-                            onBlur={() => onColorBlur(p)}
-                            placeholder="Color…"
+                            disabled={!!state.saving[COLOR_COL] || disponibles.length === 0}
+                            onChange={(e) => onColorChange(p, e.target.value)}
                             style={{ ...inputStyle, textAlign: 'left' }}
-                          />
-                          {disponibles.length > 0 && (
-                            <datalist id={`colores-disponibles-${p.id}`}>
-                              {disponibles.map((d) => <option key={d} value={d} />)}
-                            </datalist>
-                          )}
+                          >
+                            <option value="">{disponibles.length > 0 ? 'Elegir color…' : 'Elige un producto primero'}</option>
+                            {disponibles.map((d) => <option key={d} value={d}>{d}</option>)}
+                            {/* si el color guardado ya no está en la lista (cambiaron de producto), no lo escondas en silencio */}
+                            {raw && !disponibles.includes(raw) && <option value={raw}>{raw}</option>}
+                          </select>
                         </div>
                       );
                     }
