@@ -21,3 +21,10 @@
   - Módulo de Inventario (`worker/lib/inventory.ts`, `src/boards/inventario/`): feature nativa en D1 (bodegas/movimientos/stock), no espejada de Monday.
   - Ampliación de integración cmp-tallas: flujos de Proyecto/Tallas/Órdenes de compra (`ProyectoSection.tsx`) documentados en `docs/cmp-tallas-endpoint-map.md`.
   - Captura de costeo inline en `CotizacionTab` (variant costeo) para compras, con preview local de fórmulas (`src/lib/costeoCalc.ts`).
+- **`bf882f2`** — Cerrar el flujo de versiones: candado de costeo + placeholders de imagen
+  - Nueva versión con cambios ahora manda a costeo de verdad (mismo flujo que "Mandar a costeo": valida, PDF, `deal_stage` → "En costeo"), sin importar la etapa previa; el botón se movió junto a los chips V1/V2 como "+ Enviar a costeo" y aparece en cualquier etapa salvo Ganada/Perdida.
+  - `listVersions` siempre sintetiza la vigente en cuanto hay líneas (antes requería una versión archivada); `submitVersion` auto-ancla V1 si nunca existió, y resetea Etapa Costeo a "No iniciado" en líneas editadas que Compras ya había avanzado, para que `validar_costeo` (cmp-tallas) las vuelva a snapshotear en vez de dejar costo viejo pegado a datos nuevos.
+  - Grid de Costeo/Validación: se cerró un leak donde Cantidad (writable para el form de nueva versión) también quedaba editable inline sin pasar por versiones; ahora el inline-edit está restringido a costeo + precio.
+  - Fix: `precioUnitario` en los snapshots de versión leía `.value` (JSON crudo con comillas) en vez de `.text`, dejando todos los totales en $0.
+  - Columna Etapa Costeo agregada al grid de Costeo con badge de color.
+  - Placeholders de imagen (cliente, sin endpoint aún) en Embellecimientos y Nuevos productos; regeneración de `column-meta.gen.ts`.
