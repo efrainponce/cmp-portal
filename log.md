@@ -28,3 +28,9 @@
   - Fix: `precioUnitario` en los snapshots de versión leía `.value` (JSON crudo con comillas) en vez de `.text`, dejando todos los totales en $0.
   - Columna Etapa Costeo agregada al grid de Costeo con badge de color.
   - Placeholders de imagen (cliente, sin endpoint aún) en Embellecimientos y Nuevos productos; regeneración de `column-meta.gen.ts`.
+- **`f75dfae`** — Vendedores editan precio en Cotización + optimizaciones de costo/velocidad
+  - `CotizacionTab`: inline-edit ya no exclusivo del variant costeo — el vendedor edita Precio de Venta C/U en los boards de Ventas con preview local de Subtotal/IVA/Total; prop `editable` bloquea Ganada/Perdida.
+  - Fix de carrera en `POST /oportunidades/:id/version`: `submitVersion` hace `await flushOutbox` antes de reenviar a costeo (cmp-tallas leía Monday sin los cambios) y el refetch de árbol se movió a la ruta después del costeo (recoge stage/PDF/snapshots; antes quedaba mirror viejo).
+  - Asistente: loop unificado `worker/lib/agentLoop.ts` (WA + portal) con prompt caching (system+tools y prefijo completo, lecturas ~0.1×); `trimHistory` compacta `tool_result`s con >10 mensajes de antigüedad.
+  - Roster de Monday cacheado en D1 (`api_cache`): `/api/users` TTL 6 h (441ms→16ms), admin 10 min, stale-if-error.
+  - Frontend: `/api/boards` cacheado por sesión, polling pausado con pestaña oculta, drawer con cache SWR (reabrir oportunidad = instantáneo).
