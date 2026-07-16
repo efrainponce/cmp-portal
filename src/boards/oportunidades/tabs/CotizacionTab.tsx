@@ -5,32 +5,44 @@
 //
 // In BOTH variants, columns the server marked writable for the viewer's role
 // (`ColMeta.w`, from shared/visibility.ts) AND listed in INLINE_EDITABLE_COLS
-// render as inputs: compras/admin capture costs in `costeo`, vendedor/admin
-// edit Precio de Venta directly in `venta` (Efraín, 2026-07-16 — vendedores
-// must be able to edit their quotes, not just read them). Editing one
-// recomputes the row's formula columns locally (src/lib/costeoCalc.ts,
-// verified 1:1 against Monday's own formulas) for an instant preview, then
-// PATCHes only the raw input on blur — formula columns are never written
-// back, Monday recomputes those itself and the mirror catches up on refetch.
+// render as inputs: compras/admin capture costs in `costeo`, vendedor can only
+// view pricing in `venta` (Efraín 2026-07-16 — vendedores edit product/color/
+// quantity only via "Nueva versión", not inline; price set by costeo/admin via
+// versioning in cmp-tallas). Editing cost columns recomputes the row's formula
+// columns locally (src/lib/costeoCalc.ts, verified 1:1 against Monday's own
+// formulas) for an instant preview, then PATCHes only the raw input on blur —
+// formula columns are never written back, Monday recomputes those itself and
+// the mirror catches up on refetch.
 import { useState } from 'react';
 import type { ColMeta, ColVal, ItemDTO, QuoteVersionDTO } from '../../../lib/api';
-import { patchItem } from '../../../lib/apiClient';
+import { patchItem, apiFetch } from '../../../lib/apiClient';
 import { fmtMoney } from '../../../lib/format';
 import { MonoTag, StatusBadge } from '../../../components/core/Badges';
+import { Button } from '../../../components/core/Button';
 import { previewRow, COL } from '../../../lib/costeoCalc';
 
 const COSTO_DISTR_COL = 'numeric_mm0bph99';
 const ETAPA_COSTEO_COL = 'color_mm084gvf';
 
-// Solo estas columnas son editables inline en el grid — captura de costos
-// (compras/admin) y precio de venta (vendedor/admin). Cantidad/Producto/Color/
-// Embellecimiento también son `col.w` para el vendedor (los necesita
-// NuevaVersionForm), pero deben editarse SOLO vía "Nueva versión" para que
-// quede archivada y dispare el reenvío a costeo — nunca inline sin versionar.
-const INLINE_EDITABLE_COLS = new Set<string>([
-  COL.costoDistr, COL.descuentoPct, COL.conversion, COL.gastosPct, COL.embellecimiento,
-  COL.precio,
-]);
+const PRODUCTO_COL = 'lookup_mm0x4kda';
+const COLOR_COL = 'text_mm07s2mg';
+
+// Determina qué columnas son editables inline según la etapa de la oportunidad.
+// En "Nueva oportunidad" (stage 4): vendedor edita producto/color/cantidad inline.
+// En otras etapas: esos cambios SOLO vía "Nueva versión" (archivable, dispara costeo).
+// Precio: NUNCA editable por vendedor (solo vía cmp-tallas costeo/admin).
+// Costos: solo compras/admin.
+function inlineEditableCols(stage: string | undefined): Set<string> {
+  const base = new Set<string>([
+    COL.costoDistr, COL.descuentoPct, COL.conversion, COL.gastosPct,
+  ]);
+  if (stage === '4') { // Nueva oportunidad
+    base.add(PRODUCTO_COL);
+    base.add(COLOR_COL);
+    base.add(COL.cantidad);
+  }
+  return base;
+}
 
 // Colores reales de la columna status "Etapa Costeo" en Monday (settings_str),
 // no inventados — docs/monday-column-map.md.
@@ -185,12 +197,16 @@ interface RowEditState {
 const EMPTY_ROW: RowEditState = { editing: {}, preview: {}, saving: {} };
 
 export function CotizacionTab({
-  subCols, products, variant = 'venta', onSaved, versions = [], onNuevaVersion, editable = true,
+  subCols, products, variant = 'venta', onSaved, versions = [], onNuevaVersion, editable = true, stage, oppId,
 }: {
   subCols: ColMeta[]; products: ItemDTO[]; variant?: 'venta' | 'costeo'; onSaved?: () => void;
   versions?: QuoteVersionDTO[]; onNuevaVersion?: () => void;
   /** false en Ganada/Perdida — las líneas quedan de solo lectura, igual que el candado de versiones. */
   editable?: boolean;
+  /** deal_stage de la oportunidad — determina qué campos vendedor puede editar inline. */
+  stage?: string;
+  /** ID de la oportunidad — necesario para crear líneas en Nueva oportunidad. */
+  oppId?: string;
 }) {
   const [selectedVersionId, setSelectedVersionId] = useState<number | null>(null);
   const selectedVersion = selectedVersionId != null ? versions.find((v) => v.id === selectedVersionId) : undefined;
@@ -198,11 +214,31 @@ export function CotizacionTab({
   const gridCols = variant === 'costeo' ? GRID_COLS_COSTEO : GRID_COLS_VENTA;
   const visibleCols = gridCols.filter((gc) => subCols.some((c) => c.id === gc.id));
   const writableIds = new Set(subCols.filter((c) => c.w).map((c) => c.id));
+  const editableCols = inlineEditableCols(stage);
 
   const [rows, setRows] = useState<Record<string, RowEditState>>({});
+  const [creatingLine, setCreatingLine] = useState(false);
   const rowState = (id: string): RowEditState => rows[id] ?? EMPTY_ROW;
   const patchRow = (id: string, patch: Partial<RowEditState>) =>
     setRows((r) => ({ ...r, [id]: { ...rowState(id), ...patch } }));
+
+  const onAddLine = async () => {
+    if (!oppId) return;
+    setCreatingLine(true);
+    try {
+      const res = await apiFetch(`/oportunidades/${oppId}/productos`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cantidad: 1 }),
+      });
+      if (!res.ok) throw new Error('No se pudo crear la línea');
+      onSaved?.();
+    } catch (e) {
+      console.error('Error creando línea:', e);
+    } finally {
+      setCreatingLine(false);
+    }
+  };
 
   const onEdit = (product: ItemDTO, colId: string, raw: string) => {
     const state = rowState(product.id);
@@ -261,9 +297,20 @@ export function CotizacionTab({
 
   if (products.length === 0) {
     return (
-      <div style={{ padding: '24px 32px 40px', font: 'var(--text-label)', color: 'var(--ink-quiet)' }}>
+      <div style={{ padding: '24px 32px 40px', width: '100%', boxSizing: 'border-box' }}>
         <VersionChips versions={versions} selected={selectedVersionId} onSelect={setSelectedVersionId} onNuevaVersion={onNuevaVersion} />
-        Sin líneas de producto registradas.
+        <div style={{ font: 'var(--text-label)', color: 'var(--ink-quiet)', marginBottom: 16 }}>
+          Sin líneas de producto registradas.
+        </div>
+        {stage === '4' && editable && (
+          <Button
+            variant="primary"
+            onClick={creatingLine ? undefined : onAddLine}
+            style={{ opacity: creatingLine ? 0.6 : 1 }}
+          >
+            {creatingLine ? 'Agregando línea…' : '+ Agregar línea'}
+          </Button>
+        )}
       </div>
     );
   }
@@ -291,7 +338,7 @@ export function CotizacionTab({
                   alignItems: 'center', padding: '9px 14px',
                 }}>
                   {visibleCols.map((c, idx) => {
-                    const writable = editable && writableIds.has(c.id) && INLINE_EDITABLE_COLS.has(c.id);
+                    const writable = editable && writableIds.has(c.id) && editableCols.has(c.id);
                     const displayVal = state.preview[c.id] ?? p.cols[c.id];
                     if (writable) {
                       const raw = state.editing[c.id] ?? (p.cols[c.id]?.text ?? '');

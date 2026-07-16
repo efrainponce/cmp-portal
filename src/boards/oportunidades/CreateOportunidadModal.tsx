@@ -9,7 +9,7 @@ import { Button } from '../../components/core/Button';
 import { Select } from '../../components/forms/Select';
 import { useMe } from '../../lib/useMe';
 import {
-  apiFetch, useBoards, colForBoard, createItem, getVendedores,
+  apiFetch, useBoards, colForBoard, createItem, getVendedores, getItemDetail,
   type ColMeta, type ListResponse, type VendedorDTO,
 } from '../../lib/api';
 
@@ -43,7 +43,13 @@ function Field({ label, required, children }: { label: string; required?: boolea
   );
 }
 
-export default function CreateOportunidadModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+export default function CreateOportunidadModal({
+  onClose, onCreated,
+}: {
+  onClose: () => void;
+  /** Llamado cuando la opp está lista (folio asignado). Pasa el ID Monday y el folio. */
+  onCreated: (itemId: number, folio: string) => void;
+}) {
   const me = useMe();
   const { boards } = useBoards();
   const oppCols = colForBoard(boards, 'oportunidades');
@@ -81,8 +87,28 @@ export default function CreateOportunidadModal({ onClose, onCreated }: { onClose
     setError(null);
     try {
       const nonEmpty = Object.fromEntries(Object.entries(cols).filter(([, v]) => v.trim() !== ''));
-      await createItem('oportunidades', name.trim(), nonEmpty);
-      onCreated();
+      const result = await createItem('oportunidades', name.trim(), nonEmpty);
+      if (!result.ok || !result.id) throw new Error('No se asignó ID a la oportunidad.');
+
+      setError(null); // limpiar antes de polling para que se vea "Esperando folio…"
+      // Polling: esperar a que Monday asigne el folio (pulse_id_mm0qcq0m)
+      let folio: string | undefined;
+      let attempts = 0;
+      const maxAttempts = 30; // 30 intentos = ~6 segundos con delay 200ms
+      while (!folio && attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 200));
+        try {
+          const detail = await getItemDetail('oportunidades', String(result.id));
+          folio = detail.item.cols.pulse_id_mm0qcq0m?.text;
+          if (folio) break;
+        } catch {
+          // Ignorar errores de fetch, reintentar
+        }
+        attempts++;
+      }
+
+      if (!folio) throw new Error('No se pudo asignar el folio. Refresca la página.');
+      onCreated(result.id, folio);
       onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo crear la oportunidad.');

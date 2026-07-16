@@ -229,7 +229,9 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey 
         <CotizacionTab
           subCols={subCols} products={products} variant={cotizacionVariant} onSaved={load} versions={versions}
           editable={stage !== '1' && stage !== '2'}
-          onNuevaVersion={stage !== '1' && stage !== '2' ? () => setShowNuevaVersion(true) : undefined}
+          onNuevaVersion={stage !== '1' && stage !== '2' && stage !== '4' ? () => setShowNuevaVersion(true) : undefined}
+          stage={stage}
+          oppId={id}
         />
       )}
       {activeTab === 'embellecimientos' && <EmbellecimientosTab subCols={subCols} products={products} />}

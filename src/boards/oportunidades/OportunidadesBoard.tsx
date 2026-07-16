@@ -41,7 +41,13 @@ export function OportunidadesBoard() {
       )}
       {creating && (
         <Suspense fallback={null}>
-          <CreateOportunidadModal onClose={() => setCreating(false)} onCreated={() => setCreating(false)} />
+          <CreateOportunidadModal
+            onClose={() => setCreating(false)}
+            onCreated={(itemId) => {
+              setCreating(false);
+              setOpenId(String(itemId)); // Abrir drawer automáticamente
+            }}
+          />
         </Suspense>
       )}
     </div>

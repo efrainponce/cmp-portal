@@ -27,7 +27,7 @@ import {
 } from './lib/automations';
 import { enviarACosteo, checkCosteo, CosteoError, type EnviarCosteoResult } from './lib/costeo';
 import { listVersions, submitVersion, recordFirstVersion, QuoteVersionError } from './lib/quoteVersions';
-import { fetchUpdates, createUpdate } from './lib/monday';
+import { fetchUpdates, createUpdate, createItem } from './lib/monday';
 import { cachedFetchUsers } from './lib/rosterCache';
 import { listWarehouses, listMovements, listStock, createMovement, InventoryError } from './lib/inventory';
 import type { CreateMovementRequest, CreateMovementResponse } from '../shared/inventory';
@@ -371,6 +371,43 @@ app.post('/api/oportunidades/:id/version', async c => {
     if (err instanceof QuoteVersionError) return jsonStatus({ ok: false, changed: false, error: err.message } satisfies QuoteVersionResponse, err.status);
     if (err instanceof OutboxError) return jsonStatus({ ok: false, changed: false, error: err.message } satisfies QuoteVersionResponse, err.status);
     return jsonStatus({ ok: false, changed: false, error: 'internal error' } satisfies QuoteVersionResponse, 500);
+  }
+});
+
+// Crear una línea de producto en Nueva oportunidad (stage 4) — subitems sin versioning.
+app.post('/api/oportunidades/:id/productos', async c => {
+  const itemId = Number(c.req.param('id'));
+  if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
+  const viewer = c.get('viewer');
+  const body = await c.req.json<{ cantidad?: number }>();
+
+  try {
+    const item = await getItem(c.env, 'oportunidades', itemId, viewer);
+    if (!item) return c.json({ error: 'not found' }, 404);
+
+    const stage = item.cols.deal_stage?.value;
+    if (stage !== '4') {
+      return c.json({ error: 'Solo se pueden crear líneas en Nueva oportunidad' }, 400);
+    }
+
+    // Crear subitem vacío con cantidad — Monday vincula automáticamente al padre
+    const subitemName = `Producto ${Date.now()}`; // nombre temporal
+    const subitemCols: Record<string, unknown> = {
+      numeric_mkzm6399: body.cantidad ?? 1, // cantidad
+    };
+    const subitem = await createItem(
+      c.env,
+      BOARDS.oportunidades_sub.id,
+      subitemName,
+      subitemCols,
+    );
+
+    await upsertItem(c.env, 'oportunidades_sub', subitem);
+    return c.json({ ok: true, id: subitem.id });
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    console.error('Error creando producto:', detail);
+    return c.json({ error: 'No se pudo crear la línea: ' + detail }, 500);
   }
 });
 
