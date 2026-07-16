@@ -1,6 +1,7 @@
 import { lazy, Suspense, useState } from 'react';
-import { Sidebar, type BoardKey } from './app/Sidebar';
+import { Sidebar } from './app/Sidebar';
 import { ChatBubble } from './components/assistant/ChatBubble';
+import { useRoute } from './lib/routing';
 
 // Cada vista es su propio chunk — el bundle inicial solo trae Sidebar + la vista
 // activa; las demás se cargan al navegar (misma UI, solo carga diferida).
@@ -15,25 +16,27 @@ const InventarioBoard = lazy(() => import('./boards/inventario/InventarioBoard')
 const SettingsPage = lazy(() => import('./app/SettingsPage').then((m) => ({ default: m.SettingsPage })));
 
 function App() {
-  const [activeBoard, setActiveBoard] = useState<BoardKey>('oportunidades');
+  const { board: activeBoard, itemId, navigate } = useRoute();
   const [collapsed, setCollapsed] = useState(false);
+
+  const onOpenChange = (id: string | null) => navigate(activeBoard, id);
 
   return (
     <div style={{ width: '100vw', height: '100vh', display: 'flex', overflow: 'hidden', background: 'var(--bg)' }}>
       <Sidebar
         activeBoard={activeBoard}
-        onSelectBoard={setActiveBoard}
+        onSelectBoard={(key) => navigate(key, null)}
         collapsed={collapsed}
         onToggleCollapsed={() => setCollapsed((c) => !c)}
       />
       <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
         <Suspense fallback={<div style={{ padding: 32 }}>Cargando…</div>}>
-          {activeBoard === 'oportunidades' && <OportunidadesBoard />}
-          {activeBoard === 'costeo' && <CosteoBoard />}
-          {activeBoard === 'validacion' && <ValidacionBoard />}
-          {activeBoard === 'doctallas' && <DocTallasBoard />}
-          {activeBoard === 'ordenescompra' && <OrdenesCompraBoard />}
-          {activeBoard === 'logistica' && <LogisticaBoard />}
+          {activeBoard === 'oportunidades' && <OportunidadesBoard openId={itemId} onOpenChange={onOpenChange} />}
+          {activeBoard === 'costeo' && <CosteoBoard openId={itemId} onOpenChange={onOpenChange} />}
+          {activeBoard === 'validacion' && <ValidacionBoard openId={itemId} onOpenChange={onOpenChange} />}
+          {activeBoard === 'doctallas' && <DocTallasBoard openId={itemId} onOpenChange={onOpenChange} />}
+          {activeBoard === 'ordenescompra' && <OrdenesCompraBoard openId={itemId} onOpenChange={onOpenChange} />}
+          {activeBoard === 'logistica' && <LogisticaBoard openId={itemId} onOpenChange={onOpenChange} />}
           {activeBoard === 'productos' && <GenericBoardView slug="productos" title="Productos" />}
           {activeBoard === 'instituciones' && <GenericBoardView slug="instituciones" title="Instituciones" />}
           {activeBoard === 'contactos' && <GenericBoardView slug="contactos" title="Contactos" />}

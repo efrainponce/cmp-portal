@@ -10,8 +10,12 @@ const CONFIG = STAGE_BOARDS.oportunidades;
 // El modal solo pesa cuando alguien lo abre.
 const CreateOportunidadModal = lazy(() => import('./CreateOportunidadModal'));
 
-export function OportunidadesBoard() {
-  const [openId, setOpenId] = useState<string | null>(null);
+interface Props {
+  openId: string | null;
+  onOpenChange: (id: string | null) => void;
+}
+
+export function OportunidadesBoard({ openId, onOpenChange }: Props) {
   const [creating, setCreating] = useState(false);
   const [q, setQ] = useState('');
 
@@ -22,7 +26,7 @@ export function OportunidadesBoard() {
           config={CONFIG}
           q={q}
           onSearch={setQ}
-          onOpen={setOpenId}
+          onOpen={onOpenChange}
           headerAction={
             <Button variant="primary" onClick={() => setCreating(true)}>
               <IconPlus /> Nueva oportunidad
@@ -35,7 +39,7 @@ export function OportunidadesBoard() {
           id={openId}
           backLabel={`Volver a ${CONFIG.title}`}
           defaultTab={CONFIG.defaultTab}
-          onBack={() => setOpenId(null)}
+          onBack={() => onOpenChange(null)}
           boardKey={CONFIG.key}
         />
       )}
@@ -45,7 +49,7 @@ export function OportunidadesBoard() {
             onClose={() => setCreating(false)}
             onCreated={(itemId) => {
               setCreating(false);
-              setOpenId(String(itemId)); // Abrir drawer automáticamente
+              onOpenChange(String(itemId)); // Abrir drawer automáticamente
             }}
           />
         </Suspense>

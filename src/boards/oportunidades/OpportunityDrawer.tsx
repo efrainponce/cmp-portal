@@ -7,7 +7,7 @@
 import { useEffect, useState } from 'react';
 import { Button } from '../../components/core/Button';
 import { ConfirmButton } from '../../components/core/ConfirmButton';
-import { IconBack } from '../../components/icons';
+import { IconBack, IconLink } from '../../components/icons';
 import { SyncIndicator } from '../../components/board/SyncIndicator';
 import {
   useBoards, colForBoard, checkCosteo, enviarCosteo, generarCotizacion, getItemDetail, getVersiones,
@@ -59,6 +59,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey 
   const [costeoReady, setCosteoReady] = useState<{ ok: boolean; errors?: string[] } | null>(null);
   const [versions, setVersions] = useState<QuoteVersionDTO[]>([]);
   const [showNuevaVersion, setShowNuevaVersion] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
 
   const load = () => {
     setError(null);
@@ -103,6 +104,15 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey 
     load();
     proyecto.reload();
     setRefreshing(false);
+  };
+
+  const onCopyLink = async () => {
+    const url = `${window.location.origin}/${boardKey ?? 'oportunidades'}/${id}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 1800);
+    } catch { /* clipboard no disponible (http o sin permiso) */ }
   };
 
   const onEnviarCosteo = async () => {
@@ -189,6 +199,9 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey 
               onConfirm={onGenerarCotizacion}
             />
           )}
+          <Button variant="secondary" onClick={onCopyLink}>
+            <IconLink /> {linkCopied ? 'Copiado' : 'Copiar link'}
+          </Button>
           <Button variant="secondary" onClick={onRefresh}>{refreshing ? 'Actualizando…' : 'Actualizar'}</Button>
         </div>
       </div>

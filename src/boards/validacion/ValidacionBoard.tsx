@@ -5,19 +5,23 @@ import { STAGE_BOARDS } from '../../lib/dealStages';
 
 const CONFIG = STAGE_BOARDS.validacion;
 
-export function ValidacionBoard() {
-  const [openId, setOpenId] = useState<string | null>(null);
+interface Props {
+  openId: string | null;
+  onOpenChange: (id: string | null) => void;
+}
+
+export function ValidacionBoard({ openId, onOpenChange }: Props) {
   const [q, setQ] = useState('');
 
   return (
     <div style={{ position: 'relative', height: '100%', width: '100%' }}>
-      {!openId && <StageBoardList config={CONFIG} groupColId="lookup_mm087at6" q={q} onSearch={setQ} onOpen={setOpenId} />}
+      {!openId && <StageBoardList config={CONFIG} groupColId="lookup_mm087at6" q={q} onSearch={setQ} onOpen={onOpenChange} />}
       {openId && (
         <OpportunityDrawer
           id={openId}
           backLabel={`Volver a ${CONFIG.title}`}
           defaultTab={CONFIG.defaultTab}
-          onBack={() => setOpenId(null)}
+          onBack={() => onOpenChange(null)}
           boardKey={CONFIG.key}
         />
       )}
