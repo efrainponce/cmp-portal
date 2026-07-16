@@ -521,20 +521,18 @@ export function CotizacionTab({
                       const disponibles = catalogColores.length > 0 ? catalogColores : mirrorColores;
 
                       // Sin lista de colores para este producto (no configurada en el
-                      // catálogo) — no bloquear al vendedor, dejar texto libre. Solo se
-                      // deshabilita si de plano no hay producto elegido todavía.
+                      // catálogo) — se deja en blanco, deshabilitado. Nada de texto libre:
+                      // el vendedor no debe "inventar" un color que el catálogo no define
+                      // (Efraín, 2026-07-16).
                       if (disponibles.length === 0) {
                         return (
                           <div key={c.id} style={{ textAlign: c.align }}>
                             <input
-                              value={raw}
-                              disabled={!!state.saving[COLOR_COL] || !productoElegido}
-                              onChange={(e) => onTextEdit(p, COLOR_COL, e.target.value)}
-                              onBlur={() => onColorChange(p, state.editing[COLOR_COL] ?? raw)}
-                              placeholder={productoElegido ? 'Color (sin lista para este producto)…' : 'Elige un producto primero'}
+                              value=""
+                              disabled
+                              placeholder={productoElegido ? 'Sin colores configurados' : 'Elige un producto primero'}
                               style={{ ...inputStyle, textAlign: 'left' }}
                             />
-                            {!raw && <RowWarning>Elige un color</RowWarning>}
                           </div>
                         );
                       }
