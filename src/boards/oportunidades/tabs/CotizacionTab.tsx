@@ -13,9 +13,9 @@
 // formulas) for an instant preview, then PATCHes only the raw input on blur —
 // formula columns are never written back, Monday recomputes those itself and
 // the mirror catches up on refetch.
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ColMeta, ColVal, ItemDTO, QuoteVersionDTO } from '../../../lib/api';
-import { patchItem, apiFetch } from '../../../lib/apiClient';
+import { patchItem, apiFetch, listItems } from '../../../lib/apiClient';
 import { fmtMoney } from '../../../lib/format';
 import { MonoTag, StatusBadge } from '../../../components/core/Badges';
 import { Button } from '../../../components/core/Button';
@@ -24,8 +24,11 @@ import { previewRow, COL } from '../../../lib/costeoCalc';
 const COSTO_DISTR_COL = 'numeric_mm0bph99';
 const ETAPA_COSTEO_COL = 'color_mm084gvf';
 
-const PRODUCTO_COL = 'lookup_mm0x4kda';
+const PRODUCTO_COL = 'lookup_mm0x4kda';        // mirror del producto ligado — solo lectura directa
+const PRODUCTO_TXT_COL = 'text_mm0bkm1j';      // Producto (texto libre) — fallback sin catálogo
+const PRODUCTO_REL_COL = 'board_relation_mkzmafgp'; // relación real a Productos — puebla el mirror
 const COLOR_COL = 'text_mm07s2mg';
+const COLORES_DISP_COL = 'lookup_mkznm0h3';    // mirror: colores disponibles del producto ligado
 
 // Determina qué columnas son editables inline según la etapa de la oportunidad.
 // En "Nueva oportunidad" (stage 4): vendedor edita producto/color/cantidad inline.
@@ -161,12 +164,21 @@ const GRID_COLS_COSTEO: GridCol[] = [
 const GRID_COLS_VENTA: GridCol[] = [
   { id: 'lookup_mm0x4kda', label: 'Producto', align: 'left', kind: 'text' },
   { id: 'lookup_mkzn7x9a', label: 'SKU', align: 'left', kind: 'text' },
+  { id: COLOR_COL, label: 'Color', align: 'left', kind: 'text' },
   { id: 'numeric_mkzm6399', label: 'Cant.', align: 'left', kind: 'text' },
   { id: 'numeric_mkzneg3d', label: 'P. venta C/U', align: 'right', kind: 'money' },
   { id: 'formula_mkznmjh6', label: 'Subtotal', align: 'right', kind: 'money' },
   { id: 'formula_mm0rtdqp', label: 'IVA', align: 'right', kind: 'money' },
   { id: 'formula_mm00xy0n', label: 'Total c/IVA', align: 'right', kind: 'money' },
 ];
+
+// Mismo fallback que worker/lib/quoteVersions.ts's productoNombre(): el mirror
+// (lookup_mm0x4kda) solo se puebla cuando hay relación real a Productos; sin
+// relación, cae al texto libre (text_mm0bkm1j). `preview` gana primero — es el
+// valor recién guardado antes de que el mirror asíncrono de Monday lo confirme.
+function displayProducto(product: ItemDTO, preview?: Record<string, ColVal>): string {
+  return preview?.[PRODUCTO_COL]?.text || product.cols[PRODUCTO_COL]?.text || product.cols[PRODUCTO_TXT_COL]?.text || '';
+}
 
 function cellValue(col: GridCol, val?: ColVal): string {
   if (!val || val.text === '') return '—';
@@ -218,9 +230,17 @@ export function CotizacionTab({
 
   const [rows, setRows] = useState<Record<string, RowEditState>>({});
   const [creatingLine, setCreatingLine] = useState(false);
+  const [catalog, setCatalog] = useState<ItemDTO[]>([]);
   const rowState = (id: string): RowEditState => rows[id] ?? EMPTY_ROW;
   const patchRow = (id: string, patch: Partial<RowEditState>) =>
     setRows((r) => ({ ...r, [id]: { ...rowState(id), ...patch } }));
+
+  // Catálogo de Productos — solo se necesita cuando el producto es editable
+  // inline (Nueva oportunidad), para el datalist y para resolver el nombre
+  // tecleado a un item_id real (board_relation_mkzmafgp, igual que NuevaVersionForm).
+  useEffect(() => {
+    if (stage === '4' && editable) listItems('productos').then(setCatalog).catch(() => {});
+  }, [stage, editable]);
 
   const onAddLine = async () => {
     if (!oppId) return;
@@ -286,6 +306,87 @@ export function CotizacionTab({
     onSaved?.();
   };
 
+  // Producto/Color son texto libre, no numérico — sin preview de fórmulas.
+  const onTextEdit = (product: ItemDTO, colId: string, raw: string) => {
+    const state = rowState(product.id);
+    patchRow(product.id, { editing: { ...state.editing, [colId]: raw }, error: undefined });
+  };
+
+  const onColorBlur = async (product: ItemDTO) => {
+    const state = rowState(product.id);
+    const raw = state.editing[COLOR_COL];
+    if (raw === undefined) return;
+    const current = product.cols[COLOR_COL]?.text ?? '';
+    if (raw.trim() === '' || raw === current) {
+      const editing = { ...state.editing };
+      delete editing[COLOR_COL];
+      patchRow(product.id, { editing });
+      return;
+    }
+    patchRow(product.id, { saving: { ...state.saving, [COLOR_COL]: true }, error: undefined });
+    try {
+      await patchItem('oportunidades_sub', product.id, { [COLOR_COL]: raw });
+    } catch (e) {
+      const after = rowState(product.id);
+      const saving = { ...after.saving };
+      delete saving[COLOR_COL];
+      patchRow(product.id, { saving, error: e instanceof Error ? e.message : 'No se pudo guardar.' });
+      return;
+    }
+    const after = rowState(product.id);
+    const editing = { ...after.editing };
+    delete editing[COLOR_COL];
+    const saving = { ...after.saving };
+    delete saving[COLOR_COL];
+    patchRow(product.id, { editing, saving });
+    onSaved?.();
+  };
+
+  // Al elegir un producto del catálogo escribe la relación real
+  // (board_relation_mkzmafgp) — Monday puebla el mirror (lookup_mm0x4kda,
+  // SKU, Marca…) solo. Sin match en catálogo, cae a texto libre
+  // (text_mm0bkm1j) — mismo criterio que NuevaVersionForm/submitVersion.
+  const onProductoBlur = async (product: ItemDTO) => {
+    const state = rowState(product.id);
+    const raw = state.editing[PRODUCTO_COL];
+    if (raw === undefined) return;
+    const current = displayProducto(product, state.preview);
+    if (raw.trim() === '' || raw === current) {
+      const editing = { ...state.editing };
+      delete editing[PRODUCTO_COL];
+      patchRow(product.id, { editing });
+      return;
+    }
+    const match = catalog.find((c) => c.name.trim().toLowerCase() === raw.trim().toLowerCase());
+    patchRow(product.id, { saving: { ...state.saving, [PRODUCTO_COL]: true }, error: undefined });
+    try {
+      if (match) {
+        await patchItem('oportunidades_sub', product.id, { [PRODUCTO_REL_COL]: match.id });
+      } else {
+        await patchItem('oportunidades_sub', product.id, { [PRODUCTO_TXT_COL]: raw });
+      }
+    } catch (e) {
+      const after = rowState(product.id);
+      const saving = { ...after.saving };
+      delete saving[PRODUCTO_COL];
+      patchRow(product.id, { saving, error: e instanceof Error ? e.message : 'No se pudo guardar.' });
+      return;
+    }
+    const after = rowState(product.id);
+    const editing = { ...after.editing };
+    delete editing[PRODUCTO_COL];
+    const saving = { ...after.saving };
+    delete saving[PRODUCTO_COL];
+    // El write real fue a board_relation_mkzmafgp o text_mm0bkm1j — el mirror
+    // que se MUESTRA (lookup_mm0x4kda) lo puebla Monday de forma asíncrona
+    // (el outbox manda el mutation en waitUntil, después de responder). Sin
+    // este preview local, el refetch inmediato de onSaved() todavía trae el
+    // mirror viejo/vacío y parece que la edición no se guardó.
+    const preview = { ...after.preview, [PRODUCTO_COL]: { text: match ? match.name : raw, type: 'text' } };
+    patchRow(product.id, { editing, saving, preview });
+    onSaved?.();
+  };
+
   if (selectedVersion) {
     return (
       <div style={{ padding: '24px 32px 40px', width: '100%', boxSizing: 'border-box' }}>
@@ -318,6 +419,9 @@ export function CotizacionTab({
   return (
     <div style={{ padding: '24px 32px 40px', width: '100%', boxSizing: 'border-box' }}>
       <VersionChips versions={versions} selected={selectedVersionId} onSelect={setSelectedVersionId} onNuevaVersion={onNuevaVersion} />
+      <datalist id="productos-catalogo-cotizacion">
+        {catalog.map((p) => <option key={p.id} value={p.name} />)}
+      </datalist>
       <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: 'var(--radius-xl)' }}>
         <div style={variant === 'costeo' ? { minWidth: 900 } : undefined}>
           <div style={{
@@ -338,8 +442,53 @@ export function CotizacionTab({
                   alignItems: 'center', padding: '9px 14px',
                 }}>
                   {visibleCols.map((c, idx) => {
-                    const writable = editable && writableIds.has(c.id) && editableCols.has(c.id);
+                    // lookup_mm0x4kda es un mirror — Monday nunca lo deja escribir
+                    // directo, así que no está en writableIds. Lo real editable son
+                    // sus dos posibles destinos de escritura (texto libre o relación).
+                    const writable = c.id === PRODUCTO_COL
+                      ? editable && editableCols.has(c.id) && (writableIds.has(PRODUCTO_TXT_COL) || writableIds.has(PRODUCTO_REL_COL))
+                      : editable && writableIds.has(c.id) && editableCols.has(c.id);
                     const displayVal = state.preview[c.id] ?? p.cols[c.id];
+
+                    if (writable && c.id === PRODUCTO_COL) {
+                      const raw = state.editing[PRODUCTO_COL] ?? displayProducto(p, state.preview);
+                      return (
+                        <div key={c.id} style={{ textAlign: c.align }}>
+                          <input
+                            list="productos-catalogo-cotizacion"
+                            value={raw}
+                            disabled={!!state.saving[PRODUCTO_COL]}
+                            onChange={(e) => onTextEdit(p, PRODUCTO_COL, e.target.value)}
+                            onBlur={() => onProductoBlur(p)}
+                            placeholder="Elegir producto…"
+                            style={{ ...inputStyle, textAlign: 'left' }}
+                          />
+                        </div>
+                      );
+                    }
+                    if (writable && c.id === COLOR_COL) {
+                      const raw = state.editing[COLOR_COL] ?? (p.cols[COLOR_COL]?.text ?? '');
+                      const disponibles = (p.cols[COLORES_DISP_COL]?.text ?? '')
+                        .split(',').map((s) => s.trim()).filter(Boolean);
+                      return (
+                        <div key={c.id} style={{ textAlign: c.align }}>
+                          <input
+                            list={disponibles.length > 0 ? `colores-disponibles-${p.id}` : undefined}
+                            value={raw}
+                            disabled={!!state.saving[COLOR_COL]}
+                            onChange={(e) => onTextEdit(p, COLOR_COL, e.target.value)}
+                            onBlur={() => onColorBlur(p)}
+                            placeholder="Color…"
+                            style={{ ...inputStyle, textAlign: 'left' }}
+                          />
+                          {disponibles.length > 0 && (
+                            <datalist id={`colores-disponibles-${p.id}`}>
+                              {disponibles.map((d) => <option key={d} value={d} />)}
+                            </datalist>
+                          )}
+                        </div>
+                      );
+                    }
                     if (writable) {
                       const raw = state.editing[c.id] ?? (p.cols[c.id]?.text ?? '');
                       return (
@@ -365,6 +514,7 @@ export function CotizacionTab({
                         {idx === 0 && variant === 'costeo' && !p.cols[COSTO_DISTR_COL]?.text && (
                           <StatusBadge label="Pendiente de costeo" color="#9c4c3d" tint="#f3e5e1" style={{ marginRight: 6 }} />
                         )}
+                        {c.id === PRODUCTO_COL && (displayProducto(p, state.preview) || '—')}
                         {c.id === 'lookup_mkzn7x9a' && (
                           <MonoTag style={{ display: 'inline-block' }}>{cellValue(c, displayVal)}</MonoTag>
                         )}
@@ -375,7 +525,7 @@ export function CotizacionTab({
                             ? '—'
                             : <StatusBadge label={label} color={colors.color} tint={colors.tint} />;
                         })()}
-                        {c.id !== 'lookup_mkzn7x9a' && c.id !== ETAPA_COSTEO_COL && cellValue(c, displayVal)}
+                        {c.id !== PRODUCTO_COL && c.id !== 'lookup_mkzn7x9a' && c.id !== ETAPA_COSTEO_COL && cellValue(c, displayVal)}
                       </div>
                     );
                   })}

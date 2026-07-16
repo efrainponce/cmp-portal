@@ -11,7 +11,7 @@ import type {
 } from '../shared/dto';
 import { access } from './mw/access';
 import { identity } from './mw/identity';
-import { syncRoutes, reconcileAll, refetchItem, refetchItemTree } from './sync';
+import { syncRoutes, reconcileAll, refetchItem, refetchItemTree, upsertItem } from './sync';
 import { waRoutes } from './wa/routes';
 import { assistantRoutes } from './assistant/routes';
 import {
@@ -27,7 +27,7 @@ import {
 } from './lib/automations';
 import { enviarACosteo, checkCosteo, CosteoError, type EnviarCosteoResult } from './lib/costeo';
 import { listVersions, submitVersion, recordFirstVersion, QuoteVersionError } from './lib/quoteVersions';
-import { fetchUpdates, createUpdate, createItem } from './lib/monday';
+import { fetchUpdates, createUpdate, createSubitem } from './lib/monday';
 import { cachedFetchUsers } from './lib/rosterCache';
 import { listWarehouses, listMovements, listStock, createMovement, InventoryError } from './lib/inventory';
 import type { CreateMovementRequest, CreateMovementResponse } from '../shared/inventory';
@@ -385,22 +385,25 @@ app.post('/api/oportunidades/:id/productos', async c => {
     const item = await getItem(c.env, 'oportunidades', itemId, viewer);
     if (!item) return c.json({ error: 'not found' }, 404);
 
-    const stage = item.cols.deal_stage?.value;
-    if (stage !== '4') {
+    // MirrorItem.columns is raw [{id,type,text,value}] JSON — same shape/parsing
+    // as worker/lib/costeo.ts's colsOf, not the serialized ItemDTO.cols.
+    const raw: { id: string; text: string; value: string }[] = JSON.parse(item.columns || '[]');
+    const stageCol = raw.find(col => col.id === 'deal_stage');
+    let stageIndex = '';
+    try {
+      stageIndex = String((JSON.parse(stageCol?.value ?? 'null') as { index?: unknown })?.index ?? '');
+    } catch { /* value vacío/optimista — cae en 'no coincide con 4' abajo */ }
+    if (stageIndex !== '4') {
       return c.json({ error: 'Solo se pueden crear líneas en Nueva oportunidad' }, 400);
     }
 
-    // Crear subitem vacío con cantidad — Monday vincula automáticamente al padre
-    const subitemName = `Producto ${Date.now()}`; // nombre temporal
+    // Subitem real (create_subitem, no create_item) — así Monday lo linkea al
+    // padre automáticamente; create_item en el board de subitems NO lo hace.
+    const subitemName = 'Nueva línea';
     const subitemCols: Record<string, unknown> = {
       numeric_mkzm6399: body.cantidad ?? 1, // cantidad
     };
-    const subitem = await createItem(
-      c.env,
-      BOARDS.oportunidades_sub.id,
-      subitemName,
-      subitemCols,
-    );
+    const subitem = await createSubitem(c.env, itemId, subitemName, subitemCols);
 
     await upsertItem(c.env, 'oportunidades_sub', subitem);
     return c.json({ ok: true, id: subitem.id });

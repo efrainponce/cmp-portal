@@ -48,7 +48,7 @@ export default function CreateOportunidadModal({
 }: {
   onClose: () => void;
   /** Llamado cuando la opp está lista (folio asignado). Pasa el ID Monday y el folio. */
-  onCreated: (itemId: number, folio: string) => void;
+  onCreated: (itemId: string, folio: string) => void;
 }) {
   const me = useMe();
   const { boards } = useBoards();
