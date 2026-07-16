@@ -39,6 +39,12 @@ interface Props {
 const COSTEO_VARIANT_BOARDS: StageBoardKey[] = ['costeo', 'validacion'];
 const PRECIO_COL = 'numeric_mkzneg3d';   // Precio de Venta C/U (subitems)
 
+// SWR de sesión: al reabrir una oportunidad ya visitada, el drawer pinta al
+// instante desde este cache y el fetch fresco lo corrige en background. Vive a
+// nivel módulo (sobrevive mount/unmount del drawer, muere con el reload).
+const detailCache = new Map<string, ItemDetailDTO>();
+const versionsCache = new Map<string, QuoteVersionDTO[]>();
+
 interface Notice { kind: 'ok' | 'error'; title: string; lines: string[] }
 
 export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey }: Props) {
@@ -57,13 +63,23 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey 
   const load = () => {
     setError(null);
     getItemDetail('oportunidades', id)
-      .then(({ item: it }) => setItem(it))
+      .then(({ item: it }) => { detailCache.set(id, it); setItem(it); })
       .catch(() => setError('No se pudo cargar el detalle. Verifica tu acceso o que el servidor esté disponible.'));
   };
-  const loadVersions = () => { getVersiones(id).then(setVersions).catch(() => setVersions([])); };
+  const loadVersions = () => {
+    getVersiones(id)
+      .then((v) => { versionsCache.set(id, v); setVersions(v); })
+      .catch(() => setVersions([]));
+  };
 
-  useEffect(load, [id]);
-  useEffect(loadVersions, [id]);
+  useEffect(() => {
+    // Pinta primero lo cacheado (o limpia si es una oportunidad nueva) y
+    // refresca en background — apertura instantánea en re-visitas.
+    setItem(detailCache.get(id) ?? null);
+    setVersions(versionsCache.get(id) ?? []);
+    load();
+    loadVersions();
+  }, [id]);
 
   const stage = item?.cols.deal_stage ? statusIndex(item.cols.deal_stage) : undefined;
 
@@ -212,6 +228,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey 
       {activeTab === 'cotizacion' && (
         <CotizacionTab
           subCols={subCols} products={products} variant={cotizacionVariant} onSaved={load} versions={versions}
+          editable={stage !== '1' && stage !== '2'}
           onNuevaVersion={stage !== '1' && stage !== '2' ? () => setShowNuevaVersion(true) : undefined}
         />
       )}

@@ -1,28 +1,11 @@
-// worker/assistant/agent.ts — Claude agent loop for the portal chat bubble.
-// Same manual tool-use loop as the WhatsApp bot (worker/wa/agent.ts): history
-// persists across HTTP requests, so each message replays the stored
-// MessageParam[] and the loop runs until Claude stops calling tools.
-import Anthropic from '@anthropic-ai/sdk';
+// worker/assistant/agent.ts — canal "burbuja de chat" del portal. El loop real
+// vive en worker/lib/agentLoop.ts (compartido con el bot de WhatsApp); aquí
+// queda la persistencia por email y la proyección del historial para la UI.
+import type Anthropic from '@anthropic-ai/sdk';
 import type { Env } from '../env';
 import type { Identity } from '../../shared/types';
-import { toolsFor, runTool } from '../lib/assistantTools';
-import { systemPromptFor } from '../lib/assistantPersonas';
+import { runAgentLoop, finalText, RESET_WORDS, RESET_REPLY } from '../lib/agentLoop';
 import { loadConversation, saveConversation, clearConversation } from './store';
-
-// Todos los canales corren Haiku 4.5 por decisión de Efraín (2026-07-15):
-// costo/latencia mandan; nada de Opus/Sonnet.
-const MODEL = 'claude-haiku-4-5';
-const MAX_TOOL_ITERATIONS = 8;
-
-const RESET_WORDS = new Set(['reiniciar', 'reset', 'cancelar todo', 'borrar']);
-
-function finalText(content: Anthropic.ContentBlock[]): string {
-  return content
-    .filter((b): b is Anthropic.TextBlock => b.type === 'text')
-    .map(b => b.text)
-    .join('\n')
-    .trim();
-}
 
 export interface ChatMessage { role: 'user' | 'assistant'; text: string }
 
@@ -51,54 +34,12 @@ export async function handleChat(env: Env, viewer: Identity, text: string): Prom
 
   if (RESET_WORDS.has(text.trim().toLowerCase())) {
     await clearConversation(env, viewer.email);
-    return 'Listo, empezamos de cero 👍 ¿En qué te ayudo?';
+    return RESET_REPLY;
   }
 
-  const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, baseURL: env.ANTHROPIC_BASE_URL });
   const history = await loadConversation(env, viewer.email) as Anthropic.MessageParam[];
   const messages: Anthropic.MessageParam[] = [...history, { role: 'user', content: text }];
-  const system = systemPromptFor(viewer, 'portal');
-  const tools = toolsFor(viewer.role);
-
-  let reply = '';
-  for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
-    const response = await client.messages.create({
-      model: MODEL,
-      max_tokens: 2048,
-      system,
-      tools,
-      messages,
-    });
-
-    messages.push({ role: 'assistant', content: response.content });
-
-    if (response.stop_reason === 'tool_use') {
-      const toolUses = response.content.filter((b): b is Anthropic.ToolUseBlock => b.type === 'tool_use');
-      const results: Anthropic.ToolResultBlockParam[] = [];
-      for (const tu of toolUses) {
-        const { content, isError } = await runTool(env, viewer, tu.name, tu.input as Record<string, unknown>);
-        results.push({ type: 'tool_result', tool_use_id: tu.id, content, is_error: isError });
-      }
-      messages.push({ role: 'user', content: results });
-      continue;
-    }
-
-    if (response.stop_reason === 'max_tokens') {
-      reply = finalText(response.content) || 'Me quedé a medias, ¿me repites lo último?';
-      break;
-    }
-    if (response.stop_reason === 'refusal') {
-      reply = 'No puedo ayudarte con eso. ¿Te apoyo con otra consulta del CRM?';
-      break;
-    }
-    reply = finalText(response.content);
-    break;
-  }
-
-  if (!reply) {
-    reply = 'Hice varias consultas pero no llegué a una respuesta clara. ¿Me lo planteas de nuevo, paso a paso?';
-  }
-
+  const reply = await runAgentLoop(env, viewer, 'portal', messages, 2048);
   await saveConversation(env, viewer.email, messages);
   return reply;
 }

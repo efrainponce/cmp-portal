@@ -13,10 +13,9 @@ import type { Env } from '../env';
 import type { Identity, MirrorItem } from '../../shared/types';
 import type { QuoteLineInput, QuoteLineSnapshot, QuoteVersionDTO } from '../../shared/dto';
 import { getItem, childrenOf } from './dal';
-import { submitWrite } from './outbox';
+import { submitWrite, flushOutbox } from './outbox';
 import { createSubitem } from './monday';
-import { upsertItem, refetchItemTree } from '../sync';
-import { BOARDS } from '../../shared/boards';
+import { upsertItem } from '../sync';
 import type { RawCol } from './serialize';
 
 export class QuoteVersionError extends Error {
@@ -241,9 +240,12 @@ export async function submitVersion(
     if (cur.etapaCosteo && cur.etapaCosteo !== ETAPA_NO_INICIADO) {
       writeCols[SUB_ETAPA_COSTEO] = ETAPA_NO_INICIADO;
     }
-    await submitWrite(env, ctx, 'oportunidades_sub', input.subitemId, writeCols, viewer);
+    await submitWrite(env, ctx, 'oportunidades_sub', input.subitemId, writeCols, viewer, { skipFlush: true });
   }
 
-  await refetchItemTree(env, BOARDS.oportunidades.id, itemId);
+  // Flush AQUÍ (no vía waitUntil): el caller manda esto a costeo enseguida y
+  // cmp-tallas lee Monday directo — sin este await podría snapshotear datos
+  // viejos. El refetch del árbol lo hace la ruta después del costeo, una sola vez.
+  await flushOutbox(env);
   return { changed: true };
 }

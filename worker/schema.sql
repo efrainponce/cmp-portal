@@ -153,3 +153,13 @@ INSERT INTO warehouses (name, type) SELECT 'Ray',     'person' WHERE NOT EXISTS 
 INSERT INTO warehouses (name, type) SELECT 'Zeus',    'person' WHERE NOT EXISTS (SELECT 1 FROM warehouses WHERE name = 'Zeus'    AND type = 'person');
 INSERT INTO warehouses (name, type) SELECT 'Cesar',   'person' WHERE NOT EXISTS (SELECT 1 FROM warehouses WHERE name = 'Cesar'   AND type = 'person');
 INSERT INTO warehouses (name, type) SELECT 'Liv',     'person' WHERE NOT EXISTS (SELECT 1 FROM warehouses WHERE name = 'Liv'     AND type = 'person');
+
+-- Cache genérico de respuestas de APIs externas (2026-07-16). Hoy solo guarda el
+-- roster de usuarios de Monday para /api/users y /api/admin/monday-users
+-- (worker/lib/rosterCache.ts). Se crea lazy en runtime (CREATE TABLE IF NOT
+-- EXISTS, mismo patrón que board_state) — está aquí solo como documentación.
+CREATE TABLE IF NOT EXISTS api_cache (
+  key        TEXT PRIMARY KEY,
+  value      TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);

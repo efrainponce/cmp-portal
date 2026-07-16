@@ -31,7 +31,9 @@ export async function submitWrite(
   // trusted: caller already validated the write itself (e.g. the enviar-costeo
   // route, whose stage change isn't a user-writable column). Never expose to
   // a route that forwards client-chosen column ids.
-  opts: { trusted?: boolean } = {},
+  // skipFlush: caller batches several writes and will `await flushOutbox`
+  // itself before anything downstream reads Monday (see quoteVersions).
+  opts: { trusted?: boolean; skipFlush?: boolean } = {},
 ): Promise<WriteResponse> {
   const colIds = Object.keys(cols ?? {});
   if (colIds.length === 0) throw new OutboxError(400, 'no columns');
@@ -79,7 +81,7 @@ export async function submitWrite(
     .bind(board.id, itemId, JSON.stringify(cols), contentHash, viewer.email, now, now)
     .run();
 
-  ctx.waitUntil(flushOutbox(env));
+  if (!opts.skipFlush) ctx.waitUntil(flushOutbox(env));
   return { ok: true, pending: true };
 }
 

@@ -27,7 +27,8 @@ import {
 } from './lib/automations';
 import { enviarACosteo, checkCosteo, CosteoError, type EnviarCosteoResult } from './lib/costeo';
 import { listVersions, submitVersion, recordFirstVersion, QuoteVersionError } from './lib/quoteVersions';
-import { fetchUpdates, createUpdate, fetchUsers } from './lib/monday';
+import { fetchUpdates, createUpdate } from './lib/monday';
+import { cachedFetchUsers } from './lib/rosterCache';
 import { listWarehouses, listMovements, listStock, createMovement, InventoryError } from './lib/inventory';
 import type { CreateMovementRequest, CreateMovementResponse } from '../shared/inventory';
 
@@ -73,7 +74,8 @@ app.get('/api/vendedores', async c => {
 // viewer, unlike /api/admin/monday-users which also exposes email/phone.
 app.get('/api/users', async c => {
   try {
-    const users = await fetchUsers(c.env);
+    // Roster cacheado 6 h en D1 — cambia casi nunca y esto se abre muy seguido.
+    const users = await cachedFetchUsers(c.env, 6 * 3600_000);
     const dto: MentionUserDTO[] = users
       .map(u => ({ id: Number(u.id), nombre: u.name }))
       .sort((a, b) => a.nombre.localeCompare(b.nombre));
@@ -260,7 +262,8 @@ app.put('/api/admin/identities/:email', async c => {
 app.get('/api/admin/monday-users', async c => {
   if (c.get('viewer').role !== 'admin') return c.json({ error: 'forbidden' }, 403);
   try {
-    const users = await fetchUsers(c.env);
+    // TTL corto: el admin importa teléfonos/equipos y espera datos recientes.
+    const users = await cachedFetchUsers(c.env, 10 * 60_000);
     const dto: MondayUserDTO[] = users.map(u => ({
       id: Number(u.id), nombre: u.name, email: u.email, phone: u.phone ?? null,
       teams: (u.teams ?? []).map(t => t.name),
@@ -358,6 +361,9 @@ app.post('/api/oportunidades/:id/version', async c => {
           ok: false, errors: [e instanceof Error ? e.message : 'No se pudo reenviar a costeo.'],
         }))
       : undefined;
+    // Un solo refetch de árbol al final: recoge tanto las líneas editadas como lo
+    // que cmp-tallas escribió (stage, PDF, snapshots) — submitVersion ya no refetchea.
+    if (changed) await refetchItemTree(c.env, BOARDS.oportunidades.id, itemId);
     const versions = changed ? await listVersions(c.env, itemId, viewer) : undefined;
     return c.json({ ok: true, changed, versions, costeo } satisfies QuoteVersionResponse);
   } catch (err) {

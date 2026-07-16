@@ -1,27 +1,11 @@
-// worker/wa/agent.ts — Claude Haiku agent loop for the WhatsApp bot. Manual
-// tool-use loop (not the beta tool runner): history must persist across HTTP
-// requests, so each incoming message replays the stored MessageParam[] and the
-// loop runs until Claude stops calling tools.
-import Anthropic from '@anthropic-ai/sdk';
+// worker/wa/agent.ts — canal WhatsApp del agente Claude. El loop real vive en
+// worker/lib/agentLoop.ts (compartido con la burbuja del portal); aquí solo
+// queda la persistencia por teléfono y el max_tokens del canal.
+import type Anthropic from '@anthropic-ai/sdk';
 import type { Env } from '../env';
 import type { Identity } from '../../shared/types';
-import { toolsFor, runTool } from '../lib/assistantTools';
-import { systemPromptFor } from '../lib/assistantPersonas';
+import { runAgentLoop, RESET_WORDS, RESET_REPLY } from '../lib/agentLoop';
 import { loadConversation, saveConversation, clearConversation } from './store';
-
-// Haiku 4.5 en todos los canales por decisión de Efraín (2026-07-15).
-const MODEL = 'claude-haiku-4-5';
-const MAX_TOOL_ITERATIONS = 8;
-
-const RESET_WORDS = new Set(['reiniciar', 'reset', 'cancelar todo', 'borrar']);
-
-function finalText(content: Anthropic.ContentBlock[]): string {
-  return content
-    .filter((b): b is Anthropic.TextBlock => b.type === 'text')
-    .map(b => b.text)
-    .join('\n')
-    .trim();
-}
 
 /** Process one incoming text message and return the reply to send back. */
 export async function handleIncoming(env: Env, viewer: Identity, phone: string, text: string): Promise<string> {
@@ -31,54 +15,12 @@ export async function handleIncoming(env: Env, viewer: Identity, phone: string, 
 
   if (RESET_WORDS.has(text.trim().toLowerCase())) {
     await clearConversation(env, phone);
-    return 'Listo, empezamos de cero 👍 ¿En qué te ayudo?';
+    return RESET_REPLY;
   }
 
-  const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, baseURL: env.ANTHROPIC_BASE_URL });
   const history = await loadConversation(env, phone) as Anthropic.MessageParam[];
   const messages: Anthropic.MessageParam[] = [...history, { role: 'user', content: text }];
-  const system = systemPromptFor(viewer, 'whatsapp');
-  const tools = toolsFor(viewer.role);
-
-  let reply = '';
-  for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
-    const response = await client.messages.create({
-      model: MODEL,
-      max_tokens: 1024,
-      system,
-      tools,
-      messages,
-    });
-
-    messages.push({ role: 'assistant', content: response.content });
-
-    if (response.stop_reason === 'tool_use') {
-      const toolUses = response.content.filter((b): b is Anthropic.ToolUseBlock => b.type === 'tool_use');
-      const results: Anthropic.ToolResultBlockParam[] = [];
-      for (const tu of toolUses) {
-        const { content, isError } = await runTool(env, viewer, tu.name, tu.input as Record<string, unknown>);
-        results.push({ type: 'tool_result', tool_use_id: tu.id, content, is_error: isError });
-      }
-      messages.push({ role: 'user', content: results });
-      continue;
-    }
-
-    if (response.stop_reason === 'max_tokens') {
-      reply = finalText(response.content) || 'Me quedé a medias, ¿me repites lo último?';
-      break;
-    }
-    if (response.stop_reason === 'refusal') {
-      reply = 'No puedo ayudarte con eso. ¿Te apoyo con otra consulta del CRM?';
-      break;
-    }
-    reply = finalText(response.content);
-    break;
-  }
-
-  if (!reply) {
-    reply = 'Hice varias consultas pero no llegué a una respuesta clara. ¿Me lo planteas de nuevo, paso a paso?';
-  }
-
+  const reply = await runAgentLoop(env, viewer, 'whatsapp', messages, 1024);
   await saveConversation(env, phone, messages);
   return reply;
 }

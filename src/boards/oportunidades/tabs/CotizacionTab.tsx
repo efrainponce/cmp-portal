@@ -3,9 +3,12 @@
 // viewer's role can't see simply aren't in `cols` and are skipped (server
 // already strips them — see docs/dev-contracts.md).
 //
-// In the `costeo` variant, columns the server marked writable for the
-// viewer's role (`ColMeta.w`, from shared/visibility.ts) render as inputs.
-// Editing one recomputes the row's formula columns locally (src/lib/costeoCalc.ts,
+// In BOTH variants, columns the server marked writable for the viewer's role
+// (`ColMeta.w`, from shared/visibility.ts) AND listed in INLINE_EDITABLE_COLS
+// render as inputs: compras/admin capture costs in `costeo`, vendedor/admin
+// edit Precio de Venta directly in `venta` (Efraín, 2026-07-16 — vendedores
+// must be able to edit their quotes, not just read them). Editing one
+// recomputes the row's formula columns locally (src/lib/costeoCalc.ts,
 // verified 1:1 against Monday's own formulas) for an instant preview, then
 // PATCHes only the raw input on blur — formula columns are never written
 // back, Monday recomputes those itself and the mirror catches up on refetch.
@@ -182,10 +185,12 @@ interface RowEditState {
 const EMPTY_ROW: RowEditState = { editing: {}, preview: {}, saving: {} };
 
 export function CotizacionTab({
-  subCols, products, variant = 'venta', onSaved, versions = [], onNuevaVersion,
+  subCols, products, variant = 'venta', onSaved, versions = [], onNuevaVersion, editable = true,
 }: {
   subCols: ColMeta[]; products: ItemDTO[]; variant?: 'venta' | 'costeo'; onSaved?: () => void;
   versions?: QuoteVersionDTO[]; onNuevaVersion?: () => void;
+  /** false en Ganada/Perdida — las líneas quedan de solo lectura, igual que el candado de versiones. */
+  editable?: boolean;
 }) {
   const [selectedVersionId, setSelectedVersionId] = useState<number | null>(null);
   const selectedVersion = selectedVersionId != null ? versions.find((v) => v.id === selectedVersionId) : undefined;
@@ -286,7 +291,7 @@ export function CotizacionTab({
                   alignItems: 'center', padding: '9px 14px',
                 }}>
                   {visibleCols.map((c, idx) => {
-                    const writable = variant === 'costeo' && writableIds.has(c.id) && INLINE_EDITABLE_COLS.has(c.id);
+                    const writable = editable && writableIds.has(c.id) && INLINE_EDITABLE_COLS.has(c.id);
                     const displayVal = state.preview[c.id] ?? p.cols[c.id];
                     if (writable) {
                       const raw = state.editing[c.id] ?? (p.cols[c.id]?.text ?? '');

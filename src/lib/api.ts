@@ -29,6 +29,9 @@ export function usePoll(slug: BoardSlug, q = ''): PollResult {
   const etagRef = useRef<string | undefined>(undefined);
 
   const load = useCallback(async () => {
+    // Pestaña oculta: no gastes requests — al volver, el listener de
+    // visibilitychange de abajo recarga de inmediato.
+    if (document.hidden) return;
     try {
       const params = q ? `?q=${encodeURIComponent(q)}` : '';
       const headers: Record<string, string> = {};
@@ -59,10 +62,29 @@ export function usePoll(slug: BoardSlug, q = ''): PollResult {
     setStatus('loading');
     load();
     const timer = window.setInterval(load, 5000);
-    return () => window.clearInterval(timer);
+    const onVisible = () => { if (!document.hidden) load(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   }, [load]);
 
   return { status, data, offlineMock, refetch: load };
+}
+
+// /api/boards es metadata de columnas por rol — no cambia durante la sesión.
+// Cachear la promesa a nivel módulo evita un fetch por cada componente que
+// monta useBoards (cada lista + el drawer) y hace esos montajes instantáneos.
+let boardsPromise: Promise<BoardMeta[]> | null = null;
+function getBoardsCached(): Promise<BoardMeta[]> {
+  if (!boardsPromise) {
+    boardsPromise = getBoards().catch((e) => {
+      boardsPromise = null; // no cachear fallas — el siguiente mount reintenta
+      throw e;
+    });
+  }
+  return boardsPromise;
 }
 
 /** GET /api/boards, falling back to mock column metadata (oportunidades+sub) offline. */
@@ -71,7 +93,7 @@ export function useBoards(): { status: PollStatus; boards: BoardMeta[] } {
   const [boards, setBoards] = useState<BoardMeta[]>([]);
   useEffect(() => {
     let cancelled = false;
-    getBoards()
+    getBoardsCached()
       .then((b) => { if (!cancelled) { setBoards(b); setStatus('ready'); } })
       .catch((e) => {
         if (cancelled) return;
