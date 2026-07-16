@@ -34,3 +34,14 @@
   - Asistente: loop unificado `worker/lib/agentLoop.ts` (WA + portal) con prompt caching (system+tools y prefijo completo, lecturas ~0.1×); `trimHistory` compacta `tool_result`s con >10 mensajes de antigüedad.
   - Roster de Monday cacheado en D1 (`api_cache`): `/api/users` TTL 6 h (441ms→16ms), admin 10 min, stale-if-error.
   - Frontend: `/api/boards` cacheado por sesión, polling pausado con pestaña oculta, drawer con cache SWR (reabrir oportunidad = instantáneo).
+
+## 2026-07-16
+
+- **`c32067a`** — Edición inline de cotizaciones en Nueva oportunidad + auto-open tras crear opp
+  - `CotizacionTab`: en stage 4 (Nueva oportunidad) el vendedor edita inline producto/color/cantidad; precio nunca editable para vendedor (solo lectura). Otras etapas siguen editando solo vía "Nueva versión" (archivable).
+  - Botón "+ Agregar línea" en Nueva oportunidad crea subitems vacíos; nuevo `POST /api/oportunidades/:id/productos` para crear líneas sin versioning.
+  - `CreateOportunidadModal`: hace polling al folio, cierra el modal y auto-abre el drawer en cuanto está listo.
+- **`edfb9c2`** — Deep links por oportunidad (`/boardKey/itemId`) + botón Copiar link
+  - Ruteo por URL con History API (sin librería nueva): `useRoute()` en `src/lib/routing.ts` deriva board/itemId de la ruta; `App.tsx` y los 6 boards de oportunidad (Oportunidades, Costeo, Validación Costeo, Documentación y Tallas, Órdenes de Compra, Logística) pasaron de `useState` local a `openId`/`onOpenChange` por props.
+  - Permite compartir un link directo a una oportunidad (WhatsApp, chat interno) y soporta back/forward del navegador; el fallback SPA de `wrangler.jsonc` ya cubre la navegación directa en producción.
+  - `OpportunityDrawer` suma botón "Copiar link" junto a "Actualizar".
