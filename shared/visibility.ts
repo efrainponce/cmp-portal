@@ -43,10 +43,15 @@ export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
       'text_mm0bxy39', 'lookup_mm0xn98d', 'lookup_mm19c0b6',
       'lookup_mm0w4f4v', 'lookup_mm0xw8p7',
       'long_text_mm1hyszv',
-      'formula_mkznmjh6', 'formula_mm0rtdqp', 'formula_mm00xy0n',
-      'color_mm084gvf'], V),
+      'formula_mkznmjh6', 'formula_mm0rtdqp', 'formula_mm00xy0n'], V),
     // Precio de Venta C/U — writable by vendedor/admin (Validación Costeo, stage 7).
     numeric_mkzneg3d: { vis: V, w: WV },
+    // Etapa Costeo — de solo lectura para todos en la práctica: nadie la expone en
+    // un form ni en el grid inline-editable. El único escritor es submitVersion,
+    // que la resetea a "No iniciado" cuando el vendedor edita una línea ya
+    // costeada (para que cmp-tallas la vuelva a snapshotear en el próximo
+    // validar_costeo) — no es "el vendedor puede cambiar la etapa a mano".
+    color_mm084gvf: { vis: V, w: WV },
     // PROPOSED writable 2026-07-15 (versiones de cotización): el vendedor edita
     // producto/color/cantidad/embellecimiento de una línea — nunca las columnas de
     // costo (grupo AC/WAC abajo, las llena compras aparte). Pendiente confirmación

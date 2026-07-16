@@ -14,18 +14,44 @@ import type { ColMeta, ColVal, ItemDTO, QuoteVersionDTO } from '../../../lib/api
 import { patchItem } from '../../../lib/apiClient';
 import { fmtMoney } from '../../../lib/format';
 import { MonoTag, StatusBadge } from '../../../components/core/Badges';
-import { previewRow } from '../../../lib/costeoCalc';
+import { previewRow, COL } from '../../../lib/costeoCalc';
 
 const COSTO_DISTR_COL = 'numeric_mm0bph99';
+const ETAPA_COSTEO_COL = 'color_mm084gvf';
+
+// Solo estas columnas son editables inline en el grid — captura de costos
+// (compras/admin) y precio de venta (vendedor/admin). Cantidad/Producto/Color/
+// Embellecimiento también son `col.w` para el vendedor (los necesita
+// NuevaVersionForm), pero deben editarse SOLO vía "Nueva versión" para que
+// quede archivada y dispare el reenvío a costeo — nunca inline sin versionar.
+const INLINE_EDITABLE_COLS = new Set<string>([
+  COL.costoDistr, COL.descuentoPct, COL.conversion, COL.gastosPct, COL.embellecimiento,
+  COL.precio,
+]);
+
+// Colores reales de la columna status "Etapa Costeo" en Monday (settings_str),
+// no inventados — docs/monday-column-map.md.
+const ETAPA_COSTEO_COLORS: Record<string, { color: string; tint: string }> = {
+  'No iniciado': { color: '#68737d', tint: '#e6e9eb' },
+  'En curso': { color: '#e99729', tint: '#fdecd7' },
+  'Listo': { color: '#00b461', tint: '#d6f5e6' },
+  'Detenido': { color: '#ce3048', tint: '#fbdbdf' },
+  'Modificado': { color: '#3db0df', tint: '#dbf0fa' },
+};
 
 /** Chips V1/V2… — vigente resaltada. Seleccionar una anterior muestra su
- * instantánea (solo lectura, sin fórmulas: esas solo existen para la vigente). */
+ * instantánea (solo lectura, sin fórmulas: esas solo existen para la vigente).
+ * "Enviar a costeo" junto a la vigente abre el draft de nueva versión — crear
+ * una versión ES la forma de mandar cambios de línea a costeo otra vez. */
 function VersionChips({
-  versions, selected, onSelect,
-}: { versions: QuoteVersionDTO[]; selected: number | null; onSelect: (id: number | null) => void }) {
+  versions, selected, onSelect, onNuevaVersion,
+}: {
+  versions: QuoteVersionDTO[]; selected: number | null; onSelect: (id: number | null) => void;
+  onNuevaVersion?: () => void;
+}) {
   if (versions.length === 0) return null;
   return (
-    <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
+    <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
       {versions.map((v) => {
         const isSelected = selected === null ? v.status === 'vigente' : selected === v.id;
         return (
@@ -44,6 +70,19 @@ function VersionChips({
           </div>
         );
       })}
+      {onNuevaVersion && (
+        <div
+          onClick={onNuevaVersion}
+          title="Crea una nueva versión de la cotización y la manda a costeo"
+          style={{
+            cursor: 'pointer', font: 'var(--text-label-strong)', padding: '4px 12px',
+            borderRadius: 'var(--radius-pill)', border: '1px dashed var(--border)',
+            color: 'var(--accent)', background: 'transparent',
+          }}
+        >
+          + Enviar a costeo
+        </div>
+      )}
     </div>
   );
 }
@@ -90,6 +129,7 @@ const GRID_COLS_COSTEO: GridCol[] = [
   { id: 'lookup_mm0x4kda', label: 'Producto', align: 'left', kind: 'text' },
   { id: 'lookup_mkzn7x9a', label: 'SKU', align: 'left', kind: 'text' },
   { id: 'numeric_mkzm6399', label: 'Cant.', align: 'left', kind: 'text' },
+  { id: ETAPA_COSTEO_COL, label: 'Etapa costeo', align: 'left', kind: 'text' },
   { id: 'lookup_mm11t8gj', label: 'Moneda', align: 'left', kind: 'text' },
   { id: 'numeric_mm0bph99', label: 'Costo distr. C/U', align: 'right', kind: 'money' },
   { id: 'numeric_mkzn2q51', label: 'Desc. %', align: 'right', kind: 'percent' },
@@ -142,10 +182,10 @@ interface RowEditState {
 const EMPTY_ROW: RowEditState = { editing: {}, preview: {}, saving: {} };
 
 export function CotizacionTab({
-  subCols, products, variant = 'venta', onSaved, versions = [],
+  subCols, products, variant = 'venta', onSaved, versions = [], onNuevaVersion,
 }: {
   subCols: ColMeta[]; products: ItemDTO[]; variant?: 'venta' | 'costeo'; onSaved?: () => void;
-  versions?: QuoteVersionDTO[];
+  versions?: QuoteVersionDTO[]; onNuevaVersion?: () => void;
 }) {
   const [selectedVersionId, setSelectedVersionId] = useState<number | null>(null);
   const selectedVersion = selectedVersionId != null ? versions.find((v) => v.id === selectedVersionId) : undefined;
@@ -217,7 +257,7 @@ export function CotizacionTab({
   if (products.length === 0) {
     return (
       <div style={{ padding: '24px 32px 40px', font: 'var(--text-label)', color: 'var(--ink-quiet)' }}>
-        <VersionChips versions={versions} selected={selectedVersionId} onSelect={setSelectedVersionId} />
+        <VersionChips versions={versions} selected={selectedVersionId} onSelect={setSelectedVersionId} onNuevaVersion={onNuevaVersion} />
         Sin líneas de producto registradas.
       </div>
     );
@@ -225,7 +265,7 @@ export function CotizacionTab({
 
   return (
     <div style={{ padding: '24px 32px 40px', width: '100%', boxSizing: 'border-box' }}>
-      <VersionChips versions={versions} selected={selectedVersionId} onSelect={setSelectedVersionId} />
+      <VersionChips versions={versions} selected={selectedVersionId} onSelect={setSelectedVersionId} onNuevaVersion={onNuevaVersion} />
       <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: 'var(--radius-xl)' }}>
         <div style={variant === 'costeo' ? { minWidth: 900 } : undefined}>
           <div style={{
@@ -246,7 +286,7 @@ export function CotizacionTab({
                   alignItems: 'center', padding: '9px 14px',
                 }}>
                   {visibleCols.map((c, idx) => {
-                    const writable = variant === 'costeo' && writableIds.has(c.id);
+                    const writable = variant === 'costeo' && writableIds.has(c.id) && INLINE_EDITABLE_COLS.has(c.id);
                     const displayVal = state.preview[c.id] ?? p.cols[c.id];
                     if (writable) {
                       const raw = state.editing[c.id] ?? (p.cols[c.id]?.text ?? '');
@@ -273,9 +313,17 @@ export function CotizacionTab({
                         {idx === 0 && variant === 'costeo' && !p.cols[COSTO_DISTR_COL]?.text && (
                           <StatusBadge label="Pendiente de costeo" color="#9c4c3d" tint="#f3e5e1" style={{ marginRight: 6 }} />
                         )}
-                        {c.id === 'lookup_mkzn7x9a'
-                          ? <MonoTag style={{ display: 'inline-block' }}>{cellValue(c, displayVal)}</MonoTag>
-                          : cellValue(c, displayVal)}
+                        {c.id === 'lookup_mkzn7x9a' && (
+                          <MonoTag style={{ display: 'inline-block' }}>{cellValue(c, displayVal)}</MonoTag>
+                        )}
+                        {c.id === ETAPA_COSTEO_COL && (() => {
+                          const label = cellValue(c, displayVal);
+                          const colors = ETAPA_COSTEO_COLORS[label] ?? ETAPA_COSTEO_COLORS['No iniciado'];
+                          return label === '—'
+                            ? '—'
+                            : <StatusBadge label={label} color={colors.color} tint={colors.tint} />;
+                        })()}
+                        {c.id !== 'lookup_mkzn7x9a' && c.id !== ETAPA_COSTEO_COL && cellValue(c, displayVal)}
                       </div>
                     );
                   })}

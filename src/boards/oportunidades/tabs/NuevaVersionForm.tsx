@@ -32,7 +32,8 @@ const fieldStyle: React.CSSProperties = {
 export function NuevaVersionForm({
   itemId, currentProducts, onClose, onSaved,
 }: {
-  itemId: string; currentProducts: QuoteLineSnapshot[]; onClose: () => void; onSaved: (label: string) => void;
+  itemId: string; currentProducts: QuoteLineSnapshot[]; onClose: () => void;
+  onSaved: (label: string, costeo?: { ok: boolean; folio?: string; errors?: string[] }) => void;
 }) {
   const [lines, setLines] = useState<DraftLine[]>(() => toDraft(currentProducts));
   const [catalog, setCatalog] = useState<ItemDTO[]>([]);
@@ -63,7 +64,7 @@ export function NuevaVersionForm({
       if (!res.ok) { setError(res.error ?? 'No se pudo guardar.'); return; }
       if (!res.changed) { setError('Sin cambios respecto a la versión vigente.'); return; }
       const nueva = res.versions?.[res.versions.length - 1];
-      onSaved(nueva?.label ?? 'nueva versión');
+      onSaved(nueva?.label ?? 'nueva versión', res.costeo);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo guardar.');
     } finally {

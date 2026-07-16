@@ -25,7 +25,7 @@ import {
   generateCotizacion, generateSheet, confirmTallas, importTallas, generateOC,
   AutomationError,
 } from './lib/automations';
-import { enviarACosteo, checkCosteo, CosteoError } from './lib/costeo';
+import { enviarACosteo, checkCosteo, CosteoError, type EnviarCosteoResult } from './lib/costeo';
 import { listVersions, submitVersion, recordFirstVersion, QuoteVersionError } from './lib/quoteVersions';
 import { fetchUpdates, createUpdate, fetchUsers } from './lib/monday';
 import { listWarehouses, listMovements, listStock, createMovement, InventoryError } from './lib/inventory';
@@ -329,7 +329,7 @@ app.post('/api/oportunidades/:id/cotizacion', async c => {
 });
 
 // Versiones de cotización — la vigente se arma del mirror; D1 archiva las
-// anteriores. [] cuando aún no se ha generado ninguna cotización.
+// anteriores. [] solo cuando la oportunidad no tiene líneas todavía.
 app.get('/api/oportunidades/:id/versiones', async c => {
   const itemId = Number(c.req.param('id'));
   if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
@@ -350,8 +350,16 @@ app.post('/api/oportunidades/:id/version', async c => {
 
   try {
     const { changed } = await submitVersion(c.env, c.executionCtx, itemId, viewer, body.lines ?? []);
+    // Una nueva versión con cambios ES una solicitud de costeo — mismo flujo real
+    // que el botón "Mandar a costeo" (valida, genera PDF, deal_stage → "En costeo"),
+    // sin importar en qué etapa estuviera antes (Efraín, 2026-07-16).
+    const costeo = changed
+      ? await enviarACosteo(c.env, itemId, viewer).catch((e): EnviarCosteoResult => ({
+          ok: false, errors: [e instanceof Error ? e.message : 'No se pudo reenviar a costeo.'],
+        }))
+      : undefined;
     const versions = changed ? await listVersions(c.env, itemId, viewer) : undefined;
-    return c.json({ ok: true, changed, versions } satisfies QuoteVersionResponse);
+    return c.json({ ok: true, changed, versions, costeo } satisfies QuoteVersionResponse);
   } catch (err) {
     if (err instanceof QuoteVersionError) return jsonStatus({ ok: false, changed: false, error: err.message } satisfies QuoteVersionResponse, err.status);
     if (err instanceof OutboxError) return jsonStatus({ ok: false, changed: false, error: err.message } satisfies QuoteVersionResponse, err.status);

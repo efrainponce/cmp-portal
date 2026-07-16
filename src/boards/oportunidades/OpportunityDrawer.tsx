@@ -173,9 +173,6 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey 
               onConfirm={onGenerarCotizacion}
             />
           )}
-          {stageAtOrAfter(stage, '6') && versions.length > 0 && (
-            <Button variant="secondary" onClick={() => setShowNuevaVersion(true)}>Nueva versión</Button>
-          )}
           <Button variant="secondary" onClick={onRefresh}>{refreshing ? 'Actualizando…' : 'Actualizar'}</Button>
         </div>
       </div>
@@ -212,7 +209,12 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey 
       <BoardTabsBar active={activeTab} onChange={setTab} showPostventa={showPostventa} showProyectos={showProyectos} />
 
       {activeTab === 'actualizaciones' && <ActualizacionesTab slug="oportunidades" itemId={id} />}
-      {activeTab === 'cotizacion' && <CotizacionTab subCols={subCols} products={products} variant={cotizacionVariant} onSaved={load} versions={versions} />}
+      {activeTab === 'cotizacion' && (
+        <CotizacionTab
+          subCols={subCols} products={products} variant={cotizacionVariant} onSaved={load} versions={versions}
+          onNuevaVersion={stage !== '1' && stage !== '2' ? () => setShowNuevaVersion(true) : undefined}
+        />
+      )}
       {activeTab === 'embellecimientos' && <EmbellecimientosTab subCols={subCols} products={products} />}
       {activeTab === 'nuevosproductos' && <NuevosProductosTab />}
       {activeTab === 'documentacion' && <DocumentacionTab item={item} />}
@@ -238,9 +240,21 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey 
           itemId={id}
           currentProducts={versions.find((v) => v.status === 'vigente')?.products ?? []}
           onClose={() => setShowNuevaVersion(false)}
-          onSaved={(label) => {
+          onSaved={(label, costeo) => {
             setShowNuevaVersion(false);
-            setNotice({ kind: 'ok', title: 'Nueva versión guardada', lines: [`${label} — se archivó la anterior y se actualizó Monday.`] });
+            if (costeo?.ok) {
+              setNotice({
+                kind: 'ok', title: 'Nueva versión guardada y mandada a costeo',
+                lines: [`${label}${costeo.folio ? ` — ${costeo.folio}` : ''} — la etapa regresó a "En costeo".`],
+              });
+            } else if (costeo && !costeo.ok) {
+              setNotice({
+                kind: 'error', title: `${label} guardada, pero no se pudo reenviar a costeo:`,
+                lines: costeo.errors ?? ['Avísale a Compras manualmente.'],
+              });
+            } else {
+              setNotice({ kind: 'ok', title: 'Nueva versión guardada', lines: [`${label} — se archivó la anterior y se actualizó Monday.`] });
+            }
             load();
             loadVersions();
           }}

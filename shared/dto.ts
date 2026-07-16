@@ -63,6 +63,10 @@ export interface QuoteLineSnapshot {
   descripcionEmbellecimiento?: string;
   precioUnitario?: number;
   pendienteCosteo?: boolean;
+  /** Etapa Costeo (color_mm084gvf) al momento del snapshot — "No iniciado" o
+   * vacío si Compras todavía no la toca; usado por submitVersion para saber
+   * si debe resetearla al editar la línea. */
+  etapaCosteo?: string;
 }
 
 export interface QuoteVersionDTO {
@@ -89,7 +93,12 @@ export interface QuoteLineInput {
 }
 
 export interface QuoteVersionRequest { lines: QuoteLineInput[] }
-export interface QuoteVersionResponse { ok: boolean; changed: boolean; error?: string; versions?: QuoteVersionDTO[] }
+export interface QuoteVersionResponse {
+  ok: boolean; changed: boolean; error?: string; versions?: QuoteVersionDTO[];
+  /** Resultado de reenviar a costeo (solo cuando changed:true) — mismo shape que
+   * EnviarCosteoResponse, sin folio garantizado si cmp-tallas lo rechazó. */
+  costeo?: { ok: boolean; folio?: string; errors?: string[] };
+}
 
 // POST /api/proyectos/:id/(tallas-regenerar|tallas-confirmar|tallas-importar|generar-oc)
 // — contrato cmp-tallas: siempre {ok, skipped?, reason?, ...extras}.

@@ -754,6 +754,11 @@ export const COLUMN_META: Record<BoardSlug, Record<string, ColMeta>> = {
       "id": "lookup_mm1tjv9n",
       "title": "Historial de Precios",
       "type": "mirror"
+    },
+    "file_mm5akjy5": {
+      "id": "file_mm5akjy5",
+      "title": "Imagen embellecimiento",
+      "type": "file"
     }
   },
   "proyectos": {

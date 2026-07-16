@@ -5,6 +5,9 @@
 // de una línea, o se agrega/quita una línea, respecto a la vigente. Nunca se tocan
 // columnas de costo (grupo AC/WAC, capturadas aparte por Compras vía costeo.ts) —
 // así el costeo de una línea sobrevive intacto mientras su producto no cambie.
+// El vendedor puede editar líneas en cualquier etapa salvo Ganada/Perdida (Efraín,
+// 2026-07-15) — no solo tras cotizar. Si una oportunidad nunca tuvo V1 anclada
+// (nueva, o clonada/legacy sin historial), la primera edición la ancla al vuelo.
 import type { ExecutionContext } from 'hono';
 import type { Env } from '../env';
 import type { Identity, MirrorItem } from '../../shared/types';
@@ -14,7 +17,6 @@ import { submitWrite } from './outbox';
 import { createSubitem } from './monday';
 import { upsertItem, refetchItemTree } from '../sync';
 import { BOARDS } from '../../shared/boards';
-import { stageAtOrAfter } from '../../shared/dealStages';
 import type { RawCol } from './serialize';
 
 export class QuoteVersionError extends Error {
@@ -35,9 +37,11 @@ const SUB_CANTIDAD = 'numeric_mkzm6399';
 const SUB_EMB_STATUS = 'color_mm1b34bg';
 const SUB_EMB_DESC = 'long_text_mm1bj4pt';
 const SUB_PRECIO = 'numeric_mkzneg3d';
+const SUB_ETAPA_COSTEO = 'color_mm084gvf';
 
 const EMB_LABEL_CON = 'Con Embellecimiento';
 const EMB_LABEL_SIN = 'Sin Embellecimiento';
+const ETAPA_NO_INICIADO = 'No iniciado';
 
 function colsOf(row: MirrorItem): Map<string, RawCol> {
   try {
@@ -68,7 +72,11 @@ function snapshotLine(row: MirrorItem): QuoteLineSnapshot {
     cantidad: Number((cols.get(SUB_CANTIDAD)?.text ?? '').replace(/,/g, '')) || 0,
     embellecimiento: embStatus === EMB_LABEL_CON,
     descripcionEmbellecimiento: cols.get(SUB_EMB_DESC)?.text || undefined,
-    precioUnitario: Number(cols.get(SUB_PRECIO)?.value ?? cols.get(SUB_PRECIO)?.text ?? 0) || 0,
+    // .value en el mirror crudo es el JSON sin normalizar de Monday (para numeric
+    // llega como '"1640"', con comillas literales) — .text ya viene limpio, mismo
+    // patrón que cantidad arriba.
+    precioUnitario: Number((cols.get(SUB_PRECIO)?.text ?? '').replace(/,/g, '')) || 0,
+    etapaCosteo: cols.get(SUB_ETAPA_COSTEO)?.text || undefined,
   };
 }
 
@@ -110,11 +118,14 @@ async function maxVersion(env: Env, itemId: number): Promise<number> {
 }
 
 /** Lista completa: archivadas (D1) + la vigente armada en caliente desde el mirror.
- * [] cuando aún no se ha generado ninguna cotización (nada que versionar todavía). */
+ * La vigente se muestra siempre que haya líneas (Efraín, 2026-07-15) — el vendedor
+ * puede agregar/editar productos desde "Nueva oportunidad" en adelante, así que V1
+ * existe conceptualmente desde la primera línea, no solo tras generar la cotización.
+ * [] solo cuando la oportunidad no tiene ninguna línea todavía. */
 export async function listVersions(env: Env, itemId: number, viewer: Identity): Promise<QuoteVersionDTO[]> {
   const archived = await archivedVersions(env, itemId);
-  if (archived.length === 0) return [];
   const lineas = await childrenOf(env, 'oportunidades', itemId, viewer);
+  if (lineas.length === 0) return archived;
   const vigenteProducts = lineas.map(snapshotLine);
   const vigente: QuoteVersionDTO = {
     id: archived.length ? Math.max(...archived.map(v => v.id)) + 1 : 1,
@@ -165,10 +176,14 @@ export async function submitVersion(
   const cols = colsOf(opp);
   let stage = '';
   try { stage = String((JSON.parse(cols.get('deal_stage')?.value ?? 'null') as { index?: unknown })?.index ?? ''); } catch { /* ignore */ }
-  const existing = await maxVersion(env, itemId);
-  if (existing === 0 || !stageAtOrAfter(stage, '6')) {
-    throw new QuoteVersionError(422, 'Todavía no hay una cotización generada — genera la primera antes de crear una nueva versión.');
+  // El vendedor puede agregar/editar productos en cualquier etapa salvo Ganada(1)/
+  // Perdida(2) (Efraín, 2026-07-15) — no solo tras "Generar cotización". Si nunca
+  // se ancló una V1 (oportunidad nueva, o clonada/legacy sin historial en D1), esta
+  // edición ancla V1 al vuelo con el estado actual antes de aplicar el cambio.
+  if (stage === '1' || stage === '2') {
+    throw new QuoteVersionError(422, 'La oportunidad ya está Ganada o Perdida — no se pueden editar sus líneas.');
   }
+  const existing = await maxVersion(env, itemId);
 
   const currentLines = (await childrenOf(env, 'oportunidades', itemId, viewer)).map(snapshotLine);
   const byId = new Map(currentLines.map(l => [l.subitemId, l]));
@@ -219,6 +234,12 @@ export async function submitVersion(
     if (norm(cur.producto) !== norm(input.producto)) {
       if (input.productoItemId) writeCols[SUB_PRODUCTO_REL] = String(input.productoItemId);
       else writeCols[SUB_PRODUCTO_TXT] = input.producto;
+    }
+    // Compras ya avanzó esta línea (Etapa Costeo != "No iniciado") pero el
+    // vendedor la acaba de cambiar — resetearla para que validar_costeo (cmp-tallas)
+    // la vuelva a snapshotear en vez de dejar costo viejo pegado a datos nuevos.
+    if (cur.etapaCosteo && cur.etapaCosteo !== ETAPA_NO_INICIADO) {
+      writeCols[SUB_ETAPA_COSTEO] = ETAPA_NO_INICIADO;
     }
     await submitWrite(env, ctx, 'oportunidades_sub', input.subitemId, writeCols, viewer);
   }
