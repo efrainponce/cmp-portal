@@ -19,14 +19,17 @@ import { useEffect, useState } from 'react';
 import type { ChangeEvent } from 'react';
 import type { ColMeta, ItemDTO, QuoteVersionDTO } from '../../../lib/api';
 import { getZoneImages, uploadZoneImage } from '../../../lib/api';
+import { patchItem } from '../../../lib/apiClient';
 import { StatusBadge, MonoTag } from '../../../components/core/Badges';
+import { Button } from '../../../components/core/Button';
 import { chipFor } from '../../../components/board/cellHelpers';
-import { explodeEmbellecimiento } from '../../../lib/embellecimiento';
+import { EMBELL_TEMPLATE_KEYS, explodeEmbellecimiento, upsertEmbellZone } from '../../../lib/embellecimiento';
 import { VersionChips } from './CotizacionTab';
 
 const STATUS_COL = 'color_mm1b34bg';
 const EMB_LABEL_CON = 'Con Embellecimiento';
 const DESC_COL = 'long_text_mm1bj4pt';
+const FILE_COL = 'file_mm5akjy5';
 const SKU_COL = 'lookup_mkzn7x9a';
 const NAME_COL = 'lookup_mm0x4kda';
 
@@ -38,9 +41,21 @@ const ImageIcon = ({ size = 14, color = '#918b7c' }: { size?: number; color?: st
   </svg>
 );
 
-function ZoneImage({ imageUrl, uploading, error, onUpload }: {
-  imageUrl?: string; uploading: boolean; error?: string; onUpload: (file: File) => void;
+const FileIcon = ({ size = 14, color = '#918b7c' }: { size?: number; color?: string }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ flex: 'none' }}>
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+    <path d="M14 2v6h6" />
+  </svg>
+);
+
+// file_mm5akjy5 es una columna de archivo genérica de Monday, no solo imágenes
+// (Efraín, 2026-07-16) — sin restricción de accept en el input. Si la URL no
+// carga como <img> (PDF, .docx…), cae a un link "Ver archivo" en vez de intentar
+// previsualizarlo.
+function ZoneImage({ imageUrl, uploading, error, onUpload, canUpload }: {
+  imageUrl?: string; uploading: boolean; error?: string; onUpload: (file: File) => void; canUpload: boolean;
 }) {
+  const [previewFailed, setPreviewFailed] = useState(false);
   const handleFile = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) onUpload(file);
@@ -48,17 +63,40 @@ function ZoneImage({ imageUrl, uploading, error, onUpload }: {
   };
 
   if (imageUrl) {
+    const thumb = previewFailed ? (
+      <div style={{
+        width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        borderRadius: 'var(--radius-md)', border: '1px solid ' + (error ? 'var(--status-perdida)' : 'var(--border)'), background: 'var(--bg-sunken)',
+      }}>
+        <FileIcon size={14} />
+      </div>
+    ) : (
+      <img
+        src={imageUrl}
+        alt=""
+        onError={() => setPreviewFailed(true)}
+        style={{ width: 28, height: 28, objectFit: 'cover', borderRadius: 'var(--radius-md)', border: '1px solid ' + (error ? 'var(--status-perdida)' : 'var(--border)') }}
+      />
+    );
     return (
-      <label style={{ cursor: uploading ? 'default' : 'pointer', flex: 'none', opacity: uploading ? 0.6 : 1 }} title={error || 'Cambiar imagen'}>
-        <img
-          src={imageUrl}
-          alt=""
-          style={{ width: 28, height: 28, objectFit: 'cover', borderRadius: 'var(--radius-md)', border: '1px solid ' + (error ? 'var(--status-perdida)' : 'var(--border)') }}
-        />
-        <input type="file" accept="image/*" onChange={handleFile} style={{ display: 'none' }} disabled={uploading} />
-      </label>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 'none' }}>
+        {canUpload ? (
+          <label style={{ cursor: uploading ? 'default' : 'pointer', flex: 'none', opacity: uploading ? 0.6 : 1 }} title={error || 'Cambiar imagen o archivo'}>
+            {thumb}
+            <input type="file" onChange={handleFile} style={{ display: 'none' }} disabled={uploading} />
+          </label>
+        ) : thumb}
+        <a href={imageUrl} target="_blank" rel="noreferrer" title="Ver archivo" style={{ color: 'var(--ink-tertiary)', display: 'flex' }}>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+            <path d="M15 3h6v6" /><path d="M10 14 21 3" />
+          </svg>
+        </a>
+      </div>
     );
   }
+
+  if (!canUpload) return null;
 
   return (
     <label
@@ -71,9 +109,9 @@ function ZoneImage({ imageUrl, uploading, error, onUpload }: {
     >
       <ImageIcon size={12} />
       <span style={{ font: 'var(--text-caption)', color: error ? 'var(--status-perdida)' : 'var(--ink-tertiary)' }}>
-        {uploading ? 'Subiendo…' : error ? 'Error — reintentar' : '+ imagen'}
+        {uploading ? 'Subiendo…' : error ? 'Error — reintentar' : '+ imagen o archivo'}
       </span>
-      <input type="file" accept="image/*" onChange={handleFile} style={{ display: 'none' }} disabled={uploading} />
+      <input type="file" onChange={handleFile} style={{ display: 'none' }} disabled={uploading} />
     </label>
   );
 }
@@ -125,18 +163,58 @@ function EmbellecimientoSnapshot({ version }: { version: QuoteVersionDTO }) {
   );
 }
 
+interface AddPositionState {
+  productId: string;
+  zone: string;
+  desc: string;
+  saving: boolean;
+  error?: string;
+}
+
 export function EmbellecimientosTab({
-  subCols, products, versions = [], onNuevaVersion,
+  subCols, products, versions = [], onNuevaVersion, onSaved, editable = true,
 }: {
   subCols: ColMeta[]; products: ItemDTO[];
   versions?: QuoteVersionDTO[]; onNuevaVersion?: () => void;
+  onSaved?: () => void;
+  /** false en Ganada/Perdida — sin nuevas posiciones ni imágenes, igual que Cotización. */
+  editable?: boolean;
 }) {
   const statusCol = subCols.find((c) => c.id === STATUS_COL);
+  const descWritable = editable && !!subCols.find((c) => c.id === DESC_COL)?.w;
+  const fileWritable = editable && !!subCols.find((c) => c.id === FILE_COL)?.w;
   const [zoneImages, setZoneImages] = useState<Record<string, string>>({});
   const [uploading, setUploading] = useState<Record<string, boolean>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [selectedVersionId, setSelectedVersionId] = useState<number | null>(null);
   const selectedVersion = selectedVersionId != null ? versions.find((v) => v.id === selectedVersionId) : undefined;
+  // Preview local del texto de zonas recién guardado — igual patrón que
+  // CotizacionTab: el PATCH ya se aplicó, pero onSaved()/refetch tarda un
+  // round-trip; sin esto la zona recién agregada parpadea/desaparece.
+  const [descPreview, setDescPreview] = useState<Record<string, string>>({});
+  const [addForm, setAddForm] = useState<AddPositionState | null>(null);
+
+  const onStartAdd = (productId: string, zone: string) => setAddForm({ productId, zone, desc: '', saving: false });
+
+  const onSaveZone = async () => {
+    if (!addForm) return;
+    const { productId, zone } = addForm;
+    const desc = addForm.desc.trim();
+    if (!desc) { setAddForm({ ...addForm, error: 'Escribe una descripción para la posición.' }); return; }
+    setAddForm({ ...addForm, saving: true, error: undefined });
+    const product = products.find((p) => p.id === productId);
+    const currentRaw = descPreview[productId] ?? product?.cols[DESC_COL]?.text;
+    const newRaw = upsertEmbellZone(currentRaw, zone, desc);
+    try {
+      await patchItem('oportunidades_sub', productId, { [DESC_COL]: newRaw });
+    } catch (e) {
+      setAddForm({ productId, zone, desc, saving: false, error: e instanceof Error ? e.message : 'No se pudo guardar.' });
+      return;
+    }
+    setDescPreview((cur) => ({ ...cur, [productId]: newRaw }));
+    setAddForm(null);
+    onSaved?.();
+  };
 
   // Solo las líneas marcadas "Con Embellecimiento" en Cotización aparecen aquí
   // (Efraín, 2026-07-16) — el toggle vive en CotizacionTab, esta tab es lectura
@@ -201,7 +279,11 @@ export function EmbellecimientosTab({
       <VersionChips versions={versions} selected={selectedVersionId} onSelect={setSelectedVersionId} onNuevaVersion={onNuevaVersion} />
       {embProducts.map((p) => {
         const statusVal = statusCol ? p.cols[STATUS_COL] : undefined;
-        const zones = explodeEmbellecimiento(p.cols[DESC_COL]?.text, true);
+        const rawDesc = descPreview[p.id] ?? p.cols[DESC_COL]?.text;
+        const zones = explodeEmbellecimiento(rawDesc, true);
+        const filledLabels = new Set(zones.map((z) => z.label));
+        const availableZones = EMBELL_TEMPLATE_KEYS.filter((k) => !filledLabels.has(k));
+        const isAdding = addForm?.productId === p.id;
         return (
           <div key={p.id} style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-xl)', padding: 14, background: '#fff' }}>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
@@ -226,6 +308,7 @@ export function EmbellecimientosTab({
                         uploading={!!uploading[key]}
                         error={errors[key]}
                         onUpload={(file) => handleUpload(p.id, z.label, file)}
+                        canUpload={fileWritable}
                       />
                     </div>
                   );
@@ -236,9 +319,40 @@ export function EmbellecimientosTab({
                 — sin descripción de embellecimiento —
               </div>
             )}
-            <div style={{ marginTop: 10, font: 'var(--text-small-strong)', color: 'var(--ink-faint)', cursor: 'default' }}>
-              + Agregar posición (próximamente)
-            </div>
+
+            {isAdding ? (
+              <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6, padding: 10, borderRadius: 'var(--radius-lg)', background: 'var(--bg-sunken)' }}>
+                <select
+                  value={addForm.zone}
+                  onChange={(e) => setAddForm({ ...addForm, zone: e.target.value })}
+                  style={{ font: 'var(--text-label)', color: 'var(--ink)', border: '1px solid var(--border)', borderRadius: 6, padding: '5px 7px' }}
+                >
+                  {availableZones.map((z) => <option key={z} value={z}>{z}</option>)}
+                </select>
+                <textarea
+                  value={addForm.desc}
+                  onChange={(e) => setAddForm({ ...addForm, desc: e.target.value })}
+                  placeholder="Descripción de la posición (técnica, tamaño, referencia)…"
+                  rows={2}
+                  autoFocus
+                  style={{ font: 'var(--text-label)', color: 'var(--ink)', border: '1px solid var(--border)', borderRadius: 6, padding: '6px 8px', resize: 'vertical' }}
+                />
+                {addForm.error && <div style={{ font: 'var(--text-caption)', color: 'var(--status-perdida)' }}>{addForm.error}</div>}
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <Button variant="primary" onClick={addForm.saving ? undefined : onSaveZone} style={addForm.saving ? { opacity: 0.6 } : undefined}>
+                    {addForm.saving ? 'Guardando…' : 'Guardar posición'}
+                  </Button>
+                  <Button variant="ghost" onClick={() => setAddForm(null)}>Cancelar</Button>
+                </div>
+              </div>
+            ) : descWritable && availableZones.length > 0 ? (
+              <div
+                onClick={() => onStartAdd(p.id, availableZones[0])}
+                style={{ marginTop: 10, font: 'var(--text-small-strong)', color: 'var(--accent)', cursor: 'pointer' }}
+              >
+                + Agregar posición
+              </div>
+            ) : null}
           </div>
         );
       })}

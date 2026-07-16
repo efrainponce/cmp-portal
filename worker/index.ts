@@ -443,7 +443,8 @@ app.post('/api/oportunidades/lineas/:id/embellecimiento-imagen', async c => {
   const zone = String(form.get('zone') ?? '');
   const file = form.get('file');
   if (!(file instanceof File)) return c.json({ error: 'file is required' }, 400);
-  if (!file.type.startsWith('image/')) return c.json({ error: 'solo se permiten imágenes' }, 400);
+  // Imagen o archivo (PDF, etc.) — file_mm5akjy5 es una columna de archivo
+  // genérica de Monday, no solo de imágenes (Efraín, 2026-07-16).
 
   try {
     const result = await uploadZoneImage(c.env, c.executionCtx, itemId, viewer, zone, file, file.name);
