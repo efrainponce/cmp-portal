@@ -510,6 +510,7 @@ export function CotizacionTab({
                       // memoria, instantáneo). Fallback: el mirror del subitem (lookup_mkznm0h3),
                       // que solo se puebla después de que Monday recompute la relación.
                       const productoNombre = displayProducto(p, state.preview);
+                      const productoElegido = productoNombre.trim() !== '';
                       const productoMatch = catalog.find(
                         (c2) => c2.name.trim().toLowerCase() === productoNombre.trim().toLowerCase(),
                       );
@@ -518,15 +519,34 @@ export function CotizacionTab({
                       const mirrorColores = (p.cols[COLORES_DISP_COL]?.text ?? '')
                         .split(',').map((s) => s.trim()).filter(Boolean);
                       const disponibles = catalogColores.length > 0 ? catalogColores : mirrorColores;
+
+                      // Sin lista de colores para este producto (no configurada en el
+                      // catálogo) — no bloquear al vendedor, dejar texto libre. Solo se
+                      // deshabilita si de plano no hay producto elegido todavía.
+                      if (disponibles.length === 0) {
+                        return (
+                          <div key={c.id} style={{ textAlign: c.align }}>
+                            <input
+                              value={raw}
+                              disabled={!!state.saving[COLOR_COL] || !productoElegido}
+                              onChange={(e) => onTextEdit(p, COLOR_COL, e.target.value)}
+                              onBlur={() => onColorChange(p, state.editing[COLOR_COL] ?? raw)}
+                              placeholder={productoElegido ? 'Color (sin lista para este producto)…' : 'Elige un producto primero'}
+                              style={{ ...inputStyle, textAlign: 'left' }}
+                            />
+                            {!raw && <RowWarning>Elige un color</RowWarning>}
+                          </div>
+                        );
+                      }
                       return (
                         <div key={c.id} style={{ textAlign: c.align }}>
                           <select
                             value={raw}
-                            disabled={!!state.saving[COLOR_COL] || disponibles.length === 0}
+                            disabled={!!state.saving[COLOR_COL]}
                             onChange={(e) => onColorChange(p, e.target.value)}
                             style={{ ...inputStyle, textAlign: 'left' }}
                           >
-                            <option value="">{disponibles.length > 0 ? 'Elegir color…' : 'Elige un producto primero'}</option>
+                            <option value="">Elegir color…</option>
                             {disponibles.map((d) => <option key={d} value={d}>{d}</option>)}
                             {/* si el color guardado ya no está en la lista (cambiaron de producto), no lo escondas en silencio */}
                             {raw && !disponibles.includes(raw) && <option value={raw}>{raw}</option>}
@@ -569,7 +589,7 @@ export function CotizacionTab({
                               onChange={(e) => onEmbellecimientoChange(p, e.target.checked)}
                             />
                             <span style={{ font: 'var(--text-label)', color: 'var(--ink-secondary)' }}>
-                              {checked ? 'Sí' : 'No'}
+                              {checked ? EMB_LABEL_CON : EMB_LABEL_SIN}
                             </span>
                           </label>
                         </div>
@@ -616,7 +636,7 @@ export function CotizacionTab({
                           const con = label === EMB_LABEL_CON;
                           return (
                             <StatusBadge
-                              label={con ? 'Sí' : 'No'}
+                              label={con ? EMB_LABEL_CON : EMB_LABEL_SIN}
                               color={con ? '#00b461' : '#68737d'}
                               tint={con ? '#d6f5e6' : '#e6e9eb'}
                             />
