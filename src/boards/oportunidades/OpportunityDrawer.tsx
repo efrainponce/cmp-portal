@@ -247,7 +247,12 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey 
           oppId={id}
         />
       )}
-      {activeTab === 'embellecimientos' && <EmbellecimientosTab subCols={subCols} products={products} />}
+      {activeTab === 'embellecimientos' && (
+        <EmbellecimientosTab
+          subCols={subCols} products={products} versions={versions}
+          onNuevaVersion={stage !== '1' && stage !== '2' && stage !== '4' ? () => setShowNuevaVersion(true) : undefined}
+        />
+      )}
       {activeTab === 'nuevosproductos' && <NuevosProductosTab />}
       {activeTab === 'documentacion' && <DocumentacionTab item={item} />}
       {activeTab === 'tallas' && <TallasTab subCols={subCols} products={products} proyecto={showPostventa ? proyecto : undefined} />}

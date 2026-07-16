@@ -399,9 +399,11 @@ app.post('/api/oportunidades/:id/productos', async c => {
 
     // Subitem real (create_subitem, no create_item) — así Monday lo linkea al
     // padre automáticamente; create_item en el board de subitems NO lo hace.
+    // Cantidad arranca en 0 a propósito (Efraín) — el grid la marca con warning
+    // hasta que el vendedor la captura, en vez de fingir una cantidad de 1.
     const subitemName = 'Nueva línea';
     const subitemCols: Record<string, unknown> = {
-      numeric_mkzm6399: body.cantidad ?? 1, // cantidad
+      numeric_mkzm6399: body.cantidad ?? 0, // cantidad
     };
     const subitem = await createSubitem(c.env, itemId, subitemName, subitemCols);
 

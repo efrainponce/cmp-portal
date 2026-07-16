@@ -33,8 +33,15 @@ const PRODUCTO_COLOR_DROPDOWN_COL = 'dropdown_mkztty4b'; // Color del producto e
 // fuente que valida enviarCosteo. Se lee directo del `catalog` ya cargado en memoria (sin esperar
 // al mirror asíncrono del subitem, que solo se puebla después de que Monday recompute la relación).
 
+// Mismo status column y labels que worker/lib/quoteVersions.ts (SUB_EMB_STATUS) —
+// marcar "Con Embellecimiento" aquí es lo que hace que la línea aparezca en la
+// tab Embellecimientos (EmbellecimientosTab filtra por este mismo label).
+const EMB_STATUS_COL = 'color_mm1b34bg';
+const EMB_LABEL_CON = 'Con Embellecimiento';
+const EMB_LABEL_SIN = 'Sin Embellecimiento';
+
 // Determina qué columnas son editables inline según la etapa de la oportunidad.
-// En "Nueva oportunidad" (stage 4): vendedor edita producto/color/cantidad inline.
+// En "Nueva oportunidad" (stage 4): vendedor edita producto/color/cantidad/embellecimiento inline.
 // En otras etapas: esos cambios SOLO vía "Nueva versión" (archivable, dispara costeo).
 // Precio: NUNCA editable por vendedor (solo vía cmp-tallas costeo/admin).
 // Costos: solo compras/admin.
@@ -46,6 +53,7 @@ function inlineEditableCols(stage: string | undefined): Set<string> {
     base.add(PRODUCTO_COL);
     base.add(COLOR_COL);
     base.add(COL.cantidad);
+    base.add(EMB_STATUS_COL);
   }
   return base;
 }
@@ -169,6 +177,7 @@ const GRID_COLS_VENTA: GridCol[] = [
   { id: 'lookup_mkzn7x9a', label: 'SKU', align: 'left', kind: 'text' },
   { id: COLOR_COL, label: 'Color', align: 'left', kind: 'text' },
   { id: 'numeric_mkzm6399', label: 'Cant.', align: 'left', kind: 'text' },
+  { id: EMB_STATUS_COL, label: 'Con Embellecimiento', align: 'left', kind: 'text' },
   { id: 'numeric_mkzneg3d', label: 'P. venta C/U', align: 'right', kind: 'money' },
   { id: 'formula_mkznmjh6', label: 'Subtotal', align: 'right', kind: 'money' },
   { id: 'formula_mm0rtdqp', label: 'IVA', align: 'right', kind: 'money' },
@@ -201,6 +210,14 @@ const inputStyle: React.CSSProperties = {
   border: '1px solid var(--border)', borderRadius: 6, padding: '3px 6px',
   textAlign: 'right', boxSizing: 'border-box',
 };
+
+const warningStyle: React.CSSProperties = {
+  font: 'var(--text-caption)', color: '#9c4c3d', marginTop: 3,
+};
+
+function RowWarning({ children }: { children: React.ReactNode }) {
+  return <div style={warningStyle}>⚠ {children}</div>;
+}
 
 interface RowEditState {
   editing: Record<string, string>;   // colId -> in-progress raw text
@@ -252,7 +269,7 @@ export function CotizacionTab({
       const res = await apiFetch(`/oportunidades/${oppId}/productos`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cantidad: 1 }),
+        body: JSON.stringify({}),
       });
       if (!res.ok) throw new Error('No se pudo crear la línea');
       onSaved?.();
@@ -336,6 +353,30 @@ export function CotizacionTab({
     const saving = { ...after.saving };
     delete saving[COLOR_COL];
     patchRow(product.id, { saving });
+    onSaved?.();
+  };
+
+  // Con/Sin Embellecimiento — mismo status column y labels que submitVersion
+  // (worker/lib/quoteVersions.ts). Marcarla "Con" es lo que hace que la línea
+  // aparezca en EmbellecimientosTab (filtra por ese mismo label).
+  const onEmbellecimientoChange = async (product: ItemDTO, con: boolean) => {
+    const label = con ? EMB_LABEL_CON : EMB_LABEL_SIN;
+    const state = rowState(product.id);
+    patchRow(product.id, { saving: { ...state.saving, [EMB_STATUS_COL]: true }, error: undefined });
+    try {
+      await patchItem('oportunidades_sub', product.id, { [EMB_STATUS_COL]: label });
+    } catch (e) {
+      const after = rowState(product.id);
+      const saving = { ...after.saving };
+      delete saving[EMB_STATUS_COL];
+      patchRow(product.id, { saving, error: e instanceof Error ? e.message : 'No se pudo guardar.' });
+      return;
+    }
+    const after = rowState(product.id);
+    const saving = { ...after.saving };
+    delete saving[EMB_STATUS_COL];
+    const preview = { ...after.preview, [EMB_STATUS_COL]: { text: label, type: 'status' } };
+    patchRow(product.id, { saving, preview });
     onSaved?.();
   };
 
@@ -490,6 +531,47 @@ export function CotizacionTab({
                             {/* si el color guardado ya no está en la lista (cambiaron de producto), no lo escondas en silencio */}
                             {raw && !disponibles.includes(raw) && <option value={raw}>{raw}</option>}
                           </select>
+                          {!raw && <RowWarning>Elige un color</RowWarning>}
+                        </div>
+                      );
+                    }
+                    if (writable && c.id === COL.cantidad) {
+                      const raw = state.editing[c.id] ?? (p.cols[c.id]?.text ?? '');
+                      const cantidadNum = parseFloat(raw);
+                      const sinCantidad = !Number.isFinite(cantidadNum) || cantidadNum <= 0;
+                      return (
+                        <div key={c.id} style={{ textAlign: c.align }}>
+                          <input
+                            type="number"
+                            value={raw}
+                            disabled={!!state.saving[c.id]}
+                            onChange={(e) => onEdit(p, c.id, e.target.value)}
+                            onBlur={() => onBlur(p, c.id)}
+                            style={inputStyle}
+                          />
+                          {sinCantidad && <RowWarning>Cantidad requerida</RowWarning>}
+                        </div>
+                      );
+                    }
+                    if (writable && c.id === EMB_STATUS_COL) {
+                      const label = state.preview[EMB_STATUS_COL]?.text ?? p.cols[EMB_STATUS_COL]?.text ?? '';
+                      const checked = label === EMB_LABEL_CON;
+                      return (
+                        <div key={c.id} style={{ textAlign: c.align }}>
+                          <label style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 6,
+                            cursor: state.saving[EMB_STATUS_COL] ? 'default' : 'pointer',
+                          }}>
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              disabled={!!state.saving[EMB_STATUS_COL]}
+                              onChange={(e) => onEmbellecimientoChange(p, e.target.checked)}
+                            />
+                            <span style={{ font: 'var(--text-label)', color: 'var(--ink-secondary)' }}>
+                              {checked ? 'Sí' : 'No'}
+                            </span>
+                          </label>
                         </div>
                       );
                     }
@@ -529,7 +611,18 @@ export function CotizacionTab({
                             ? '—'
                             : <StatusBadge label={label} color={colors.color} tint={colors.tint} />;
                         })()}
-                        {c.id !== PRODUCTO_COL && c.id !== 'lookup_mkzn7x9a' && c.id !== ETAPA_COSTEO_COL && cellValue(c, displayVal)}
+                        {c.id === EMB_STATUS_COL && (() => {
+                          const label = state.preview[EMB_STATUS_COL]?.text ?? p.cols[EMB_STATUS_COL]?.text;
+                          const con = label === EMB_LABEL_CON;
+                          return (
+                            <StatusBadge
+                              label={con ? 'Sí' : 'No'}
+                              color={con ? '#00b461' : '#68737d'}
+                              tint={con ? '#d6f5e6' : '#e6e9eb'}
+                            />
+                          );
+                        })()}
+                        {c.id !== PRODUCTO_COL && c.id !== 'lookup_mkzn7x9a' && c.id !== ETAPA_COSTEO_COL && c.id !== EMB_STATUS_COL && cellValue(c, displayVal)}
                       </div>
                     );
                   })}
