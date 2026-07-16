@@ -27,6 +27,11 @@ export function usePoll(slug: BoardSlug, q = ''): PollResult {
   const [data, setData] = useState<ListResponse | null>(null);
   const [offlineMock, setOfflineMock] = useState(false);
   const etagRef = useRef<string | undefined>(undefined);
+  // true en cuanto hay algo que pintar — al cambiar `q` NO se regresa a
+  // "loading" ni se dispara el request de inmediato: la lista actual sigue
+  // visible (el filtro client-side ya reacciona por tecla) y el server search
+  // llega con un debounce corto.
+  const hasDataRef = useRef(false);
 
   const load = useCallback(async () => {
     // Pestaña oculta: no gastes requests — al volver, el listener de
@@ -41,6 +46,7 @@ export function usePoll(slug: BoardSlug, q = ''): PollResult {
       if (!res.ok) throw new Error('list failed: ' + res.status);
       const json: ListResponse = await res.json();
       etagRef.current = json.etag;
+      hasDataRef.current = true;
       setData(json);
       setOfflineMock(false);
       setStatus('ready');
@@ -48,6 +54,7 @@ export function usePoll(slug: BoardSlug, q = ''): PollResult {
       if (e instanceof AccessError) { setStatus('denied'); return; }
       const fallback = mockList(slug, q);
       if (fallback) {
+        hasDataRef.current = true;
         setData(fallback);
         setOfflineMock(true);
         setStatus('ready');
@@ -59,12 +66,15 @@ export function usePoll(slug: BoardSlug, q = ''): PollResult {
 
   useEffect(() => {
     etagRef.current = undefined;
-    setStatus('loading');
-    load();
+    // Solo el primer load (sin nada que pintar) muestra "loading"; los cambios
+    // de búsqueda mantienen la lista y llegan con debounce de 300 ms.
+    if (!hasDataRef.current) setStatus('loading');
+    const debounce = window.setTimeout(load, hasDataRef.current ? 300 : 0);
     const timer = window.setInterval(load, 5000);
     const onVisible = () => { if (!document.hidden) load(); };
     document.addEventListener('visibilitychange', onVisible);
     return () => {
+      window.clearTimeout(debounce);
       window.clearInterval(timer);
       document.removeEventListener('visibilitychange', onVisible);
     };
