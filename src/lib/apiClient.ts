@@ -1,12 +1,18 @@
 // Plain (non-hook) typed client for the worker API — see docs/dev-contracts.md.
 import type { BoardSlug } from '../../shared/boards';
 import type {
+  AssistantChatRequest, AssistantChatResponse, AssistantHistoryResponse, AssistantMessage,
   ColMeta, ColVal, CreateResponse, EnviarCosteoResponse, IdentityDTO, ItemDTO, ItemDetailDTO,
-  ListResponse, MeDTO, MondayUserDTO, UpdateDTO, VendedorDTO, WriteResponse,
+  ListResponse, MeDTO, MentionUserDTO, MondayUserDTO, ProyectoActionResponse, ProyectoResponse,
+  QuoteLineInput, QuoteLineSnapshot, QuoteVersionDTO, QuoteVersionRequest, QuoteVersionResponse, QuoteVersionsResponse,
+  UpdateDTO, VendedorDTO, WriteResponse,
 } from '../../shared/dto';
 import { mockBoardMeta, mockItemDetail, mockPatch } from './mockFallback';
 
-export type { BoardSlug, ColMeta, ColVal, IdentityDTO, ItemDTO, ItemDetailDTO, ListResponse, MeDTO, MondayUserDTO, UpdateDTO, VendedorDTO };
+export type {
+  BoardSlug, ColMeta, ColVal, IdentityDTO, ItemDTO, ItemDetailDTO, ListResponse, MeDTO, MentionUserDTO,
+  MondayUserDTO, QuoteLineInput, QuoteLineSnapshot, QuoteVersionDTO, UpdateDTO, VendedorDTO,
+};
 
 export interface BoardMeta { slug: BoardSlug; title: string; cols: ColMeta[] }
 
@@ -35,6 +41,15 @@ export async function getBoards(): Promise<BoardMeta[]> {
   const res = await apiFetch('/boards');
   if (!res.ok) throw new Error('GET /boards failed: ' + res.status);
   return res.json();
+}
+
+/** Catálogo genérico de un board (usado para el picker de producto al agregar una
+ * línea nueva en "Nueva versión"). */
+export async function listItems(slug: BoardSlug, q?: string): Promise<ItemDTO[]> {
+  const res = await apiFetch(`/boards/${slug}/items${q ? `?q=${encodeURIComponent(q)}` : ''}`);
+  if (!res.ok) throw new Error('GET items failed: ' + res.status);
+  const body: ListResponse = await res.json();
+  return body.items;
 }
 
 export async function getItem(slug: BoardSlug, id: string): Promise<ItemDetailDTO> {
@@ -72,12 +87,69 @@ export async function getVendedores(role: 'vendedor' | 'compras' = 'vendedor'): 
   return res.json();
 }
 
-/** Mandar a costeo — el servidor valida las líneas (producto, cantidad, color de
- * la lista) y responde 422 con errores legibles cuando algo falta. */
+/** Pre-chequeo de solo lectura: deshabilita el botón "Mandar a costeo" y lista
+ * lo que falta antes de que alguien pueda dar click. */
+export async function checkCosteo(id: string): Promise<EnviarCosteoResponse> {
+  const res = await apiFetch(`/oportunidades/${id}/costeo-check`);
+  const body: EnviarCosteoResponse = await res.json();
+  if (!res.ok && !body.errors) throw new Error('costeo-check failed: ' + res.status);
+  return body;
+}
+
+/** Mandar a costeo — dispara el flujo real de cmp-tallas (validar_costeo): valida,
+ * snapshotea costos, genera el PDF de solicitud y mueve la etapa a "En costeo".
+ * 422 con errores legibles cuando algo falta. */
 export async function enviarCosteo(id: string): Promise<EnviarCosteoResponse> {
   const res = await apiFetch(`/oportunidades/${id}/enviar-costeo`, { method: 'POST' });
   const body: EnviarCosteoResponse = await res.json();
   if (!res.ok && !body.errors) throw new Error('enviar a costeo failed: ' + res.status);
+  return body;
+}
+
+/** Generar cotización — cmp-tallas genera PDFs con/sin precio, manda a firma
+ * (DocuSeal) y mueve la etapa a "Cotización". */
+export async function generarCotizacion(id: string): Promise<ProyectoActionResponse> {
+  const res = await apiFetch(`/oportunidades/${id}/cotizacion`, { method: 'POST' });
+  const body: ProyectoActionResponse = await res.json();
+  if (!res.ok && !body.reason) throw new Error('generar cotización failed: ' + res.status);
+  return body;
+}
+
+/** Historial de versiones de cotización; [] cuando aún no se generó ninguna. */
+export async function getVersiones(id: string): Promise<QuoteVersionDTO[]> {
+  const res = await apiFetch(`/oportunidades/${id}/versiones`);
+  if (!res.ok) throw new Error('GET versiones failed: ' + res.status);
+  const body: QuoteVersionsResponse = await res.json();
+  return body.versions;
+}
+
+/** Envía un draft de líneas editado — el worker decide si algo cambió respecto a
+ * la vigente; si sí, archiva la vigente actual como versión superada y escribe. */
+export async function submitVersion(id: string, lines: QuoteLineInput[]): Promise<QuoteVersionResponse> {
+  const res = await apiFetch(`/oportunidades/${id}/version`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ lines } satisfies QuoteVersionRequest),
+  });
+  const body: QuoteVersionResponse = await res.json();
+  if (!res.ok && !body.error) throw new Error('submit version failed: ' + res.status);
+  return body;
+}
+
+/** El Proyecto ligado a la oportunidad (con sus subitems de tallas); null si no existe. */
+export async function getProyecto(oppId: string): Promise<ItemDetailDTO | null> {
+  const res = await apiFetch(`/oportunidades/${oppId}/proyecto`);
+  if (!res.ok) throw new Error('GET proyecto failed: ' + res.status);
+  const body: ProyectoResponse = await res.json();
+  return body.proyecto;
+}
+
+export type ProyectoAction = 'tallas-regenerar' | 'tallas-confirmar' | 'tallas-importar' | 'generar-oc';
+
+/** Acciones de cmp-tallas sobre el Proyecto (tallas y órdenes de compra). */
+export async function proyectoAction(proyectoId: string, action: ProyectoAction): Promise<ProyectoActionResponse> {
+  const res = await apiFetch(`/proyectos/${proyectoId}/${action}`, { method: 'POST' });
+  const body: ProyectoActionResponse = await res.json();
+  if (!res.ok && !body.reason) throw new Error(`${action} failed: ` + res.status);
   return body;
 }
 
@@ -109,11 +181,18 @@ export async function getUpdates(slug: BoardSlug, id: string): Promise<UpdateDTO
   return res.json();
 }
 
-export async function postUpdate(slug: BoardSlug, id: string, body: string): Promise<UpdateDTO> {
+export async function postUpdate(slug: BoardSlug, id: string, body: string, mentions?: MentionUserDTO[]): Promise<UpdateDTO> {
   const res = await apiFetch(`/boards/${slug}/items/${id}/updates`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body }),
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body, mentions }),
   });
   if (!res.ok) throw new Error('POST update failed: ' + res.status);
+  return res.json();
+}
+
+/** Full Monday roster for @-tagging in Actualizaciones. */
+export async function getMentionUsers(): Promise<MentionUserDTO[]> {
+  const res = await apiFetch('/users');
+  if (!res.ok) return [];
   return res.json();
 }
 
@@ -135,6 +214,31 @@ export async function getMondayUsers(): Promise<MondayUserDTO[]> {
   const res = await apiFetch('/admin/monday-users');
   if (!res.ok) throw new Error('GET monday-users failed: ' + res.status);
   return res.json();
+}
+
+// Portal chat bubble — same Claude agent/tools as the WhatsApp bot, a second channel.
+export type { AssistantMessage };
+
+export async function getAssistantHistory(): Promise<AssistantMessage[]> {
+  const res = await apiFetch('/assistant/messages');
+  if (!res.ok) throw new Error('GET assistant history failed: ' + res.status);
+  const body: AssistantHistoryResponse = await res.json();
+  return body.messages;
+}
+
+export async function sendAssistantMessage(text: string): Promise<string> {
+  const res = await apiFetch('/assistant/messages', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text } satisfies AssistantChatRequest),
+  });
+  if (!res.ok) throw new Error('POST assistant message failed: ' + res.status);
+  const body: AssistantChatResponse = await res.json();
+  return body.reply;
+}
+
+export async function resetAssistant(): Promise<void> {
+  const res = await apiFetch('/assistant/reset', { method: 'POST' });
+  if (!res.ok) throw new Error('POST assistant reset failed: ' + res.status);
 }
 
 export { mockBoardMeta };

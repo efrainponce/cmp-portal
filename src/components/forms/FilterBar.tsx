@@ -56,7 +56,7 @@ export function FilterBar({
   active, onClear,
 }: FilterBarProps) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
       <FilterSelect label="Vendedor" value={vendedor} onChange={onVendedorChange} options={vendedorOptions} />
       <FilterSelect label="Compras" value={compras} onChange={onComprasChange} options={comprasOptions} />
       {etapaOptions && onEtapaChange && (

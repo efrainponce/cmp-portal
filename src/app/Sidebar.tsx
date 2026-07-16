@@ -3,12 +3,12 @@ import { UserChip } from './UserChip';
 import { useMe } from '../lib/useMe';
 import {
   IconOportunidades, IconCosteo, IconValidacion, IconDocTallas, IconOrdenesCompra, IconLogistica,
-  IconProductos, IconCuentas, IconClientes, IconCollapse, IconExpand, IconSettings,
+  IconProductos, IconCuentas, IconClientes, IconInventario, IconCollapse, IconExpand, IconSettings,
 } from '../components/icons';
 
 export type BoardKey =
   | 'oportunidades' | 'costeo' | 'validacion' | 'doctallas' | 'ordenescompra' | 'logistica'
-  | 'productos' | 'instituciones' | 'contactos' | 'settings';
+  | 'productos' | 'instituciones' | 'contactos' | 'inventario' | 'settings';
 
 type NavIcon = (p: { style?: React.CSSProperties }) => React.ReactElement;
 
@@ -31,6 +31,10 @@ const CATALOG_ITEMS: { key: BoardKey; label: string; icon: NavIcon }[] = [
   { key: 'productos', label: 'Productos', icon: IconProductos },
   { key: 'instituciones', label: 'Instituciones', icon: IconCuentas },
   { key: 'contactos', label: 'Contactos', icon: IconClientes },
+];
+
+const INVENTARIO_ITEMS: { key: BoardKey; label: string; icon: NavIcon }[] = [
+  { key: 'inventario', label: 'Inventario', icon: IconInventario },
 ];
 
 interface SidebarProps {
@@ -96,6 +100,21 @@ export function Sidebar({ activeBoard, onSelectBoard, collapsed, onToggleCollaps
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
         {!collapsed && <SectionLabel color="#7f8f78">Proyectos</SectionLabel>}
         {PROYECTOS_ITEMS.map((item) => (
+          <NavItem
+            key={item.key}
+            icon={<item.icon />}
+            label={item.label}
+            active={activeBoard === item.key}
+            collapsed={collapsed}
+            onClick={() => onSelectBoard(item.key)}
+          />
+        ))}
+      </div>
+
+      <Divider />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        {!collapsed && <SectionLabel color="#a9835a">Inventario</SectionLabel>}
+        {INVENTARIO_ITEMS.map((item) => (
           <NavItem
             key={item.key}
             icon={<item.icon />}

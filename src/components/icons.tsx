@@ -72,6 +72,13 @@ export const IconClientes = (p: IconProps) => (
   </svg>
 );
 
+export const IconInventario = (p: IconProps) => (
+  <svg {...base} {...p}>
+    <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" />
+    <rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" />
+  </svg>
+);
+
 export const IconCollapse = (p: IconProps) => (
   <svg {...base} width={15} height={15} {...p}>
     <rect x="3" y="4" width="18" height="16" rx="2" /><path d="M9 4v16" /><path d="M14.5 9l-2.5 3 2.5 3" />
@@ -112,5 +119,17 @@ export const IconSettings = (p: IconProps) => (
 export const IconUpload = (p: IconProps) => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#918b7c" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}>
     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6" />
+  </svg>
+);
+
+export const IconChat = (p: IconProps) => (
+  <svg {...base} {...p}>
+    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+  </svg>
+);
+
+export const IconSend = (p: IconProps) => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}>
+    <path d="M22 2L11 13" /><path d="M22 2l-7 20-4-9-9-4z" />
   </svg>
 );

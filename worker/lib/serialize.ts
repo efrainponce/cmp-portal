@@ -46,6 +46,7 @@ export function toItemDTO(row: MirrorItem, slug: BoardSlug, role: Role, pendingW
     parentId: row.parent_item_id != null ? String(row.parent_item_id) : undefined,
     group: row.group_id ?? undefined,
     syncedAt: row.synced_at,
+    mondayUpdatedAt: row.monday_updated_at,
     pendingWrite: pendingWrite || undefined,
     cols,
   };

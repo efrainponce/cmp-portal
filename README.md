@@ -1,32 +1,64 @@
-# React + TypeScript + Vite
+# CMP Portal
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Portal interno para Mexicana de Protección (CMP): una UI delgada sobre los boards de
+Monday.com, respaldada por un Cloudflare Worker que sincroniza datos a D1, expone una API
+propia con control de acceso por rol, y corre un bot de WhatsApp para crear
+contactos/oportunidades desde el celular.
 
-Currently, two official plugins are available:
+Ver [log.md](log.md) para el historial de cambios por fecha.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Arquitectura
 
-## React Compiler
+- **Frontend** — React 19 + Vite, servido como assets estáticos por el Worker.
+  Vistas por board (Oportunidades, Costeo, Logística, Órdenes de compra, Validación,
+  Inventario, Documentación de tallas) más un drawer compartido de detalle.
+- **Worker** (`worker/`) — Hono sobre Cloudflare Workers. Expone la API REST que
+  consume el frontend, procesa webhooks de Monday, corre la reconciliación periódica
+  y aloja las rutas del bot de WhatsApp.
+- **D1** — espejo local de los boards de Monday (`worker/schema.sql`). Las lecturas del
+  portal pegan contra D1, no contra Monday directamente.
+- **Outbox** — las escrituras del portal van: UI optimista → D1 → mutación a Monday →
+  eco por webhook → hash canónico → `confirmed`. Nunca se confía ciegamente en el payload
+  del webhook; siempre se hace un refetch.
+- **Shared** (`shared/`) — tipos, DTOs y reglas de visibilidad/campos-escribibles
+  compartidas entre frontend y worker.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Desarrollo
 
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm install
+npm run dev              # Vite dev server (frontend)
+npx wrangler dev --env-file=.dev.vars   # Worker local, sirve la API + assets
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+> ⚠️ Quirk local: si existe un `.env` con `CLOUDFLARE_API_TOKEN`, wrangler lo usa en vez
+> de las credenciales correctas y falla por permisos. Todo comando de wrangler debe
+> incluir `--env-file=.dev.vars`.
+
+Otros scripts:
+
+```bash
+npm run build     # tsc -b && vite build
+npm run lint      # oxlint
+npm run preview   # preview del build de Vite
+```
+
+Scripts de mantenimiento en `scripts/`: `hydrate.mjs` (carga inicial D1),
+`seed-identity.mjs` (roles de usuario), `introspect-boards.mjs` (regenera
+`shared/column-meta.gen.ts` y detecta drift de columnas en Monday),
+`create-webhooks.mjs` (registra webhooks de Monday hacia el Worker).
+
+## Roles y visibilidad
+
+Tres roles: `vendedor`, `compras`, `admin`. Cada vendedor solo ve sus propias
+oportunidades (scoping server-side); columnas de costo/utilidad nunca salen del
+Worker para vendedores. Reglas de visibilidad y campos escribibles viven en
+`shared/visibility.ts`.
+
+## Documentación adicional
+
+- [docs/dev-contracts.md](docs/dev-contracts.md) — contratos de API entre frontend y worker.
+- [docs/monday-column-map.md](docs/monday-column-map.md) — mapeo de columnas de Monday por board.
+- [docs/whatsapp-bot.md](docs/whatsapp-bot.md) — diseño del bot de WhatsApp.
+- [docs/cmp-tallas-endpoint-map.md](docs/cmp-tallas-endpoint-map.md) — integración con las
+  automatizaciones de cmp-tallas (Vercel).

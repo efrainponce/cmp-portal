@@ -56,6 +56,7 @@ function oppToItem(o: Opportunity): ItemDTO {
     name: o.cliente,
     group: o.statusKey,
     syncedAt: new Date(Date.now() - 3 * 60_000).toISOString(),
+    mondayUpdatedAt: new Date(Date.now() - 3 * 60_000).toISOString(),
     cols: {
       name: { text: o.cliente, type: 'text' },
       pulse_id_mm0qcq0m: { text: o.folio, type: 'text' },
@@ -93,6 +94,7 @@ export function mockItemDetail(slug: BoardSlug, id: string): ItemDetailDTO | nul
       name: p.producto,
       parentId: o.id,
       syncedAt: item.syncedAt,
+      mondayUpdatedAt: item.mondayUpdatedAt,
       cols: {
         name: { text: p.producto, type: 'text' },
         text_mm0bxy39: { text: p.sku, type: 'text' },

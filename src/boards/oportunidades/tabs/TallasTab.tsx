@@ -1,9 +1,10 @@
-// Read-only tallas summary per product line — real data is the "Tallas"
-// mirror column (a text summary), not a per-size qty grid; the design's
-// size-breakdown grid and "talla incorrecta" flag have no backing data/write
-// endpoint yet, so they're omitted rather than fabricated.
+// Tallas: arriba el resumen por línea de la cotización (mirror de Oportunidades),
+// abajo la sección del Proyecto ligado — archivo de tallas, acciones cmp-tallas
+// (regenerar/validar/importar) y el desglose real importado a Monday, para que
+// las tallas vivan aquí y no solo en el Excel.
 import type { ColMeta, ItemDTO } from '../../../lib/api';
 import { MonoTag } from '../../../components/core/Badges';
+import { ProyectoTallasSection, type ProyectoState } from '../ProyectoSection';
 
 const NAME_COL = 'lookup_mm0x4kda';
 const SKU_COL = 'lookup_mkzn7x9a';
@@ -27,10 +28,10 @@ function formatTallas(text: string): string {
   }
 }
 
-export function TallasTab({ subCols, products }: { subCols: ColMeta[]; products: ItemDTO[] }) {
+export function TallasTab({ subCols, products, proyecto }: { subCols: ColMeta[]; products: ItemDTO[]; proyecto?: ProyectoState }) {
   const hasTallasCol = subCols.some((c) => c.id === TALLAS_COL);
 
-  if (products.length === 0) {
+  if (products.length === 0 && !proyecto) {
     return (
       <div style={{ padding: '24px 32px 40px', font: 'var(--text-label)', color: 'var(--ink-quiet)' }}>
         Sin líneas de producto registradas.
@@ -62,6 +63,7 @@ export function TallasTab({ subCols, products }: { subCols: ColMeta[]; products:
           </div>
         ))}
       </div>
+      {proyecto && <ProyectoTallasSection state={proyecto} />}
     </div>
   );
 }

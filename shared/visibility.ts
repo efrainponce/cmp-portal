@@ -13,6 +13,7 @@ export interface ColRule { vis: Role[]; w?: Role[] }
 const V: Role[] = ['vendedor', 'compras', 'admin'];   // seller-visible
 const AC: Role[] = ['compras', 'admin'];              // internal: costs, proveedor, ops
 const WV: Role[] = ['vendedor', 'admin'];             // PROPOSED writable set
+const WAC: Role[] = ['compras', 'admin'];             // writable: costeo capture (compras/admin)
 
 const vis = (ids: string[], r: Role[]): Record<string, ColRule> =>
   Object.fromEntries(ids.map(id => [id, { vis: r }]));
@@ -38,20 +39,37 @@ export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
   },
 
   oportunidades_sub: {
-    ...vis(['name', 'text_mm0bkm1j', 'lookup_mm0x4kda', 'lookup_mkzn7x9a',
-      'text_mm0bxy39', 'lookup_mm0xn98d', 'text_mm07s2mg', 'lookup_mm19c0b6',
-      'numeric_mkzm6399', 'lookup_mm0w4f4v', 'lookup_mm0xw8p7', 'color_mm1b34bg',
-      'long_text_mm1bj4pt', 'long_text_mm1hyszv',
-      'numeric_mkzneg3d',                       // Precio de Venta C/U — the point of phase 1
+    ...vis(['name', 'lookup_mm0x4kda', 'lookup_mkzn7x9a',
+      'text_mm0bxy39', 'lookup_mm0xn98d', 'lookup_mm19c0b6',
+      'lookup_mm0w4f4v', 'lookup_mm0xw8p7',
+      'long_text_mm1hyszv',
       'formula_mkznmjh6', 'formula_mm0rtdqp', 'formula_mm00xy0n',
       'color_mm084gvf'], V),
-    ...vis(['lookup_mm11t8gj', 'numeric_mm0bph99', 'numeric_mkzn2q51',
-      'lookup_mm0bdwb5', 'formula_mkznqx51', 'formula_mkzngnjm', 'numeric_mm0rvhgs',
-      'formula_mm0rqjv1', 'numeric_mkzngs9x', 'lookup_mm0bbz02', 'long_text_mm1b9bh8',
-      'numeric_mm0gxvpa', 'formula_mkznpfgg', 'formula_mkznrm5a', 'numeric_mkznpn83',
+    // Precio de Venta C/U — writable by vendedor/admin (Validación Costeo, stage 7).
+    numeric_mkzneg3d: { vis: V, w: WV },
+    // PROPOSED writable 2026-07-15 (versiones de cotización): el vendedor edita
+    // producto/color/cantidad/embellecimiento de una línea — nunca las columnas de
+    // costo (grupo AC/WAC abajo, las llena compras aparte). Pendiente confirmación
+    // de Efraín, mismo patrón que text_mm0gje0 en `oportunidades`.
+    text_mm0bkm1j:        { vis: V, w: WV },   // Producto (texto libre)
+    board_relation_mkzmafgp: { vis: V, w: WV }, // Producto (auto) → Productos; ya probado en createOportunidad.ts
+    text_mm07s2mg:        { vis: V, w: WV },   // Color
+    numeric_mkzm6399:     { vis: V, w: WV },   // Cantidad
+    color_mm1b34bg:       { vis: V, w: WV },   // Embellecimiento (status)
+    long_text_mm1bj4pt:   { vis: V, w: WV },   // Descripción Embellecimientos
+    ...vis(['lookup_mm11t8gj',
+      'lookup_mm0bdwb5', 'formula_mkznqx51', 'formula_mkzngnjm',
+      'formula_mm0rqjv1', 'lookup_mm0bbz02', 'long_text_mm1b9bh8',
+      'formula_mkznpfgg', 'formula_mkznrm5a', 'numeric_mkznpn83',
       'numeric_mm2qzzbe', 'numeric_mkznnm5s', 'formula_mkznsb7m', 'formula_mkznpp33',
       'formula_mkzne7gd', 'formula_mkznry25', 'formula_mkznpw5p', 'formula_mkzn28xk',
       'lookup_mm1tjv9n'], AC),                  // the Costeo view columns
+    // Costeo inputs — writable by compras/admin (Costeo capture, stage 15).
+    numeric_mm0bph99: { vis: AC, w: WAC },   // Costo Distr. C/U
+    numeric_mkzn2q51: { vis: AC, w: WAC },   // Descuento Distr. %
+    numeric_mm0rvhgs: { vis: AC, w: WAC },   // Valor de Conversión
+    numeric_mkzngs9x: { vis: AC, w: WAC },   // Gastos %
+    numeric_mm0gxvpa: { vis: AC, w: WAC },   // Costo Total Embellecimiento C/U
   },
 
   proyectos: {

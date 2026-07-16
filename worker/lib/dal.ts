@@ -90,6 +90,33 @@ export async function childrenOf(env: Env, parentSlug: BoardSlug, itemId: number
   return res.results ?? [];
 }
 
+// El Proyecto ligado a una Oportunidad (Proyectos board_relation_mm0hf0y3 →
+// Oportunidad). Filtra por LIKE sobre el JSON de columnas y verifica en JS que
+// linked_item_ids realmente contenga el id (el LIKE solo es el índice barato).
+// El scoping del viewer aplica igual que en getItem: si el vendedor no está en
+// los authzCols del Proyecto, para él no existe (null, nunca 403).
+const PROYECTO_OPP_REL = 'board_relation_mm0hf0y3';
+
+export async function proyectoForOportunidad(env: Env, oppItemId: number, viewer: Identity): Promise<MirrorItem | null> {
+  const scope = scopeFor('proyectos', viewer);
+  const sql = `SELECT * FROM items WHERE board_id = ? AND columns LIKE ? AND (${scope.where}) LIMIT 20`;
+  const res = await env.DB
+    .prepare(sql)
+    .bind(BOARDS.proyectos.id, `%${oppItemId}%`, ...scope.binds)
+    .all<MirrorItem>();
+
+  for (const row of res.results ?? []) {
+    try {
+      const cols: { id: string; value?: string | null }[] = JSON.parse(row.columns || '[]');
+      const rel = cols.find(c => c.id === PROYECTO_OPP_REL);
+      if (!rel?.value) continue;
+      const ids: unknown[] = (JSON.parse(rel.value) as { linked_item_ids?: unknown[] }).linked_item_ids ?? [];
+      if (ids.some(id => Number(id) === oppItemId)) return row;
+    } catch { /* fila con columns corruptas — se ignora */ }
+  }
+  return null;
+}
+
 export async function etagFor(env: Env, slug: BoardSlug): Promise<string> {
   const board = BOARDS[slug];
   const row = await env.DB

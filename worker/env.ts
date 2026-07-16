@@ -10,7 +10,8 @@ export interface Env {
   CMP_TALLAS_BASE?: string;       // Vercel automations base URL
   CMP_SECRET?: string;            // X-CMP-Secret header for cmp-tallas
 
-  // WhatsApp bot (worker/wa/). All optional: routes 503 politely when unset.
+  // Claude agent, shared by two channels: WhatsApp bot (worker/wa/) and the
+  // portal chat bubble (worker/assistant/). Both reply politely when unset.
   ANTHROPIC_API_KEY?: string;     // Claude API key (Haiku agent)
   ANTHROPIC_BASE_URL?: string;    // dev-only: point the agent at a mock server
   WHATSAPP_TOKEN?: string;        // Meta Graph API access token (system user, permanent)

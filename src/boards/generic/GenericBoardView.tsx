@@ -7,7 +7,7 @@ import { SearchInput } from '../../components/forms/SearchInput';
 import { SyncIndicator } from '../../components/board/SyncIndicator';
 import { Button } from '../../components/core/Button';
 import { IconPlus } from '../../components/icons';
-import { syncStatusFromItems } from '../../lib/syncStatus';
+import { lastMondayUpdateFromItems } from '../../lib/syncStatus';
 import { CreateRecordModal } from './CreateRecordModal';
 import { EditInstitucionModal } from './EditInstitucionModal';
 import type { ItemDTO } from '../../lib/api';
@@ -27,7 +27,7 @@ export function GenericBoardView({ slug, title }: Props) {
   const cols = colForBoard(boards, slug);
   const { status, data, refetch } = usePoll(slug, q);
   const items = data?.items ?? [];
-  const sync = syncStatusFromItems(items);
+  const sync = lastMondayUpdateFromItems(items);
   // Oportunidades también es creatable, pero tiene su propio modal en su board —
   // aquí solo aplican los dos catálogos genéricos.
   const createSlug = slug === 'instituciones' || slug === 'contactos' ? slug : null;
@@ -37,20 +37,20 @@ export function GenericBoardView({ slug, title }: Props) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <div style={{ padding: '26px 32px 16px', borderBottom: '1px solid var(--border)', flex: 'none' }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
-          <div>
-            <div style={{ font: 'var(--text-title)', color: 'var(--ink)' }}>{title}</div>
-            <div style={{ font: 'var(--text-label)', color: 'var(--ink-tertiary)', marginTop: 2 }}>{data?.total ?? items.length} registros</div>
-          </div>
-          <SyncIndicator syncedAt={sync.syncedAt} pending={sync.pending} />
-        </div>
-        <div style={{ marginTop: 14, display: 'flex', gap: 10 }}>
-          <SearchInput value={q} onChange={(e) => setQ(e.target.value)} placeholder={`Buscar en ${title.toLowerCase()}…`} />
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ font: 'var(--text-title)', color: 'var(--ink)' }}>{title}</div>
           {creatable && (
             <Button variant="primary" onClick={() => setCreating(true)}>
               <IconPlus /> {CREATE_LABEL[slug]}
             </Button>
           )}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
+          <div style={{ font: 'var(--text-label)', color: 'var(--ink-tertiary)' }}>{data?.total ?? items.length} registros</div>
+          <SyncIndicator syncedAt={sync.updatedAt} pending={sync.pending} label="actualizado" />
+        </div>
+        <div style={{ marginTop: 14, display: 'flex', gap: 10 }}>
+          <SearchInput value={q} onChange={(e) => setQ(e.target.value)} placeholder={`Buscar en ${title.toLowerCase()}…`} />
         </div>
       </div>
 

@@ -1,7 +1,9 @@
-// Derives the "sincronizado hace X min" + pending-write summary for a list of items.
-export function syncStatusFromItems(items: { syncedAt: string; pendingWrite?: boolean }[]): { syncedAt: string | null; pending: number } {
-  if (items.length === 0) return { syncedAt: null, pending: 0 };
-  const max = items.reduce((m, i) => (i.syncedAt > m ? i.syncedAt : m), items[0].syncedAt);
+// Board-list header: "actualizado hace X min", sourced from Monday's own item.updated_at
+// (not our mirror's synced_at) — the mirror's sync time lives inside the opportunity drawer.
+export function lastMondayUpdateFromItems(items: { mondayUpdatedAt: string | null; pendingWrite?: boolean }[]): { updatedAt: string | null; pending: number } {
+  const withDate = items.filter((i): i is typeof i & { mondayUpdatedAt: string } => !!i.mondayUpdatedAt);
   const pending = items.filter((i) => i.pendingWrite).length;
-  return { syncedAt: max, pending };
+  if (withDate.length === 0) return { updatedAt: null, pending };
+  const max = withDate.reduce((m, i) => (i.mondayUpdatedAt > m ? i.mondayUpdatedAt : m), withDate[0].mondayUpdatedAt);
+  return { updatedAt: max, pending };
 }

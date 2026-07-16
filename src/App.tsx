@@ -1,5 +1,6 @@
 import { lazy, Suspense, useState } from 'react';
 import { Sidebar, type BoardKey } from './app/Sidebar';
+import { ChatBubble } from './components/assistant/ChatBubble';
 
 // Cada vista es su propio chunk — el bundle inicial solo trae Sidebar + la vista
 // activa; las demás se cargan al navegar (misma UI, solo carga diferida).
@@ -10,6 +11,7 @@ const DocTallasBoard = lazy(() => import('./boards/doctallas/DocTallasBoard').th
 const OrdenesCompraBoard = lazy(() => import('./boards/ordenescompra/OrdenesCompraBoard').then((m) => ({ default: m.OrdenesCompraBoard })));
 const LogisticaBoard = lazy(() => import('./boards/logistica/LogisticaBoard').then((m) => ({ default: m.LogisticaBoard })));
 const GenericBoardView = lazy(() => import('./boards/generic/GenericBoardView').then((m) => ({ default: m.GenericBoardView })));
+const InventarioBoard = lazy(() => import('./boards/inventario/InventarioBoard').then((m) => ({ default: m.InventarioBoard })));
 const SettingsPage = lazy(() => import('./app/SettingsPage').then((m) => ({ default: m.SettingsPage })));
 
 function App() {
@@ -35,9 +37,11 @@ function App() {
           {activeBoard === 'productos' && <GenericBoardView slug="productos" title="Productos" />}
           {activeBoard === 'instituciones' && <GenericBoardView slug="instituciones" title="Instituciones" />}
           {activeBoard === 'contactos' && <GenericBoardView slug="contactos" title="Contactos" />}
+          {activeBoard === 'inventario' && <InventarioBoard />}
           {activeBoard === 'settings' && <SettingsPage />}
         </Suspense>
       </div>
+      <ChatBubble />
     </div>
   );
 }

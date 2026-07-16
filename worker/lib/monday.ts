@@ -150,11 +150,41 @@ export async function fetchUpdates(env: Env, itemId: number): Promise<MondayUpda
   return data?.items?.[0]?.updates ?? [];
 }
 
+export interface MentionInput { id: number; nombre: string }
+
+const MONDAY_DOMAIN = 'https://mexicanaproteccion.monday.com'; // single-tenant workspace, fixed
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// Monday's `body` field is HTML — a real @-mention (the kind that fires a
+// notification) has to be this exact anchor shape, verified live against the
+// account's own create_update output (class/data-mention-* are what its
+// renderer keys off, not just the @name text). We splice it in for each
+// mention marker (`@Full Name`) the composer left in the escaped text; any
+// marker that got mangled by editing just falls back to plain "@Name" text.
+function buildUpdateBody(text: string, mentions: MentionInput[]): string {
+  let body = escapeHtml(text);
+  // Longest name first — this account has prefix collisions (e.g. "Efrain Ponce"
+  // vs "Efrain Ponce Salinas"), so the shorter marker must not consume part of
+  // a longer one still waiting to be matched.
+  const sorted = [...mentions].sort((a, b) => b.nombre.length - a.nombre.length);
+  for (const m of sorted) {
+    const marker = `@${escapeHtml(m.nombre)}`;
+    const tag = `<a class="user_mention_editor router" href="${MONDAY_DOMAIN}/users/${m.id}" data-mention-type="User" data-mention-id="${m.id}" target="_blank" rel="noopener noreferrer">${marker}</a>`;
+    body = body.replace(marker, tag);
+  }
+  return body;
+}
+
 /** Post an update (comment) on an item — the portal's channel for solicitudes
- * de pago y avisos, so they land where the rest of the team already works. */
-export async function createUpdate(env: Env, itemId: number, body: string): Promise<MondayUpdate> {
+ * de pago y avisos, so they land where the rest of the team already works.
+ * `mentions` (optional) tags teammates so Monday notifies them directly. */
+export async function createUpdate(env: Env, itemId: number, body: string, mentions: MentionInput[] = []): Promise<MondayUpdate> {
   const query = `mutation($id:ID!,$b:String!){ create_update(item_id:$id,body:$b){ id text_body created_at creator{name} } }`;
-  const data = await gql(env, query, { id: String(itemId), b: body });
+  const finalBody = mentions.length ? buildUpdateBody(body, mentions) : body;
+  const data = await gql(env, query, { id: String(itemId), b: finalBody });
   return data?.create_update;
 }
 
@@ -180,4 +210,19 @@ export async function fetchItem(env: Env, itemId: number): Promise<MondayItem | 
   const raw = data?.items?.[0];
   if (!raw) return null;
   return { ...raw, column_values: normalizeCols(raw.column_values ?? []) };
+}
+
+/** Item + ALL its subitems in one round-trip — for flows where cmp-tallas
+ * rewrites the subitems wholesale (import_tallas) or snapshots columns on them
+ * (validar_costeo) and the mirror must catch up immediately. */
+export async function fetchItemWithSubitems(
+  env: Env,
+  itemId: number,
+): Promise<{ item: MondayItem; subitems: MondayItem[] } | null> {
+  const query = `query($id:[ID!]){ items(ids:$id){ ${ITEM_FIELDS} subitems{ ${ITEM_FIELDS} } } }`;
+  const data = await gql(env, query, { id: [String(itemId)] });
+  const raw = data?.items?.[0];
+  if (!raw) return null;
+  const norm = (it: any): MondayItem => ({ ...it, column_values: normalizeCols(it.column_values ?? []) });
+  return { item: norm(raw), subitems: (raw.subitems ?? []).map(norm) };
 }

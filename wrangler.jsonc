@@ -21,7 +21,8 @@
     "crons": ["0 */6 * * *"]
   },
   "vars": {
-    "ENVIRONMENT": "prod"
+    "ENVIRONMENT": "prod",
+    "CMP_TALLAS_BASE": "https://cmp-tallas.vercel.app"
   },
   "observability": {
     "enabled": true

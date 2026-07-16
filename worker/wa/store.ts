@@ -2,6 +2,7 @@
 // conversation history, and webhook dedupe.
 import type { Env } from '../env';
 import type { Identity } from '../../shared/types';
+import { HISTORY_TTL_MS, trimHistory } from '../lib/conversationHistory';
 
 /** Normalize any phone representation to its last 10 digits (MX national number).
  * WhatsApp sends e.g. "5214771234567"; identity.phone may be stored with or
@@ -44,9 +45,6 @@ export async function alreadyProcessed(env: Env, msgId: string): Promise<boolean
   return false;
 }
 
-const HISTORY_TTL_MS = 24 * 3600_000; // stale conversations restart fresh
-const MAX_MESSAGES = 40;              // hard cap sent to the model
-
 /** Load conversation history (Anthropic MessageParam[] as plain JSON). */
 export async function loadConversation(env: Env, phone: string): Promise<unknown[]> {
   const row = await env.DB.prepare(
@@ -60,20 +58,6 @@ export async function loadConversation(env: Env, phone: string): Promise<unknown
   } catch {
     return [];
   }
-}
-
-/** Trim to the last MAX_MESSAGES, cutting on a plain user text turn so the
- * history never starts with an orphan tool_result (API rejects that). */
-function trimHistory(messages: unknown[]): unknown[] {
-  if (messages.length <= MAX_MESSAGES) return messages;
-  let start = messages.length - MAX_MESSAGES;
-  while (start < messages.length) {
-    const m = messages[start] as { role?: string; content?: unknown };
-    const isPlainUser = m?.role === 'user' && typeof m.content === 'string';
-    if (isPlainUser) break;
-    start++;
-  }
-  return messages.slice(start);
 }
 
 export async function saveConversation(env: Env, phone: string, messages: unknown[]): Promise<void> {

@@ -11,7 +11,7 @@ import { BoardStatus } from '../../components/board/BoardStatus';
 import { SyncIndicator } from '../../components/board/SyncIndicator';
 import { SearchInput } from '../../components/forms/SearchInput';
 import { FilterBar, ALL_VALUE, type FilterOption } from '../../components/forms/FilterBar';
-import { syncStatusFromItems } from '../../lib/syncStatus';
+import { lastMondayUpdateFromItems } from '../../lib/syncStatus';
 import { fmtSyncAgo } from '../../lib/format';
 import { chipFor } from '../../components/board/cellHelpers';
 import { statusIndex } from '../../lib/statusValue';
@@ -73,7 +73,7 @@ export function StageBoardList({ config, groupColId = 'deal_stage', q, onSearch,
   const stageItems = config.stages
     ? allItems.filter((it) => config.stages!.includes(statusIndex(it.cols.deal_stage)))
     : allItems;
-  const sync = syncStatusFromItems(stageItems);
+  const sync = lastMondayUpdateFromItems(stageItems);
 
   // Filter state lives here, not in the wrapper — these three selects only
   // narrow what's already loaded, they never touch the server request.
@@ -114,28 +114,28 @@ export function StageBoardList({ config, groupColId = 'deal_stage', q, onSearch,
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <div style={{ padding: '26px 32px 16px', borderBottom: '1px solid var(--border)', flex: 'none' }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
-          <div>
-            <div style={{ font: 'var(--text-title)', color: 'var(--ink)' }}>{config.title}</div>
-            <div style={{ font: 'var(--text-label)', color: 'var(--ink-tertiary)', marginTop: 2 }}>
-              {items.length} activas{config.subtitleSuffix}
-            </div>
-          </div>
-          <SyncIndicator syncedAt={sync.syncedAt} pending={sync.pending} />
-        </div>
-        <div style={{ marginTop: 14, display: 'flex', gap: 10 }}>
-          <SearchInput value={q} onChange={(e) => onSearch(e.target.value)} placeholder="Buscar cliente, vendedor o compras…" />
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ font: 'var(--text-title)', color: 'var(--ink)' }}>{config.title}</div>
           {headerAction}
         </div>
-        <FilterBar
-          vendedor={vendedorFilter} onVendedorChange={setVendedorFilter} vendedorOptions={vendedorOptions}
-          compras={comprasFilter} onComprasChange={setComprasFilter} comprasOptions={comprasOptions}
-          etapa={showEtapaFilter ? etapaFilter : undefined}
-          onEtapaChange={showEtapaFilter ? setEtapaFilter : undefined}
-          etapaOptions={showEtapaFilter ? etapaOptions : undefined}
-          active={hasActiveFilters}
-          onClear={clearFilters}
-        />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
+          <div style={{ font: 'var(--text-label)', color: 'var(--ink-tertiary)' }}>
+            {items.length} activas{config.subtitleSuffix}
+          </div>
+          <SyncIndicator syncedAt={sync.updatedAt} pending={sync.pending} label="actualizado" />
+        </div>
+        <div style={{ marginTop: 14, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <SearchInput value={q} onChange={(e) => onSearch(e.target.value)} placeholder="Buscar cliente, vendedor o compras…" />
+          <FilterBar
+            vendedor={vendedorFilter} onVendedorChange={setVendedorFilter} vendedorOptions={vendedorOptions}
+            compras={comprasFilter} onComprasChange={setComprasFilter} comprasOptions={comprasOptions}
+            etapa={showEtapaFilter ? etapaFilter : undefined}
+            onEtapaChange={showEtapaFilter ? setEtapaFilter : undefined}
+            etapaOptions={showEtapaFilter ? etapaOptions : undefined}
+            active={hasActiveFilters}
+            onClear={clearFilters}
+          />
+        </div>
       </div>
 
       <div style={{ overflowY: 'auto', padding: '16px 0 24px', flex: 1 }}>
