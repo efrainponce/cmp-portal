@@ -10,7 +10,7 @@ import { ConfirmButton } from '../../components/core/ConfirmButton';
 import { IconBack, IconEdit, IconLink } from '../../components/icons';
 import { SyncIndicator } from '../../components/board/SyncIndicator';
 import {
-  useBoards, colForBoard, checkCosteo, enviarCosteo, generarCotizacion, getItemDetail, getVersiones,
+  useBoards, colForBoard, checkCosteo, enviarCosteo, enviarValidacion, generarCotizacion, getItemDetail, getVersiones,
   refreshItem, type ItemDetailDTO, type QuoteVersionDTO,
 } from '../../lib/api';
 import { statusIndex } from '../../lib/statusValue';
@@ -164,6 +164,21 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey 
     }
   };
 
+  const onEnviarValidacion = async () => {
+    setNotice(null);
+    try {
+      const res = await enviarValidacion(id);
+      if (res.ok) {
+        setNotice({ kind: 'ok', title: 'Mandado a validación de costeo', lines: ['La etapa pasó a "Costeo en validación".'] });
+        load();
+      } else {
+        setNotice({ kind: 'error', title: 'No se pudo mandar a validación:', lines: res.errors ?? ['No se pudo mandar a validación de costeo.'] });
+      }
+    } catch {
+      setNotice({ kind: 'error', title: 'No se pudo mandar a validación:', lines: ['Verifica tu conexión.'] });
+    }
+  };
+
   const onGenerarCotizacion = async () => {
     setNotice(null);
     try {
@@ -193,11 +208,20 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey 
     : (tab === 'ordenes' || tab === 'logistica') && !showProyectos ? 'cotizacion'
     : tab;
   const cotizacionVariant = boardKey && COSTEO_VARIANT_BOARDS.includes(boardKey) ? 'costeo' : 'venta';
+  // Board Costeo = solo lectura para producto/color/cantidad/embellecimiento y
+  // nuevos productos (trabajo de Ventas en Oportunidades); Compras solo captura
+  // costos + Etapa Costeo y avanza a Validación (Efraín, 2026-07-16).
+  const readOnlyCosteo = boardKey === 'costeo';
+  const isValidacion = boardKey === 'validacion';
+  // Board Validación Costeo = lo ÚNICO editable es Precio de Venta; todo lo
+  // demás (líneas, embellecimientos, nuevos productos, costos) es solo lectura
+  // (Efraín, 2026-07-16).
+  const noLineEdits = readOnlyCosteo || isValidacion;
 
   // Generar cotización (etapa 7): cmp-tallas la omite si ningún producto tiene
   // precio — mejor deshabilitar el botón desde aquí con la razón visible.
   const hasPrecio = products.some(p => (Number((p.cols[PRECIO_COL]?.text ?? '').replace(/,/g, '')) || 0) > 0);
-  const costeoPending = stage === '4' && costeoReady !== null && !costeoReady.ok;
+  const costeoPending = stage === '4' && !readOnlyCosteo && costeoReady !== null && !costeoReady.ok;
 
   return (
     <div style={{ position: 'absolute', inset: 0, background: 'var(--bg)', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
@@ -233,7 +257,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey 
           </div>
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
-          {stage === '4' && (
+          {stage === '4' && !readOnlyCosteo && (
             <ConfirmButton
               label="Mandar a costeo"
               confirmLabel="¿Enviar solicitud de costeo?"
@@ -241,6 +265,15 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey 
               disabled={costeoReady === null || !costeoReady.ok}
               title={costeoReady === null ? 'Verificando requisitos…' : !costeoReady.ok ? 'Faltan requisitos — revisa la lista abajo' : 'Genera el PDF de solicitud y pasa a "En costeo"'}
               onConfirm={onEnviarCosteo}
+            />
+          )}
+          {stage === '15' && readOnlyCosteo && (
+            <ConfirmButton
+              label="Mandar a Validación de costeo"
+              confirmLabel="¿Mandar a validación de costeo?"
+              busyLabel="Mandando a validación…"
+              title="Pasa la etapa a 'Costeo en validación'"
+              onConfirm={onEnviarValidacion}
             />
           )}
           {stage === '7' && (
@@ -296,20 +329,23 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey 
         <CotizacionTab
           subCols={subCols} products={products} variant={cotizacionVariant} onSaved={load} versions={versions}
           editable={stage !== '1' && stage !== '2'}
-          onNuevaVersion={stage !== '1' && stage !== '2' && stage !== '4' ? () => setShowNuevaVersion(true) : undefined}
+          onNuevaVersion={stage !== '1' && stage !== '2' && stage !== '4' && !noLineEdits ? () => setShowNuevaVersion(true) : undefined}
           stage={stage}
           oppId={id}
           item={item}
+          readOnly={readOnlyCosteo}
+          precioOnly={isValidacion}
         />
       )}
       {activeTab === 'embellecimientos' && (
         <EmbellecimientosTab
           subCols={subCols} products={products} versions={versions} onSaved={load}
           editable={stage !== '1' && stage !== '2'}
-          onNuevaVersion={stage !== '1' && stage !== '2' && stage !== '4' ? () => setShowNuevaVersion(true) : undefined}
+          onNuevaVersion={stage !== '1' && stage !== '2' && stage !== '4' && !noLineEdits ? () => setShowNuevaVersion(true) : undefined}
+          readOnly={noLineEdits}
         />
       )}
-      {activeTab === 'nuevosproductos' && <NuevosProductosTab />}
+      {activeTab === 'nuevosproductos' && <NuevosProductosTab readOnly={noLineEdits} />}
       {activeTab === 'documentacion' && <DocumentacionTab item={item} />}
       {activeTab === 'tallas' && <TallasTab subCols={subCols} products={products} proyecto={showPostventa ? proyecto : undefined} />}
       {activeTab === 'ordenes' && (

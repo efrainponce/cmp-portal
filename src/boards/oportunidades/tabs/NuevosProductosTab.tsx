@@ -25,7 +25,7 @@ const ImageIcon = ({ size = 16, color = '#918b7c' }: { size?: number; color?: st
   </svg>
 );
 
-export function NuevosProductosTab() {
+export function NuevosProductosTab({ readOnly = false }: { readOnly?: boolean }) {
   const [nombre, setNombre] = useState('');
   const [descripcion, setDescripcion] = useState('');
   const [imageUrl, setImageUrl] = useState<string | undefined>();
@@ -50,43 +50,45 @@ export function NuevosProductosTab() {
 
   return (
     <div style={{ padding: '24px 32px 40px', maxWidth: 920, width: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 20 }}>
-      <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-2xl)', background: 'var(--bg-raised)', padding: 20 }}>
-        <div style={{ font: 'var(--text-body-strong)', color: 'var(--ink)', marginBottom: 16 }}>Proponer nuevo producto</div>
+      {!readOnly && (
+        <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-2xl)', background: 'var(--bg-raised)', padding: 20 }}>
+          <div style={{ font: 'var(--text-body-strong)', color: 'var(--ink)', marginBottom: 16 }}>Proponer nuevo producto</div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <Field label="Producto">
-            <input value={nombre} onChange={(e) => setNombre(e.target.value)} style={fieldStyle} placeholder="Nombre del producto" />
-          </Field>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <Field label="Producto">
+              <input value={nombre} onChange={(e) => setNombre(e.target.value)} style={fieldStyle} placeholder="Nombre del producto" />
+            </Field>
 
-          <Field label="Descripción de nuevo producto">
-            <textarea
-              value={descripcion}
-              onChange={(e) => setDescripcion(e.target.value)}
-              rows={4}
-              style={{ ...fieldStyle, resize: 'vertical' }}
-              placeholder="Describe el producto, características y por qué lo propones…"
-            />
-          </Field>
+            <Field label="Descripción de nuevo producto">
+              <textarea
+                value={descripcion}
+                onChange={(e) => setDescripcion(e.target.value)}
+                rows={4}
+                style={{ ...fieldStyle, resize: 'vertical' }}
+                placeholder="Describe el producto, características y por qué lo propones…"
+              />
+            </Field>
 
-          <Field label="Imagen">
-            <label style={{
-              display: 'flex', alignItems: 'center', gap: 10, border: '1px dashed var(--ink-faint)', borderRadius: 'var(--radius-lg)',
-              padding: '10px 12px', cursor: 'pointer', background: 'var(--bg)',
-            }}>
-              <ImageIcon />
-              <span style={{ font: 'var(--text-label)', color: 'var(--ink-secondary)' }}>{imageUrl ? 'Imagen seleccionada — cambiar' : 'Subir imagen'}</span>
-              <input type="file" accept="image/*" onChange={onImageChange} style={{ display: 'none' }} />
-            </label>
-            {imageUrl && (
-              <img src={imageUrl} alt="" style={{ marginTop: 10, maxHeight: 120, borderRadius: 'var(--radius-lg)', border: '1px solid var(--border)' }} />
-            )}
-          </Field>
+            <Field label="Imagen">
+              <label style={{
+                display: 'flex', alignItems: 'center', gap: 10, border: '1px dashed var(--ink-faint)', borderRadius: 'var(--radius-lg)',
+                padding: '10px 12px', cursor: 'pointer', background: 'var(--bg)',
+              }}>
+                <ImageIcon />
+                <span style={{ font: 'var(--text-label)', color: 'var(--ink-secondary)' }}>{imageUrl ? 'Imagen seleccionada — cambiar' : 'Subir imagen'}</span>
+                <input type="file" accept="image/*" onChange={onImageChange} style={{ display: 'none' }} />
+              </label>
+              {imageUrl && (
+                <img src={imageUrl} alt="" style={{ marginTop: 10, maxHeight: 120, borderRadius: 'var(--radius-lg)', border: '1px solid var(--border)' }} />
+              )}
+            </Field>
 
-          <div>
-            <Button variant="primary" onClick={addProduct}>Agregar producto</Button>
+            <div>
+              <Button variant="primary" onClick={addProduct}>Agregar producto</Button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       <div>
         <div style={{

@@ -5,10 +5,12 @@
 // embellecimiento, PDF de solicitud de costeo, deal_stage→"En costeo" o rechazo
 // automático). El portal ya no cambia el stage por su cuenta — es 100% el mismo
 // flujo que el botón "Solicitar costeo" de Monday.
+import type { ExecutionContext } from 'hono';
 import type { Env } from '../env';
 import type { Identity, MirrorItem } from '../../shared/types';
 import { getItem, childrenOf } from './dal';
 import { validarCosteo } from './automations';
+import { submitWrite } from './outbox';
 import type { RawCol } from './serialize';
 
 // Oportunidades subitems (18395657607) — ids de docs/monday-column-map.md.
@@ -26,6 +28,13 @@ const STAGE_BLOCKED: Record<string, string> = {
   '15': 'La oportunidad ya está en costeo.',
   '7': 'La oportunidad ya está en validación de costeo.',
 };
+
+// Costeo (15) → Costeo en validación (7): sin endpoint de cmp-tallas para este
+// paso (docs/cmp-tallas-endpoint-map.md — "sin endpoint, cambio de stage
+// manual"), así que el portal escribe deal_stage directo, sin el gate de
+// canWrite (Efraín 2026-07-16: avance manual de Compras, sin validación extra).
+const STAGE_EN_COSTEO = '15';
+const DEAL_STAGE_VALIDACION_LABEL = 'Costeo en validación';
 
 export class CosteoError extends Error {
   status: number;
@@ -154,4 +163,30 @@ export async function enviarACosteo(
   const errors = checksToErrors(res.checks);
   if (typeof res.reason === 'string' && res.reason) errors.push(res.reason);
   return { ok: false, errors: errors.length ? errors : ['La solicitud de costeo fue rechazada. Revisa el update en Monday.'] };
+}
+
+/** "Mandar a Validación de costeo" — botón de Compras en el board Costeo (etapa
+ * 15). Sin validación de líneas (a diferencia de enviarACosteo): Compras decide
+ * cuándo terminó de costear. */
+export async function enviarAValidacion(
+  env: Env,
+  ctx: ExecutionContext,
+  itemId: number,
+  viewer: Identity,
+): Promise<EnviarCosteoResult> {
+  const item = await getItem(env, 'oportunidades', itemId, viewer);
+  if (!item) throw new CosteoError(404, 'not found');
+
+  const cols = colsOf(item);
+  const stageCol = cols.get('deal_stage');
+  let stageIndex = '';
+  try {
+    stageIndex = String((JSON.parse(stageCol?.value ?? 'null') as { index?: unknown })?.index ?? '');
+  } catch { /* value optimista o vacío — no bloquea */ }
+  if (stageIndex !== STAGE_EN_COSTEO) {
+    return { ok: false, errors: ['La oportunidad no está en "En costeo".'] };
+  }
+
+  await submitWrite(env, ctx, 'oportunidades', itemId, { deal_stage: DEAL_STAGE_VALIDACION_LABEL }, viewer, { trusted: true });
+  return { ok: true };
 }

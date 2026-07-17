@@ -25,7 +25,7 @@ import {
   generateCotizacion, generateSheet, confirmTallas, importTallas, generateOC,
   AutomationError,
 } from './lib/automations';
-import { enviarACosteo, checkCosteo, CosteoError, type EnviarCosteoResult } from './lib/costeo';
+import { enviarACosteo, enviarAValidacion, checkCosteo, CosteoError, type EnviarCosteoResult } from './lib/costeo';
 import { listVersions, submitVersion, recordFirstVersion, QuoteVersionError } from './lib/quoteVersions';
 import { fetchUpdates, createUpdate, createSubitem } from './lib/monday';
 import { cachedFetchUsers } from './lib/rosterCache';
@@ -321,6 +321,25 @@ app.post('/api/oportunidades/:id/enviar-costeo', async c => {
   } catch (err) {
     if (err instanceof CosteoError) return jsonStatus({ ok: false, errors: [err.message] }, err.status);
     if (err instanceof AutomationError) return jsonStatus({ ok: false, errors: [err.message] }, err.status);
+    if (err instanceof OutboxError) return jsonStatus({ ok: false, errors: [err.message] }, err.status);
+    return jsonStatus({ ok: false, errors: ['internal error'] }, 500);
+  }
+});
+
+// Mandar a Validación de costeo = avance manual de Compras (etapa 15→7), sin
+// automatización de cmp-tallas de por medio (no existe endpoint para este
+// paso — docs/cmp-tallas-endpoint-map.md).
+app.post('/api/oportunidades/:id/enviar-validacion', async c => {
+  const itemId = Number(c.req.param('id'));
+  if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
+  const viewer = c.get('viewer');
+  if (viewer.role !== 'compras' && viewer.role !== 'admin') return c.json({ error: 'forbidden' }, 403);
+
+  try {
+    const result = await enviarAValidacion(c.env, c.executionCtx, itemId, viewer);
+    return result.ok ? c.json(result) : jsonStatus(result, 422);
+  } catch (err) {
+    if (err instanceof CosteoError) return jsonStatus({ ok: false, errors: [err.message] }, err.status);
     if (err instanceof OutboxError) return jsonStatus({ ok: false, errors: [err.message] }, err.status);
     return jsonStatus({ ok: false, errors: ['internal error'] }, 500);
   }

@@ -15,7 +15,7 @@ export function CosteoBoard({ openId, onOpenChange }: Props) {
 
   return (
     <div style={{ position: 'relative', height: '100%', width: '100%' }}>
-      {!openId && <StageBoardList config={CONFIG} groupColId="lookup_mm087at6" q={q} onSearch={setQ} onOpen={onOpenChange} />}
+      {!openId && <StageBoardList config={CONFIG} q={q} onSearch={setQ} onOpen={onOpenChange} />}
       {openId && (
         <OpportunityDrawer
           id={openId}

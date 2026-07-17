@@ -26,6 +26,41 @@ import { latestFileUrl, NO_FIRMADAS_COL, FIRMADAS_COL } from './DocumentacionTab
 
 const COSTO_DISTR_COL = 'numeric_mm0bph99';
 const ETAPA_COSTEO_COL = 'color_mm084gvf';
+const SUGERIDO_COL = 'numeric_mm2qzzbe';       // P. venta sugerido (auto) — vacío en muchas líneas
+const MARGEN_COL = 'formula_mkznpw5p';         // Margen % (utilidad/subtotal)
+const SUBTOTAL_COL = 'formula_mkznmjh6';
+const IVA_COL = 'formula_mm0rtdqp';
+const TOTAL_CON_IVA_COL = 'formula_mm00xy0n';
+const COSTO_TOTAL_ROW_COL = 'formula_mkznrm5a';   // Costo Total de la línea (costoTotalUnit × cantidad)
+const UTILIDAD_TOTAL_COL = 'formula_mkznry25';    // Utilidad Total de la línea
+
+// Rojo <0%, amarillo <20%, verde ≥20% — mismo criterio para una línea o para
+// el total agregado (Efraín, 2026-07-16).
+function marginColor(pct: number): string {
+  if (pct < 0) return '#ce3048';
+  if (pct < 20) return '#e99729';
+  return '#00b461';
+}
+
+// Lee el valor numérico de una columna para una fila, con el mismo criterio de
+// prioridad preview-primero que el resto del tab (preview = recién editado
+// localmente, antes de que el refetch confirme el valor real de Monday).
+function numFrom(state: RowEditState, product: ItemDTO, colId: string): number {
+  const v = state.preview[colId] ?? product.cols[colId];
+  const n = Number(v?.value ?? v?.text);
+  return Number.isFinite(n) ? n : 0;
+}
+
+// Cuando cmp-tallas todavía no generó el Precio de Venta sugerido (columna
+// vacía), se ofrece un fallback calculado con la misma fórmula de Margen que
+// ya usa el resto del tab: Margen% = 1 − MargenGob% − CostoTotalC/U/Precio.
+// Se despeja Precio para Margen% = 23 — un ancla útil mientras compras decide
+// el precio real (Efraín, 2026-07-16).
+function suggestedPrecio23(costoTotalUnit: number, margenGobPct: number): number | undefined {
+  const denom = 1 - 0.23 - margenGobPct / 100;
+  if (denom <= 0 || costoTotalUnit <= 0) return undefined;
+  return costoTotalUnit / denom;
+}
 
 const PRODUCTO_COL = 'lookup_mm0x4kda';        // mirror del producto ligado — solo lectura directa
 const PRODUCTO_TXT_COL = 'text_mm0bkm1j';      // Producto (texto libre) — fallback sin catálogo
@@ -48,11 +83,11 @@ const EMB_LABEL_SIN = 'Sin Embellecimiento';
 // En otras etapas: esos cambios SOLO vía "Nueva versión" (archivable, dispara costeo).
 // Precio: NUNCA editable por vendedor (solo vía cmp-tallas costeo/admin).
 // Costos: solo compras/admin.
-function inlineEditableCols(stage: string | undefined): Set<string> {
+function inlineEditableCols(stage: string | undefined, allowLineEdits: boolean): Set<string> {
   const base = new Set<string>([
-    COL.costoDistr, COL.descuentoPct, COL.conversion, COL.gastosPct,
+    COL.costoDistr, COL.descuentoPct, COL.conversion, COL.gastosPct, COL.margenGobPct, ETAPA_COSTEO_COL,
   ]);
-  if (stage === '4') { // Nueva oportunidad
+  if (stage === '4' && allowLineEdits) { // Nueva oportunidad
     base.add(PRODUCTO_COL);
     base.add(COLOR_COL);
     base.add(COL.cantidad);
@@ -286,7 +321,9 @@ const GRID_COLS_COSTEO: GridCol[] = [
   { id: 'numeric_mkzngs9x', label: 'Gastos %', align: 'right', kind: 'percent' },
   { id: 'numeric_mm0gxvpa', label: 'Costo embell. C/U', align: 'right', kind: 'money' },
   { id: 'formula_mkznpfgg', label: 'Costo total C/U', align: 'right', kind: 'money' },
+  { id: 'numeric_mm2qzzbe', label: 'P. venta sugerido', align: 'right', kind: 'money' },
   { id: 'numeric_mkzneg3d', label: 'P. venta', align: 'right', kind: 'money' },
+  { id: 'numeric_mkznnm5s', label: 'Margen Gob %', align: 'right', kind: 'percent' },
   { id: 'formula_mkznpw5p', label: 'Margen', align: 'right', kind: 'percent' },
 ];
 
@@ -326,7 +363,7 @@ function cellValue(col: GridCol, val?: ColVal): string {
 
 const inputStyle: React.CSSProperties = {
   width: '100%', font: 'var(--text-label)', color: 'var(--ink)',
-  border: '1px solid var(--border)', borderRadius: 6, padding: '3px 6px',
+  border: '1px solid var(--border)', borderRadius: 6, padding: '6px 9px',
   textAlign: 'right', boxSizing: 'border-box',
 };
 
@@ -347,8 +384,75 @@ interface RowEditState {
 
 const EMPTY_ROW: RowEditState = { editing: {}, preview: {}, saving: {} };
 
+/** Fila de totales alineada a la misma grid de columnas que el header/filas —
+ * cada total cae exactamente debajo de su columna en vez de una barra aparte
+ * (Efraín 2026-07-16: "los quiero abajo de cada columna"). Suma lo que ya
+ * trae cada línea (Monday ya calculó subtotal/IVA/costo/utilidad por fila;
+ * aquí solo se agregan); el Margen total es ponderado (utilidad total /
+ * subtotal total), no el promedio simple de cada fila. Las columnas sin un
+ * total con sentido (SKU, Etapa costeo, Moneda, C/U de costo…) quedan vacías. */
+function TotalsRow({ variant, visibleCols, products, rows }: {
+  variant: 'venta' | 'costeo'; visibleCols: GridCol[]; products: ItemDTO[]; rows: Record<string, RowEditState>;
+}) {
+  let cantidad = 0, subtotal = 0, iva = 0, totalConIva = 0, costoTotal = 0, utilidadTotal = 0, margenGobTotal = 0;
+  for (const p of products) {
+    const state = rows[p.id] ?? EMPTY_ROW;
+    cantidad += numFrom(state, p, COL.cantidad);
+    subtotal += numFrom(state, p, SUBTOTAL_COL);
+    iva += numFrom(state, p, IVA_COL);
+    totalConIva += numFrom(state, p, TOTAL_CON_IVA_COL);
+    costoTotal += numFrom(state, p, COSTO_TOTAL_ROW_COL);
+    utilidadTotal += numFrom(state, p, UTILIDAD_TOTAL_COL);
+    margenGobTotal += numFrom(state, p, COL.margenGobTotal);
+  }
+  const margenPct = subtotal > 0 ? (utilidadTotal / subtotal) * 100 : 0;
+  // Igual que Margen: ponderado sobre el subtotal total, no el promedio simple
+  // del % de cada fila.
+  const margenGobPct = subtotal > 0 ? (margenGobTotal / subtotal) * 100 : 0;
+
+  // colId -> { value, color? } — costeo reusa la posición de las columnas
+  // "…C/U" (per-unit) para mostrar el gran total, ya que la grid no tiene una
+  // columna de total de línea aparte.
+  const byCol: Record<string, { value: string; color?: string }> =
+    variant === 'venta'
+      ? {
+          [COL.cantidad]: { value: String(cantidad) },
+          [SUBTOTAL_COL]: { value: fmtMoney(subtotal) },
+          [IVA_COL]: { value: fmtMoney(iva) },
+          [TOTAL_CON_IVA_COL]: { value: fmtMoney(totalConIva) },
+        }
+      : {
+          [COL.cantidad]: { value: String(cantidad) },
+          [COL.costoTotalUnit]: { value: fmtMoney(costoTotal) },
+          [COL.precio]: { value: fmtMoney(subtotal) },
+          [COL.margenGobPct]: { value: `${margenGobPct.toFixed(1)}%` },
+          [MARGEN_COL]: { value: `${margenPct.toFixed(1)}%`, color: marginColor(margenPct) },
+        };
+
+  return (
+    <div style={{
+      display: 'grid', gridTemplateColumns: `1.8fr ${visibleCols.slice(1).map(() => '1fr').join(' ')}`,
+      gap: 14, alignItems: 'center', padding: '12px 16px', background: 'var(--bg-sunken)',
+      borderTop: '2px solid var(--border)',
+    }}>
+      {visibleCols.map((c, idx) => (
+        <div
+          key={c.id}
+          style={{
+            textAlign: c.align, font: 'var(--text-body-strong)',
+            color: byCol[c.id]?.color ?? 'var(--ink)',
+          }}
+        >
+          {idx === 0 ? 'TOTAL' : (byCol[c.id]?.value ?? '')}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function CotizacionTab({
   subCols, products, variant = 'venta', onSaved, versions = [], onNuevaVersion, editable = true, stage, oppId, item,
+  readOnly = false, precioOnly = false,
 }: {
   subCols: ColMeta[]; products: ItemDTO[]; variant?: 'venta' | 'costeo'; onSaved?: () => void;
   versions?: QuoteVersionDTO[]; onNuevaVersion?: () => void;
@@ -360,6 +464,14 @@ export function CotizacionTab({
   oppId?: string;
   /** Trae las columnas de archivo de cotización (sin firmar/firmada) para las miniaturas de PDF. */
   item?: ItemDetailDTO;
+  /** true en el board Costeo — solo lectura para producto/color/cantidad/embellecimiento
+   * y "Agregar línea" (eso es trabajo de Ventas en Oportunidades); costos y Etapa
+   * Costeo se mantienen editables. */
+  readOnly?: boolean;
+  /** true en el board Validación Costeo — lo ÚNICO editable en la grid es Precio
+   * de Venta; costos, Etapa Costeo y todo lo demás quedan de solo lectura
+   * (Efraín, 2026-07-16). Tiene prioridad sobre `readOnly`. */
+  precioOnly?: boolean;
 }) {
   const [selectedVersionId, setSelectedVersionId] = useState<number | null>(null);
   const selectedVersion = selectedVersionId != null ? versions.find((v) => v.id === selectedVersionId) : undefined;
@@ -369,7 +481,7 @@ export function CotizacionTab({
   const gridCols = variant === 'costeo' ? GRID_COLS_COSTEO : GRID_COLS_VENTA;
   const visibleCols = gridCols.filter((gc) => subCols.some((c) => c.id === gc.id));
   const writableIds = new Set(subCols.filter((c) => c.w).map((c) => c.id));
-  const editableCols = inlineEditableCols(stage);
+  const editableCols = precioOnly ? new Set<string>([COL.precio]) : inlineEditableCols(stage, !readOnly);
 
   const [rows, setRows] = useState<Record<string, RowEditState>>({});
   const [creatingLine, setCreatingLine] = useState(false);
@@ -382,8 +494,8 @@ export function CotizacionTab({
   // inline (Nueva oportunidad), para el datalist y para resolver el nombre
   // tecleado a un item_id real (board_relation_mkzmafgp, igual que NuevaVersionForm).
   useEffect(() => {
-    if (stage === '4' && editable) listItems('productos').then(setCatalog).catch(() => {});
-  }, [stage, editable]);
+    if (stage === '4' && editable && !readOnly && !precioOnly) listItems('productos').then(setCatalog).catch(() => {});
+  }, [stage, editable, readOnly, precioOnly]);
 
   const onAddLine = async () => {
     if (!oppId) return;
@@ -503,6 +615,31 @@ export function CotizacionTab({
     onSaved?.();
   };
 
+  // Etapa Costeo — dropdown que compras usa para marcar dónde va el costeo de
+  // esta línea (No iniciado/En curso/Listo/Detenido/Modificado).
+  const onEtapaCosteoChange = async (product: ItemDTO, label: string) => {
+    if (!label) return;
+    const state = rowState(product.id);
+    const current = product.cols[ETAPA_COSTEO_COL]?.text ?? '';
+    if (label === current) return;
+    patchRow(product.id, { saving: { ...state.saving, [ETAPA_COSTEO_COL]: true }, error: undefined });
+    try {
+      await patchItem('oportunidades_sub', product.id, { [ETAPA_COSTEO_COL]: label });
+    } catch (e) {
+      const after = rowState(product.id);
+      const saving = { ...after.saving };
+      delete saving[ETAPA_COSTEO_COL];
+      patchRow(product.id, { saving, error: e instanceof Error ? e.message : 'No se pudo guardar.' });
+      return;
+    }
+    const after = rowState(product.id);
+    const saving = { ...after.saving };
+    delete saving[ETAPA_COSTEO_COL];
+    const preview = { ...after.preview, [ETAPA_COSTEO_COL]: { text: label, type: 'status' } };
+    patchRow(product.id, { saving, preview });
+    onSaved?.();
+  };
+
   // Al elegir un producto del catálogo escribe la relación real
   // (board_relation_mkzmafgp) — Monday puebla el mirror (lookup_mm0x4kda,
   // SKU, Marca…) solo. Sin match en catálogo, cae a texto libre
@@ -566,7 +703,7 @@ export function CotizacionTab({
         <div style={{ font: 'var(--text-label)', color: 'var(--ink-quiet)', marginBottom: 16 }}>
           Sin líneas de producto registradas.
         </div>
-        {stage === '4' && editable && (
+        {stage === '4' && editable && !readOnly && !precioOnly && (
           <Button
             variant="primary"
             onClick={creatingLine ? undefined : onAddLine}
@@ -587,10 +724,10 @@ export function CotizacionTab({
         {catalog.map((p) => <option key={p.id} value={p.name} />)}
       </datalist>
       <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: 'var(--radius-xl)' }}>
-        <div style={variant === 'costeo' ? { minWidth: 900 } : undefined}>
+        <div style={variant === 'costeo' ? { minWidth: 1360 } : undefined}>
           <div style={{
-            display: 'grid', gridTemplateColumns: `1.6fr ${visibleCols.slice(1).map(() => '.85fr').join(' ')}`,
-            padding: '9px 14px', background: 'var(--bg-sunken)', font: '700 9.5px \'Inter\', sans-serif',
+            display: 'grid', gridTemplateColumns: `1.8fr ${visibleCols.slice(1).map(() => '1fr').join(' ')}`,
+            gap: 14, padding: '10px 16px', background: 'var(--bg-sunken)', font: '700 9.5px \'Inter\', sans-serif',
             color: 'var(--ink-tertiary)', textTransform: 'uppercase', letterSpacing: '.3px',
           }}>
             {visibleCols.map((c) => (
@@ -602,8 +739,8 @@ export function CotizacionTab({
             return (
               <div key={p.id} style={{ borderTop: '1px solid var(--border-subtle)', background: '#fff' }}>
                 <div style={{
-                  display: 'grid', gridTemplateColumns: `1.6fr ${visibleCols.slice(1).map(() => '.85fr').join(' ')}`,
-                  alignItems: 'center', padding: '9px 14px',
+                  display: 'grid', gridTemplateColumns: `1.8fr ${visibleCols.slice(1).map(() => '1fr').join(' ')}`,
+                  gap: 14, alignItems: 'center', padding: '12px 16px',
                 }}>
                   {visibleCols.map((c, idx) => {
                     // lookup_mm0x4kda es un mirror — Monday nunca lo deja escribir
@@ -719,6 +856,22 @@ export function CotizacionTab({
                         </div>
                       );
                     }
+                    if (writable && c.id === ETAPA_COSTEO_COL) {
+                      const raw = state.preview[ETAPA_COSTEO_COL]?.text ?? p.cols[ETAPA_COSTEO_COL]?.text ?? '';
+                      return (
+                        <div key={c.id} style={{ textAlign: c.align }}>
+                          <select
+                            value={raw}
+                            disabled={!!state.saving[ETAPA_COSTEO_COL]}
+                            onChange={(e) => onEtapaCosteoChange(p, e.target.value)}
+                            style={{ ...inputStyle, textAlign: 'left' }}
+                          >
+                            <option value="">Elegir etapa…</option>
+                            {Object.keys(ETAPA_COSTEO_COLORS).map((k) => <option key={k} value={k}>{k}</option>)}
+                          </select>
+                        </div>
+                      );
+                    }
                     if (writable) {
                       const raw = state.editing[c.id] ?? (p.cols[c.id]?.text ?? '');
                       return (
@@ -766,7 +919,27 @@ export function CotizacionTab({
                             />
                           );
                         })()}
-                        {c.id !== PRODUCTO_COL && c.id !== 'lookup_mkzn7x9a' && c.id !== ETAPA_COSTEO_COL && c.id !== EMB_STATUS_COL && cellValue(c, displayVal)}
+                        {c.id === MARGEN_COL && (() => {
+                          const label = cellValue(c, displayVal);
+                          if (label === '—') return '—';
+                          const n = Number(displayVal?.value ?? displayVal?.text);
+                          return <span style={{ color: Number.isFinite(n) ? marginColor(n) : undefined, fontWeight: 600 }}>{label}</span>;
+                        })()}
+                        {c.id === SUGERIDO_COL && (() => {
+                          const label = cellValue(c, displayVal);
+                          if (label !== '—') return label;
+                          const costoTotalUnit = numFrom(state, p, COL.costoTotalUnit);
+                          const margenGobPctVal = Number(state.editing[COL.margenGobPct] ?? p.cols[COL.margenGobPct]?.text ?? 0) || 0;
+                          const suggested = suggestedPrecio23(costoTotalUnit, margenGobPctVal);
+                          if (suggested === undefined) return '—';
+                          return (
+                            <span style={{ fontStyle: 'italic', color: 'var(--ink-tertiary)' }} title="Calculado para 23% de margen — sin precio auto de Monday">
+                              {fmtMoney(suggested)}
+                            </span>
+                          );
+                        })()}
+                        {c.id !== PRODUCTO_COL && c.id !== 'lookup_mkzn7x9a' && c.id !== ETAPA_COSTEO_COL && c.id !== EMB_STATUS_COL
+                          && c.id !== MARGEN_COL && c.id !== SUGERIDO_COL && cellValue(c, displayVal)}
                       </div>
                     );
                   })}
@@ -779,6 +952,7 @@ export function CotizacionTab({
               </div>
             );
           })}
+          <TotalsRow variant={variant} visibleCols={visibleCols} products={products} rows={rows} />
         </div>
       </div>
     </div>

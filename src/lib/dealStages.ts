@@ -18,8 +18,8 @@ export interface StageBoardConfig {
 // (doc/tallas) -> Esperando OC -> Ganada (logística).
 export const STAGE_BOARDS: Record<StageBoardKey, StageBoardConfig> = {
   oportunidades: { key: 'oportunidades', title: 'Oportunidades', subtitleSuffix: '', defaultTab: 'cotizacion' },
-  costeo: { key: 'costeo', title: 'Costeo', subtitleSuffix: ' · captura de costo por elemento', stages: ['15'], defaultTab: 'cotizacion' },
-  validacion: { key: 'validacion', title: 'Validación Costeo', subtitleSuffix: ' · validación de precio de venta', stages: ['7'], defaultTab: 'cotizacion' },
+  costeo: { key: 'costeo', title: 'Costeo', subtitleSuffix: '', defaultTab: 'cotizacion' },
+  validacion: { key: 'validacion', title: 'Validación Costeo', subtitleSuffix: ' · validación de precio de venta', stages: ['7', '9'], defaultTab: 'cotizacion' },
   doctallas: { key: 'doctallas', title: 'Documentación y Tallas', subtitleSuffix: '', stages: ['9'], defaultTab: 'documentacion' },
   ordenescompra: { key: 'ordenescompra', title: 'Órdenes de Compra', subtitleSuffix: '', stages: ['8'], defaultTab: 'ordenes' },
   logistica: { key: 'logistica', title: 'Logística', subtitleSuffix: '', stages: ['1'], defaultTab: 'logistica' },

@@ -54,12 +54,11 @@ export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
       'formula_mkznmjh6', 'formula_mm0rtdqp', 'formula_mm00xy0n'], V),
     // Precio de Venta C/U — writable by vendedor/admin (Validación Costeo, stage 7).
     numeric_mkzneg3d: { vis: V, w: WV },
-    // Etapa Costeo — de solo lectura para todos en la práctica: nadie la expone en
-    // un form ni en el grid inline-editable. El único escritor es submitVersion,
-    // que la resetea a "No iniciado" cuando el vendedor edita una línea ya
-    // costeada (para que cmp-tallas la vuelva a snapshotear en el próximo
-    // validar_costeo) — no es "el vendedor puede cambiar la etapa a mano".
-    color_mm084gvf: { vis: V, w: WV },
+    // Etapa Costeo — dropdown editable por compras/admin en la vista Costeo
+    // (Efraín, 2026-07-16). submitVersion también la escribe directo (fuera de
+    // este gate) para resetearla a "No iniciado" cuando el vendedor edita una
+    // línea ya costeada.
+    color_mm084gvf: { vis: V, w: WAC },
     // PROPOSED writable 2026-07-15 (versiones de cotización): el vendedor edita
     // producto/color/cantidad/embellecimiento de una línea — nunca las columnas de
     // costo (grupo AC/WAC abajo, las llena compras aparte). Pendiente confirmación
@@ -75,7 +74,7 @@ export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
       'lookup_mm0bdwb5', 'formula_mkznqx51', 'formula_mkzngnjm',
       'formula_mm0rqjv1', 'lookup_mm0bbz02', 'long_text_mm1b9bh8',
       'formula_mkznpfgg', 'formula_mkznrm5a', 'numeric_mkznpn83',
-      'numeric_mm2qzzbe', 'numeric_mkznnm5s', 'formula_mkznsb7m', 'formula_mkznpp33',
+      'numeric_mm2qzzbe', 'formula_mkznsb7m', 'formula_mkznpp33',
       'formula_mkzne7gd', 'formula_mkznry25', 'formula_mkznpw5p', 'formula_mkzn28xk',
       'lookup_mm1tjv9n'], AC),                  // the Costeo view columns
     // Costeo inputs — writable by compras/admin (Costeo capture, stage 15).
@@ -84,6 +83,10 @@ export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
     numeric_mm0rvhgs: { vis: AC, w: WAC },   // Valor de Conversión
     numeric_mkzngs9x: { vis: AC, w: WAC },   // Gastos %
     numeric_mm0gxvpa: { vis: AC, w: WAC },   // Costo Total Embellecimiento C/U
+    // Margen Gob % — input real en Monday (no fórmula) que alimenta Margen Gob
+    // C/U, Diferencia, Utilidad y el % de "Margen"; editable en Costeo, solo
+    // lectura en Validación (Efraín, 2026-07-16).
+    numeric_mkznnm5s: { vis: AC, w: WAC },   // Margen Gob %
   },
 
   proyectos: {

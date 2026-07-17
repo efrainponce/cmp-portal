@@ -172,17 +172,19 @@ interface AddPositionState {
 }
 
 export function EmbellecimientosTab({
-  subCols, products, versions = [], onNuevaVersion, onSaved, editable = true,
+  subCols, products, versions = [], onNuevaVersion, onSaved, editable = true, readOnly = false,
 }: {
   subCols: ColMeta[]; products: ItemDTO[];
   versions?: QuoteVersionDTO[]; onNuevaVersion?: () => void;
   onSaved?: () => void;
   /** false en Ganada/Perdida — sin nuevas posiciones ni imágenes, igual que Cotización. */
   editable?: boolean;
+  /** true en el board Costeo — solo lectura, agregar posiciones/imágenes es trabajo de Ventas. */
+  readOnly?: boolean;
 }) {
   const statusCol = subCols.find((c) => c.id === STATUS_COL);
-  const descWritable = editable && !!subCols.find((c) => c.id === DESC_COL)?.w;
-  const fileWritable = editable && !!subCols.find((c) => c.id === FILE_COL)?.w;
+  const descWritable = editable && !readOnly && !!subCols.find((c) => c.id === DESC_COL)?.w;
+  const fileWritable = editable && !readOnly && !!subCols.find((c) => c.id === FILE_COL)?.w;
   const [zoneImages, setZoneImages] = useState<Record<string, string>>({});
   const [uploading, setUploading] = useState<Record<string, boolean>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});

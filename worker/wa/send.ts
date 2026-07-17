@@ -21,9 +21,17 @@ async function graphPost(env: Env, body: Record<string, unknown>): Promise<void>
   }
 }
 
+// Meta's Cloud API reports MX inbound numbers with a legacy "1" after the
+// country code (5215512345678), but sending to that exact string 400s with
+// #131030 "not in allowed list" — the allow-list (and real delivery) only
+// recognizes the number without it (525512345678). Strip it before sending.
+function normalizeMxTo(to: string): string {
+  return /^521\d{10}$/.test(to) ? `52${to.slice(3)}` : to;
+}
+
 /** Send a plain text message. WhatsApp caps text bodies at 4096 chars. */
 export async function sendText(env: Env, to: string, body: string): Promise<void> {
-  await graphPost(env, { to, type: 'text', text: { body: body.slice(0, 4000) } });
+  await graphPost(env, { to: normalizeMxTo(to), type: 'text', text: { body: body.slice(0, 4000) } });
 }
 
 /** Mark an incoming message as read (blue ticks) — best-effort, never throws. */
