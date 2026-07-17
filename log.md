@@ -82,3 +82,7 @@
   - El modal renderiza el PDF con `pdfjs-dist` en un `<canvas>` (`PdfCanvasPreview`, nuevo) en vez de `<iframe>`/`<embed>`: el visor nativo de PDF del navegador dentro de un iframe no resultó confiable ni en Chrome real (se probó, se quedaba en blanco).
   - Precarga en segundo plano (worker de pdf.js + bytes del PDF) apenas se abre la tab, no al hacer clic en "Ver" — bajó el tiempo de apertura del modal de varios segundos a ~500ms.
   - `DocumentacionTab.tsx` exporta las columnas de archivo (`file_mm0fgrzq`/`file_mm0zjras`) y un helper `latestFileUrl` para que `CotizacionTab` los reuse.
+- **`a283c59`** — Mostrar y permitir cambiar Vendedor/Comprador en el drawer de oportunidad
+  - Header del drawer gana Vendedor/Comprador junto al indicador de sincronización (antes solo mostraba Institución/Cliente); mismo patrón que el Cliente ya existente.
+  - `shared/visibility.ts`: `deal_owner` y `multiple_person_mm03qyw9` pasan a escribibles (vendedor/compras/admin) — antes de solo lectura, así que el link "Cambiar" no tenía forma de guardar. Nuevo `EditPersonaModal` reutiliza `getVendedores()` (mismas listas que el formulario "Nueva oportunidad").
+  - Los tres links "Cambiar" (Cliente/Vendedor/Comprador) pasan de texto a un ícono de lápiz discreto (`IconEdit`, nuevo) — la fila del header se sentía saturada de texto.
