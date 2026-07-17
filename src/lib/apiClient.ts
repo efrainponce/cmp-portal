@@ -222,6 +222,31 @@ export async function postUpdate(slug: BoardSlug, id: string, body: string, ment
   return res.json();
 }
 
+/** Adjunta un archivo a un update ya creado (el composer primero crea el
+ * update con postUpdate, luego llama esto con su id) — attachment nativo de
+ * Monday, no un link que expira. */
+export async function postUpdateAttachment(
+  slug: BoardSlug, id: string, updateId: string, file: File,
+): Promise<{ ok: boolean; id?: string; name?: string; ext?: string; error?: string }> {
+  const form = new FormData();
+  form.append('file', file);
+  const res = await apiFetch(`/boards/${slug}/items/${id}/updates/${updateId}/attachment`, { method: 'POST', body: form });
+  const body = await res.json();
+  if (!res.ok) return { ok: false, error: body.error ?? 'No se pudo adjuntar el archivo.' };
+  return body;
+}
+
+/** URL del proxy que sirve los bytes de un adjunto de actualización — nunca
+ * el link firmado de Monday directo (expira en ~1h). `download` fuerza
+ * Content-Disposition: attachment en vez de inline. */
+export function updateAttachmentHref(
+  slug: BoardSlug, id: string, assetId: string, name: string, download = false,
+): string {
+  const q = new URLSearchParams({ name });
+  if (download) q.set('download', '1');
+  return `/api/boards/${slug}/items/${id}/updates/attachments/${assetId}?${q.toString()}`;
+}
+
 /** Full Monday roster for @-tagging in Actualizaciones. */
 export async function getMentionUsers(): Promise<MentionUserDTO[]> {
   const res = await apiFetch('/users');

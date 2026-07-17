@@ -136,16 +136,19 @@ export async function createSubitem(
   return { ...raw, column_values: normalizeCols(raw.column_values ?? []) };
 }
 
+export interface MondayUpdateAsset { id: string; name: string; file_extension: string }
+
 export interface MondayUpdate {
   id: string;
   text_body: string;
   created_at: string;
   creator: { name: string } | null;
+  assets: MondayUpdateAsset[];
 }
 
 /** Updates (comments) on an item, newest first. */
 export async function fetchUpdates(env: Env, itemId: number): Promise<MondayUpdate[]> {
-  const query = `query($id:[ID!]){ items(ids:$id){ updates(limit:50){ id text_body created_at creator{name} } } }`;
+  const query = `query($id:[ID!]){ items(ids:$id){ updates(limit:50){ id text_body created_at creator{name} assets{id name file_extension} } } }`;
   const data = await gql(env, query, { id: [String(itemId)] });
   return data?.items?.[0]?.updates ?? [];
 }
@@ -238,6 +241,32 @@ export async function addFileToColumn(
   const json: any = await res.json();
   if (json.errors) throw new Error(`Monday file upload error: ${JSON.stringify(json.errors)}`);
   const a = json.data.add_file_to_column;
+  return { id: a.id, name: a.name, publicUrl: a.public_url };
+}
+
+/** Attaches a file to an existing update (comment) — Monday's `add_file_to_update`
+ * mutation, same v2/file multipart endpoint as addFileToColumn. The update
+ * itself must already exist (create it first via createUpdate). */
+export async function addFileToUpdate(
+  env: Env,
+  updateId: string,
+  file: Blob,
+  filename: string,
+): Promise<{ id: string; name: string; publicUrl: string }> {
+  const form = new FormData();
+  form.append(
+    'query',
+    `mutation($file: File!){ add_file_to_update(update_id:${updateId}, file:$file){ id name public_url } }`,
+  );
+  form.append('variables[file]', file, filename);
+  const res = await fetch('https://api.monday.com/v2/file', {
+    method: 'POST',
+    headers: { Authorization: env.MONDAY_API_KEY, 'API-Version': API_VERSION },
+    body: form,
+  });
+  const json: any = await res.json();
+  if (json.errors) throw new Error(`Monday file upload error: ${JSON.stringify(json.errors)}`);
+  const a = json.data.add_file_to_update;
   return { id: a.id, name: a.name, publicUrl: a.public_url };
 }
 

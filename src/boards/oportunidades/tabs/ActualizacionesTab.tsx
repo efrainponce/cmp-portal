@@ -1,13 +1,56 @@
 // Live feed backed by Monday's own item updates (GET/POST /boards/:slug/items/:id/updates)
 // — never mirrored to D1, always a fresh read, so it stays the single source of
 // truth the team already checks inside monday.com itself.
-import { useEffect, useMemo, useRef, useState } from 'react';
-import type { BoardSlug, MentionUserDTO, UpdateDTO } from '../../../lib/api';
-import { getMentionUsers, getUpdates, postUpdate } from '../../../lib/api';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import type { BoardSlug, MentionUserDTO, UpdateAttachmentDTO, UpdateDTO } from '../../../lib/api';
+import { getMentionUsers, getUpdates, postUpdate, postUpdateAttachment, updateAttachmentHref } from '../../../lib/api';
+import { Modal } from '../../../components/core/Modal';
+
+const PdfCanvasPreview = lazy(() =>
+  import('../../../components/core/PdfCanvasPreview').then((m) => ({ default: m.PdfCanvasPreview })),
+);
 
 interface Props {
   slug: BoardSlug;
   itemId: string;
+}
+
+function AttachmentIcon({ color }: { color: string }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ flex: 'none' }}>
+      <path d="M6 2h8l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Z" fill={color} opacity=".14" />
+      <path d="M6 2h8l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Z" stroke={color} strokeWidth="1.4" />
+      <path d="M14 2v5h5" stroke={color} strokeWidth="1.4" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+/** Un adjunto de un update: PDFs abren vista previa embebida (mismo mecanismo
+ * que las cotizaciones); cualquier otra extensión solo ofrece descarga. */
+function AttachmentChip({ slug, itemId, a, onPreview }: {
+  slug: BoardSlug; itemId: string; a: UpdateAttachmentDTO; onPreview: () => void;
+}) {
+  const isPdf = a.ext === 'pdf';
+  const downloadHref = updateAttachmentHref(slug, itemId, a.id, a.name, true);
+  return (
+    <div style={{
+      display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 10px', marginTop: 8, marginRight: 8,
+      border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', background: 'var(--bg-sunken)',
+    }}>
+      <AttachmentIcon color="var(--ink-quiet)" />
+      <span style={{ font: 'var(--text-caption)', color: 'var(--ink)', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {a.name}
+      </span>
+      {isPdf && (
+        <>
+          <span style={{ font: 'var(--text-caption)', color: 'var(--ink-faint)' }}>·</span>
+          <span onClick={onPreview} style={{ cursor: 'pointer', font: 'var(--text-caption)', color: 'var(--accent)' }}>Ver</span>
+        </>
+      )}
+      <span style={{ font: 'var(--text-caption)', color: 'var(--ink-faint)' }}>·</span>
+      <a href={downloadHref} download style={{ font: 'var(--text-caption)', color: 'var(--accent)', textDecoration: 'none' }}>Descargar</a>
+    </div>
+  );
 }
 
 function fmtWhen(iso: string): string {
@@ -48,7 +91,11 @@ export function ActualizacionesTab({ slug, itemId }: Props) {
   const [mentions, setMentions] = useState<MentionUserDTO[]>([]);
   const [picker, setPicker] = useState<Picker | null>(null);
   const [pickerIndex, setPickerIndex] = useState(0);
+  const [file, setFile] = useState<File | null>(null);
+  const [attachError, setAttachError] = useState<string | null>(null);
+  const [preview, setPreview] = useState<UpdateAttachmentDTO | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const load = () => {
     setError(false);
@@ -57,6 +104,13 @@ export function ActualizacionesTab({ slug, itemId }: Props) {
 
   useEffect(load, [slug, itemId]);
   useEffect(() => { getMentionUsers().then(setUsers).catch(() => setUsers([])); }, []);
+
+  // Precarga el worker de pdf.js en cuanto se sabe que hay al menos un
+  // adjunto PDF en el feed — así el modal abre casi de inmediato al primer clic.
+  useEffect(() => {
+    if (!updates?.some(u => u.attachments.some(a => a.ext === 'pdf'))) return;
+    import('../../../components/core/PdfCanvasPreview').then((m) => m.warmPdfWorker()).catch(() => {});
+  }, [updates]);
 
   const filteredUsers = useMemo(() => {
     if (!picker || !users) return [];
@@ -105,13 +159,21 @@ export function ActualizacionesTab({ slug, itemId }: Props) {
 
   const submit = async () => {
     const text = draft.trim();
-    if (!text) return;
+    if (!text && !file) return;
     setPosting(true);
+    setAttachError(null);
     try {
       const activeMentions = mentions.filter(m => draft.includes(`@${m.nombre}`));
-      await postUpdate(slug, itemId, text, activeMentions);
+      const body = text || `📎 ${file!.name}`;
+      const created = await postUpdate(slug, itemId, body, activeMentions);
+      if (file) {
+        const result = await postUpdateAttachment(slug, itemId, created.id, file);
+        if (!result.ok) setAttachError(result.error ?? 'No se pudo adjuntar el archivo.');
+      }
       setDraft('');
       setMentions([]);
+      setFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
       load();
     } catch {
       /* leave the draft so the user can retry */
@@ -155,18 +217,43 @@ export function ActualizacionesTab({ slug, itemId }: Props) {
             ))}
           </div>
         )}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+        <input
+          ref={fileInputRef}
+          type="file"
+          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+          disabled={posting}
+          style={{ display: 'none' }}
+        />
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, gap: 8 }}>
+          {file ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, font: 'var(--text-caption)', color: 'var(--ink-quiet)', overflow: 'hidden' }}>
+              <AttachmentIcon color="var(--ink-quiet)" />
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name}</span>
+              <span onClick={() => { setFile(null); if (fileInputRef.current) fileInputRef.current.value = ''; }} style={{ cursor: 'pointer', color: 'var(--status-perdida)' }}>✕</span>
+            </div>
+          ) : (
+            <div
+              onClick={() => !posting && fileInputRef.current?.click()}
+              style={{ cursor: posting ? 'default' : 'pointer', font: 'var(--text-caption)', color: 'var(--ink-quiet)', display: 'flex', alignItems: 'center', gap: 4 }}
+            >
+              <AttachmentIcon color="var(--ink-quiet)" /> Adjuntar archivo
+            </div>
+          )}
           <div
-            onClick={draft.trim() && !posting ? submit : undefined}
+            onClick={(draft.trim() || file) && !posting ? submit : undefined}
             style={{
-              padding: '8px 14px', borderRadius: 'var(--radius-lg)', font: 'var(--text-label-strong)', cursor: draft.trim() && !posting ? 'pointer' : 'default',
-              background: draft.trim() && !posting ? 'var(--accent)' : 'var(--border)',
-              color: draft.trim() && !posting ? 'var(--ink-on-accent)' : 'var(--ink-quiet)',
+              padding: '8px 14px', borderRadius: 'var(--radius-lg)', font: 'var(--text-label-strong)', cursor: (draft.trim() || file) && !posting ? 'pointer' : 'default',
+              background: (draft.trim() || file) && !posting ? 'var(--accent)' : 'var(--border)',
+              color: (draft.trim() || file) && !posting ? 'var(--ink-on-accent)' : 'var(--ink-quiet)',
+              flex: 'none',
             }}
           >
             {posting ? 'Publicando…' : 'Publicar'}
           </div>
         </div>
+        {attachError && (
+          <div style={{ font: 'var(--text-caption)', color: 'var(--status-perdida)', marginTop: 6 }}>{attachError}</div>
+        )}
       </div>
 
       {error && (
@@ -185,11 +272,26 @@ export function ActualizacionesTab({ slug, itemId }: Props) {
       {updates?.map((u) => (
         <div key={u.id} style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: 12 }}>
           <div style={{ font: 'var(--text-label)', color: 'var(--ink)', whiteSpace: 'pre-wrap' }}>{renderBody(u.body, users)}</div>
+          {u.attachments.length > 0 && (
+            <div>
+              {u.attachments.map((a) => (
+                <AttachmentChip key={a.id} slug={slug} itemId={itemId} a={a} onPreview={() => setPreview(a)} />
+              ))}
+            </div>
+          )}
           <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)', marginTop: 4 }}>
             {u.author} · {fmtWhen(u.createdAt)}
           </div>
         </div>
       ))}
+
+      {preview && (
+        <Modal title={preview.name} onClose={() => setPreview(null)} width={760}>
+          <Suspense fallback={<div style={{ font: 'var(--text-label)', color: 'var(--ink-quiet)' }}>Cargando…</div>}>
+            <PdfCanvasPreview url={updateAttachmentHref(slug, itemId, preview.id, preview.name)} maxWidth={712} />
+          </Suspense>
+        </Modal>
+      )}
     </div>
   );
 }
