@@ -3,14 +3,15 @@
 // productos? y fecha límite. Las líneas de producto se capturan después; la
 // validación de enviar-costeo impide avanzar sin ellas. Cargado lazy desde
 // OportunidadesBoard para no pesar en el bundle inicial.
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Modal } from '../../components/core/Modal';
 import { Button } from '../../components/core/Button';
-import { Select } from '../../components/forms/Select';
+import { SearchableSelect, type SearchableOption } from '../../components/forms/SearchableSelect';
+import { ChipSelect } from '../../components/forms/ChipSelect';
 import { useMe } from '../../lib/useMe';
 import {
   apiFetch, useBoards, colForBoard, createItem, getVendedores, getItemDetail,
-  type ColMeta, type ListResponse, type VendedorDTO,
+  type ColMeta, type ItemDTO, type ListResponse, type VendedorDTO,
 } from '../../lib/api';
 
 // Ids reales de Monday (docs/monday-column-map.md) — nunca fabricar.
@@ -30,6 +31,15 @@ const fieldStyle = {
 function labelOptions(cols: ColMeta[], id: string): { value: string; label: string }[] {
   const labels = cols.find((c) => c.id === id)?.labels ?? {};
   return Object.values(labels).map((l) => ({ value: l.label, label: l.label }));
+}
+
+// Contactos board's "Vendedor" people column — no está en shared/column-meta ids
+// de oportunidades, es propia del board Contactos (docs/monday-column-map.md).
+const COL_CONTACTO_VENDEDOR = 'multiple_person_mm03vqwx';
+
+function personIds(item: ItemDTO, colId: string): number[] {
+  const value = item.cols[colId]?.value as { personsAndTeams?: { id: number }[] } | undefined;
+  return value?.personsAndTeams?.map((p) => p.id) ?? [];
 }
 
 function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
@@ -58,7 +68,7 @@ export default function CreateOportunidadModal({
   const [cols, setCols] = useState<Record<string, string>>({});
   const [vendedores, setVendedores] = useState<VendedorDTO[]>([]);
   const [compras, setCompras] = useState<VendedorDTO[]>([]);
-  const [contactos, setContactos] = useState<{ value: string; label: string }[]>([]);
+  const [contactos, setContactos] = useState<ItemDTO[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -67,7 +77,7 @@ export default function CreateOportunidadModal({
     getVendedores('compras').then(setCompras);
     apiFetch('/boards/contactos/items')
       .then((r) => (r.ok ? (r.json() as Promise<ListResponse>) : Promise.reject()))
-      .then((json) => setContactos(json.items.map((it) => ({ value: it.id, label: it.name }))))
+      .then((json) => setContactos(json.items))
       .catch(() => setContactos([]));
   }, []);
 
@@ -77,6 +87,25 @@ export default function CreateOportunidadModal({
       setCols((c) => ({ ...c, [COL_VENDEDOR]: String(me.mondayUserId) }));
     }
   }, [me]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Un contacto es "de" un vendedor: la columna Vendedor del board Contactos debe
+  // incluirlo. Filtra la lista al vendedor elegido en el form (pedido de Efraín,
+  // 2026-07-17: "un vendedor solo puede poner un contacto SUYO") y limpia el
+  // contacto ya elegido si deja de pertenecer al vendedor recién seleccionado.
+  const selectedVendedorId = cols[COL_VENDEDOR];
+  const contactOptions: SearchableOption[] = useMemo(() => {
+    if (!selectedVendedorId) return [];
+    const vid = Number(selectedVendedorId);
+    return contactos
+      .filter((it) => personIds(it, COL_CONTACTO_VENDEDOR).includes(vid))
+      .map((it) => ({ value: it.id, label: it.name }));
+  }, [contactos, selectedVendedorId]);
+
+  useEffect(() => {
+    if (cols[COL_CONTACTO] && !contactOptions.some((o) => o.value === cols[COL_CONTACTO])) {
+      setCols((c) => ({ ...c, [COL_CONTACTO]: '' }));
+    }
+  }, [contactOptions]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const set = (id: string) => (value: string) => setCols((c) => ({ ...c, [id]: value }));
 
@@ -133,30 +162,36 @@ export default function CreateOportunidadModal({
           <input value={name} onChange={(e) => setName(e.target.value)} style={fieldStyle} autoFocus />
         </Field>
         <Field label="Vendedor" required>
-          <Select
+          <SearchableSelect
             value={cols[COL_VENDEDOR] ?? ''} onChange={set(COL_VENDEDOR)}
             options={vendedores.map((v) => ({ value: String(v.id), label: v.nombre }))}
-            placeholder="Elegir vendedor…"
+            placeholder="Buscar vendedor…"
           />
         </Field>
         <Field label="Compras">
-          <Select
+          <SearchableSelect
             value={cols[COL_COMPRAS] ?? ''} onChange={set(COL_COMPRAS)}
             options={compras.map((v) => ({ value: String(v.id), label: v.nombre }))}
-            placeholder="Elegir responsable de compras…"
+            placeholder="Buscar responsable de compras…"
           />
         </Field>
         <Field label="Contacto (cliente)">
-          <Select value={cols[COL_CONTACTO] ?? ''} onChange={set(COL_CONTACTO)} options={contactos} placeholder="Elegir contacto…" />
+          <SearchableSelect
+            value={cols[COL_CONTACTO] ?? ''} onChange={set(COL_CONTACTO)} options={contactOptions}
+            placeholder="Buscar contacto…"
+            disabled={!selectedVendedorId}
+            disabledMessage="Elige primero un vendedor…"
+            emptyMessage="Este vendedor no tiene contactos asignados."
+          />
         </Field>
         <Field label="Zona">
-          <Select value={cols[COL_ZONA] ?? ''} onChange={set(COL_ZONA)} options={labelOptions(oppCols, COL_ZONA)} />
+          <SearchableSelect value={cols[COL_ZONA] ?? ''} onChange={set(COL_ZONA)} options={labelOptions(oppCols, COL_ZONA)} placeholder="Buscar zona…" />
         </Field>
         <Field label="Tipo de cotización">
-          <Select value={cols[COL_TIPO] ?? ''} onChange={set(COL_TIPO)} options={labelOptions(oppCols, COL_TIPO)} />
+          <ChipSelect value={cols[COL_TIPO] ?? ''} onChange={set(COL_TIPO)} options={labelOptions(oppCols, COL_TIPO)} />
         </Field>
         <Field label="¿Quieres cotizar nuevos productos?">
-          <Select value={cols[COL_NUEVOS] ?? ''} onChange={set(COL_NUEVOS)} options={labelOptions(oppCols, COL_NUEVOS)} />
+          <ChipSelect value={cols[COL_NUEVOS] ?? ''} onChange={set(COL_NUEVOS)} options={labelOptions(oppCols, COL_NUEVOS)} />
         </Field>
         <Field label="Fecha límite">
           <input type="date" value={cols[COL_FECHA_LIMITE] ?? ''} onChange={(e) => set(COL_FECHA_LIMITE)(e.target.value)} style={fieldStyle} />
