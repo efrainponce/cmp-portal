@@ -2,9 +2,9 @@
 import type { BoardSlug } from '../../shared/boards';
 import type {
   AssistantChatRequest, AssistantChatResponse, AssistantHistoryResponse, AssistantMessage,
-  ColMeta, ColVal, CreateResponse, DuplicarOportunidadResponse, EnviarCosteoResponse, IdentityDTO, ItemDTO, ItemDetailDTO,
+  ColMeta, ColVal, CreateResponse, DuplicarOportunidadResponse, DuplicarVersionResponse, EnviarCosteoResponse, IdentityDTO, ItemDTO, ItemDetailDTO,
   ListResponse, MeDTO, MentionUserDTO, MondayUserDTO, ProyectoActionResponse, ProyectoResponse,
-  QuoteLineInput, QuoteLineSnapshot, QuoteVersionDTO, QuoteVersionRequest, QuoteVersionResponse, QuoteVersionsResponse,
+  QuoteLineSnapshot, QuoteVersionDTO, QuoteVersionsResponse,
   UpdateDTO, VendedorDTO, WriteResponse,
 } from '../../shared/dto';
 import { mockBoardMeta, mockItemDetail, mockPatch } from './mockFallback';
@@ -12,7 +12,7 @@ import { getImpersonateTarget } from './impersonation';
 
 export type {
   BoardSlug, ColMeta, ColVal, IdentityDTO, ItemDTO, ItemDetailDTO, ListResponse, MeDTO, MentionUserDTO,
-  MondayUserDTO, QuoteLineInput, QuoteLineSnapshot, QuoteVersionDTO, UpdateDTO, VendedorDTO,
+  MondayUserDTO, QuoteLineSnapshot, QuoteVersionDTO, UpdateDTO, VendedorDTO,
 };
 
 export interface BoardMeta { slug: BoardSlug; title: string; cols: ColMeta[] }
@@ -146,15 +146,13 @@ export async function getVersiones(id: string): Promise<QuoteVersionDTO[]> {
   return body.versions;
 }
 
-/** Envía un draft de líneas editado — el worker decide si algo cambió respecto a
- * la vigente; si sí, archiva la vigente actual como versión superada y escribe. */
-export async function submitVersion(id: string, lines: QuoteLineInput[]): Promise<QuoteVersionResponse> {
-  const res = await apiFetch(`/oportunidades/${id}/version`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ lines } satisfies QuoteVersionRequest),
-  });
-  const body: QuoteVersionResponse = await res.json();
-  if (!res.ok && !body.error) throw new Error('submit version failed: ' + res.status);
+/** "+ Nueva versión": duplica la cotización vigente — la archiva como versión
+ * superada y deja una copia idéntica como borrador editable inline (igual que
+ * Nueva oportunidad). No manda nada a costeo. */
+export async function duplicarVersion(id: string): Promise<DuplicarVersionResponse> {
+  const res = await apiFetch(`/oportunidades/${id}/version/duplicar`, { method: 'POST' });
+  const body: DuplicarVersionResponse = await res.json();
+  if (!res.ok && !body.error) throw new Error('duplicar versión failed: ' + res.status);
   return body;
 }
 

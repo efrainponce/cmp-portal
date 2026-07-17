@@ -2,9 +2,11 @@ import type { QuoteVersionDTO } from '../../../../lib/api';
 
 /** Chips V1/V2… — vigente resaltada. Seleccionar una anterior muestra su
  * instantánea (solo lectura, sin fórmulas: esas solo existen para la vigente).
- * "+ Nueva versión" junto a la vigente abre el draft — solo guarda la versión;
- * regresarla a costeo es el botón "Mandar a costeo" del drawer, que se reactiva
- * justo porque existe una versión nueva sin costear (Efraín, 2026-07-17). */
+ * "+ Nueva versión" junto a la vigente DUPLICA la cotización tal cual (archiva
+ * la actual, la copia queda editable inline como en Nueva oportunidad) — nada
+ * de draft editor; regresarla a costeo es el botón "Mandar a costeo" del
+ * drawer, que se reactiva justo porque la copia está sin costear (Efraín,
+ * 2026-07-17). El chip se oculta cuando la vigente ya es un borrador. */
 export function VersionChips({
   versions, selected, onSelect, onNuevaVersion,
 }: {

@@ -91,22 +91,12 @@ export interface QuoteVersionDTO {
 
 export interface QuoteVersionsResponse { versions: QuoteVersionDTO[] }
 
-// POST /api/oportunidades/:id/version — `subitemId` ausente = línea nueva.
-export interface QuoteLineInput {
-  subitemId?: number;
-  productoItemId?: number;   // link a Productos, cuando viene del catálogo
-  producto: string;          // nombre a mostrar / fallback de texto libre
-  color: string;
-  cantidad: number;
-  embellecimiento: boolean;
-  descripcionEmbellecimiento?: string;
-}
-
-export interface QuoteVersionRequest { lines: QuoteLineInput[] }
-// Guardar una versión NO la manda a costeo (Efraín, 2026-07-17): eso lo hace el
-// vendedor después, explícito, con el botón "Mandar a costeo" del drawer.
-export interface QuoteVersionResponse {
-  ok: boolean; changed: boolean; error?: string; versions?: QuoteVersionDTO[];
+// POST /api/oportunidades/:id/version/duplicar — "+ Nueva versión" es un duplicado
+// literal de la vigente (Efraín, 2026-07-17): la archiva en D1 y deja el mirror
+// (idéntico) como borrador editable inline. NO manda nada a costeo — eso lo hace
+// el vendedor después, explícito, con el botón "Mandar a costeo" del drawer.
+export interface DuplicarVersionResponse {
+  ok: boolean; error?: string; versions?: QuoteVersionDTO[];
 }
 
 // POST /api/proyectos/:id/(tallas-regenerar|tallas-confirmar|tallas-importar|generar-oc)

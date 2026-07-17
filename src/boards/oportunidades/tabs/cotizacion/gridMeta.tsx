@@ -52,16 +52,18 @@ export function suggestedPrecio23(costoTotalUnit: number, margenGobPct: number):
   return costoTotalUnit / denom;
 }
 
-// Determina qué columnas son editables inline según la etapa de la oportunidad.
-// En "Nueva oportunidad" (stage 4): vendedor edita producto/color/cantidad/embellecimiento inline.
-// En otras etapas: esos cambios SOLO vía "Nueva versión" (archivable, dispara costeo).
+// Determina qué columnas son editables inline. `lineEdits` = true en "Nueva
+// oportunidad" (stage 4) y sobre un borrador de versión (vigente sin costear,
+// recién duplicada con "+ Nueva versión" — Efraín, 2026-07-17): vendedor edita
+// producto/color/cantidad/embellecimiento inline. En una vigente ya costeada
+// esos cambios requieren duplicar primero.
 // Precio: NUNCA editable por vendedor (solo vía cmp-tallas costeo/admin).
 // Costos: solo compras/admin.
-export function inlineEditableCols(stage: string | undefined, allowLineEdits: boolean): Set<string> {
+export function inlineEditableCols(lineEdits: boolean): Set<string> {
   const base = new Set<string>([
     COL.costoDistr, COL.descuentoPct, COL.conversion, COL.gastosPct, COL.margenGobPct, ETAPA_COSTEO_COL,
   ]);
-  if (stage === '4' && allowLineEdits) { // Nueva oportunidad
+  if (lineEdits) {
     base.add(PRODUCTO_COL);
     base.add(COLOR_COL);
     base.add(COL.cantidad);

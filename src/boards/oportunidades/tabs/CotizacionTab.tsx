@@ -4,10 +4,11 @@
 //
 // In BOTH variants, columns the server marked writable for the viewer's role
 // (`ColMeta.w`, from shared/visibility.ts) AND listed in inlineEditableCols
-// render as inputs: compras/admin capture costs in `costeo`, vendedor can only
-// view pricing in `venta` (Efraín 2026-07-16 — vendedores edit product/color/
-// quantity only via "Nueva versión", not inline; price set by costeo/admin via
-// versioning in cmp-tallas). Editing cost columns recomputes the row's formula
+// render as inputs: compras/admin capture costs in `costeo`, vendedor edits
+// product/color/quantity inline in Nueva oportunidad Y sobre un borrador de
+// versión (`draft` — vigente sin costear, recién duplicada con "+ Nueva
+// versión"; Efraín 2026-07-17). Price is never vendedor-editable (set by
+// costeo/admin via cmp-tallas). Editing cost columns recomputes the row's formula
 // columns locally (src/lib/costeoCalc.ts, verified 1:1 against Monday's own
 // formulas) for an instant preview, then PATCHes only the raw input on blur —
 // formula columns are never written back, Monday recomputes those itself and
@@ -35,7 +36,7 @@ import {
 
 export function CotizacionTab({
   subCols, products, variant = 'venta', onSaved, versions = [], onNuevaVersion, editable = true, stage, oppId, item,
-  readOnly = false, precioOnly = false,
+  readOnly = false, precioOnly = false, draft = false,
 }: {
   subCols: ColMeta[]; products: ItemDTO[]; variant?: 'venta' | 'costeo'; onSaved?: () => void;
   versions?: QuoteVersionDTO[]; onNuevaVersion?: () => void;
@@ -43,6 +44,9 @@ export function CotizacionTab({
   editable?: boolean;
   /** deal_stage de la oportunidad — determina qué campos vendedor puede editar inline. */
   stage?: string;
+  /** true cuando la vigente es un borrador sin costear (recién duplicada con
+   * "+ Nueva versión") — desbloquea las líneas inline igual que Nueva oportunidad. */
+  draft?: boolean;
   /** ID de la oportunidad — necesario para crear líneas en Nueva oportunidad. */
   oppId?: string;
   /** Trae las columnas de archivo de cotización (sin firmar/firmada) para las miniaturas de PDF. */
@@ -64,10 +68,12 @@ export function CotizacionTab({
   const gridCols = variant === 'costeo' ? GRID_COLS_COSTEO : GRID_COLS_VENTA;
   const visibleCols = gridCols.filter((gc) => subCols.some((c) => c.id === gc.id));
   const writableIds = new Set(subCols.filter((c) => c.w).map((c) => c.id));
-  const editableCols = precioOnly ? new Set<string>([COL.precio]) : inlineEditableCols(stage, !readOnly);
-  // Crear/editar líneas inline: solo Nueva oportunidad, y nunca desde los
-  // boards de Costeo/Validación (eso es trabajo de Ventas en Oportunidades).
-  const canAddLines = stage === '4' && editable && !readOnly && !precioOnly;
+  // Crear/editar líneas inline: Nueva oportunidad o un borrador de versión
+  // (vigente sin costear), y nunca desde los boards de Costeo/Validación
+  // (eso es trabajo de Ventas en Oportunidades).
+  const lineEdits = (stage === '4' || draft) && !readOnly && !precioOnly;
+  const editableCols = precioOnly ? new Set<string>([COL.precio]) : inlineEditableCols(lineEdits);
+  const canAddLines = lineEdits && editable;
 
   const [rows, setRows] = useState<Record<string, RowEditState>>({});
   const [creatingLine, setCreatingLine] = useState(false);
@@ -77,8 +83,8 @@ export function CotizacionTab({
     setRows((r) => ({ ...r, [id]: { ...rowState(id), ...patch } }));
 
   // Catálogo de Productos — solo se necesita cuando el producto es editable
-  // inline (Nueva oportunidad), para el datalist y para resolver el nombre
-  // tecleado a un item_id real (board_relation_mkzmafgp, igual que NuevaVersionForm).
+  // inline (Nueva oportunidad o borrador de versión), para el datalist y para
+  // resolver el nombre tecleado a un item_id real (board_relation_mkzmafgp).
   useEffect(() => {
     if (canAddLines) listItems('productos').then(setCatalog).catch(() => {});
   }, [canAddLines]);
@@ -181,8 +187,8 @@ export function CotizacionTab({
     void saveCols(product.id, COLOR_COL, { [COLOR_COL]: raw });
   };
 
-  // Con/Sin Embellecimiento — mismo status column y labels que submitVersion
-  // (worker/lib/quoteVersions.ts). Marcarla "Con" es lo que hace que la línea
+  // Con/Sin Embellecimiento — mismo status column y labels que
+  // worker/lib/quoteVersions.ts. Marcarla "Con" es lo que hace que la línea
   // aparezca en EmbellecimientosTab (filtra por ese mismo label).
   const onEmbellecimientoChange = (product: ItemDTO, con: boolean) => {
     const label = con ? EMB_LABEL_CON : EMB_LABEL_SIN;
@@ -205,7 +211,7 @@ export function CotizacionTab({
   // Al elegir un producto del catálogo escribe la relación real
   // (board_relation_mkzmafgp) — Monday puebla el mirror (lookup_mm0x4kda,
   // SKU, Marca…) solo. Sin match en catálogo, cae a texto libre
-  // (text_mm0bkm1j) — mismo criterio que NuevaVersionForm/submitVersion.
+  // (text_mm0bkm1j) — mismo criterio que worker/lib/createOportunidad.ts.
   const onProductoBlur = (product: ItemDTO) => {
     const state = rowState(product.id);
     const raw = state.editing[PRODUCTO_COL];

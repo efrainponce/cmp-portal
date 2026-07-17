@@ -1,21 +1,20 @@
 // worker/lib/quoteVersions.ts — Versiones de cotización. La vigente SIEMPRE es el
 // mirror actual (Monday); `cotizacion_versions` en D1 solo archiva instantáneas de
-// versiones superadas — nunca decide cuál es la vigente (Efraín, 2026-07-15). Una
-// versión nueva se crea cuando cambia producto, color, cantidad o embellecimiento
-// de una línea, o se agrega/quita una línea, respecto a la vigente. Nunca se tocan
-// columnas de costo (grupo AC/WAC, capturadas aparte por Compras vía costeo.ts) —
-// así el costeo de una línea sobrevive intacto mientras su producto no cambie.
-// El vendedor puede editar líneas en cualquier etapa salvo Ganada/Perdida (Efraín,
-// 2026-07-15) — no solo tras cotizar. Si una oportunidad nunca tuvo V1 anclada
-// (nueva, o clonada/legacy sin historial), la primera edición la ancla al vuelo.
+// versiones superadas — nunca decide cuál es la vigente (Efraín, 2026-07-15).
+// "+ Nueva versión" = DUPLICAR la vigente tal cual (Efraín, 2026-07-17: el draft
+// editor de líneas era abrumador): se archiva la vigente en D1 y el mirror queda
+// como copia idéntica en borrador — el vendedor la edita inline igual que en
+// Nueva oportunidad y la regresa a costeo con "Mandar a costeo" cuando quiera.
+// Borrador = todas las líneas con Etapa Costeo vacía/"No iniciado" (duplicar las
+// resetea); nunca se tocan columnas de costo (grupo AC/WAC, de Compras).
+// El vendedor puede versionar en cualquier etapa salvo Ganada/Perdida (Efraín,
+// 2026-07-15) — no solo tras cotizar.
 import type { ExecutionContext } from 'hono';
 import type { Env } from '../env';
 import type { Identity, MirrorItem } from '../../shared/types';
-import type { QuoteLineInput, QuoteLineSnapshot, QuoteVersionDTO } from '../../shared/dto';
+import type { QuoteLineSnapshot, QuoteVersionDTO } from '../../shared/dto';
 import { getItem, childrenOf } from './dal';
 import { submitWrite, flushOutbox } from './outbox';
-import { createSubitem } from './monday';
-import { upsertItem } from '../sync';
 import type { RawCol } from './serialize';
 
 export class QuoteVersionError extends Error {
@@ -27,7 +26,6 @@ export class QuoteVersionError extends Error {
 }
 
 // Oportunidades subitems (18395657607) — docs/monday-column-map.md.
-const SUB_PRODUCTO_REL = 'board_relation_mkzmafgp';
 const SUB_PRODUCTO_TXT = 'text_mm0bkm1j';
 const SUB_PRODUCTO_NOMBRE = 'lookup_mm0x4kda';    // mirror del producto ligado
 const SUB_SKU = 'lookup_mkzn7x9a';
@@ -39,7 +37,6 @@ const SUB_PRECIO = 'numeric_mkzneg3d';
 const SUB_ETAPA_COSTEO = 'color_mm084gvf';
 
 const EMB_LABEL_CON = 'Con Embellecimiento';
-const EMB_LABEL_SIN = 'Sin Embellecimiento';
 const ETAPA_NO_INICIADO = 'No iniciado';
 
 function colsOf(row: MirrorItem): Map<string, RawCol> {
@@ -49,11 +46,6 @@ function colsOf(row: MirrorItem): Map<string, RawCol> {
   } catch {
     return new Map();
   }
-}
-
-// Mismo criterio de tolerancia que worker/lib/costeo.ts norm(): sin acentos/mayúsculas.
-function norm(s: string): string {
-  return s.normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase();
 }
 
 function productoNombre(cols: Map<string, RawCol>): string {
@@ -153,99 +145,62 @@ export async function recordFirstVersion(
     .run();
 }
 
-function linesDiffer(current: QuoteLineSnapshot, input: QuoteLineInput): boolean {
-  return (
-    norm(current.producto) !== norm(input.producto) ||
-    norm(current.color) !== norm(input.color) ||
-    current.cantidad !== input.cantidad ||
-    current.embellecimiento !== input.embellecimiento ||
-    (current.descripcionEmbellecimiento ?? '') !== (input.descripcionEmbellecimiento ?? '')
-  );
+/** true cuando la vigente es un borrador sin costear: TODAS las líneas con Etapa
+ * Costeo vacía o "No iniciado" (duplicar la resetea; las líneas nuevas nacen sin
+ * ella). Compartido con la ruta de crear líneas para desbloquear el grid como en
+ * Nueva oportunidad. */
+export function esDraftVigente(lineas: MirrorItem[]): boolean {
+  if (lineas.length === 0) return false;
+  return lineas.every(l => {
+    const etapa = (colsOf(l).get(SUB_ETAPA_COSTEO)?.text ?? '').trim();
+    return !etapa || etapa === ETAPA_NO_INICIADO;
+  });
 }
 
-/** Aplica una edición de líneas: si algo cambió respecto a la vigente, archiva la
- * vigente actual como versión superada y escribe los cambios (nunca columnas de
- * costo). Responde `changed:false` sin tocar nada si el draft es idéntico. */
-export async function submitVersion(
-  env: Env, ctx: ExecutionContext, itemId: number, viewer: Identity, lines: QuoteLineInput[],
-): Promise<{ changed: boolean }> {
+/** "+ Nueva versión" = duplicar la vigente, literal (Efraín, 2026-07-17): archiva
+ * la vigente tal como está en D1 y regresa la Etapa Costeo de TODAS las líneas a
+ * "No iniciado". El mirror (idéntico) queda como borrador: el grid se desbloquea
+ * inline igual que en Nueva oportunidad y "Mandar a costeo" se reactiva. Aquí no
+ * se edita ninguna línea — eso es un paso aparte del vendedor sobre el borrador. */
+export async function duplicateVersion(
+  env: Env, ctx: ExecutionContext, itemId: number, viewer: Identity,
+): Promise<void> {
   const opp = await getItem(env, 'oportunidades', itemId, viewer);
   if (!opp) throw new QuoteVersionError(404, 'not found');
 
   const cols = colsOf(opp);
   let stage = '';
   try { stage = String((JSON.parse(cols.get('deal_stage')?.value ?? 'null') as { index?: unknown })?.index ?? ''); } catch { /* ignore */ }
-  // El vendedor puede agregar/editar productos en cualquier etapa salvo Ganada(1)/
-  // Perdida(2) (Efraín, 2026-07-15) — no solo tras "Generar cotización". Si nunca
-  // se ancló una V1 (oportunidad nueva, o clonada/legacy sin historial en D1), esta
-  // edición ancla V1 al vuelo con el estado actual antes de aplicar el cambio.
   if (stage === '1' || stage === '2') {
     throw new QuoteVersionError(422, 'La oportunidad ya está Ganada o Perdida — no se pueden editar sus líneas.');
   }
-  const existing = await maxVersion(env, itemId);
 
-  const currentLines = (await childrenOf(env, 'oportunidades', itemId, viewer)).map(snapshotLine);
-  const byId = new Map(currentLines.map(l => [l.subitemId, l]));
-  const inputIds = new Set(lines.filter(l => l.subitemId != null).map(l => l.subitemId));
+  const lineas = await childrenOf(env, 'oportunidades', itemId, viewer);
+  if (lineas.length === 0) {
+    throw new QuoteVersionError(422, 'La oportunidad no tiene líneas de producto — no hay nada que duplicar.');
+  }
+  // Doble click / borrador ya abierto: no apiles copias idénticas en D1.
+  if (esDraftVigente(lineas)) {
+    throw new QuoteVersionError(422, 'La versión vigente aún no se costea — edítala directo, no hace falta duplicarla.');
+  }
 
-  const removed = currentLines.some(l => l.subitemId != null && !inputIds.has(l.subitemId));
-  const added = lines.some(l => l.subitemId == null);
-  const changedExisting = lines.some(l => {
-    if (l.subitemId == null) return false;
-    const cur = byId.get(l.subitemId);
-    return !cur || linesDiffer(cur, l);
-  });
-  const changed = removed || added || changedExisting;
-  if (!changed) return { changed: false };
-
-  // Archiva la vigente ANTES de escribir nada — así D1 siempre archiva estado
-  // pre-cambio, nunca el que se está a punto de escribir.
-  const version = existing + 1;
+  const currentLines = lineas.map(snapshotLine);
+  const version = (await maxVersion(env, itemId)) + 1;
   await env.DB
     .prepare(`INSERT INTO cotizacion_versions (item_id, version, label, folio, total_fmt, products, created_at)
       VALUES (?, ?, ?, NULL, ?, ?, ?)`)
     .bind(itemId, version, `V${version}`, String(totalOf(currentLines)), JSON.stringify(currentLines), new Date().toISOString())
     .run();
 
-  for (const input of lines) {
-    if (input.subitemId == null) {
-      // Línea nueva — mismo patrón que worker/lib/createOportunidad.ts.
-      const subCols: Record<string, unknown> = {
-        [SUB_CANTIDAD]: String(input.cantidad),
-        [SUB_COLOR]: input.color,
-        [SUB_EMB_STATUS]: { label: input.embellecimiento ? EMB_LABEL_CON : EMB_LABEL_SIN },
-      };
-      if (input.productoItemId) subCols[SUB_PRODUCTO_REL] = { item_ids: [input.productoItemId] };
-      else subCols[SUB_PRODUCTO_TXT] = input.producto;
-      if (input.descripcionEmbellecimiento) subCols[SUB_EMB_DESC] = input.descripcionEmbellecimiento;
-      const sub = await createSubitem(env, itemId, input.producto.trim() || 'Producto', subCols);
-      await upsertItem(env, 'oportunidades_sub', sub);
-      continue;
+  // Reset del ciclo de costeo — `trusted` porque es una decisión del server (el
+  // vendedor no puede escribir Etapa Costeo por su cuenta), mismo criterio que
+  // enviarAValidacion en costeo.ts.
+  for (const l of currentLines) {
+    if (l.subitemId != null && l.etapaCosteo && l.etapaCosteo !== ETAPA_NO_INICIADO) {
+      await submitWrite(env, ctx, 'oportunidades_sub', l.subitemId, { [SUB_ETAPA_COSTEO]: ETAPA_NO_INICIADO }, viewer, { skipFlush: true, trusted: true });
     }
-    const cur = byId.get(input.subitemId);
-    if (!cur || !linesDiffer(cur, input)) continue;
-    const writeCols: Record<string, string> = {
-      [SUB_COLOR]: input.color,
-      [SUB_CANTIDAD]: String(input.cantidad),
-      [SUB_EMB_STATUS]: input.embellecimiento ? EMB_LABEL_CON : EMB_LABEL_SIN,
-      [SUB_EMB_DESC]: input.descripcionEmbellecimiento ?? '',
-    };
-    if (norm(cur.producto) !== norm(input.producto)) {
-      if (input.productoItemId) writeCols[SUB_PRODUCTO_REL] = String(input.productoItemId);
-      else writeCols[SUB_PRODUCTO_TXT] = input.producto;
-    }
-    // Compras ya avanzó esta línea (Etapa Costeo != "No iniciado") pero el
-    // vendedor la acaba de cambiar — resetearla para que validar_costeo (cmp-tallas)
-    // la vuelva a snapshotear en vez de dejar costo viejo pegado a datos nuevos.
-    if (cur.etapaCosteo && cur.etapaCosteo !== ETAPA_NO_INICIADO) {
-      writeCols[SUB_ETAPA_COSTEO] = ETAPA_NO_INICIADO;
-    }
-    await submitWrite(env, ctx, 'oportunidades_sub', input.subitemId, writeCols, viewer, { skipFlush: true });
   }
-
   // Flush AQUÍ (no vía waitUntil): la ruta refetchea el árbol desde Monday
-  // enseguida — sin este await el refetch pisaría el mirror con datos viejos
-  // (y un "Mandar a costeo" inmediato snapshotearía líneas sin los cambios).
+  // enseguida — sin este await el refetch pisaría el mirror con datos viejos.
   await flushOutbox(env);
-  return { changed: true };
 }

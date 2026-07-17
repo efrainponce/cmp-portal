@@ -11,7 +11,7 @@ import { IconBack, IconEdit, IconLink } from '../../components/icons';
 import { SyncIndicator } from '../../components/board/SyncIndicator';
 import { useMe } from '../../lib/useMe';
 import {
-  useBoards, colForBoard, checkCosteo, duplicarOportunidad, enviarCosteo, enviarValidacion, generarCotizacion, getItemDetail, getVersiones,
+  useBoards, colForBoard, checkCosteo, duplicarOportunidad, duplicarVersion, enviarCosteo, enviarValidacion, generarCotizacion, getItemDetail, getVersiones,
   refreshItem, type ItemDetailDTO, type QuoteVersionDTO,
 } from '../../lib/api';
 import { statusIndex } from '../../lib/statusValue';
@@ -19,7 +19,8 @@ import { stageAtOrAfter, type StageBoardKey } from '../../lib/dealStages';
 import { useIsMobile } from '../../lib/useIsMobile';
 import { BoardTabsBar, type DrawerTabKey } from './BoardTabsBar';
 import { CotizacionTab } from './tabs/CotizacionTab';
-import { NuevaVersionForm } from './tabs/NuevaVersionForm';
+import { ETAPA_COSTEO_COL } from './tabs/cotizacion/gridMeta';
+import { Modal } from '../../components/core/Modal';
 import { EmbellecimientosTab } from './tabs/EmbellecimientosTab';
 import { ActualizacionesTab } from './tabs/ActualizacionesTab';
 import { NuevosProductosTab } from './tabs/NuevosProductosTab';
@@ -98,6 +99,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
   const [costeoReady, setCosteoReady] = useState<{ ok: boolean; errors?: string[] } | null>(null);
   const [versions, setVersions] = useState<QuoteVersionDTO[]>([]);
   const [showNuevaVersion, setShowNuevaVersion] = useState(false);
+  const [duplicatingVersion, setDuplicatingVersion] = useState(false);
   const [showEditCliente, setShowEditCliente] = useState(false);
   const [showEditVendedor, setShowEditVendedor] = useState(false);
   const [showEditComprador, setShowEditComprador] = useState(false);
@@ -188,6 +190,33 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
     }
   };
 
+  // "+ Nueva versión" = duplicado literal de la vigente (Efraín, 2026-07-17: el
+  // editor de draft era abrumador). El server archiva la vigente y resetea la
+  // Etapa Costeo de las líneas — la copia queda editable inline como en Nueva
+  // oportunidad y "Mandar a costeo" se reactiva.
+  const onDuplicarVersion = async () => {
+    setDuplicatingVersion(true);
+    try {
+      const res = await duplicarVersion(id);
+      if (!res.ok) throw new Error(res.error ?? 'No se pudo crear la nueva versión.');
+      const nueva = res.versions?.find((v) => v.status === 'vigente');
+      if (res.versions) { versionsCache.set(id, res.versions); setVersions(res.versions); }
+      setNotice({
+        kind: 'ok', title: 'Nueva versión creada',
+        lines: [
+          `${nueva?.label ?? 'La nueva versión'} es una copia de la anterior — edítala como en Nueva oportunidad.`,
+          'Cuando esté lista, usa "Mandar a costeo" para regresarla a costeo.',
+        ],
+      });
+      load();
+    } catch (e) {
+      setNotice({ kind: 'error', title: 'No se pudo crear la nueva versión:', lines: [e instanceof Error ? e.message : 'Verifica tu conexión.'] });
+    } finally {
+      setDuplicatingVersion(false);
+      setShowNuevaVersion(false);
+    }
+  };
+
   const onEnviarCosteo = async () => {
     setNotice(null);
     try {
@@ -256,6 +285,16 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
   // demás (líneas, embellecimientos, nuevos productos, costos) es solo lectura
   // (Efraín, 2026-07-16).
   const noLineEdits = readOnlyCosteo || isValidacion;
+
+  // Borrador de versión: la vigente aún no se costea (todas las líneas con Etapa
+  // Costeo vacía/"No iniciado" — recién duplicada con "+ Nueva versión" o líneas
+  // nuevas). Desbloquea la edición inline del grid igual que Nueva oportunidad y
+  // oculta el chip de duplicar (no hay nada costeado que archivar).
+  const draftVigente = stage !== '4' && products.length > 0 && products.every((p) => {
+    const etapa = (p.cols[ETAPA_COSTEO_COL]?.text ?? '').trim();
+    return !etapa || etapa === 'No iniciado';
+  });
+  const vigenteLabel = versions.find((v) => v.status === 'vigente')?.label;
 
   // Generar cotización (etapa 7): cmp-tallas la omite si ningún producto tiene
   // precio — mejor deshabilitar el botón desde aquí con la razón visible.
@@ -392,8 +431,9 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
         <CotizacionTab
           subCols={subCols} products={products} variant={cotizacionVariant} onSaved={load} versions={versions}
           editable={stage !== '1' && stage !== '2'}
-          onNuevaVersion={stage !== '1' && stage !== '2' && stage !== '4' && !noLineEdits ? () => setShowNuevaVersion(true) : undefined}
+          onNuevaVersion={stage !== '1' && stage !== '2' && stage !== '4' && !noLineEdits && !draftVigente ? () => setShowNuevaVersion(true) : undefined}
           stage={stage}
+          draft={draftVigente}
           oppId={id}
           item={item}
           readOnly={readOnlyCosteo}
@@ -404,7 +444,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
         <EmbellecimientosTab
           subCols={subCols} products={products} versions={versions} onSaved={load}
           editable={stage !== '1' && stage !== '2'}
-          onNuevaVersion={stage !== '1' && stage !== '2' && stage !== '4' && !noLineEdits ? () => setShowNuevaVersion(true) : undefined}
+          onNuevaVersion={stage !== '1' && stage !== '2' && stage !== '4' && !noLineEdits && !draftVigente ? () => setShowNuevaVersion(true) : undefined}
           readOnly={noLineEdits}
         />
       )}
@@ -428,27 +468,29 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
       )}
 
       {showNuevaVersion && (
-        <NuevaVersionForm
-          itemId={id}
-          currentProducts={versions.find((v) => v.status === 'vigente')?.products ?? []}
-          onClose={() => setShowNuevaVersion(false)}
-          onSaved={(label) => {
-            setShowNuevaVersion(false);
-            // Guardar ya no manda a costeo: el vendedor la regresa cuando quiera
-            // con "Mandar a costeo" (recién reactivado) — salvo que la oportunidad
-            // ya esté en manos de Compras (etapas 15/7).
-            const enCosteo = stage === '15' || stage === '7';
-            setNotice({
-              kind: 'ok', title: 'Nueva versión guardada',
-              lines: [
-                `${label} — se archivó la versión anterior y se actualizó Monday.`,
-                ...(enCosteo ? [] : ['Cuando esté lista, usa "Mandar a costeo" para regresarla a costeo.']),
-              ],
-            });
-            load();
-            loadVersions();
-          }}
-        />
+        <Modal
+          title="Nueva versión de la cotización"
+          onClose={() => { if (!duplicatingVersion) setShowNuevaVersion(false); }}
+          width={480}
+          footer={
+            <>
+              <Button variant="ghost" onClick={() => { if (!duplicatingVersion) setShowNuevaVersion(false); }}>Cancelar</Button>
+              <Button variant="primary" onClick={duplicatingVersion ? undefined : onDuplicarVersion} style={duplicatingVersion ? { opacity: 0.6 } : undefined}>
+                {duplicatingVersion ? 'Duplicando…' : 'Duplicar cotización'}
+              </Button>
+            </>
+          }
+        >
+          <div style={{ font: 'var(--text-body)', color: 'var(--ink-secondary)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div>
+              Se crea una copia exacta de {vigenteLabel ?? 'la cotización vigente'} y la actual queda archivada.
+            </div>
+            <div>
+              La copia se puede editar directo en la tabla (productos, colores, cantidades y embellecimientos,
+              igual que en Nueva oportunidad) y, cuando esté lista, se regresa con el botón «Mandar a costeo».
+            </div>
+          </div>
+        </Modal>
       )}
 
       {showEditCliente && (

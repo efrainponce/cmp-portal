@@ -129,8 +129,8 @@ export async function checkCosteo(env: Env, itemId: number, viewer: Identity): P
   const lineas = await childrenOf(env, 'oportunidades', itemId, viewer);
 
   // Después de "Nueva oportunidad", el botón vive siempre visible pero solo se
-  // reactiva cuando el vendedor creó una nueva versión (Efraín, 2026-07-17):
-  // submitVersion regresa la Etapa Costeo de las líneas editadas a "No iniciado"
+  // reactiva cuando el vendedor duplicó una nueva versión (Efraín, 2026-07-17):
+  // duplicateVersion regresa la Etapa Costeo de todas las líneas a "No iniciado"
   // y las líneas nuevas nacen sin ella — si TODAS ya están costeadas, la vigente
   // es la que ya pasó por costeo y no hay nada que reenviar.
   if (stageIndex && stageIndex !== '4' && lineas.length > 0) {

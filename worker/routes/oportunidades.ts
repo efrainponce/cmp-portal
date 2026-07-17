@@ -5,7 +5,7 @@
 import type { Hono } from 'hono';
 import type { Env } from '../env';
 import { BOARDS } from '../../shared/boards';
-import type { DuplicarOportunidadResponse, ItemDetailDTO, QuoteVersionRequest, QuoteVersionResponse, QuoteVersionsResponse } from '../../shared/dto';
+import type { DuplicarOportunidadResponse, DuplicarVersionResponse, ItemDetailDTO, QuoteVersionsResponse } from '../../shared/dto';
 import { getItem, childrenOf, pendingItemIds, proyectoForOportunidad } from '../lib/dal';
 import { toItemDTO } from '../lib/serialize';
 import { OutboxError } from '../lib/outbox';
@@ -14,7 +14,7 @@ import {
   AutomationError,
 } from '../lib/automations';
 import { enviarACosteo, enviarAValidacion, checkCosteo, CosteoError } from '../lib/costeo';
-import { listVersions, submitVersion, recordFirstVersion, QuoteVersionError } from '../lib/quoteVersions';
+import { listVersions, duplicateVersion, esDraftVigente, recordFirstVersion, QuoteVersionError } from '../lib/quoteVersions';
 import { duplicateOportunidad, DuplicateOportunidadError } from '../lib/duplicateOportunidad';
 import { createSubitem } from '../lib/monday';
 import { listZoneImages, uploadZoneImage, EmbellImageError } from '../lib/embellecimientoImagenes';
@@ -143,28 +143,31 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     return c.json({ versions } satisfies QuoteVersionsResponse);
   });
 
-  app.post('/api/oportunidades/:id/version', async c => {
+  // "+ Nueva versión" = duplicado literal de la vigente (Efraín, 2026-07-17): se
+  // archiva tal cual en D1 y las líneas regresan a Etapa Costeo "No iniciado" —
+  // el mirror (idéntico) queda como borrador editable inline, y mandarlo a costeo
+  // es un paso aparte con el botón "Mandar a costeo".
+  app.post('/api/oportunidades/:id/version/duplicar', async c => {
     const itemId = Number(c.req.param('id'));
     if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
     const viewer = c.get('viewer');
-    const body = await c.req.json<QuoteVersionRequest>();
 
     try {
-      const { changed } = await submitVersion(c.env, c.executionCtx, itemId, viewer, body.lines ?? []);
-      // Guardar una versión ya NO la manda sola a costeo (Efraín, 2026-07-17): el
-      // vendedor la regresa cuando quiera con el botón "Mandar a costeo", que se
-      // reactiva porque las líneas editadas quedaron en Etapa Costeo "No iniciado".
-      if (changed) await refetchItemTree(c.env, BOARDS.oportunidades.id, itemId);
-      const versions = changed ? await listVersions(c.env, itemId, viewer) : undefined;
-      return c.json({ ok: true, changed, versions } satisfies QuoteVersionResponse);
+      await duplicateVersion(c.env, c.executionCtx, itemId, viewer);
+      // El flush ya mandó los resets a Monday — sincroniza el mirror completo.
+      await refetchItemTree(c.env, BOARDS.oportunidades.id, itemId);
+      const versions = await listVersions(c.env, itemId, viewer);
+      return c.json({ ok: true, versions } satisfies DuplicarVersionResponse);
     } catch (err) {
-      if (err instanceof QuoteVersionError) return jsonStatus({ ok: false, changed: false, error: err.message } satisfies QuoteVersionResponse, err.status);
-      if (err instanceof OutboxError) return jsonStatus({ ok: false, changed: false, error: err.message } satisfies QuoteVersionResponse, err.status);
-      return jsonStatus({ ok: false, changed: false, error: 'internal error' } satisfies QuoteVersionResponse, 500);
+      if (err instanceof QuoteVersionError) return jsonStatus({ ok: false, error: err.message } satisfies DuplicarVersionResponse, err.status);
+      if (err instanceof OutboxError) return jsonStatus({ ok: false, error: err.message } satisfies DuplicarVersionResponse, err.status);
+      return jsonStatus({ ok: false, error: 'internal error' } satisfies DuplicarVersionResponse, 500);
     }
   });
 
-  // Crear una línea de producto en Nueva oportunidad (stage 4) — subitems sin versioning.
+  // Crear una línea de producto — sin versioning. Permitido en Nueva oportunidad
+  // (stage 4) y sobre un borrador de versión (todas las líneas sin costear), donde
+  // el grid se comporta igual que en Nueva oportunidad (Efraín, 2026-07-17).
   app.post('/api/oportunidades/:id/productos', async c => {
     const itemId = Number(c.req.param('id'));
     if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
@@ -184,7 +187,13 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
         stageIndex = String((JSON.parse(stageCol?.value ?? 'null') as { index?: unknown })?.index ?? '');
       } catch { /* value vacío/optimista — cae en 'no coincide con 4' abajo */ }
       if (stageIndex !== '4') {
-        return c.json({ error: 'Solo se pueden crear líneas en Nueva oportunidad' }, 400);
+        if (stageIndex === '1' || stageIndex === '2') {
+          return c.json({ error: 'La oportunidad ya está Ganada o Perdida — no se pueden agregar líneas.' }, 400);
+        }
+        const lineas = await childrenOf(c.env, 'oportunidades', itemId, viewer);
+        if (!esDraftVigente(lineas)) {
+          return c.json({ error: 'Solo se pueden crear líneas en Nueva oportunidad o en una versión nueva sin costear.' }, 400);
+        }
       }
 
       // Subitem real (create_subitem, no create_item) — así Monday lo linkea al
