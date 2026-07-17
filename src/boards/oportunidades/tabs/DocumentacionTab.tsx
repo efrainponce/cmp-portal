@@ -4,8 +4,8 @@
 import type { ItemDetailDTO } from '../../../lib/api';
 
 const SOLICITUDES_COL = 'file_mm0z6rze';       // Cotizaciones sin precio
-const NO_FIRMADAS_COL = 'file_mm0fgrzq';       // Cotizaciones generadas
-const FIRMADAS_COL = 'file_mm0zjras';          // Cotizaciones Firmadas
+export const NO_FIRMADAS_COL = 'file_mm0fgrzq'; // Cotizaciones generadas
+export const FIRMADAS_COL = 'file_mm0zjras';    // Cotizaciones Firmadas
 
 interface DocFile { url: string; name: string }
 
@@ -15,6 +15,12 @@ function parseFiles(text?: string): DocFile[] {
     url,
     name: decodeURIComponent(url.split('/').pop() || url),
   }));
+}
+
+/** Última URL subida a una columna de archivo (Monday las agrega en orden de subida). */
+export function latestFileUrl(text?: string): string | undefined {
+  const files = parseFiles(text);
+  return files.length ? files[files.length - 1].url : undefined;
 }
 
 export function DocumentacionTab({ item }: { item: ItemDetailDTO }) {

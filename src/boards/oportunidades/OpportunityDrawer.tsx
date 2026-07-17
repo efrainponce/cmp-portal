@@ -266,6 +266,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey 
           onNuevaVersion={stage !== '1' && stage !== '2' && stage !== '4' ? () => setShowNuevaVersion(true) : undefined}
           stage={stage}
           oppId={id}
+          item={item}
         />
       )}
       {activeTab === 'embellecimientos' && (
