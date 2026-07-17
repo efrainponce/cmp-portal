@@ -11,7 +11,7 @@ import { ConfirmButton } from '../../components/core/ConfirmButton';
 import { MonoTag } from '../../components/core/Badges';
 
 // Proyectos (18395657594)
-const P_SHEET_LINK = 'link_mm1amwz8';     // Google Sheet de tallas
+export const P_SHEET_LINK = 'link_mm1amwz8';     // Google Sheet de tallas
 const P_DRIVE_LINK = 'link_mm462saa';     // Carpeta Drive (visible Compras)
 const P_TALLAS_PDF = 'file_mm0hcrtz';     // PDFs relación de tallas (visible Compras)
 const P_OC_PDF = 'file_mm0hj9pn';         // PDFs órdenes de compra (visible Compras)
@@ -49,7 +49,7 @@ export function useProyecto(oppId: string, enabled: boolean): ProyectoState {
 
 // Link columns llegan del serializer solo como texto "Etiqueta - https://…"
 // (no están en PARSE_VALUE_TYPES) — se extrae la URL del texto.
-function linkUrl(item: ItemDetailDTO, colId: string): string {
+export function linkUrl(item: ItemDetailDTO, colId: string): string {
   const col = item.cols[colId];
   if (!col) return '';
   const v = col.value;
