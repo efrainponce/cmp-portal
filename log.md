@@ -82,6 +82,12 @@
   - El modal renderiza el PDF con `pdfjs-dist` en un `<canvas>` (`PdfCanvasPreview`, nuevo) en vez de `<iframe>`/`<embed>`: el visor nativo de PDF del navegador dentro de un iframe no resultó confiable ni en Chrome real (se probó, se quedaba en blanco).
   - Precarga en segundo plano (worker de pdf.js + bytes del PDF) apenas se abre la tab, no al hacer clic en "Ver" — bajó el tiempo de apertura del modal de varios segundos a ~500ms.
   - `DocumentacionTab.tsx` exporta las columnas de archivo (`file_mm0fgrzq`/`file_mm0zjras`) y un helper `latestFileUrl` para que `CotizacionTab` los reuse.
+- **`b70612d`** — Vista Costeo/Validación por rol: captura de costos, totales y Mandar a Validación
+  - Board Costeo: producto/color/cantidad/embellecimiento y Nuevos Productos en solo lectura (`readOnly`) — es trabajo de Ventas; Compras captura costos + Margen Gob % (`numeric_mkznnm5s`, ahora writable AC) + Etapa Costeo como dropdown real (`color_mm084gvf` pasa a WAC).
+  - Botón "Mandar a Validación de costeo" (etapa 15→7): nuevo `POST /oportunidades/:id/enviar-validacion` + `enviarAValidacion` en `worker/lib/costeo.ts` — escribe `deal_stage` directo vía outbox (`trusted`), sin cmp-tallas (no hay endpoint para ese paso). Solo compras/admin.
+  - Board Validación Costeo: `precioOnly` — lo único editable en la grid es Precio de Venta; ahora también lista etapa 9 además de la 7.
+  - `CotizacionTab`: fila TOTAL alineada a la grid (venta: cantidad/subtotal/IVA/total; costeo: costo/precio/márgenes ponderados por subtotal), semáforo de Margen (<0 rojo, <20 amarillo, ≥20 verde) y "P. venta sugerido" con fallback local calculado a 23% de margen cuando Monday no lo generó.
+  - WA: `normalizeMxTo` — Meta reporta números MX con el "1" legacy (521…) pero rechaza enviar a ese formato (#131030); se normaliza a 52… antes de mandar.
 - **`a283c59`** — Mostrar y permitir cambiar Vendedor/Comprador en el drawer de oportunidad
   - Header del drawer gana Vendedor/Comprador junto al indicador de sincronización (antes solo mostraba Institución/Cliente); mismo patrón que el Cliente ya existente.
   - `shared/visibility.ts`: `deal_owner` y `multiple_person_mm03qyw9` pasan a escribibles (vendedor/compras/admin) — antes de solo lectura, así que el link "Cambiar" no tenía forma de guardar. Nuevo `EditPersonaModal` reutiliza `getVendedores()` (mismas listas que el formulario "Nueva oportunidad").
