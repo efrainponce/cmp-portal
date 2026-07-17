@@ -123,6 +123,13 @@ export async function createItem(
   return { ...raw, column_values: normalizeCols(raw.column_values ?? []) };
 }
 
+/** Delete an item (works for subitems too). The mirror row is NOT touched here —
+ * callers follow up with refetchItemTree, which purges subitems gone from Monday. */
+export async function deleteItem(env: Env, itemId: number): Promise<void> {
+  const query = `mutation($id:ID!){ delete_item(item_id:$id){ id } }`;
+  await gql(env, query, { id: String(itemId) });
+}
+
 /** Create a subitem under a parent item. Same full item shape back. */
 export async function createSubitem(
   env: Env,

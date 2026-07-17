@@ -35,11 +35,14 @@ import {
 } from './cotizacion/gridMeta';
 
 export function CotizacionTab({
-  subCols, products, variant = 'venta', onSaved, versions = [], onNuevaVersion, editable = true, stage, oppId, item,
+  subCols, products, variant = 'venta', onSaved, versions = [], onNuevaVersion, onRestoreVersion, editable = true, stage, oppId, item,
   readOnly = false, precioOnly = false, draft = false,
 }: {
   subCols: ColMeta[]; products: ItemDTO[]; variant?: 'venta' | 'costeo'; onSaved?: () => void;
   versions?: QuoteVersionDTO[]; onNuevaVersion?: () => void;
+  /** Al ver una versión superada, "Restaurar esta versión" — deja la cotización
+   * igual a esa instantánea (la vigente se archiva y todo regresa a costeo). */
+  onRestoreVersion?: (version: QuoteVersionDTO) => void;
   /** false en Ganada/Perdida — las líneas quedan de solo lectura, igual que el candado de versiones. */
   editable?: boolean;
   /** deal_stage de la oportunidad — determina qué campos vendedor puede editar inline. */
@@ -240,6 +243,16 @@ export function CotizacionTab({
     return (
       <div style={{ padding: '24px 32px 40px', width: '100%', boxSizing: 'border-box' }}>
         <VersionChips versions={versions} selected={selectedVersionId} onSelect={setSelectedVersionId} />
+        {onRestoreVersion && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+            <Button variant="secondary" onClick={() => onRestoreVersion(selectedVersion)}>
+              Restaurar {selectedVersion.label}
+            </Button>
+            <span style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)' }}>
+              Regresa la cotización a como estaba en {selectedVersion.label}
+            </span>
+          </div>
+        )}
         <CotizacionPdfRow oppId={oppId} hasSinFirmar={hasSinFirmar} hasFirmada={hasFirmada} />
         <SnapshotTable version={selectedVersion} />
       </div>

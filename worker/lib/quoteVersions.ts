@@ -13,8 +13,10 @@ import type { ExecutionContext } from 'hono';
 import type { Env } from '../env';
 import type { Identity, MirrorItem } from '../../shared/types';
 import type { QuoteLineSnapshot, QuoteVersionDTO } from '../../shared/dto';
-import { getItem, childrenOf } from './dal';
+import { getItem, childrenOf, listItems } from './dal';
 import { submitWrite, flushOutbox } from './outbox';
+import { createSubitem, deleteItem } from './monday';
+import { upsertItem } from '../sync';
 import type { RawCol } from './serialize';
 
 export class QuoteVersionError extends Error {
@@ -26,6 +28,7 @@ export class QuoteVersionError extends Error {
 }
 
 // Oportunidades subitems (18395657607) — docs/monday-column-map.md.
+const SUB_PRODUCTO_REL = 'board_relation_mkzmafgp';
 const SUB_PRODUCTO_TXT = 'text_mm0bkm1j';
 const SUB_PRODUCTO_NOMBRE = 'lookup_mm0x4kda';    // mirror del producto ligado
 const SUB_SKU = 'lookup_mkzn7x9a';
@@ -37,6 +40,7 @@ const SUB_PRECIO = 'numeric_mkzneg3d';
 const SUB_ETAPA_COSTEO = 'color_mm084gvf';
 
 const EMB_LABEL_CON = 'Con Embellecimiento';
+const EMB_LABEL_SIN = 'Sin Embellecimiento';
 const ETAPA_NO_INICIADO = 'No iniciado';
 
 function colsOf(row: MirrorItem): Map<string, RawCol> {
@@ -52,11 +56,24 @@ function productoNombre(cols: Map<string, RawCol>): string {
   return (cols.get(SUB_PRODUCTO_NOMBRE)?.text || cols.get(SUB_PRODUCTO_TXT)?.text || '').trim();
 }
 
+/** Primer id ligado de una board_relation del mirror ({linked_item_ids:[...]},
+ * ver monday.ts normalizeCols) — mismo parseo que duplicateOportunidad.ts. */
+function linkedProductoId(col?: RawCol): number | undefined {
+  if (!col?.value) return undefined;
+  try {
+    const ids = ((JSON.parse(col.value) as { linked_item_ids?: unknown[] }).linked_item_ids ?? []).map(Number).filter(Number.isFinite);
+    return ids[0];
+  } catch {
+    return undefined;
+  }
+}
+
 function snapshotLine(row: MirrorItem): QuoteLineSnapshot {
   const cols = colsOf(row);
   const embStatus = (cols.get(SUB_EMB_STATUS)?.text ?? '').trim();
   return {
     subitemId: row.item_id,
+    productoItemId: linkedProductoId(cols.get(SUB_PRODUCTO_REL)),
     producto: productoNombre(cols) || row.name,
     sku: cols.get(SUB_SKU)?.text || undefined,
     color: (cols.get(SUB_COLOR)?.text ?? '').trim(),
@@ -202,5 +219,111 @@ export async function duplicateVersion(
   }
   // Flush AQUÍ (no vía waitUntil): la ruta refetchea el árbol desde Monday
   // enseguida — sin este await el refetch pisaría el mirror con datos viejos.
+  await flushOutbox(env);
+}
+
+// Mismo criterio de tolerancia que costeo.ts norm(): sin acentos/mayúsculas.
+function norm(s: string): string {
+  return s.normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase();
+}
+
+/** "Restaurar esta versión" (Efraín, 2026-07-17): archiva la vigente y deja el
+ * mirror igual a la instantánea elegida — reescribe producto/color/cantidad/
+ * embellecimiento/precio en las líneas que siguen vivas, recrea las que ya no
+ * existen (sus imágenes de zona no se versionan — no regresan) y BORRA de
+ * Monday las que no estaban en esa versión. El resultado es un borrador
+ * (Etapa Costeo "No iniciado" en todo): cambiar de versión implica que la
+ * oportunidad pase por costeo otra vez, vía "Mandar a costeo". */
+export async function restoreVersion(
+  env: Env, ctx: ExecutionContext, itemId: number, versionNum: number, viewer: Identity,
+): Promise<void> {
+  const opp = await getItem(env, 'oportunidades', itemId, viewer);
+  if (!opp) throw new QuoteVersionError(404, 'not found');
+
+  const cols = colsOf(opp);
+  let stage = '';
+  try { stage = String((JSON.parse(cols.get('deal_stage')?.value ?? 'null') as { index?: unknown })?.index ?? ''); } catch { /* ignore */ }
+  if (stage === '1' || stage === '2') {
+    throw new QuoteVersionError(422, 'La oportunidad ya está Ganada o Perdida — no se pueden editar sus líneas.');
+  }
+
+  const row = await env.DB
+    .prepare('SELECT products FROM cotizacion_versions WHERE item_id = ? AND version = ?')
+    .bind(itemId, versionNum)
+    .first<{ products: string }>();
+  if (!row) throw new QuoteVersionError(404, 'Esa versión no existe.');
+  const target = JSON.parse(row.products) as QuoteLineSnapshot[];
+  if (target.length === 0) throw new QuoteVersionError(422, 'Esa versión no tiene líneas — no hay nada que restaurar.');
+
+  const lineas = await childrenOf(env, 'oportunidades', itemId, viewer);
+  const currentLines = lineas.map(snapshotLine);
+
+  // Archiva la vigente ANTES de tocar nada — nunca se pierde estado.
+  const version = (await maxVersion(env, itemId)) + 1;
+  await env.DB
+    .prepare(`INSERT INTO cotizacion_versions (item_id, version, label, folio, total_fmt, products, created_at)
+      VALUES (?, ?, ?, NULL, ?, ?, ?)`)
+    .bind(itemId, version, `V${version}`, String(totalOf(currentLines)), JSON.stringify(currentLines), new Date().toISOString())
+    .run();
+
+  // Instantáneas pre-2026-07-17 no traen productoItemId — se resuelve por nombre
+  // contra el catálogo de Productos (mirror), cargado una sola vez y solo si hace falta.
+  let catalogo: MirrorItem[] | undefined;
+  const resolveProductoId = async (line: QuoteLineSnapshot): Promise<number | undefined> => {
+    if (line.productoItemId) return line.productoItemId;
+    catalogo ??= await listItems(env, 'productos', viewer);
+    const objetivo = norm(line.producto);
+    return catalogo.find(p => norm(p.name) === objetivo)?.item_id;
+  };
+
+  const currentById = new Map(currentLines.filter(l => l.subitemId != null).map(l => [l.subitemId, l]));
+  const targetIds = new Set(target.filter(l => l.subitemId != null).map(l => l.subitemId));
+
+  for (const t of target) {
+    const cur = t.subitemId != null ? currentById.get(t.subitemId) : undefined;
+    if (cur) {
+      // La línea sigue viva: reescribir sus datos tal como estaban. `trusted`
+      // porque precio/Etapa Costeo no son escribibles por vendedor — es una
+      // restauración decidida por el server, mismo criterio que duplicateVersion.
+      const writeCols: Record<string, string> = {
+        [SUB_COLOR]: t.color,
+        [SUB_CANTIDAD]: String(t.cantidad),
+        [SUB_EMB_STATUS]: t.embellecimiento ? EMB_LABEL_CON : EMB_LABEL_SIN,
+        [SUB_EMB_DESC]: t.descripcionEmbellecimiento ?? '',
+        [SUB_PRECIO]: String(t.precioUnitario ?? 0),
+        [SUB_ETAPA_COSTEO]: ETAPA_NO_INICIADO,
+      };
+      if (norm(cur.producto) !== norm(t.producto)) {
+        const rel = await resolveProductoId(t);
+        if (rel) writeCols[SUB_PRODUCTO_REL] = String(rel);
+        else writeCols[SUB_PRODUCTO_TXT] = t.producto;
+      }
+      await submitWrite(env, ctx, 'oportunidades_sub', t.subitemId!, writeCols, viewer, { skipFlush: true, trusted: true });
+      continue;
+    }
+    // La línea ya no existe: recrearla desde la instantánea (mismo patrón que
+    // duplicateOportunidad.ts). Nace sin Etapa Costeo = pendiente de costeo.
+    const subCols: Record<string, unknown> = {
+      [SUB_CANTIDAD]: String(t.cantidad),
+      [SUB_COLOR]: t.color,
+      [SUB_EMB_STATUS]: { label: t.embellecimiento ? EMB_LABEL_CON : EMB_LABEL_SIN },
+    };
+    if (t.descripcionEmbellecimiento) subCols[SUB_EMB_DESC] = t.descripcionEmbellecimiento;
+    if (t.precioUnitario) subCols[SUB_PRECIO] = String(t.precioUnitario);
+    const rel = await resolveProductoId(t);
+    if (rel) subCols[SUB_PRODUCTO_REL] = { item_ids: [rel] };
+    else subCols[SUB_PRODUCTO_TXT] = t.producto;
+    const sub = await createSubitem(env, itemId, t.producto.trim() || 'Producto', subCols);
+    await upsertItem(env, 'oportunidades_sub', sub);
+  }
+
+  // Líneas que no estaban en la versión restaurada: fuera de Monday. El
+  // refetchItemTree de la ruta purga sus filas del mirror.
+  for (const cur of currentLines) {
+    if (cur.subitemId != null && !targetIds.has(cur.subitemId)) {
+      await deleteItem(env, cur.subitemId);
+    }
+  }
+
   await flushOutbox(env);
 }

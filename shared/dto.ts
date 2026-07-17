@@ -65,6 +65,10 @@ export interface ProyectoResponse { proyecto: ItemDetailDTO | null }
 // de solo lectura (snapshot); la edición vive en QuoteVersionRequest.
 export interface QuoteLineSnapshot {
   subitemId?: number;
+  /** Item del catálogo Productos ligado al momento del snapshot — lo usa
+   * restoreVersion para re-linkear sin adivinar por nombre. Instantáneas
+   * archivadas antes de 2026-07-17 no lo traen (fallback: match por nombre). */
+  productoItemId?: number;
   producto: string;
   sku?: string;
   color: string;

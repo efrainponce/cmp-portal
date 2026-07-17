@@ -12,7 +12,7 @@ import { SyncIndicator } from '../../components/board/SyncIndicator';
 import { useMe } from '../../lib/useMe';
 import {
   useBoards, colForBoard, checkCosteo, duplicarOportunidad, duplicarVersion, enviarCosteo, enviarValidacion, generarCotizacion, getItemDetail, getVersiones,
-  refreshItem, type ItemDetailDTO, type QuoteVersionDTO,
+  refreshItem, restaurarVersion, type ItemDetailDTO, type QuoteVersionDTO,
 } from '../../lib/api';
 import { statusIndex } from '../../lib/statusValue';
 import { stageAtOrAfter, type StageBoardKey } from '../../lib/dealStages';
@@ -100,6 +100,8 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
   const [versions, setVersions] = useState<QuoteVersionDTO[]>([]);
   const [showNuevaVersion, setShowNuevaVersion] = useState(false);
   const [duplicatingVersion, setDuplicatingVersion] = useState(false);
+  const [restoreTarget, setRestoreTarget] = useState<QuoteVersionDTO | null>(null);
+  const [restoringVersion, setRestoringVersion] = useState(false);
   const [showEditCliente, setShowEditCliente] = useState(false);
   const [showEditVendedor, setShowEditVendedor] = useState(false);
   const [showEditComprador, setShowEditComprador] = useState(false);
@@ -214,6 +216,33 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
     } finally {
       setDuplicatingVersion(false);
       setShowNuevaVersion(false);
+    }
+  };
+
+  // "Restaurar esta versión": el server reescribe/crea/borra líneas hasta dejar
+  // el mirror igual a la instantánea elegida (archivando antes la vigente) y todo
+  // queda como borrador — cambiar de versión implica volver a pasar por costeo.
+  const onRestaurarVersion = async () => {
+    if (!restoreTarget) return;
+    setRestoringVersion(true);
+    try {
+      const res = await restaurarVersion(id, restoreTarget.id);
+      if (!res.ok) throw new Error(res.error ?? 'No se pudo restaurar la versión.');
+      if (res.versions) { versionsCache.set(id, res.versions); setVersions(res.versions); }
+      const nueva = res.versions?.find((v) => v.status === 'vigente');
+      setNotice({
+        kind: 'ok', title: `${restoreTarget.label} restaurada`,
+        lines: [
+          `${nueva?.label ?? 'La vigente'} ahora es la cotización tal como estaba en ${restoreTarget.label}; la anterior quedó archivada.`,
+          'La oportunidad tiene que pasar por costeo otra vez — usa "Mandar a costeo" cuando esté lista.',
+        ],
+      });
+      load();
+    } catch (e) {
+      setNotice({ kind: 'error', title: 'No se pudo restaurar la versión:', lines: [e instanceof Error ? e.message : 'Verifica tu conexión.'] });
+    } finally {
+      setRestoringVersion(false);
+      setRestoreTarget(null);
     }
   };
 
@@ -429,9 +458,13 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
       {activeTab === 'actualizaciones' && <ActualizacionesTab slug="oportunidades" itemId={id} />}
       {activeTab === 'cotizacion' && (
         <CotizacionTab
+          // Remount cuando cambia el número de versiones (duplicar/restaurar):
+          // resetea la selección interna de chips y regresa la vista a la vigente.
+          key={`cot-${versions.length}`}
           subCols={subCols} products={products} variant={cotizacionVariant} onSaved={load} versions={versions}
           editable={stage !== '1' && stage !== '2'}
           onNuevaVersion={stage !== '1' && stage !== '2' && stage !== '4' && !noLineEdits && !draftVigente ? () => setShowNuevaVersion(true) : undefined}
+          onRestoreVersion={stage !== '1' && stage !== '2' && !noLineEdits ? (v) => setRestoreTarget(v) : undefined}
           stage={stage}
           draft={draftVigente}
           oppId={id}
@@ -487,7 +520,38 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
             </div>
             <div>
               La copia se puede editar directo en la tabla (productos, colores, cantidades y embellecimientos,
-              igual que en Nueva oportunidad) y, cuando esté lista, se regresa con el botón «Mandar a costeo».
+              igual que en Nueva oportunidad).
+            </div>
+            <div style={{ color: 'var(--status-esperando)', font: 'var(--text-label-strong)' }}>
+              ⚠ Al cambiar de versión, la oportunidad tiene que pasar por costeo otra vez:
+              la versión nueva nace sin costear y se manda con «Mandar a costeo».
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {restoreTarget && (
+        <Modal
+          title={`Restaurar ${restoreTarget.label}`}
+          onClose={() => { if (!restoringVersion) setRestoreTarget(null); }}
+          width={480}
+          footer={
+            <>
+              <Button variant="ghost" onClick={() => { if (!restoringVersion) setRestoreTarget(null); }}>Cancelar</Button>
+              <Button variant="primary" onClick={restoringVersion ? undefined : onRestaurarVersion} style={restoringVersion ? { opacity: 0.6 } : undefined}>
+                {restoringVersion ? 'Restaurando…' : `Restaurar ${restoreTarget.label}`}
+              </Button>
+            </>
+          }
+        >
+          <div style={{ font: 'var(--text-body)', color: 'var(--ink-secondary)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div>
+              La cotización regresa a como estaba en {restoreTarget.label}: se reescriben las líneas
+              (las que no existían en esa versión se eliminan) y la vigente actual queda archivada.
+            </div>
+            <div style={{ color: 'var(--status-esperando)', font: 'var(--text-label-strong)' }}>
+              ⚠ Al cambiar de versión, la oportunidad tiene que pasar por costeo otra vez:
+              la versión restaurada queda sin costear y se manda con «Mandar a costeo».
             </div>
           </div>
         </Modal>

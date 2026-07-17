@@ -156,6 +156,16 @@ export async function duplicarVersion(id: string): Promise<DuplicarVersionRespon
   return body;
 }
 
+/** "Restaurar esta versión": deja la cotización igual a la instantánea elegida
+ * (la vigente actual se archiva antes). Todo queda como borrador — la
+ * oportunidad debe pasar por costeo otra vez. */
+export async function restaurarVersion(id: string, version: number): Promise<DuplicarVersionResponse> {
+  const res = await apiFetch(`/oportunidades/${id}/version/${version}/restaurar`, { method: 'POST' });
+  const body: DuplicarVersionResponse = await res.json();
+  if (!res.ok && !body.error) throw new Error('restaurar versión failed: ' + res.status);
+  return body;
+}
+
 /** Zona -> URL de imagen (firmada, corta vigencia) para una línea de oportunidad. */
 export async function getZoneImages(lineaId: string): Promise<Record<string, string>> {
   const res = await apiFetch(`/oportunidades/lineas/${lineaId}/embellecimiento-imagenes`);

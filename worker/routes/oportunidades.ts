@@ -14,7 +14,7 @@ import {
   AutomationError,
 } from '../lib/automations';
 import { enviarACosteo, enviarAValidacion, checkCosteo, CosteoError } from '../lib/costeo';
-import { listVersions, duplicateVersion, esDraftVigente, recordFirstVersion, QuoteVersionError } from '../lib/quoteVersions';
+import { listVersions, duplicateVersion, restoreVersion, esDraftVigente, recordFirstVersion, QuoteVersionError } from '../lib/quoteVersions';
 import { duplicateOportunidad, DuplicateOportunidadError } from '../lib/duplicateOportunidad';
 import { createSubitem } from '../lib/monday';
 import { listZoneImages, uploadZoneImage, EmbellImageError } from '../lib/embellecimientoImagenes';
@@ -147,14 +147,41 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
   // archiva tal cual en D1 y las líneas regresan a Etapa Costeo "No iniciado" —
   // el mirror (idéntico) queda como borrador editable inline, y mandarlo a costeo
   // es un paso aparte con el botón "Mandar a costeo".
+  const VERSION_ROLES = ['vendedor', 'compras', 'admin'];
+
   app.post('/api/oportunidades/:id/version/duplicar', async c => {
     const itemId = Number(c.req.param('id'));
     if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
     const viewer = c.get('viewer');
+    if (!VERSION_ROLES.includes(viewer.role)) return c.json({ error: 'forbidden' }, 403);
 
     try {
       await duplicateVersion(c.env, c.executionCtx, itemId, viewer);
       // El flush ya mandó los resets a Monday — sincroniza el mirror completo.
+      await refetchItemTree(c.env, BOARDS.oportunidades.id, itemId);
+      const versions = await listVersions(c.env, itemId, viewer);
+      return c.json({ ok: true, versions } satisfies DuplicarVersionResponse);
+    } catch (err) {
+      if (err instanceof QuoteVersionError) return jsonStatus({ ok: false, error: err.message } satisfies DuplicarVersionResponse, err.status);
+      if (err instanceof OutboxError) return jsonStatus({ ok: false, error: err.message } satisfies DuplicarVersionResponse, err.status);
+      return jsonStatus({ ok: false, error: 'internal error' } satisfies DuplicarVersionResponse, 500);
+    }
+  });
+
+  // "Restaurar esta versión" — deja el mirror igual a la instantánea elegida
+  // (archivando antes la vigente) y todo queda como borrador: cambiar de versión
+  // implica que la oportunidad pase por costeo otra vez (Efraín, 2026-07-17).
+  app.post('/api/oportunidades/:id/version/:version/restaurar', async c => {
+    const itemId = Number(c.req.param('id'));
+    const versionNum = Number(c.req.param('version'));
+    if (!Number.isFinite(itemId) || !Number.isFinite(versionNum)) return c.json({ error: 'not found' }, 404);
+    const viewer = c.get('viewer');
+    if (!VERSION_ROLES.includes(viewer.role)) return c.json({ error: 'forbidden' }, 403);
+
+    try {
+      await restoreVersion(c.env, c.executionCtx, itemId, versionNum, viewer);
+      // El flush ya escribió/creó/borró líneas en Monday — el refetch de árbol
+      // además purga del mirror las que se borraron.
       await refetchItemTree(c.env, BOARDS.oportunidades.id, itemId);
       const versions = await listVersions(c.env, itemId, viewer);
       return c.json({ ok: true, versions } satisfies DuplicarVersionResponse);
