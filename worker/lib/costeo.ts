@@ -20,13 +20,19 @@ const SUB_COLORES_DISP = 'lookup_mkznm0h3';       // mirror: colores del product
 const SUB_PRODUCTO_REL = 'board_relation_mkzmafgp';
 const SUB_PRODUCTO_TXT = 'text_mm0bkm1j';
 const SUB_FICHA = 'lookup_mm0xw8p7';              // ficha comercial (validar_costeo la exige)
+const SUB_ETAPA_COSTEO = 'color_mm084gvf';        // Etapa Costeo por línea
 
 // Oportunidad
 const OPP_INSTITUCION = 'lookup_mm1bs976';        // validar_costeo rechaza sin institución
 
+const ETAPA_NO_INICIADO = 'No iniciado';
+
 const STAGE_BLOCKED: Record<string, string> = {
   '15': 'La oportunidad ya está en costeo.',
   '7': 'La oportunidad ya está en validación de costeo.',
+  '1': 'La oportunidad ya está Ganada.',
+  '2': 'La oportunidad ya está Perdida.',
+  '5': 'La oportunidad está Cancelada.',
 };
 
 // Costeo (15) → Costeo en validación (7): sin endpoint de cmp-tallas para este
@@ -120,13 +126,29 @@ export async function checkCosteo(env: Env, itemId: number, viewer: Identity): P
   } catch { /* value optimista o vacío — no bloquea */ }
   if (STAGE_BLOCKED[stageIndex]) return { ok: false, errors: [STAGE_BLOCKED[stageIndex]] };
 
+  const lineas = await childrenOf(env, 'oportunidades', itemId, viewer);
+
+  // Después de "Nueva oportunidad", el botón vive siempre visible pero solo se
+  // reactiva cuando el vendedor creó una nueva versión (Efraín, 2026-07-17):
+  // submitVersion regresa la Etapa Costeo de las líneas editadas a "No iniciado"
+  // y las líneas nuevas nacen sin ella — si TODAS ya están costeadas, la vigente
+  // es la que ya pasó por costeo y no hay nada que reenviar.
+  if (stageIndex && stageIndex !== '4' && lineas.length > 0) {
+    const pendiente = lineas.some(l => {
+      const etapa = (colsOf(l).get(SUB_ETAPA_COSTEO)?.text ?? '').trim();
+      return !etapa || etapa === ETAPA_NO_INICIADO;
+    });
+    if (!pendiente) {
+      return { ok: false, errors: ['La cotización vigente ya se costeó — crea una nueva versión para regresarla a costeo.'] };
+    }
+  }
+
   const errors: string[] = [];
 
   if (!(cols.get(OPP_INSTITUCION)?.text ?? '').trim()) {
     errors.push('Asigna una institución a la oportunidad.');
   }
 
-  const lineas = await childrenOf(env, 'oportunidades', itemId, viewer);
   if (lineas.length === 0) {
     errors.push('La oportunidad no tiene líneas de producto. Agrega al menos una.');
   } else {

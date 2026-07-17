@@ -13,7 +13,7 @@ import {
   generateCotizacion, generateSheet, confirmTallas, importTallas, generateOC,
   AutomationError,
 } from '../lib/automations';
-import { enviarACosteo, enviarAValidacion, checkCosteo, CosteoError, type EnviarCosteoResult } from '../lib/costeo';
+import { enviarACosteo, enviarAValidacion, checkCosteo, CosteoError } from '../lib/costeo';
 import { listVersions, submitVersion, recordFirstVersion, QuoteVersionError } from '../lib/quoteVersions';
 import { duplicateOportunidad, DuplicateOportunidadError } from '../lib/duplicateOportunidad';
 import { createSubitem } from '../lib/monday';
@@ -151,19 +151,12 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
 
     try {
       const { changed } = await submitVersion(c.env, c.executionCtx, itemId, viewer, body.lines ?? []);
-      // Una nueva versión con cambios ES una solicitud de costeo — mismo flujo real
-      // que el botón "Mandar a costeo" (valida, genera PDF, deal_stage → "En costeo"),
-      // sin importar en qué etapa estuviera antes (Efraín, 2026-07-16).
-      const costeo = changed
-        ? await enviarACosteo(c.env, itemId, viewer).catch((e): EnviarCosteoResult => ({
-            ok: false, errors: [e instanceof Error ? e.message : 'No se pudo reenviar a costeo.'],
-          }))
-        : undefined;
-      // Un solo refetch de árbol al final: recoge tanto las líneas editadas como lo
-      // que cmp-tallas escribió (stage, PDF, snapshots) — submitVersion ya no refetchea.
+      // Guardar una versión ya NO la manda sola a costeo (Efraín, 2026-07-17): el
+      // vendedor la regresa cuando quiera con el botón "Mandar a costeo", que se
+      // reactiva porque las líneas editadas quedaron en Etapa Costeo "No iniciado".
       if (changed) await refetchItemTree(c.env, BOARDS.oportunidades.id, itemId);
       const versions = changed ? await listVersions(c.env, itemId, viewer) : undefined;
-      return c.json({ ok: true, changed, versions, costeo } satisfies QuoteVersionResponse);
+      return c.json({ ok: true, changed, versions } satisfies QuoteVersionResponse);
     } catch (err) {
       if (err instanceof QuoteVersionError) return jsonStatus({ ok: false, changed: false, error: err.message } satisfies QuoteVersionResponse, err.status);
       if (err instanceof OutboxError) return jsonStatus({ ok: false, changed: false, error: err.message } satisfies QuoteVersionResponse, err.status);

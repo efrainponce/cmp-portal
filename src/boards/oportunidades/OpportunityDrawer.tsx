@@ -92,7 +92,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
   const [refreshing, setRefreshing] = useState(false);
   const [tab, setTab] = useState<DrawerTabKey>(defaultTab as DrawerTabKey);
   const [notice, setNotice] = useState<Notice | null>(null);
-  // Pre-chequeo de costeo (solo etapa 4): null = cargando; deshabilita el botón.
+  // Pre-chequeo de costeo (todas las etapas): null = cargando; deshabilita el botón.
   const [costeoReady, setCosteoReady] = useState<{ ok: boolean; errors?: string[] } | null>(null);
   const [versions, setVersions] = useState<QuoteVersionDTO[]>([]);
   const [showNuevaVersion, setShowNuevaVersion] = useState(false);
@@ -129,15 +129,17 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
   const stage = item?.cols.deal_stage ? statusIndex(item.cols.deal_stage) : undefined;
 
   // Evitar que den click: el check corre al abrir (y tras refrescar) y el botón
-  // queda deshabilitado con la lista de pendientes visible.
+  // queda deshabilitado — en etapa 4 con la lista de pendientes visible; después
+  // de etapa 4 el server además exige una versión nueva sin costear (crear una
+  // "Nueva versión" reactiva el botón — Efraín, 2026-07-17).
   useEffect(() => {
-    if (!item || stage !== '4') { setCosteoReady(null); return; }
+    if (!item || boardKey === 'costeo' || boardKey === 'validacion') { setCosteoReady(null); return; }
     let cancelled = false;
     checkCosteo(id)
       .then(r => { if (!cancelled) setCosteoReady(r); })
       .catch(() => { if (!cancelled) setCosteoReady({ ok: true }); }); // el server re-valida al enviar
     return () => { cancelled = true; };
-  }, [id, stage, item?.syncedAt]);
+  }, [id, stage, item?.syncedAt, boardKey]);
 
   const showPostventa = stageAtOrAfter(stage, '9');
   const proyecto = useProyecto(id, !!item && showPostventa);
@@ -304,13 +306,19 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
           </div>
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
-          {stage === '4' && !readOnlyCosteo && (
+          {/* Siempre visible (salvo boards de Compras): las cotizaciones cambian
+              mucho — en cualquier etapa el vendedor puede crear una nueva versión
+              y regresarla a costeo con este botón. Deshabilitado cuando la vigente
+              ya se costeó o la etapa lo bloquea (Efraín, 2026-07-17). */}
+          {!readOnlyCosteo && !isValidacion && (
             <ConfirmButton
               label="Mandar a costeo"
               confirmLabel="¿Enviar solicitud de costeo?"
               busyLabel="Validando y generando PDF…"
               disabled={costeoReady === null || !costeoReady.ok}
-              title={costeoReady === null ? 'Verificando requisitos…' : !costeoReady.ok ? 'Faltan requisitos — revisa la lista abajo' : 'Genera el PDF de solicitud y pasa a "En costeo"'}
+              title={costeoReady === null ? 'Verificando requisitos…'
+                : !costeoReady.ok ? (stage === '4' ? 'Faltan requisitos — revisa la lista abajo' : (costeoReady.errors?.[0] ?? 'No disponible todavía'))
+                : 'Genera el PDF de solicitud y pasa a "En costeo"'}
               onConfirm={onEnviarCosteo}
             />
           )}
@@ -416,21 +424,19 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
           itemId={id}
           currentProducts={versions.find((v) => v.status === 'vigente')?.products ?? []}
           onClose={() => setShowNuevaVersion(false)}
-          onSaved={(label, costeo) => {
+          onSaved={(label) => {
             setShowNuevaVersion(false);
-            if (costeo?.ok) {
-              setNotice({
-                kind: 'ok', title: 'Nueva versión guardada y mandada a costeo',
-                lines: [`${label}${costeo.folio ? ` — ${costeo.folio}` : ''} — la etapa regresó a "En costeo".`],
-              });
-            } else if (costeo && !costeo.ok) {
-              setNotice({
-                kind: 'error', title: `${label} guardada, pero no se pudo reenviar a costeo:`,
-                lines: costeo.errors ?? ['Avísale a Compras manualmente.'],
-              });
-            } else {
-              setNotice({ kind: 'ok', title: 'Nueva versión guardada', lines: [`${label} — se archivó la anterior y se actualizó Monday.`] });
-            }
+            // Guardar ya no manda a costeo: el vendedor la regresa cuando quiera
+            // con "Mandar a costeo" (recién reactivado) — salvo que la oportunidad
+            // ya esté en manos de Compras (etapas 15/7).
+            const enCosteo = stage === '15' || stage === '7';
+            setNotice({
+              kind: 'ok', title: 'Nueva versión guardada',
+              lines: [
+                `${label} — se archivó la versión anterior y se actualizó Monday.`,
+                ...(enCosteo ? [] : ['Cuando esté lista, usa "Mandar a costeo" para regresarla a costeo.']),
+              ],
+            });
             load();
             loadVersions();
           }}

@@ -243,9 +243,9 @@ export async function submitVersion(
     await submitWrite(env, ctx, 'oportunidades_sub', input.subitemId, writeCols, viewer, { skipFlush: true });
   }
 
-  // Flush AQUÍ (no vía waitUntil): el caller manda esto a costeo enseguida y
-  // cmp-tallas lee Monday directo — sin este await podría snapshotear datos
-  // viejos. El refetch del árbol lo hace la ruta después del costeo, una sola vez.
+  // Flush AQUÍ (no vía waitUntil): la ruta refetchea el árbol desde Monday
+  // enseguida — sin este await el refetch pisaría el mirror con datos viejos
+  // (y un "Mandar a costeo" inmediato snapshotearía líneas sin los cambios).
   await flushOutbox(env);
   return { changed: true };
 }

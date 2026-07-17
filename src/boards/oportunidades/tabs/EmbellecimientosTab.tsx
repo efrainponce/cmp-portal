@@ -9,8 +9,8 @@
 // Versiones: el embellecimiento va pegado a la línea de producto (mismo
 // QuoteLineSnapshot que Cotización — cambiar producto, color, cantidad O
 // embellecimiento archiva una nueva versión, ver worker/lib/quoteVersions.ts
-// linesDiffer). Así que comparte los mismos chips V1/V2… y el mismo botón
-// "Enviar a costeo" — no tiene sentido versionar por separado algo que se
+// linesDiffer). Así que comparte los mismos chips V1/V2… y el mismo chip
+// "+ Nueva versión" — no tiene sentido versionar por separado algo que se
 // cotiza junto (Efraín, 2026-07-16). Al ver una versión superada se muestra
 // su snapshot de zonas (solo lectura); las imágenes de referencia NO se
 // versionan (viven en el file column actual del subitem, no hay snapshot

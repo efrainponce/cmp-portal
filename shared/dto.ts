@@ -103,11 +103,10 @@ export interface QuoteLineInput {
 }
 
 export interface QuoteVersionRequest { lines: QuoteLineInput[] }
+// Guardar una versión NO la manda a costeo (Efraín, 2026-07-17): eso lo hace el
+// vendedor después, explícito, con el botón "Mandar a costeo" del drawer.
 export interface QuoteVersionResponse {
   ok: boolean; changed: boolean; error?: string; versions?: QuoteVersionDTO[];
-  /** Resultado de reenviar a costeo (solo cuando changed:true) — mismo shape que
-   * EnviarCosteoResponse, sin folio garantizado si cmp-tallas lo rechazó. */
-  costeo?: { ok: boolean; folio?: string; errors?: string[] };
 }
 
 // POST /api/proyectos/:id/(tallas-regenerar|tallas-confirmar|tallas-importar|generar-oc)

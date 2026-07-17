@@ -2,8 +2,9 @@ import type { QuoteVersionDTO } from '../../../../lib/api';
 
 /** Chips V1/V2… — vigente resaltada. Seleccionar una anterior muestra su
  * instantánea (solo lectura, sin fórmulas: esas solo existen para la vigente).
- * "Enviar a costeo" junto a la vigente abre el draft de nueva versión — crear
- * una versión ES la forma de mandar cambios de línea a costeo otra vez. */
+ * "+ Nueva versión" junto a la vigente abre el draft — solo guarda la versión;
+ * regresarla a costeo es el botón "Mandar a costeo" del drawer, que se reactiva
+ * justo porque existe una versión nueva sin costear (Efraín, 2026-07-17). */
 export function VersionChips({
   versions, selected, onSelect, onNuevaVersion,
 }: {
@@ -34,14 +35,14 @@ export function VersionChips({
       {onNuevaVersion && (
         <div
           onClick={onNuevaVersion}
-          title="Crea una nueva versión de la cotización y la manda a costeo"
+          title="Duplica la cotización vigente como una nueva versión editable — la anterior queda archivada"
           style={{
             cursor: 'pointer', font: 'var(--text-label-strong)', padding: '4px 12px',
             borderRadius: 'var(--radius-pill)', border: '1px dashed var(--border)',
             color: 'var(--accent)', background: 'transparent',
           }}
         >
-          + Enviar a costeo
+          + Nueva versión
         </div>
       )}
     </div>
