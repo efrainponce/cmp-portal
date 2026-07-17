@@ -16,6 +16,7 @@ import {
 } from '../../lib/api';
 import { statusIndex } from '../../lib/statusValue';
 import { stageAtOrAfter, type StageBoardKey } from '../../lib/dealStages';
+import { useIsMobile } from '../../lib/useIsMobile';
 import { BoardTabsBar, type DrawerTabKey } from './BoardTabsBar';
 import { CotizacionTab } from './tabs/CotizacionTab';
 import { NuevaVersionForm } from './tabs/NuevaVersionForm';
@@ -78,6 +79,7 @@ function ChangeIconButton({ onClick, label }: { onClick: () => void; label: stri
 }
 
 export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey, onDuplicated }: Props) {
+  const isMobile = useIsMobile();
   const me = useMe();
   const canDuplicate = !!me && me.role !== 'cliente';
   const [duplicating, setDuplicating] = useState(false);
@@ -262,7 +264,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
 
   return (
     <div style={{ position: 'absolute', inset: 0, background: 'var(--bg)', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
-      <div style={{ padding: '20px 32px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div style={{ padding: isMobile ? '14px 14px 0' : '20px 32px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div onClick={onBack} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, cursor: 'pointer', color: 'var(--ink-secondary)', font: 'var(--text-label-strong)' }}>
           <IconBack /> {backLabel}
         </div>
@@ -280,10 +282,16 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
         )}
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 32px 20px', borderBottom: '1px solid var(--border)' }}>
+      {/* En cel el header se apila: meta arriba y botones de acción abajo a lo
+          ancho — en un solo renglón los botones se salían de la pantalla. */}
+      <div style={{
+        display: 'flex', alignItems: isMobile ? 'stretch' : 'center', justifyContent: 'space-between',
+        flexDirection: isMobile ? 'column' : 'row', gap: isMobile ? 12 : 0,
+        padding: isMobile ? '12px 14px 16px' : '16px 32px 20px', borderBottom: '1px solid var(--border)',
+      }}>
         <div>
           <div style={{ font: 'var(--text-subtitle)', color: 'var(--ink)' }}>{item.name}</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4, font: 'var(--text-label)', color: 'var(--ink-tertiary)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginTop: 4, font: 'var(--text-label)', color: 'var(--ink-tertiary)' }}>
             <span>Institución: <span style={{ color: 'var(--ink-secondary)' }}>{item.cols[INSTITUCION_COL]?.text || '—'}</span></span>
             <span>·</span>
             <span>
@@ -291,7 +299,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
             </span>
             {canEditCliente && <ChangeIconButton label="Cambiar cliente" onClick={() => setShowEditCliente(true)} />}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4, font: 'var(--text-caption)', color: 'var(--ink-faint)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginTop: 4, font: 'var(--text-caption)', color: 'var(--ink-faint)' }}>
             <SyncIndicator syncedAt={item.syncedAt} pending={item.pendingWrite ? 1 : 0} />
             <span>·</span>
             <span>
@@ -305,7 +313,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
             {canEditComprador && <ChangeIconButton label="Cambiar comprador" onClick={() => setShowEditComprador(true)} />}
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           {/* Siempre visible (salvo boards de Compras): las cotizaciones cambian
               mucho — en cualquier etapa el vendedor puede crear una nueva versión
               y regresarla a costeo con este botón. Deshabilitado cuando la vigente
@@ -350,7 +358,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
 
       {costeoPending && !notice && (
         <div style={{
-          margin: '14px 32px 0', padding: '12px 16px', border: '1px solid var(--status-esperando)',
+          margin: isMobile ? '12px 14px 0' : '14px 32px 0', padding: '12px 16px', border: '1px solid var(--status-esperando)',
           borderRadius: 'var(--radius-lg)', background: 'var(--bg-raised)',
         }}>
           <div style={{ font: 'var(--text-label-strong)', color: 'var(--status-esperando)', marginBottom: 6 }}>
@@ -364,7 +372,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
 
       {notice && (
         <div style={{
-          margin: '14px 32px 0', padding: '12px 16px',
+          margin: isMobile ? '12px 14px 0' : '14px 32px 0', padding: '12px 16px',
           border: `1px solid ${notice.kind === 'ok' ? 'var(--status-ganada)' : 'var(--status-perdida)'}`,
           borderRadius: 'var(--radius-lg)', background: 'var(--bg-raised)',
         }}>

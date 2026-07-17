@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
+import { useIsMobile } from '../../lib/useIsMobile';
 
 interface GroupCardProps {
   label: string;
@@ -39,12 +40,14 @@ export function GroupCard({
   collapsed: collapsedProp, onToggleCollapsed,
 }: GroupCardProps) {
   const [internalCollapsed, setInternalCollapsed] = useState(defaultCollapsed);
+  const isMobile = useIsMobile();
   const isControlled = collapsedProp !== undefined;
   const collapsed = isControlled ? collapsedProp : internalCollapsed;
   const toggle = isControlled ? onToggleCollapsed! : () => setInternalCollapsed((c) => !c);
+  const hMargin = isMobile ? '10px' : '24px';
   const cardStyle: CSSProperties = flat
-    ? { margin: '0 24px 0', borderBottom: '1px solid ' + color + '33' }
-    : { margin: '0 24px 16px', borderRadius: 'var(--radius-2xl)', overflow: 'hidden', border: '1px solid ' + color + '33' };
+    ? { margin: `0 ${hMargin} 0`, borderBottom: '1px solid ' + color + '33' }
+    : { margin: `0 ${hMargin} ${isMobile ? 12 : 16}px`, borderRadius: 'var(--radius-2xl)', overflow: 'hidden', border: '1px solid ' + color + '33' };
   return (
     <div style={cardStyle}>
       <div

@@ -37,14 +37,25 @@ const INVENTARIO_ITEMS: { key: BoardKey; label: string; icon: NavIcon }[] = [
   { key: 'inventario', label: 'Inventario', icon: IconInventario },
 ];
 
+/** Label por board para headers fuera del sidebar (p.ej. la barra superior móvil). */
+export const BOARD_LABELS: Record<BoardKey, string> = {
+  ...Object.fromEntries(
+    [...VENTAS_ITEMS, ...POSTVENTA_ITEMS, ...PROYECTOS_ITEMS, ...CATALOG_ITEMS, ...INVENTARIO_ITEMS]
+      .map((i) => [i.key, i.label]),
+  ),
+  settings: 'Configuración',
+} as Record<BoardKey, string>;
+
 interface SidebarProps {
   activeBoard: BoardKey;
   onSelectBoard: (key: BoardKey) => void;
   collapsed: boolean;
   onToggleCollapsed: () => void;
+  /** En móvil el sidebar vive dentro de un menú deslizante — sin botón de colapsar. */
+  hideCollapse?: boolean;
 }
 
-export function Sidebar({ activeBoard, onSelectBoard, collapsed, onToggleCollapsed }: SidebarProps) {
+export function Sidebar({ activeBoard, onSelectBoard, collapsed, onToggleCollapsed, hideCollapse }: SidebarProps) {
   const me = useMe();
   return (
     <div style={{
@@ -152,7 +163,7 @@ export function Sidebar({ activeBoard, onSelectBoard, collapsed, onToggleCollaps
           />
         )}
         <UserChip collapsed={collapsed} />
-        <div
+        {!hideCollapse && <div
           className="nav-item"
           onClick={onToggleCollapsed}
           title={collapsed ? 'Expandir barra lateral' : 'Colapsar barra lateral'}
@@ -166,7 +177,7 @@ export function Sidebar({ activeBoard, onSelectBoard, collapsed, onToggleCollaps
               Colapsar barra lateral
             </div>
           )}
-        </div>
+        </div>}
       </div>
     </div>
   );

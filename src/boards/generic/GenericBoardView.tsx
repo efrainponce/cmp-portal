@@ -10,6 +10,7 @@ import { IconPlus } from '../../components/icons';
 import { lastMondayUpdateFromItems } from '../../lib/syncStatus';
 import { CreateRecordModal } from './CreateRecordModal';
 import { EditInstitucionModal } from './EditInstitucionModal';
+import { useIsMobile } from '../../lib/useIsMobile';
 import type { ItemDTO } from '../../lib/api';
 
 interface Props {
@@ -20,6 +21,7 @@ interface Props {
 const CREATE_LABEL: Record<string, string> = { instituciones: 'Nueva institución', contactos: 'Nuevo contacto' };
 
 export function GenericBoardView({ slug, title }: Props) {
+  const isMobile = useIsMobile();
   const [q, setQ] = useState('');
   const [creating, setCreating] = useState(false);
   const [editingContact, setEditingContact] = useState<ItemDTO | null>(null);
@@ -36,8 +38,8 @@ export function GenericBoardView({ slug, title }: Props) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <div style={{ padding: '26px 32px 16px', borderBottom: '1px solid var(--border)', flex: 'none' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div style={{ padding: isMobile ? '14px 14px 12px' : '26px 32px 16px', borderBottom: '1px solid var(--border)', flex: 'none' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
           <div style={{ font: 'var(--text-title)', color: 'var(--ink)' }}>{title}</div>
           {creatable && (
             <Button variant="primary" onClick={() => setCreating(true)}>
@@ -49,8 +51,13 @@ export function GenericBoardView({ slug, title }: Props) {
           <div style={{ font: 'var(--text-label)', color: 'var(--ink-tertiary)' }}>{data?.total ?? items.length} registros</div>
           <SyncIndicator syncedAt={sync.updatedAt} pending={sync.pending} label="actualizado" />
         </div>
-        <div style={{ marginTop: 14, display: 'flex', gap: 10 }}>
-          <SearchInput value={q} onChange={(e) => setQ(e.target.value)} placeholder={`Buscar en ${title.toLowerCase()}…`} />
+        <div style={{ marginTop: isMobile ? 10 : 14, display: 'flex', gap: 10 }}>
+          <SearchInput
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder={`Buscar en ${title.toLowerCase()}…`}
+            style={isMobile ? { maxWidth: '100%' } : undefined}
+          />
         </div>
       </div>
 

@@ -29,7 +29,7 @@ export function Modal({ title, onClose, children, footer, width = 480 }: ModalPr
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          width, maxWidth: 'calc(100vw - 48px)', maxHeight: 'calc(100vh - 64px)',
+          width, maxWidth: 'calc(100vw - 24px)', maxHeight: 'calc(100vh - 64px)',
           background: 'var(--bg-raised)', borderRadius: 'var(--radius-2xl)',
           boxShadow: 'var(--shadow-modal)', display: 'flex', flexDirection: 'column', overflow: 'hidden',
         }}

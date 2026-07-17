@@ -2,6 +2,8 @@
 // (Actualizaciones/Cotizaciones/Embellecimientos/Nuevos productos) + two
 // pill-style grouped sections (Postventa: Documentación/Tallas · Proyectos:
 // Órdenes de compra/Logística), separated by hairline dividers.
+import { useIsMobile } from '../../lib/useIsMobile';
+
 export type DrawerTabKey =
   | 'actualizaciones' | 'cotizacion' | 'embellecimientos' | 'nuevosproductos'
   | 'documentacion' | 'tallas' | 'ordenes' | 'logistica';
@@ -32,8 +34,9 @@ const PROYECTOS_TABS: { key: DrawerTabKey; label: string }[] = [
 ];
 
 export function BoardTabsBar({ active, onChange, updatesCount = 0, showPostventa = true, showProyectos = true }: Props) {
+  const isMobile = useIsMobile();
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0 32px', borderBottom: '1px solid var(--border)', flex: 'none', overflowX: 'auto' }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: isMobile ? '0 14px' : '0 32px', borderBottom: '1px solid var(--border)', flex: 'none', overflowX: 'auto' }}>
       <UnderlineTab active={active === 'actualizaciones'} onClick={() => onChange('actualizaciones')}>
         <span>Actualizaciones</span>
         {updatesCount > 0 && (
