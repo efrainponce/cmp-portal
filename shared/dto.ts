@@ -44,6 +44,11 @@ export interface WriteResponse { ok: boolean; pending: boolean; error?: string }
 export interface CreateRequest { name: string; cols: Record<string, string> }
 export interface CreateResponse { ok: boolean; id?: string; error?: string }
 
+// POST /api/oportunidades/:id/duplicar — clona cabecera + líneas vigentes +
+// embellecimiento a una oportunidad nueva en etapa "Nueva oportunidad"; no
+// arrastra versiones de cotización, PDFs ni otros documentos.
+export interface DuplicarOportunidadResponse { ok: boolean; id?: string; error?: string }
+
 export interface VendedorDTO { id: number; nombre: string }
 
 // GET /api/oportunidades/:id/costeo-check (solo lectura, deshabilita el botón) y

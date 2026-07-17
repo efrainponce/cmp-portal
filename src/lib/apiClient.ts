@@ -2,7 +2,7 @@
 import type { BoardSlug } from '../../shared/boards';
 import type {
   AssistantChatRequest, AssistantChatResponse, AssistantHistoryResponse, AssistantMessage,
-  ColMeta, ColVal, CreateResponse, EnviarCosteoResponse, IdentityDTO, ItemDTO, ItemDetailDTO,
+  ColMeta, ColVal, CreateResponse, DuplicarOportunidadResponse, EnviarCosteoResponse, IdentityDTO, ItemDTO, ItemDetailDTO,
   ListResponse, MeDTO, MentionUserDTO, MondayUserDTO, ProyectoActionResponse, ProyectoResponse,
   QuoteLineInput, QuoteLineSnapshot, QuoteVersionDTO, QuoteVersionRequest, QuoteVersionResponse, QuoteVersionsResponse,
   UpdateDTO, VendedorDTO, WriteResponse,
@@ -116,6 +116,16 @@ export async function enviarValidacion(id: string): Promise<EnviarCosteoResponse
   const res = await apiFetch(`/oportunidades/${id}/enviar-validacion`, { method: 'POST' });
   const body: EnviarCosteoResponse = await res.json();
   if (!res.ok && !body.errors) throw new Error('enviar a validación failed: ' + res.status);
+  return body;
+}
+
+/** Duplicar — clona cabecera + líneas vigentes + embellecimiento a una
+ * oportunidad nueva en etapa "Nueva oportunidad"; nunca versiones de
+ * cotización ni otros documentos. */
+export async function duplicarOportunidad(id: string): Promise<DuplicarOportunidadResponse> {
+  const res = await apiFetch(`/oportunidades/${id}/duplicar`, { method: 'POST' });
+  const body: DuplicarOportunidadResponse = await res.json();
+  if (!res.ok && !body.error) throw new Error('duplicar failed: ' + res.status);
   return body;
 }
 

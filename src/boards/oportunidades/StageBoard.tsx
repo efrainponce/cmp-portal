@@ -7,6 +7,9 @@ interface Props {
   boardKey: StageBoardKey;
   openId: string | null;
   onOpenChange: (id: string | null) => void;
+  /** Llamado con el id de la oportunidad nueva tras "Duplicar" en el drawer —
+   * siempre nace en etapa "Nueva oportunidad", así que navega al board Oportunidades. */
+  onDuplicated: (newId: string) => void;
 }
 
 /** Vista genérica de board de pipeline (Costeo, Validación, Doc/Tallas, OC,
@@ -14,7 +17,7 @@ interface Props {
  * STAGE_BOARDS (src/lib/dealStages.ts) y en el `boardKey` que el drawer usa
  * para su modo (p. ej. solo lectura en Costeo). Oportunidades tiene su propio
  * wrapper (OportunidadesBoard) por el botón/modal "Nueva oportunidad". */
-export function StageBoard({ boardKey, openId, onOpenChange }: Props) {
+export function StageBoard({ boardKey, openId, onOpenChange, onDuplicated }: Props) {
   const config = STAGE_BOARDS[boardKey];
   const [q, setQ] = useState('');
 
@@ -28,6 +31,7 @@ export function StageBoard({ boardKey, openId, onOpenChange }: Props) {
           defaultTab={config.defaultTab}
           onBack={() => onOpenChange(null)}
           boardKey={config.key}
+          onDuplicated={onDuplicated}
         />
       )}
     </div>

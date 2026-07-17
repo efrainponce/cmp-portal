@@ -13,9 +13,11 @@ const CreateOportunidadModal = lazy(() => import('./CreateOportunidadModal'));
 interface Props {
   openId: string | null;
   onOpenChange: (id: string | null) => void;
+  /** Llamado con el id de la oportunidad nueva tras "Duplicar" en el drawer. */
+  onDuplicated: (newId: string) => void;
 }
 
-export function OportunidadesBoard({ openId, onOpenChange }: Props) {
+export function OportunidadesBoard({ openId, onOpenChange, onDuplicated }: Props) {
   const [creating, setCreating] = useState(false);
   const [q, setQ] = useState('');
 
@@ -41,6 +43,7 @@ export function OportunidadesBoard({ openId, onOpenChange }: Props) {
           defaultTab={CONFIG.defaultTab}
           onBack={() => onOpenChange(null)}
           boardKey={CONFIG.key}
+          onDuplicated={onDuplicated}
         />
       )}
       {creating && (

@@ -9,8 +9,9 @@ import { Button } from '../../components/core/Button';
 import { ConfirmButton } from '../../components/core/ConfirmButton';
 import { IconBack, IconEdit, IconLink } from '../../components/icons';
 import { SyncIndicator } from '../../components/board/SyncIndicator';
+import { useMe } from '../../lib/useMe';
 import {
-  useBoards, colForBoard, checkCosteo, enviarCosteo, enviarValidacion, generarCotizacion, getItemDetail, getVersiones,
+  useBoards, colForBoard, checkCosteo, duplicarOportunidad, enviarCosteo, enviarValidacion, generarCotizacion, getItemDetail, getVersiones,
   refreshItem, type ItemDetailDTO, type QuoteVersionDTO,
 } from '../../lib/api';
 import { statusIndex } from '../../lib/statusValue';
@@ -36,6 +37,8 @@ interface Props {
   onBack: () => void;
   /** Origin board — drives the Cotizaciones variant (costeo boards see cost breakdown). */
   boardKey?: StageBoardKey;
+  /** Llamado con el id de la oportunidad nueva tras "Duplicar". */
+  onDuplicated: (newId: string) => void;
 }
 
 const COSTEO_VARIANT_BOARDS: StageBoardKey[] = ['costeo', 'validacion'];
@@ -74,7 +77,10 @@ function ChangeIconButton({ onClick, label }: { onClick: () => void; label: stri
   );
 }
 
-export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey }: Props) {
+export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey, onDuplicated }: Props) {
+  const me = useMe();
+  const canDuplicate = !!me && me.role !== 'cliente';
+  const [duplicating, setDuplicating] = useState(false);
   const { boards } = useBoards();
   const subCols = colForBoard(boards, 'oportunidades_sub');
   const oppCols = colForBoard(boards, 'oportunidades');
@@ -114,6 +120,10 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey 
     setVersions(versionsCache.get(id) ?? []);
     load();
     loadVersions();
+    // El drawer no se remonta al navegar de la oportunidad original a su
+    // duplicado (mismo componente, solo cambia `id`) — sin esto "Duplicar"
+    // se quedaría pegado en "Duplicando…" para la oportunidad nueva.
+    setDuplicating(false);
   }, [id]);
 
   const stage = item?.cols.deal_stage ? statusIndex(item.cols.deal_stage) : undefined;
@@ -147,6 +157,31 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey 
       setLinkCopied(true);
       setTimeout(() => setLinkCopied(false), 1800);
     } catch { /* clipboard no disponible (http o sin permiso) */ }
+  };
+
+  // Mismo patrón de polling que CreateOportunidadModal: espera a que Monday
+  // asigne el folio antes de navegar, así el drawer nuevo no abre "en blanco".
+  const onDuplicate = async () => {
+    setNotice(null);
+    setDuplicating(true);
+    try {
+      const res = await duplicarOportunidad(id);
+      if (!res.ok || !res.id) throw new Error(res.error ?? 'No se pudo duplicar la oportunidad.');
+      const newId = res.id;
+      let attempts = 0;
+      while (attempts < 30) {
+        await new Promise((r) => setTimeout(r, 200));
+        try {
+          const detail = await getItemDetail('oportunidades', newId);
+          if (detail.item.cols.pulse_id_mm0qcq0m?.text) break;
+        } catch { /* reintentar */ }
+        attempts++;
+      }
+      onDuplicated(newId);
+    } catch (e) {
+      setNotice({ kind: 'error', title: 'No se pudo duplicar la oportunidad:', lines: [e instanceof Error ? e.message : 'Verifica tu conexión.'] });
+      setDuplicating(false);
+    }
   };
 
   const onEnviarCosteo = async () => {
@@ -225,10 +260,22 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey 
 
   return (
     <div style={{ position: 'absolute', inset: 0, background: 'var(--bg)', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
-      <div style={{ padding: '20px 32px 0' }}>
+      <div style={{ padding: '20px 32px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div onClick={onBack} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, cursor: 'pointer', color: 'var(--ink-secondary)', font: 'var(--text-label-strong)' }}>
           <IconBack /> {backLabel}
         </div>
+        {canDuplicate && (
+          <div
+            onClick={duplicating ? undefined : onDuplicate}
+            title="Crea una oportunidad nueva en 'Nueva oportunidad' con los mismos productos vigentes y embellecimientos (sin cotizaciones ni documentos)"
+            style={{
+              font: 'var(--text-label-strong)', color: 'var(--accent)',
+              cursor: duplicating ? 'default' : 'pointer', opacity: duplicating ? 0.6 : 1,
+            }}
+          >
+            {duplicating ? 'Duplicando…' : 'Duplicar'}
+          </div>
+        )}
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 32px 20px', borderBottom: '1px solid var(--border)' }}>

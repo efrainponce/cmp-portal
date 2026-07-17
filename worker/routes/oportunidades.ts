@@ -5,7 +5,7 @@
 import type { Hono } from 'hono';
 import type { Env } from '../env';
 import { BOARDS } from '../../shared/boards';
-import type { ItemDetailDTO, QuoteVersionRequest, QuoteVersionResponse, QuoteVersionsResponse } from '../../shared/dto';
+import type { DuplicarOportunidadResponse, ItemDetailDTO, QuoteVersionRequest, QuoteVersionResponse, QuoteVersionsResponse } from '../../shared/dto';
 import { getItem, childrenOf, pendingItemIds, proyectoForOportunidad } from '../lib/dal';
 import { toItemDTO } from '../lib/serialize';
 import { OutboxError } from '../lib/outbox';
@@ -15,6 +15,7 @@ import {
 } from '../lib/automations';
 import { enviarACosteo, enviarAValidacion, checkCosteo, CosteoError, type EnviarCosteoResult } from '../lib/costeo';
 import { listVersions, submitVersion, recordFirstVersion, QuoteVersionError } from '../lib/quoteVersions';
+import { duplicateOportunidad, DuplicateOportunidadError } from '../lib/duplicateOportunidad';
 import { createSubitem } from '../lib/monday';
 import { listZoneImages, uploadZoneImage, EmbellImageError } from '../lib/embellecimientoImagenes';
 import { resolveCotizacionPdfUrl, CotizacionPdfError, type PdfKind } from '../lib/cotizacionPdfs';
@@ -86,6 +87,24 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       if (err instanceof CosteoError) return jsonStatus({ ok: false, errors: [err.message] }, err.status);
       if (err instanceof OutboxError) return jsonStatus({ ok: false, errors: [err.message] }, err.status);
       return jsonStatus({ ok: false, errors: ['internal error'] }, 500);
+    }
+  });
+
+  // Duplicar (botón del drawer): clona cabecera + líneas vigentes +
+  // embellecimiento a una oportunidad nueva en etapa "Nueva oportunidad" —
+  // nunca versiones de cotización ni otros documentos (worker/lib/duplicateOportunidad.ts).
+  app.post('/api/oportunidades/:id/duplicar', async c => {
+    const itemId = Number(c.req.param('id'));
+    if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
+
+    try {
+      const result = await duplicateOportunidad(c.env, c.executionCtx, itemId, c.get('viewer'));
+      return c.json({ ok: true, id: String(result.id) } satisfies DuplicarOportunidadResponse);
+    } catch (err) {
+      if (err instanceof DuplicateOportunidadError) {
+        return jsonStatus({ ok: false, error: err.message } satisfies DuplicarOportunidadResponse, err.status);
+      }
+      return jsonStatus({ ok: false, error: 'internal error' } satisfies DuplicarOportunidadResponse, 500);
     }
   });
 

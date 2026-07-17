@@ -19,6 +19,9 @@ function App() {
   const [collapsed, setCollapsed] = useState(false);
 
   const onOpenChange = (id: string | null) => navigate(activeBoard, id);
+  // Duplicar una oportunidad la crea en etapa "Nueva oportunidad" — la nueva
+  // vive en el board Oportunidades sin importar desde qué board se duplicó.
+  const onDuplicated = (newId: string) => navigate('oportunidades', newId);
 
   return (
     <div style={{ width: '100vw', height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--bg)' }}>
@@ -32,12 +35,12 @@ function App() {
         />
         <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
           <Suspense fallback={<div style={{ padding: 32 }}>Cargando…</div>}>
-            {activeBoard === 'oportunidades' && <OportunidadesBoard openId={itemId} onOpenChange={onOpenChange} />}
+            {activeBoard === 'oportunidades' && <OportunidadesBoard openId={itemId} onOpenChange={onOpenChange} onDuplicated={onDuplicated} />}
             {(activeBoard === 'costeo' || activeBoard === 'validacion' || activeBoard === 'doctallas'
               || activeBoard === 'ordenescompra' || activeBoard === 'logistica') && (
               // key: cambiar de board debe resetear el estado local (búsqueda),
               // igual que cuando eran 5 componentes distintos.
-              <StageBoard key={activeBoard} boardKey={activeBoard} openId={itemId} onOpenChange={onOpenChange} />
+              <StageBoard key={activeBoard} boardKey={activeBoard} openId={itemId} onOpenChange={onOpenChange} onDuplicated={onDuplicated} />
             )}
             {activeBoard === 'productos' && <GenericBoardView slug="productos" title="Productos" />}
             {activeBoard === 'instituciones' && <GenericBoardView slug="instituciones" title="Instituciones" />}
