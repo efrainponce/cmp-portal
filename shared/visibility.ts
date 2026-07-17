@@ -21,7 +21,7 @@ const vis = (ids: string[], r: Role[]): Record<string, ColRule> =>
 export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
   oportunidades: {
     ...vis(['name', 'pulse_id_mm0qcq0m', 'deal_stage', 'deal_owner',
-      'multiple_person_mm0wt53c', 'deal_expected_close_date', 'deal_contact',
+      'multiple_person_mm0wt53c', 'deal_expected_close_date',
       'lookup_mm1bs976', 'lookup_mm0xf2r5', 'dropdown_mm03g067', 'lookup_mm0pt4mj',
       'lookup_mkznd66k', 'lookup_mm00p07m', 'date_mm09mv5b', 'file_mm0fgrzq',
       'file_mm0zjras', 'color_mm47f0ca', 'dropdown_mm0mg00', 'text_mm47xmh',
@@ -34,6 +34,11 @@ export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
     text_mm0gje0:       { vis: V, w: WV },   // Vigencia de la cotización
     text_mm0gjrrd:      { vis: V, w: WV },   // Tiempo de entrega
     long_text_mm1m416j: { vis: V, w: WV },   // Comentarios cotización
+    // Cliente (board_relation → Contactos) — mismo tipo de columna que
+    // contact_account, ya verificado escribible en vivo (2026-07-14). El
+    // vendedor lo relinkea para corregir Institución cuando quedó mal
+    // capturada al crear la oportunidad (Institución es mirror de este campo).
+    deal_contact: { vis: V, w: WV },
     ...vis(['lookup_mm4g2hqf', 'lookup_mm35sk4e', 'lookup_mm0cvyfc',
       'lookup_mm1w47fq', 'multiple_person_mm1m73qp'], AC),
   },

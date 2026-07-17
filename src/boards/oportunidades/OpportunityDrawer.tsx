@@ -26,6 +26,7 @@ import { TallasTab } from './tabs/TallasTab';
 import { EmptyDocTab } from './tabs/EmptyDocTab';
 import { useProyecto, ProyectoOrdenesSection } from './ProyectoSection';
 import { PaymentRequestButton } from '../../components/board/PaymentRequestButton';
+import { EditClienteModal } from './EditClienteModal';
 
 interface Props {
   id: string;
@@ -38,6 +39,8 @@ interface Props {
 
 const COSTEO_VARIANT_BOARDS: StageBoardKey[] = ['costeo', 'validacion'];
 const PRECIO_COL = 'numeric_mkzneg3d';   // Precio de Venta C/U (subitems)
+const INSTITUCION_COL = 'lookup_mm1bs976'; // mirror desde Contacto — nunca editable aquí
+const CONTACTO_COL = 'deal_contact';       // board_relation → Contactos ("Cliente")
 
 // SWR de sesión: al reabrir una oportunidad ya visitada, el drawer pinta al
 // instante desde este cache y el fetch fresco lo corrige en background. Vive a
@@ -50,6 +53,8 @@ interface Notice { kind: 'ok' | 'error'; title: string; lines: string[] }
 export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey }: Props) {
   const { boards } = useBoards();
   const subCols = colForBoard(boards, 'oportunidades_sub');
+  const oppCols = colForBoard(boards, 'oportunidades');
+  const canEditCliente = !!oppCols.find((c) => c.id === CONTACTO_COL)?.w;
   const [item, setItem] = useState<ItemDetailDTO | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -59,6 +64,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey 
   const [costeoReady, setCosteoReady] = useState<{ ok: boolean; errors?: string[] } | null>(null);
   const [versions, setVersions] = useState<QuoteVersionDTO[]>([]);
   const [showNuevaVersion, setShowNuevaVersion] = useState(false);
+  const [showEditCliente, setShowEditCliente] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
 
   const load = () => {
@@ -176,6 +182,21 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 32px 20px', borderBottom: '1px solid var(--border)' }}>
         <div>
           <div style={{ font: 'var(--text-subtitle)', color: 'var(--ink)' }}>{item.name}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4, font: 'var(--text-label)', color: 'var(--ink-tertiary)' }}>
+            <span>Institución: <span style={{ color: 'var(--ink-secondary)' }}>{item.cols[INSTITUCION_COL]?.text || '—'}</span></span>
+            <span>·</span>
+            <span>
+              Cliente: <span style={{ color: 'var(--ink-secondary)' }}>{item.cols[CONTACTO_COL]?.text || '—'}</span>
+            </span>
+            {canEditCliente && (
+              <button
+                onClick={() => setShowEditCliente(true)}
+                style={{ border: 'none', background: 'none', padding: 0, font: 'var(--text-label-strong)', color: 'var(--accent)', cursor: 'pointer' }}
+              >
+                Cambiar
+              </button>
+            )}
+          </div>
           <SyncIndicator syncedAt={item.syncedAt} pending={item.pendingWrite ? 1 : 0} style={{ marginTop: 4 }} />
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
@@ -296,6 +317,16 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey 
             load();
             loadVersions();
           }}
+        />
+      )}
+
+      {showEditCliente && (
+        <EditClienteModal
+          oppId={id}
+          oppName={item.name}
+          currentCliente={item.cols[CONTACTO_COL]?.text || ''}
+          onClose={() => setShowEditCliente(false)}
+          onSaved={load}
         />
       )}
     </div>
