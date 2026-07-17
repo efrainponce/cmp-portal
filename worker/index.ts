@@ -32,6 +32,7 @@ import { cachedFetchUsers } from './lib/rosterCache';
 import { listWarehouses, listMovements, listStock, createMovement, InventoryError } from './lib/inventory';
 import type { CreateMovementRequest, CreateMovementResponse } from '../shared/inventory';
 import { listZoneImages, uploadZoneImage, EmbellImageError } from './lib/embellecimientoImagenes';
+import { resolveCotizacionPdfUrl, CotizacionPdfError, type PdfKind } from './lib/cotizacionPdfs';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -444,6 +445,40 @@ app.get('/api/oportunidades/lineas/:id/embellecimiento-imagenes', async c => {
     return c.json(images);
   } catch (err) {
     if (err instanceof EmbellImageError) return jsonStatus({ error: err.message }, err.status);
+    return c.json({ error: 'internal error' }, 500);
+  }
+});
+
+// Vista previa embebida del PDF de cotización (sin firmar/firmada) — transmite
+// los bytes desde nuestro dominio en vez de mandar el link crudo de Monday al
+// iframe, que exige sesión de monday.com y bloquea el framing por CSP (ver
+// worker/lib/cotizacionPdfs.ts).
+app.get('/api/oportunidades/:id/cotizacion-pdf/:kind', async c => {
+  const itemId = Number(c.req.param('id'));
+  const kind = c.req.param('kind') as PdfKind;
+  if (!Number.isFinite(itemId) || (kind !== 'sin_firmar' && kind !== 'firmada')) return c.json({ error: 'not found' }, 404);
+  const viewer = c.get('viewer');
+
+  try {
+    const url = await resolveCotizacionPdfUrl(c.env, itemId, viewer, kind);
+    if (!url) return c.json({ error: 'not found' }, 404);
+    const upstream = await fetch(url);
+    if (!upstream.ok) return jsonStatus({ error: 'no se pudo obtener el PDF' }, 502);
+    // Buffer en vez de pasar upstream.body como stream — el proxy de Vite en dev
+    // se cuelga con una Response de Workers streameada sin Content-Length
+    // (verificado en vivo: la petición nunca regresaba a través del proxy).
+    // El PDF es chico (cientos de KB), bufferear no cuesta nada y evita el hang.
+    const bytes = await upstream.arrayBuffer();
+    return new Response(bytes, {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Length': String(bytes.byteLength),
+        'Cache-Control': 'private, max-age=60',
+      },
+    });
+  } catch (err) {
+    if (err instanceof CotizacionPdfError) return jsonStatus({ error: err.message }, err.status);
     return c.json({ error: 'internal error' }, 500);
   }
 });
