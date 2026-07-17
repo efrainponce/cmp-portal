@@ -2,7 +2,7 @@
 // (Oportunidades, Costeo, Validación Costeo, Documentación y Tallas, Órdenes
 // de Compra, Logística) — same row template as Board Costeo/Validacion in the
 // design, just a different deal_stage filter + grouping column per board.
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useBoards, usePoll, colForBoard, type ItemDTO } from '../../lib/api';
 import { groupByColumn } from '../../lib/groupBy';
 import { GroupCard } from '../../components/layout/GroupCard';
@@ -18,6 +18,7 @@ import { statusIndex } from '../../lib/statusValue';
 import { textIncludes } from '../../lib/textMatch';
 import { PersonPair } from '../../components/core/PersonAvatar';
 import { DEAL_STAGE_LABELS, DEAL_STAGE_ORDER, type StageBoardConfig } from '../../lib/dealStages';
+import { useSavedView } from '../../lib/useSavedView';
 
 /** Mirror columns fan in one value per subitem, so `text` can be a long
  * comma-joined repeat (e.g. "Listo, Listo, Listo"). Collapse to the
@@ -75,11 +76,17 @@ export function StageBoardList({ config, groupColId = 'deal_stage', q, onSearch,
     : allItems;
   const sync = lastMondayUpdateFromItems(stageItems);
 
-  // Filter state lives here, not in the wrapper — these three selects only
-  // narrow what's already loaded, they never touch the server request.
-  const [vendedorFilter, setVendedorFilter] = useState(ALL_VALUE);
-  const [comprasFilter, setComprasFilter] = useState(ALL_VALUE);
-  const [etapaFilter, setEtapaFilter] = useState(ALL_VALUE);
+  // Filter + collapsed-etapa state lives here, not in the wrapper — these
+  // three selects only narrow what's already loaded, they never touch the
+  // server request. Persisted per viewer (useSavedView) so it's still there
+  // next time they open this board.
+  const { filters, setFilters, collapsedGroups, toggleGroup, clearFilters: clearSavedFilters } = useSavedView(config.key);
+  const vendedorFilter = filters.vendedor;
+  const comprasFilter = filters.compras;
+  const etapaFilter = filters.etapa;
+  const setVendedorFilter = (v: string) => setFilters((f) => ({ ...f, vendedor: v }));
+  const setComprasFilter = (v: string) => setFilters((f) => ({ ...f, compras: v }));
+  const setEtapaFilter = (v: string) => setFilters((f) => ({ ...f, etapa: v }));
   const showEtapaFilter = !config.stages || config.stages.length > 1;
 
   const vendedorOptions = useMemo(() => optionsFromCol(stageItems, VENDEDOR_COL), [stageItems]);
@@ -106,7 +113,7 @@ export function StageBoardList({ config, groupColId = 'deal_stage', q, onSearch,
   });
 
   const hasActiveFilters = vendedorFilter !== ALL_VALUE || comprasFilter !== ALL_VALUE || etapaFilter !== ALL_VALUE;
-  const clearFilters = () => { setVendedorFilter(ALL_VALUE); setComprasFilter(ALL_VALUE); setEtapaFilter(ALL_VALUE); };
+  const clearFilters = clearSavedFilters;
 
   const order = groupColId === 'deal_stage' ? DEAL_STAGE_ORDER : undefined;
   const groups = groupByColumn(items, groupCol, undefined, undefined, order);
@@ -144,7 +151,10 @@ export function StageBoardList({ config, groupColId = 'deal_stage', q, onSearch,
             <div style={{ padding: 24, font: 'var(--text-label)', color: 'var(--ink-quiet)' }}>Sin oportunidades.</div>
           )}
           {groups.map((g) => (
-            <GroupCard key={g.key} label={g.label} color={g.color} tint={g.color + '22'} count={g.items.length}>
+            <GroupCard
+              key={g.key} label={g.label} color={g.color} tint={g.color + '22'} count={g.items.length}
+              collapsed={!!collapsedGroups[g.key]} onToggleCollapsed={() => toggleGroup(g.key)}
+            >
               {g.items.map((item) => (
                 <Row key={item.id} item={item} etapaCosteoCol={etapaCosteoCol} onClick={() => onOpen(item.id)} />
               ))}
