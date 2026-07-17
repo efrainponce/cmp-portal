@@ -2,7 +2,7 @@
 // — never mirrored to D1, always a fresh read, so it stays the single source of
 // truth the team already checks inside monday.com itself.
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
-import type { BoardSlug, MentionUserDTO, UpdateAttachmentDTO, UpdateDTO } from '../../../lib/api';
+import type { BoardSlug, MentionUserDTO, UpdateAttachmentDTO, UpdateDTO } from '../../../lib/apiClient';
 import { getMentionUsers, getUpdates, postUpdate, postUpdateAttachment, updateAttachmentHref } from '../../../lib/api';
 import { Modal } from '../../../components/core/Modal';
 

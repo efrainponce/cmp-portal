@@ -15,12 +15,15 @@ export interface StageBoardConfig {
 
 // Sidebar order follows DEAL_STAGE_ORDER above: Nueva oportunidad (full
 // pipeline) -> En costeo -> Costeo en validación -> Costeo Confirmado
-// (doc/tallas) -> Esperando OC -> Ganada (logística).
+// -> Esperando OC -> Ganada (doc/tallas + logística).
 export const STAGE_BOARDS: Record<StageBoardKey, StageBoardConfig> = {
   oportunidades: { key: 'oportunidades', title: 'Oportunidades', subtitleSuffix: '', defaultTab: 'cotizacion' },
   costeo: { key: 'costeo', title: 'Costeo', subtitleSuffix: '', defaultTab: 'cotizacion' },
   validacion: { key: 'validacion', title: 'Validación Costeo', subtitleSuffix: ' · validación de precio de venta', stages: ['7', '9'], defaultTab: 'cotizacion' },
-  doctallas: { key: 'doctallas', title: 'Documentación y Tallas', subtitleSuffix: '', stages: ['9'], defaultTab: 'documentacion' },
+  // El Proyecto (docs/tallas) solo existe una vez GANADA la oportunidad
+  // (ProyectoSection.tsx) — filtrar aquí a Ganada en vez de Costeo Confirmado
+  // (Efraín, 2026-07-17).
+  doctallas: { key: 'doctallas', title: 'Documentación y Tallas', subtitleSuffix: '', stages: ['1'], defaultTab: 'documentacion' },
   ordenescompra: { key: 'ordenescompra', title: 'Órdenes de Compra', subtitleSuffix: '', stages: ['8'], defaultTab: 'ordenes' },
   logistica: { key: 'logistica', title: 'Logística', subtitleSuffix: '', stages: ['1'], defaultTab: 'logistica' },
 };
