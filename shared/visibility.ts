@@ -97,11 +97,14 @@ export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
       'dropdown_mm0hnyv', 'lookup_mm1d56mp', 'board_relation_mm0hf0y3',
       'lookup_mm0pd55m', 'lookup_mm0mbkjk'], V),
     ...vis(['color_mm0md4z8', 'date_mm0mwqzw', 'project_owner', 'file_mm0hcrtz',
-      'file_mm1dm11c', 'file_mm0hj9pn', 'file_mm1g7cqz', 'file_mm0hayh4',
+      'file_mm1dm11c', 'file_mm0hj9pn', 'file_mm1g7cqz',
       'date_mm21c5ka', 'multiple_person_mm164em1', 'multiple_person_mm16qysk',
       'multiple_person_mm169k2f', 'file_mm478mkq', 'link_mm462saa',
       'text_mm4cct6a', 'text_mm4cdyjb', 'text_mm4c74f8', 'color_mm52csps',
       'file_mm4pa2h8', 'date_mm525k42', 'file_mm3393nf'], AC),
+    // OC / cotización / contrato firmado por el cliente — sube el vendedor
+    // (quien lo recibe) o compras/admin (Efraín, 2026-07-17).
+    file_mm0hayh4: { vis: V, w: V },
   },
 
   proyectos_sub: {
@@ -144,6 +147,13 @@ export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
     // Writable since the 2025-04 API bump fixed board_relation writes to this
     // CRM "Account" column (silently no-op'd on 2024-10) — verified live 2026-07-14.
     contact_account: { vis: V, w: WV },   // Institución
+  },
+
+  // Catálogo interno para el picker de "línea manual" en el Proyecto (OC
+  // independiente) — solo lectura, nunca visible al vendedor (Efraín, 2026-07-17).
+  proveedores: {
+    ...vis(['name', 'text_mm3kwjde', 'phone_mm21sp93', 'email_mm21c4ng',
+      'text_mm1d43t4'], AC),
   },
 };
 

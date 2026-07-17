@@ -455,7 +455,13 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
 
       <BoardTabsBar active={activeTab} onChange={setTab} showPostventa={showPostventa} showProyectos={showProyectos} />
 
-      {activeTab === 'actualizaciones' && <ActualizacionesTab slug="oportunidades" itemId={id} />}
+      {/* Una vez existe el Proyecto (Ganada), la conversación post-venta vive
+          en su feed de Monday, no en el de la Oportunidad (Efraín, 2026-07-17). */}
+      {activeTab === 'actualizaciones' && (
+        proyecto.proyecto
+          ? <ActualizacionesTab slug="proyectos" itemId={proyecto.proyecto.id} />
+          : <ActualizacionesTab slug="oportunidades" itemId={id} />
+      )}
       {activeTab === 'cotizacion' && (
         <CotizacionTab
           // Remount cuando cambia el número de versiones (duplicar/restaurar):
@@ -482,7 +488,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
         />
       )}
       {activeTab === 'nuevosproductos' && <NuevosProductosTab readOnly={noLineEdits} />}
-      {activeTab === 'documentacion' && <DocumentacionTab item={item} />}
+      {activeTab === 'documentacion' && <DocumentacionTab item={item} proyecto={showPostventa ? proyecto : undefined} />}
       {activeTab === 'tallas' && <TallasTab subCols={subCols} products={products} proyecto={showPostventa ? proyecto : undefined} />}
       {activeTab === 'ordenes' && (
         <div style={{ padding: '24px 32px 40px', maxWidth: 920, width: '100%', boxSizing: 'border-box' }}>

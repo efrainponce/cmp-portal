@@ -8,7 +8,7 @@ import type { BoardKey } from '../app/Sidebar';
 
 const VALID_BOARDS = new Set<BoardKey>([
   'oportunidades', 'costeo', 'validacion', 'doctallas', 'ordenescompra', 'logistica',
-  'productos', 'instituciones', 'contactos', 'inventario', 'settings',
+  'productos', 'instituciones', 'contactos', 'proveedores', 'inventario', 'settings',
 ]);
 
 interface Route {

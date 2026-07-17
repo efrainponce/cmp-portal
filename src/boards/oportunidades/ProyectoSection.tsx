@@ -15,6 +15,7 @@ export const P_SHEET_LINK = 'link_mm1amwz8';     // Google Sheet de tallas
 const P_DRIVE_LINK = 'link_mm462saa';     // Carpeta Drive (visible Compras)
 const P_TALLAS_PDF = 'file_mm0hcrtz';     // PDFs relación de tallas (visible Compras)
 const P_OC_PDF = 'file_mm0hj9pn';         // PDFs órdenes de compra (visible Compras)
+export const P_OC_CLIENTE = 'file_mm0hayh4'; // OC/cotización/contrato firmado por el cliente (vendedor sube)
 
 // Subelementos de Proyectos (18395657609)
 const S_PRODUCTO = 'text_mm0hs17x';

@@ -5,14 +5,14 @@ import type {
   ColMeta, ColVal, CreateResponse, DuplicarOportunidadResponse, DuplicarVersionResponse, EnviarCosteoResponse, IdentityDTO, ItemDTO, ItemDetailDTO,
   ListResponse, MeDTO, MentionUserDTO, MondayUserDTO, ProyectoActionResponse, ProyectoResponse,
   QuoteLineSnapshot, QuoteVersionDTO, QuoteVersionsResponse,
-  UpdateDTO, VendedorDTO, WriteResponse,
+  UpdateAttachmentDTO, UpdateDTO, VendedorDTO, WriteResponse,
 } from '../../shared/dto';
 import { mockBoardMeta, mockItemDetail, mockPatch } from './mockFallback';
 import { getImpersonateTarget } from './impersonation';
 
 export type {
   BoardSlug, ColMeta, ColVal, IdentityDTO, ItemDTO, ItemDetailDTO, ListResponse, MeDTO, MentionUserDTO,
-  MondayUserDTO, QuoteLineSnapshot, QuoteVersionDTO, UpdateDTO, VendedorDTO,
+  MondayUserDTO, QuoteLineSnapshot, QuoteVersionDTO, UpdateAttachmentDTO, UpdateDTO, VendedorDTO,
 };
 
 export interface BoardMeta { slug: BoardSlug; title: string; cols: ColMeta[] }
@@ -194,6 +194,15 @@ export async function getProyecto(oppId: string): Promise<ItemDetailDTO | null> 
   return body.proyecto;
 }
 
+/** Oportunidad ligada a un Proyecto (dirección inversa) — null si el link aún
+ * no resuelve (ver worker/routes/oportunidades.ts, fallback en vivo incl.). */
+export async function getProyectoOportunidad(proyectoId: string): Promise<string | null> {
+  const res = await apiFetch(`/proyectos/${proyectoId}/oportunidad`);
+  if (!res.ok) throw new Error('GET oportunidad failed: ' + res.status);
+  const body: { oportunidadId: string | null } = await res.json();
+  return body.oportunidadId;
+}
+
 export type ProyectoAction = 'tallas-regenerar' | 'tallas-confirmar' | 'tallas-importar' | 'generar-oc';
 
 /** Acciones de cmp-tallas sobre el Proyecto (tallas y órdenes de compra). */
@@ -201,6 +210,42 @@ export async function proyectoAction(proyectoId: string, action: ProyectoAction)
   const res = await apiFetch(`/proyectos/${proyectoId}/${action}`, { method: 'POST' });
   const body: ProyectoActionResponse = await res.json();
   if (!res.ok && !body.reason) throw new Error(`${action} failed: ` + res.status);
+  return body;
+}
+
+/** Sube la OC / cotización / contrato firmado por el cliente al Proyecto ligado. */
+export async function uploadProyectoDocumento(
+  proyectoId: string, file: File,
+): Promise<{ ok: boolean; name?: string; url?: string; error?: string }> {
+  const form = new FormData();
+  form.append('file', file);
+  const res = await apiFetch(`/proyectos/${proyectoId}/documento`, { method: 'POST', body: form });
+  const body = await res.json();
+  if (!res.ok) return { ok: false, error: body.error ?? 'No se pudo subir el archivo.' };
+  return body;
+}
+
+export interface ProyectoLineaInput {
+  producto: string;
+  proveedorId?: string;
+  cantidad?: number;
+  talla?: string;
+  color?: string;
+  sku?: string;
+}
+
+/** Línea manual del Proyecto (producto faltante / compra independiente) —
+ * Compras/admin. Con Proveedor puesto, "Generar OC por proveedor" ya la toma. */
+export async function addProyectoLinea(
+  proyectoId: string, input: ProyectoLineaInput,
+): Promise<{ ok: boolean; id?: string; error?: string }> {
+  const res = await apiFetch(`/proyectos/${proyectoId}/lineas`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  const body = await res.json();
+  if (!res.ok) return { ok: false, error: body.error ?? 'No se pudo crear la línea.' };
   return body;
 }
 

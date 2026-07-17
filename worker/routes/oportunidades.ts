@@ -6,7 +6,7 @@ import type { Hono } from 'hono';
 import type { Env } from '../env';
 import { BOARDS } from '../../shared/boards';
 import type { DuplicarOportunidadResponse, DuplicarVersionResponse, ItemDetailDTO, QuoteVersionsResponse } from '../../shared/dto';
-import { getItem, childrenOf, pendingItemIds, proyectoForOportunidad } from '../lib/dal';
+import { getItem, childrenOf, pendingItemIds, proyectoForOportunidad, linkedItemId, PROYECTO_OPP_REL } from '../lib/dal';
 import { toItemDTO } from '../lib/serialize';
 import { OutboxError } from '../lib/outbox';
 import {
@@ -16,11 +16,16 @@ import {
 import { enviarACosteo, enviarAValidacion, checkCosteo, CosteoError } from '../lib/costeo';
 import { listVersions, duplicateVersion, restoreVersion, esDraftVigente, recordFirstVersion, QuoteVersionError } from '../lib/quoteVersions';
 import { duplicateOportunidad, DuplicateOportunidadError } from '../lib/duplicateOportunidad';
-import { createSubitem } from '../lib/monday';
+import { createSubitem, addFileToColumn, gql } from '../lib/monday';
 import { listZoneImages, uploadZoneImage, EmbellImageError } from '../lib/embellecimientoImagenes';
 import { resolveCotizacionPdfUrl, CotizacionPdfError, type PdfKind } from '../lib/cotizacionPdfs';
 import { refetchItem, refetchItemTree, upsertItem } from '../sync';
 import { jsonStatus } from '../lib/http';
+import { canWrite } from '../../shared/visibility';
+
+// OC / cotización / contrato firmado por el cliente (board Proyectos) — único
+// campo de documentación habilitado para upload por ahora (Efraín, 2026-07-17).
+const PROYECTO_DOCUMENTO_COL = 'file_mm0hayh4';
 
 // Acciones de cmp-tallas sobre el Proyecto. Cada una exige que el viewer pueda
 // ver el Proyecto (scoping de dal) + un gate de rol que refleja el botón de
@@ -336,6 +341,103 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     const dto: ItemDetailDTO = toItemDTO(row, 'proyectos', viewer.role, pending.has(row.item_id));
     dto.children = children.map(r => toItemDTO(r, 'proyectos_sub', viewer.role, childPending.has(r.item_id)));
     return c.json({ proyecto: dto });
+  });
+
+  // Dirección inversa de la ruta de arriba (Proyecto → Oportunidad ligada). El
+  // mirror puede venir vacío para board_relation aunque el link exista en Monday
+  // (connect-columns no siempre mueven el updated_at del item, así que el
+  // reconcile de 6h puede tardar en agarrarlo) — si el valor guardado no trae
+  // el link, se resuelve en vivo esa sola columna de este item (mismo patrón que
+  // ya usa createOportunidad.ts para deal_contact) en vez de esperar (Efraín,
+  // 2026-07-17). Éxito por fallback dispara un refetch completo para que el
+  // mirror se autocorrija y la próxima lectura ya no necesite el fallback.
+  app.get('/api/proyectos/:id/oportunidad', async c => {
+    const itemId = Number(c.req.param('id'));
+    if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
+    const viewer = c.get('viewer');
+
+    const row = await getItem(c.env, 'proyectos', itemId, viewer);
+    if (!row) return c.json({ error: 'not found' }, 404);
+
+    let oppId = linkedItemId(row, PROYECTO_OPP_REL);
+    if (oppId === null) {
+      try {
+        const data = await gql(c.env,
+          `query($id:[ID!]){ items(ids:$id){ column_values(ids:["${PROYECTO_OPP_REL}"]){ ... on BoardRelationValue{linked_item_ids} } } }`,
+          { id: [String(itemId)] },
+        );
+        const linked: string[] = data?.items?.[0]?.column_values?.[0]?.linked_item_ids ?? [];
+        oppId = linked.map(Number).find(Number.isFinite) ?? null;
+        if (oppId !== null) c.executionCtx.waitUntil(refetchItem(c.env, BOARDS.proyectos.id, itemId));
+      } catch { /* best-effort — sin link se muestra el estado vacío */ }
+    }
+    if (oppId === null) return c.json({ oportunidadId: null });
+
+    // Re-valida el scoping del viewer sobre la Oportunidad ligada: que el
+    // Proyecto sea visible no implica que la Oportunidad también lo sea.
+    const opp = await getItem(c.env, 'oportunidades', oppId, viewer);
+    return c.json({ oportunidadId: opp ? String(oppId) : null });
+  });
+
+  // Línea manual del Proyecto — para productos que faltaron en el desglose de
+  // tallas o compras independientes que no vienen del Sheet importado. Mismo
+  // patrón acotado que /api/oportunidades/:id/productos (subitem real vía
+  // create_subitem, whitelist de columnas fija). Con esto, "Generar OC por
+  // proveedor" (only_proveedor) ya cubre una OC "de la nada" (Efraín, 2026-07-17).
+  // Registrada ANTES de /api/proyectos/:id/:action a propósito: ese wildcard
+  // también matchea /lineas (action="lineas") y la intercepta con 404 si va después.
+  app.post('/api/proyectos/:id/lineas', async c => {
+    const itemId = Number(c.req.param('id'));
+    if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
+    const viewer = c.get('viewer');
+    if (viewer.role !== 'compras' && viewer.role !== 'admin') return c.json({ error: 'forbidden' }, 403);
+
+    const body = await c.req.json<{
+      producto?: string; proveedorId?: string; cantidad?: number; talla?: string; color?: string; sku?: string;
+    }>();
+    const producto = body.producto?.trim();
+    if (!producto) return c.json({ error: 'producto is required' }, 400);
+
+    const row = await getItem(c.env, 'proyectos', itemId, viewer);
+    if (!row) return c.json({ error: 'not found' }, 404);
+
+    const subitemCols: Record<string, unknown> = { text_mm0hs17x: producto };
+    if (body.proveedorId) subitemCols.board_relation_mm1cfgv5 = { item_ids: [Number(body.proveedorId)] };
+    if (body.cantidad !== undefined) subitemCols.numeric_mm0hj2q4 = body.cantidad;
+    if (body.talla?.trim()) subitemCols.text_mm1antcb = body.talla.trim();
+    if (body.color?.trim()) subitemCols.text_mm0h4a1c = body.color.trim();
+    if (body.sku?.trim()) subitemCols.text_mm0hyrfs = body.sku.trim();
+
+    try {
+      const subitem = await createSubitem(c.env, itemId, producto, subitemCols);
+      await upsertItem(c.env, 'proyectos_sub', subitem);
+      return c.json({ ok: true, id: subitem.id });
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      return c.json({ error: 'No se pudo crear la línea: ' + detail }, 500);
+    }
+  });
+
+  // Sube la OC / cotización / contrato firmado por el cliente al Proyecto ligado.
+  // Registrada ANTES de /api/proyectos/:id/:action a propósito — mismo motivo
+  // que /lineas arriba: el wildcard también matchea /documento (action="documento")
+  // e intercepta con 404 si va después (bug encontrado y corregido, Efraín 2026-07-17).
+  app.post('/api/proyectos/:id/documento', async c => {
+    const itemId = Number(c.req.param('id'));
+    if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
+    const viewer = c.get('viewer');
+    if (!canWrite('proyectos', PROYECTO_DOCUMENTO_COL, viewer.role)) return c.json({ error: 'forbidden' }, 403);
+
+    const row = await getItem(c.env, 'proyectos', itemId, viewer);
+    if (!row) return c.json({ error: 'not found' }, 404);
+
+    const form = await c.req.formData();
+    const file = form.get('file');
+    if (!(file instanceof File)) return c.json({ error: 'file is required' }, 400);
+
+    const asset = await addFileToColumn(c.env, itemId, PROYECTO_DOCUMENTO_COL, file, file.name);
+    c.executionCtx.waitUntil(refetchItem(c.env, BOARDS.proyectos.id, itemId));
+    return c.json({ ok: true, id: asset.id, name: asset.name, url: asset.publicUrl });
   });
 
   app.post('/api/proyectos/:id/:action', async c => {

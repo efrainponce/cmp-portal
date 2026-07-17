@@ -12,6 +12,9 @@ const OportunidadesBoard = lazy(() => import('./boards/oportunidades/Oportunidad
 // Un solo componente para los 5 boards de etapa (Costeo, Validación, Doc/Tallas,
 // OC, Logística) — eran 5 wrappers idénticos salvo la config.
 const StageBoard = lazy(() => import('./boards/oportunidades/StageBoard').then((m) => ({ default: m.StageBoard })));
+// Documentación y Tallas / Órdenes de Compra / Logística viven en el board
+// Proyectos directo (no filtrando Oportunidades por etapa) — ver ProyectoBoard.
+const ProyectoBoard = lazy(() => import('./boards/proyectos/ProyectoBoard').then((m) => ({ default: m.ProyectoBoard })));
 const GenericBoardView = lazy(() => import('./boards/generic/GenericBoardView').then((m) => ({ default: m.GenericBoardView })));
 const InventarioBoard = lazy(() => import('./boards/inventario/InventarioBoard').then((m) => ({ default: m.InventarioBoard })));
 const SettingsPage = lazy(() => import('./app/SettingsPage').then((m) => ({ default: m.SettingsPage })));
@@ -29,15 +32,24 @@ function App() {
   const views = (
     <Suspense fallback={<div style={{ padding: 32 }}>Cargando…</div>}>
       {activeBoard === 'oportunidades' && <OportunidadesBoard openId={itemId} onOpenChange={onOpenChange} onDuplicated={onDuplicated} />}
-      {(activeBoard === 'costeo' || activeBoard === 'validacion' || activeBoard === 'doctallas'
-        || activeBoard === 'ordenescompra' || activeBoard === 'logistica') && (
+      {(activeBoard === 'costeo' || activeBoard === 'validacion') && (
         // key: cambiar de board debe resetear el estado local (búsqueda),
         // igual que cuando eran 5 componentes distintos.
         <StageBoard key={activeBoard} boardKey={activeBoard} openId={itemId} onOpenChange={onOpenChange} onDuplicated={onDuplicated} />
       )}
+      {(activeBoard === 'doctallas' || activeBoard === 'ordenescompra' || activeBoard === 'logistica') && (
+        <ProyectoBoard
+          key={activeBoard}
+          boardKey={activeBoard}
+          openId={itemId}
+          onOpenChange={onOpenChange}
+          onOpenOportunidad={(oppId) => navigate('oportunidades', oppId)}
+        />
+      )}
       {activeBoard === 'productos' && <GenericBoardView slug="productos" title="Productos" />}
       {activeBoard === 'instituciones' && <GenericBoardView slug="instituciones" title="Instituciones" />}
       {activeBoard === 'contactos' && <GenericBoardView slug="contactos" title="Contactos" />}
+      {activeBoard === 'proveedores' && <GenericBoardView slug="proveedores" title="Proveedores" />}
       {activeBoard === 'inventario' && <InventarioBoard />}
       {activeBoard === 'settings' && <SettingsPage />}
     </Suspense>

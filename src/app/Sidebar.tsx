@@ -1,6 +1,7 @@
 import { NavItem } from '../components/navigation/NavItem';
 import { UserChip } from './UserChip';
 import { useMe } from '../lib/useMe';
+import type { Role } from '../../shared/types';
 import logo from '../assets/logo.webp';
 import {
   IconOportunidades, IconCosteo, IconValidacion, IconDocTallas, IconOrdenesCompra, IconLogistica,
@@ -9,39 +10,43 @@ import {
 
 export type BoardKey =
   | 'oportunidades' | 'costeo' | 'validacion' | 'doctallas' | 'ordenescompra' | 'logistica'
-  | 'productos' | 'instituciones' | 'contactos' | 'inventario' | 'settings';
+  | 'productos' | 'instituciones' | 'contactos' | 'proveedores' | 'inventario' | 'settings';
 
 type NavIcon = (p: { style?: React.CSSProperties }) => React.ReactElement;
+interface NavItemConfig { key: BoardKey; label: string; icon: NavIcon; roles?: Role[] }
 
-const VENTAS_ITEMS: { key: BoardKey; label: string; icon: NavIcon }[] = [
+const VENTAS_ITEMS: NavItemConfig[] = [
   { key: 'oportunidades', label: 'Oportunidades', icon: IconOportunidades },
   { key: 'costeo', label: 'Costeo', icon: IconCosteo },
   { key: 'validacion', label: 'Validación Costeo', icon: IconValidacion },
 ];
 
-const POSTVENTA_ITEMS: { key: BoardKey; label: string; icon: NavIcon }[] = [
+// Un solo grupo: post-venta es el flujo del Proyecto — subir documentación y
+// tallas, generar las órdenes de compra y hacer el fulfillment (Efraín, 2026-07-17).
+const PROYECTOS_ITEMS: NavItemConfig[] = [
   { key: 'doctallas', label: 'Documentación y Tallas', icon: IconDocTallas },
-];
-
-const PROYECTOS_ITEMS: { key: BoardKey; label: string; icon: NavIcon }[] = [
   { key: 'ordenescompra', label: 'Órdenes de Compra', icon: IconOrdenesCompra },
   { key: 'logistica', label: 'Logística', icon: IconLogistica },
 ];
 
-const CATALOG_ITEMS: { key: BoardKey; label: string; icon: NavIcon }[] = [
+const CATALOG_ITEMS: NavItemConfig[] = [
   { key: 'productos', label: 'Productos', icon: IconProductos },
   { key: 'instituciones', label: 'Instituciones', icon: IconCuentas },
   { key: 'contactos', label: 'Contactos', icon: IconClientes },
+  // Solo compras/admin: mismas columnas AC-only que el picker de línea manual
+  // del Proyecto (shared/visibility.ts) — para vendedor el board vendría sin
+  // columnas visibles (Efraín, 2026-07-17).
+  { key: 'proveedores', label: 'Proveedores', icon: IconOrdenesCompra, roles: ['compras', 'admin'] },
 ];
 
-const INVENTARIO_ITEMS: { key: BoardKey; label: string; icon: NavIcon }[] = [
+const INVENTARIO_ITEMS: NavItemConfig[] = [
   { key: 'inventario', label: 'Inventario', icon: IconInventario },
 ];
 
 /** Label por board para headers fuera del sidebar (p.ej. la barra superior móvil). */
 export const BOARD_LABELS: Record<BoardKey, string> = {
   ...Object.fromEntries(
-    [...VENTAS_ITEMS, ...POSTVENTA_ITEMS, ...PROYECTOS_ITEMS, ...CATALOG_ITEMS, ...INVENTARIO_ITEMS]
+    [...VENTAS_ITEMS, ...PROYECTOS_ITEMS, ...CATALOG_ITEMS, ...INVENTARIO_ITEMS]
       .map((i) => [i.key, i.label]),
   ),
   settings: 'Configuración',
@@ -95,21 +100,6 @@ export function Sidebar({ activeBoard, onSelectBoard, collapsed, onToggleCollaps
 
       <Divider />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-        {!collapsed && <SectionLabel color="#8a9f7e">Postventa</SectionLabel>}
-        {POSTVENTA_ITEMS.map((item) => (
-          <NavItem
-            key={item.key}
-            icon={<item.icon />}
-            label={item.label}
-            active={activeBoard === item.key}
-            collapsed={collapsed}
-            onClick={() => onSelectBoard(item.key)}
-          />
-        ))}
-      </div>
-
-      <Divider />
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
         {!collapsed && <SectionLabel color="#7f8f78">Proyectos</SectionLabel>}
         {PROYECTOS_ITEMS.map((item) => (
           <NavItem
@@ -141,7 +131,7 @@ export function Sidebar({ activeBoard, onSelectBoard, collapsed, onToggleCollaps
       <Divider />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
         {!collapsed && <SectionLabel>Catálogos</SectionLabel>}
-        {CATALOG_ITEMS.map((item) => (
+        {CATALOG_ITEMS.filter((item) => !item.roles || (me?.role && item.roles.includes(me.role))).map((item) => (
           <NavItem
             key={item.key}
             icon={<item.icon />}

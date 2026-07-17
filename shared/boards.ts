@@ -2,7 +2,7 @@
 export type BoardSlug =
   | 'oportunidades' | 'oportunidades_sub'
   | 'proyectos' | 'proyectos_sub'
-  | 'productos' | 'instituciones' | 'contactos';
+  | 'productos' | 'instituciones' | 'contactos' | 'proveedores';
 
 export interface BoardDef {
   id: number;
@@ -24,6 +24,9 @@ export const BOARDS: Record<BoardSlug, BoardDef> = {
   productos:         { id: 18395657591, slug: 'productos', title: 'Productos' },
   instituciones:     { id: 18395657597, slug: 'instituciones', title: 'Instituciones' },
   contactos:         { id: 18395657595, slug: 'contactos', title: 'Contactos' },
+  // Proveedores (id introspectado vía Monday MCP 2026-07-17) — solo lectura,
+  // catálogo para el picker de "línea manual" en el Proyecto (OC independiente).
+  proveedores:       { id: 18397474806, slug: 'proveedores', title: 'Proveedores' },
 };
 
 export const boardById = (id: number): BoardDef | undefined =>

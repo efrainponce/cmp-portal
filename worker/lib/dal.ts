@@ -95,7 +95,23 @@ export async function childrenOf(env: Env, parentSlug: BoardSlug, itemId: number
 // linked_item_ids realmente contenga el id (el LIKE solo es el índice barato).
 // El scoping del viewer aplica igual que en getItem: si el vendedor no está en
 // los authzCols del Proyecto, para él no existe (null, nunca 403).
-const PROYECTO_OPP_REL = 'board_relation_mm0hf0y3';
+export const PROYECTO_OPP_REL = 'board_relation_mm0hf0y3';
+
+/** Primer id ligado de una columna board_relation en un row ya cargado del
+ * mirror ({linked_item_ids:[...]} — ver worker/lib/monday.ts normalizeCols).
+ * null si la columna viene vacía o el mirror aún no la capturó (stale). */
+export function linkedItemId(row: MirrorItem, colId: string): number | null {
+  try {
+    const cols: { id: string; value?: string | null }[] = JSON.parse(row.columns || '[]');
+    const rel = cols.find(c => c.id === colId);
+    if (!rel?.value) return null;
+    const ids: unknown[] = (JSON.parse(rel.value) as { linked_item_ids?: unknown[] }).linked_item_ids ?? [];
+    const first = ids.map(Number).find(Number.isFinite);
+    return first ?? null;
+  } catch {
+    return null;
+  }
+}
 
 export async function proyectoForOportunidad(env: Env, oppItemId: number, viewer: Identity): Promise<MirrorItem | null> {
   const scope = scopeFor('proyectos', viewer);

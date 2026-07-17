@@ -2441,5 +2441,72 @@ export const COLUMN_META: Record<BoardSlug, Record<string, ColMeta>> = {
       "title": "Cargo",
       "type": "text"
     }
+  },
+  "proveedores": {
+    "name": {
+      "id": "name",
+      "title": "Name",
+      "type": "name"
+    },
+    "text_mm3kwjde": {
+      "id": "text_mm3kwjde",
+      "title": "Contacto",
+      "type": "text"
+    },
+    "phone_mm21sp93": {
+      "id": "phone_mm21sp93",
+      "title": "teléfono",
+      "type": "phone"
+    },
+    "email_mm21c4ng": {
+      "id": "email_mm21c4ng",
+      "title": "correo",
+      "type": "email"
+    },
+    "text_mm1d43t4": {
+      "id": "text_mm1d43t4",
+      "title": "Razon Social",
+      "type": "text"
+    },
+    "text_mm00x00": {
+      "id": "text_mm00x00",
+      "title": "RFC",
+      "type": "text"
+    },
+    "long_text_mm00jhfd": {
+      "id": "long_text_mm00jhfd",
+      "title": "Direccion",
+      "type": "long_text"
+    },
+    "board_relation_mm0m3zvw": {
+      "id": "board_relation_mm0m3zvw",
+      "title": "link to Subelementos de Proyectos",
+      "type": "board_relation"
+    },
+    "link_mm21rg0s": {
+      "id": "link_mm21rg0s",
+      "title": "Link",
+      "type": "link"
+    },
+    "pulse_id_mm1c23s4": {
+      "id": "pulse_id_mm1c23s4",
+      "title": "id",
+      "type": "item_id"
+    },
+    "file_mm21ggd2": {
+      "id": "file_mm21ggd2",
+      "title": "Constancia",
+      "type": "file"
+    },
+    "file_mm208m11": {
+      "id": "file_mm208m11",
+      "title": "Cuenta de Banco",
+      "type": "file"
+    },
+    "file_mm3krzd": {
+      "id": "file_mm3krzd",
+      "title": "Actas",
+      "type": "file"
+    }
   }
 };
