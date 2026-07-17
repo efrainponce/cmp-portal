@@ -1,5 +1,6 @@
 import { lazy, Suspense, useState } from 'react';
 import { Sidebar } from './app/Sidebar';
+import { ImpersonationBanner } from './app/ImpersonationBanner';
 import { ChatBubble } from './components/assistant/ChatBubble';
 import { useRoute } from './lib/routing';
 
@@ -22,29 +23,32 @@ function App() {
   const onOpenChange = (id: string | null) => navigate(activeBoard, id);
 
   return (
-    <div style={{ width: '100vw', height: '100vh', display: 'flex', overflow: 'hidden', background: 'var(--bg)' }}>
-      <Sidebar
-        activeBoard={activeBoard}
-        onSelectBoard={(key) => navigate(key, null)}
-        collapsed={collapsed}
-        onToggleCollapsed={() => setCollapsed((c) => !c)}
-      />
-      <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
-        <Suspense fallback={<div style={{ padding: 32 }}>Cargando…</div>}>
-          {activeBoard === 'oportunidades' && <OportunidadesBoard openId={itemId} onOpenChange={onOpenChange} />}
-          {activeBoard === 'costeo' && <CosteoBoard openId={itemId} onOpenChange={onOpenChange} />}
-          {activeBoard === 'validacion' && <ValidacionBoard openId={itemId} onOpenChange={onOpenChange} />}
-          {activeBoard === 'doctallas' && <DocTallasBoard openId={itemId} onOpenChange={onOpenChange} />}
-          {activeBoard === 'ordenescompra' && <OrdenesCompraBoard openId={itemId} onOpenChange={onOpenChange} />}
-          {activeBoard === 'logistica' && <LogisticaBoard openId={itemId} onOpenChange={onOpenChange} />}
-          {activeBoard === 'productos' && <GenericBoardView slug="productos" title="Productos" />}
-          {activeBoard === 'instituciones' && <GenericBoardView slug="instituciones" title="Instituciones" />}
-          {activeBoard === 'contactos' && <GenericBoardView slug="contactos" title="Contactos" />}
-          {activeBoard === 'inventario' && <InventarioBoard />}
-          {activeBoard === 'settings' && <SettingsPage />}
-        </Suspense>
+    <div style={{ width: '100vw', height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--bg)' }}>
+      <ImpersonationBanner />
+      <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+        <Sidebar
+          activeBoard={activeBoard}
+          onSelectBoard={(key) => navigate(key, null)}
+          collapsed={collapsed}
+          onToggleCollapsed={() => setCollapsed((c) => !c)}
+        />
+        <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
+          <Suspense fallback={<div style={{ padding: 32 }}>Cargando…</div>}>
+            {activeBoard === 'oportunidades' && <OportunidadesBoard openId={itemId} onOpenChange={onOpenChange} />}
+            {activeBoard === 'costeo' && <CosteoBoard openId={itemId} onOpenChange={onOpenChange} />}
+            {activeBoard === 'validacion' && <ValidacionBoard openId={itemId} onOpenChange={onOpenChange} />}
+            {activeBoard === 'doctallas' && <DocTallasBoard openId={itemId} onOpenChange={onOpenChange} />}
+            {activeBoard === 'ordenescompra' && <OrdenesCompraBoard openId={itemId} onOpenChange={onOpenChange} />}
+            {activeBoard === 'logistica' && <LogisticaBoard openId={itemId} onOpenChange={onOpenChange} />}
+            {activeBoard === 'productos' && <GenericBoardView slug="productos" title="Productos" />}
+            {activeBoard === 'instituciones' && <GenericBoardView slug="instituciones" title="Instituciones" />}
+            {activeBoard === 'contactos' && <GenericBoardView slug="contactos" title="Contactos" />}
+            {activeBoard === 'inventario' && <InventarioBoard />}
+            {activeBoard === 'settings' && <SettingsPage />}
+          </Suspense>
+        </div>
+        <ChatBubble />
       </div>
-      <ChatBubble />
     </div>
   );
 }

@@ -49,11 +49,25 @@ waRoutes(app);
 
 app.use('/api/*', access, identity);
 
+// Responses are scoped per viewer (see dal.ts scopeFor) and, since admin
+// impersonation lets one browser act as several identities in a session,
+// must never be cached/replayed across viewers by the browser's own HTTP
+// cache — that would silently hand one viewer's data to the next.
+app.use('/api/*', async (c, next) => {
+  await next();
+  // Don't clobber a route's own explicit Cache-Control (e.g. the signed PDF proxy).
+  if (!c.res.headers.has('Cache-Control')) c.header('Cache-Control', 'private, no-store');
+});
+
 assistantRoutes(app);
 
 app.get('/api/me', c => {
   const viewer = c.get('viewer');
-  const dto: MeDTO = { email: viewer.email, nombre: viewer.nombre ?? '', role: viewer.role, mondayUserId: viewer.monday_user_id };
+  const admin = c.get('impersonatedBy');
+  const dto: MeDTO = {
+    email: viewer.email, nombre: viewer.nombre ?? '', role: viewer.role, mondayUserId: viewer.monday_user_id,
+    impersonatedBy: admin ? { email: admin.email, nombre: admin.nombre ?? admin.email } : null,
+  };
   return c.json(dto);
 });
 
@@ -109,7 +123,7 @@ app.get('/api/boards/:slug/items', async c => {
   const viewer = c.get('viewer');
   const q = c.req.query('q');
 
-  const etag = await etagFor(c.env, slug);
+  const etag = await etagFor(c.env, slug, viewer);
   c.header('ETag', etag);
   if (c.req.header('If-None-Match') === etag) return c.body(null, 304);
 

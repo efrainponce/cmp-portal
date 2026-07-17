@@ -31,7 +31,12 @@ export interface ListResponse {
   etag: string;                 // aggregate hash — If-None-Match => 304
 }
 
-export interface MeDTO { email: string; nombre: string; role: Role; mondayUserId: number }
+export interface MeDTO {
+  email: string; nombre: string; role: Role; mondayUserId: number;
+  // Presente cuando un admin está viendo el portal como este usuario — nombre/email
+  // del admin real, para el banner "Salir de impersonación".
+  impersonatedBy?: { email: string; nombre: string } | null;
+}
 
 export interface WriteRequest { cols: Record<string, string> }  // colId -> new raw value
 export interface WriteResponse { ok: boolean; pending: boolean; error?: string }

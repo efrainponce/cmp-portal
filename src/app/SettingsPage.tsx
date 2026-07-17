@@ -14,6 +14,8 @@ import { Select } from '../components/forms/Select';
 import { StatusBadge } from '../components/core/Badges';
 import { GroupCard } from '../components/layout/GroupCard';
 import { textIncludes } from '../lib/textMatch';
+import { startImpersonation } from '../lib/impersonation';
+import { useMe } from '../lib/useMe';
 
 type Role = IdentityDTO['role'];
 
@@ -25,6 +27,7 @@ const ROLE_OPTIONS = (Object.keys(ROLE_LABELS) as Role[]).map((r) => ({ value: r
 interface Toast { kind: 'success' | 'error'; message: string }
 
 export function SettingsPage() {
+  const me = useMe();
   const [identities, setIdentities] = useState<IdentityDTO[] | null>(null);
   const [mondayUsers, setMondayUsers] = useState<MondayUserDTO[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -78,6 +81,7 @@ export function SettingsPage() {
 
         <IdentitiesSection
           identities={identities}
+          ownEmail={me?.email ?? null}
           onSaved={(next) => { upsertIdentity(next); showToast('success', `Teléfono actualizado para ${next.email}.`); }}
           onError={() => showToast('error', 'No se pudo guardar el teléfono.')}
         />
@@ -108,8 +112,9 @@ export function SettingsPage() {
   );
 }
 
-function IdentitiesSection({ identities, onSaved, onError }: {
+function IdentitiesSection({ identities, ownEmail, onSaved, onError }: {
   identities: IdentityDTO[] | null;
+  ownEmail: string | null;
   onSaved: (next: IdentityDTO) => void;
   onError: () => void;
 }) {
@@ -130,11 +135,12 @@ function IdentitiesSection({ identities, onSaved, onError }: {
                 <th style={thStyle}>Estado</th>
                 <th style={thStyle}>Teléfono</th>
                 <th style={thStyle} />
+                <th style={thStyle} />
               </tr>
             </thead>
             <tbody>
               {identities.map((identity) => (
-                <IdentityRow key={identity.email} identity={identity} onSaved={onSaved} onError={onError} />
+                <IdentityRow key={identity.email} identity={identity} isSelf={identity.email === ownEmail} onSaved={onSaved} onError={onError} />
               ))}
             </tbody>
           </table>
@@ -144,8 +150,9 @@ function IdentitiesSection({ identities, onSaved, onError }: {
   );
 }
 
-function IdentityRow({ identity, onSaved, onError }: {
+function IdentityRow({ identity, isSelf, onSaved, onError }: {
   identity: IdentityDTO;
+  isSelf: boolean;
   onSaved: (next: IdentityDTO) => void;
   onError: () => void;
 }) {
@@ -183,6 +190,17 @@ function IdentityRow({ identity, onSaved, onError }: {
         <Button variant={dirty && !saving ? 'primary' : 'disabled'} onClick={save} style={{ padding: '6px 12px' }}>
           {saving ? 'Guardando…' : 'Guardar'}
         </Button>
+      </td>
+      <td style={tdStyle}>
+        {!isSelf && identity.active && (
+          <Button
+            variant="secondary"
+            onClick={() => startImpersonation(identity.email)}
+            style={{ padding: '6px 12px', whiteSpace: 'nowrap' }}
+          >
+            Ver como
+          </Button>
+        )}
       </td>
     </tr>
   );

@@ -117,13 +117,22 @@ export async function proyectoForOportunidad(env: Env, oppItemId: number, viewer
   return null;
 }
 
-export async function etagFor(env: Env, slug: BoardSlug): Promise<string> {
+// Must fold in the viewer's scope: scopeFor() returns a different row set per
+// viewer, so an ETag keyed only on the board (count + max synced_at) collides
+// across viewers whenever the board itself hasn't changed — a 304 then makes
+// the requester (or their browser's own HTTP cache) reuse another viewer's
+// response body. Concretely: any two vendedores with different visible rows
+// would get the same board-only ETag and could 304 off each other's cached
+// list. 'admin'/'compras' share one scope key since scopeFor() gives them the
+// same unrestricted row set.
+export async function etagFor(env: Env, slug: BoardSlug, viewer: Identity): Promise<string> {
   const board = BOARDS[slug];
   const row = await env.DB
     .prepare('SELECT COUNT(*) as c, MAX(synced_at) as m FROM items WHERE board_id = ?')
     .bind(board.id)
     .first<{ c: number; m: string | null }>();
-  return `"${slug}:${row?.c ?? 0}:${row?.m ?? ''}"`;
+  const scopeKey = viewer.role === 'admin' || viewer.role === 'compras' ? 'all' : `u${viewer.monday_user_id}`;
+  return `"${slug}:${scopeKey}:${row?.c ?? 0}:${row?.m ?? ''}"`;
 }
 
 // role: 'vendedor' (default) o 'compras' — alimenta los selects de personas del

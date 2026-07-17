@@ -8,6 +8,7 @@ import type {
   UpdateDTO, VendedorDTO, WriteResponse,
 } from '../../shared/dto';
 import { mockBoardMeta, mockItemDetail, mockPatch } from './mockFallback';
+import { getImpersonateTarget } from './impersonation';
 
 export type {
   BoardSlug, ColMeta, ColVal, IdentityDTO, ItemDTO, ItemDetailDTO, ListResponse, MeDTO, MentionUserDTO,
@@ -26,7 +27,10 @@ export class AccessError extends Error {
 }
 
 export async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
-  const res = await fetch('/api' + path, { credentials: 'same-origin', ...init });
+  const target = getImpersonateTarget();
+  const headers = new Headers(init?.headers);
+  if (target) headers.set('X-Impersonate-Email', target);
+  const res = await fetch('/api' + path, { credentials: 'same-origin', ...init, headers });
   if (res.status === 401 || res.status === 403) throw new AccessError(res.status);
   return res;
 }
