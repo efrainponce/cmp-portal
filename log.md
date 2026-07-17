@@ -65,3 +65,7 @@
   - "+ Agregar posición" ya funciona: elige zona (de las 8 del template) + descripción, hace PATCH de `long_text_mm1bj4pt` preservando las demás zonas (`upsertEmbellZone`/`serializeEmbellecimiento`, inverso de `parseEmbellecimiento`).
   - El endpoint de imagen por zona ya no exige `image/*` — `file_mm5akjy5` es una columna de archivo genérica de Monday; el preview cae a un link "Ver archivo" si la URL no carga como `<img>`.
   - Gateado por permisos reales (`ColMeta.w` de `subCols`) y por `editable` (bloqueado en Ganada/Perdida, igual que Cotización).
+- **`d60f8b5`** — Mostrar y permitir cambiar Cliente en el drawer de oportunidad
+  - Institución y Cliente no aparecían en el header del drawer (solo nombre + sincronizado); se agregan como línea de texto bajo el nombre.
+  - Nuevo `EditClienteModal` (mismo patrón que `EditInstitucionModal`) para relinkear el Contacto de una oportunidad ya creada — `deal_contact` solo se escribía al crearla, sin flujo de corrección posterior.
+  - `shared/visibility.ts`: `deal_contact` pasa a escribible (vendedor/admin); Institución (`lookup_mm1bs976`) sigue siendo mirror — se actualiza sola al cambiar el Cliente, nunca editable directamente.
