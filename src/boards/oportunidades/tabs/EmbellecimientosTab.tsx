@@ -24,7 +24,7 @@ import { StatusBadge, MonoTag } from '../../../components/core/Badges';
 import { Button } from '../../../components/core/Button';
 import { chipFor } from '../../../components/board/cellHelpers';
 import { EMBELL_TEMPLATE_KEYS, explodeEmbellecimiento, upsertEmbellZone } from '../../../lib/embellecimiento';
-import { VersionChips } from './CotizacionTab';
+import { VersionChips } from './cotizacion/VersionChips';
 
 const STATUS_COL = 'color_mm1b34bg';
 const EMB_LABEL_CON = 'Con Embellecimiento';

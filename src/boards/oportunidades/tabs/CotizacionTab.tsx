@@ -1,10 +1,9 @@
 // Cotización / línea de producto grid — mirrors the design's fixed-column
-// table. Each column is keyed to its real Monday column id; columns the
-// viewer's role can't see simply aren't in `cols` and are skipped (server
-// already strips them — see docs/dev-contracts.md).
+// table. Metadata de columnas, totales, chips de versión y PDFs viven en
+// ./cotizacion/* — aquí queda la grid interactiva y sus writes.
 //
 // In BOTH variants, columns the server marked writable for the viewer's role
-// (`ColMeta.w`, from shared/visibility.ts) AND listed in INLINE_EDITABLE_COLS
+// (`ColMeta.w`, from shared/visibility.ts) AND listed in inlineEditableCols
 // render as inputs: compras/admin capture costs in `costeo`, vendedor can only
 // view pricing in `venta` (Efraín 2026-07-16 — vendedores edit product/color/
 // quantity only via "Nueva versión", not inline; price set by costeo/admin via
@@ -19,436 +18,20 @@ import { patchItem, apiFetch, listItems } from '../../../lib/apiClient';
 import { fmtMoney } from '../../../lib/format';
 import { MonoTag, StatusBadge } from '../../../components/core/Badges';
 import { Button } from '../../../components/core/Button';
-import { Modal } from '../../../components/core/Modal';
-import { PdfCanvasPreview, warmPdfWorker } from '../../../components/core/PdfCanvasPreview';
 import { previewRow, COL } from '../../../lib/costeoCalc';
 import { latestFileUrl, NO_FIRMADAS_COL, FIRMADAS_COL } from './DocumentacionTab';
-
-const COSTO_DISTR_COL = 'numeric_mm0bph99';
-const ETAPA_COSTEO_COL = 'color_mm084gvf';
-const SUGERIDO_COL = 'numeric_mm2qzzbe';       // P. venta sugerido (auto) — vacío en muchas líneas
-const MARGEN_COL = 'formula_mkznpw5p';         // Margen % (utilidad/subtotal)
-const SUBTOTAL_COL = 'formula_mkznmjh6';
-const IVA_COL = 'formula_mm0rtdqp';
-const TOTAL_CON_IVA_COL = 'formula_mm00xy0n';
-const COSTO_TOTAL_ROW_COL = 'formula_mkznrm5a';   // Costo Total de la línea (costoTotalUnit × cantidad)
-const UTILIDAD_TOTAL_COL = 'formula_mkznry25';    // Utilidad Total de la línea
-
-// Rojo <0%, amarillo <20%, verde ≥20% — mismo criterio para una línea o para
-// el total agregado (Efraín, 2026-07-16).
-function marginColor(pct: number): string {
-  if (pct < 0) return '#ce3048';
-  if (pct < 20) return '#e99729';
-  return '#00b461';
-}
-
-// Lee el valor numérico de una columna para una fila, con el mismo criterio de
-// prioridad preview-primero que el resto del tab (preview = recién editado
-// localmente, antes de que el refetch confirme el valor real de Monday).
-function numFrom(state: RowEditState, product: ItemDTO, colId: string): number {
-  const v = state.preview[colId] ?? product.cols[colId];
-  const n = Number(v?.value ?? v?.text);
-  return Number.isFinite(n) ? n : 0;
-}
-
-// Cuando cmp-tallas todavía no generó el Precio de Venta sugerido (columna
-// vacía), se ofrece un fallback calculado con la misma fórmula de Margen que
-// ya usa el resto del tab: Margen% = 1 − MargenGob% − CostoTotalC/U/Precio.
-// Se despeja Precio para Margen% = 23 — un ancla útil mientras compras decide
-// el precio real (Efraín, 2026-07-16).
-function suggestedPrecio23(costoTotalUnit: number, margenGobPct: number): number | undefined {
-  const denom = 1 - 0.23 - margenGobPct / 100;
-  if (denom <= 0 || costoTotalUnit <= 0) return undefined;
-  return costoTotalUnit / denom;
-}
-
-const PRODUCTO_COL = 'lookup_mm0x4kda';        // mirror del producto ligado — solo lectura directa
-const PRODUCTO_TXT_COL = 'text_mm0bkm1j';      // Producto (texto libre) — fallback sin catálogo
-const PRODUCTO_REL_COL = 'board_relation_mkzmafgp'; // relación real a Productos — puebla el mirror
-const COLOR_COL = 'text_mm07s2mg';
-const COLORES_DISP_COL = 'lookup_mkznm0h3';    // mirror: colores disponibles del producto ligado (asíncrono)
-const PRODUCTO_COLOR_DROPDOWN_COL = 'dropdown_mkztty4b'; // Color del producto en el catálogo — misma
-// fuente que valida enviarCosteo. Se lee directo del `catalog` ya cargado en memoria (sin esperar
-// al mirror asíncrono del subitem, que solo se puebla después de que Monday recompute la relación).
-
-// Mismo status column y labels que worker/lib/quoteVersions.ts (SUB_EMB_STATUS) —
-// marcar "Con Embellecimiento" aquí es lo que hace que la línea aparezca en la
-// tab Embellecimientos (EmbellecimientosTab filtra por este mismo label).
-const EMB_STATUS_COL = 'color_mm1b34bg';
-const EMB_LABEL_CON = 'Con Embellecimiento';
-const EMB_LABEL_SIN = 'Sin Embellecimiento';
-
-// Determina qué columnas son editables inline según la etapa de la oportunidad.
-// En "Nueva oportunidad" (stage 4): vendedor edita producto/color/cantidad/embellecimiento inline.
-// En otras etapas: esos cambios SOLO vía "Nueva versión" (archivable, dispara costeo).
-// Precio: NUNCA editable por vendedor (solo vía cmp-tallas costeo/admin).
-// Costos: solo compras/admin.
-function inlineEditableCols(stage: string | undefined, allowLineEdits: boolean): Set<string> {
-  const base = new Set<string>([
-    COL.costoDistr, COL.descuentoPct, COL.conversion, COL.gastosPct, COL.margenGobPct, ETAPA_COSTEO_COL,
-  ]);
-  if (stage === '4' && allowLineEdits) { // Nueva oportunidad
-    base.add(PRODUCTO_COL);
-    base.add(COLOR_COL);
-    base.add(COL.cantidad);
-    base.add(EMB_STATUS_COL);
-  }
-  return base;
-}
-
-// Colores reales de la columna status "Etapa Costeo" en Monday (settings_str),
-// no inventados — docs/monday-column-map.md.
-const ETAPA_COSTEO_COLORS: Record<string, { color: string; tint: string }> = {
-  'No iniciado': { color: '#68737d', tint: '#e6e9eb' },
-  'En curso': { color: '#e99729', tint: '#fdecd7' },
-  'Listo': { color: '#00b461', tint: '#d6f5e6' },
-  'Detenido': { color: '#ce3048', tint: '#fbdbdf' },
-  'Modificado': { color: '#3db0df', tint: '#dbf0fa' },
-};
-
-/** Chips V1/V2… — vigente resaltada. Seleccionar una anterior muestra su
- * instantánea (solo lectura, sin fórmulas: esas solo existen para la vigente).
- * "Enviar a costeo" junto a la vigente abre el draft de nueva versión — crear
- * una versión ES la forma de mandar cambios de línea a costeo otra vez. */
-export function VersionChips({
-  versions, selected, onSelect, onNuevaVersion,
-}: {
-  versions: QuoteVersionDTO[]; selected: number | null; onSelect: (id: number | null) => void;
-  onNuevaVersion?: () => void;
-}) {
-  if (versions.length === 0) return null;
-  return (
-    <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
-      {versions.map((v) => {
-        const isSelected = selected === null ? v.status === 'vigente' : selected === v.id;
-        return (
-          <div
-            key={v.id}
-            onClick={() => onSelect(v.status === 'vigente' ? null : v.id)}
-            title={v.status === 'vigente' ? 'Vigente' : `Superada — ${v.createdAt}`}
-            style={{
-              cursor: 'pointer', font: 'var(--text-label-strong)', padding: '4px 12px',
-              borderRadius: 'var(--radius-pill)',
-              background: isSelected ? '#2b2925' : 'var(--bg-sunken)',
-              color: isSelected ? '#fff' : 'var(--ink-secondary)',
-            }}
-          >
-            {v.label}{v.status === 'vigente' ? ' · vigente' : ''}
-          </div>
-        );
-      })}
-      {onNuevaVersion && (
-        <div
-          onClick={onNuevaVersion}
-          title="Crea una nueva versión de la cotización y la manda a costeo"
-          style={{
-            cursor: 'pointer', font: 'var(--text-label-strong)', padding: '4px 12px',
-            borderRadius: 'var(--radius-pill)', border: '1px dashed var(--border)',
-            color: 'var(--accent)', background: 'transparent',
-          }}
-        >
-          + Enviar a costeo
-        </div>
-      )}
-    </div>
-  );
-}
-
-// La miniatura es un ícono de documento reconocible, no un render real de la
-// página — el clic abre un modal que sí renderiza la página real (ver
-// PdfCanvasPreview: un <embed>/<iframe> con el link crudo de Monday
-// (protected_static) exige sesión de monday.com y bloquea framing por CSP, y
-// el visor de PDF nativo del navegador dentro de un iframe resultó no ser
-// confiable ni en Chrome real. El PDF se resuelve vía un endpoint propio que
-// transmite los bytes ya resueltos por la API de Monday (mismo
-// mecanismo que las imágenes de embellecimiento — worker/lib/cotizacionPdfs.ts).
-function PdfIcon({ color }: { color: string }) {
-  return (
-    <svg width="34" height="34" viewBox="0 0 24 24" fill="none">
-      <path d="M6 2h8l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Z" fill={color} opacity=".14" />
-      <path d="M6 2h8l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Z" stroke={color} strokeWidth="1.4" />
-      <path d="M14 2v5h5" stroke={color} strokeWidth="1.4" strokeLinejoin="round" />
-      <text x="12" y="17.5" textAnchor="middle" fontSize="6.5" fontWeight="700" fill={color}>PDF</text>
-    </svg>
-  );
-}
-
-type PdfKind = 'sin_firmar' | 'firmada';
-
-/** Miniatura de un PDF de cotización — tarjeta de ícono clicable. "Ver" abre
- * la vista previa embebida (modal); "Descargar" fuerza la descarga del mismo
- * endpoint, sin depender del link crudo de Monday. */
-function PdfThumb({ oppId, kind, available, label, accentColor, onPreview }: {
-  oppId: string; kind: PdfKind; available: boolean; label: string; accentColor: string; onPreview: () => void;
-}) {
-  const href = `/api/oportunidades/${oppId}/cotizacion-pdf/${kind}`;
-  return (
-    <div style={{ width: 108 }}>
-      <div style={{
-        font: '600 10px \'Inter\', sans-serif', color: accentColor, textTransform: 'uppercase',
-        letterSpacing: '.3px', marginBottom: 6,
-      }}>
-        {label}
-      </div>
-      {available ? (
-        <>
-          <div
-            onClick={onPreview}
-            style={{
-              cursor: 'pointer', width: 108, height: 92, border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)',
-              background: 'var(--bg-sunken)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}
-          >
-            <PdfIcon color={accentColor} />
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'center', gap: 6, marginTop: 4 }}>
-            <span onClick={onPreview} style={{ cursor: 'pointer', font: 'var(--text-caption)', color: 'var(--accent)' }}>Ver</span>
-            <span style={{ font: 'var(--text-caption)', color: 'var(--ink-faint)' }}>·</span>
-            <a href={href} download style={{ font: 'var(--text-caption)', color: 'var(--accent)', textDecoration: 'none' }}>Descargar</a>
-          </div>
-        </>
-      ) : (
-        <div style={{
-          width: 108, height: 92, border: '1px dashed var(--ink-faint)', borderRadius: 'var(--radius-lg)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: 8,
-        }}>
-          <span style={{ font: 'var(--text-caption)', color: 'var(--ink-faint)' }}>Sin PDF</span>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** Cotización sin firmar / firmada por el vendedor, lado a lado — mismos
- * archivos que DocumentacionTab (file_mm0fgrzq / file_mm0zjras), pero con
- * vista previa embebida aquí para no tener que cambiar de pestaña. */
-function CotizacionPdfRow({ oppId, hasSinFirmar, hasFirmada }: { oppId?: string; hasSinFirmar: boolean; hasFirmada: boolean }) {
-  const [preview, setPreview] = useState<PdfKind | null>(null);
-  const [bytes, setBytes] = useState<Partial<Record<PdfKind, ArrayBuffer>>>({});
-
-  // Precarga en cuanto se sabe que hay PDF que ver — no espera al clic en
-  // "Ver". Así, cuando el usuario abre el modal, el worker de pdf.js y los
-  // bytes del PDF ya están listos (o casi) en vez de arrancar la descarga
-  // ahí mismo, que es lo que hacía sentir lenta la primera apertura.
-  useEffect(() => {
-    if (!oppId || (!hasSinFirmar && !hasFirmada)) return;
-    warmPdfWorker();
-    let cancelled = false;
-    const kinds: PdfKind[] = [];
-    if (hasSinFirmar) kinds.push('sin_firmar');
-    if (hasFirmada) kinds.push('firmada');
-    kinds.forEach((kind) => {
-      fetch(`/api/oportunidades/${oppId}/cotizacion-pdf/${kind}`)
-        .then((r) => (r.ok ? r.arrayBuffer() : null))
-        .then((buf) => { if (buf && !cancelled) setBytes((b) => ({ ...b, [kind]: buf })); })
-        .catch(() => { /* PdfCanvasPreview reintenta por URL si no hubo prefetch */ });
-    });
-    return () => { cancelled = true; };
-  }, [oppId, hasSinFirmar, hasFirmada]);
-
-  if (!oppId || (!hasSinFirmar && !hasFirmada)) return null;
-  return (
-    <>
-      <div style={{ display: 'flex', gap: 16, marginBottom: 16 }}>
-        <PdfThumb oppId={oppId} kind="sin_firmar" available={hasSinFirmar} label="Sin firmar" accentColor="var(--status-esperando)" onPreview={() => setPreview('sin_firmar')} />
-        <PdfThumb oppId={oppId} kind="firmada" available={hasFirmada} label="Firmada" accentColor="var(--status-ganada)" onPreview={() => setPreview('firmada')} />
-      </div>
-      {preview && (
-        <Modal
-          title={preview === 'sin_firmar' ? 'Cotización — sin firmar' : 'Cotización — firmada'}
-          onClose={() => setPreview(null)}
-          width={760}
-        >
-          <PdfCanvasPreview
-            url={`/api/oportunidades/${oppId}/cotizacion-pdf/${preview}`}
-            data={bytes[preview]}
-            maxWidth={712}
-          />
-        </Modal>
-      )}
-    </>
-  );
-}
-
-function SnapshotTable({ version }: { version: QuoteVersionDTO }) {
-  return (
-    <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: 'var(--radius-xl)' }}>
-      <div style={{
-        display: 'grid', gridTemplateColumns: '1.6fr .5fr .7fr .7fr .85fr .85fr',
-        padding: '9px 14px', background: 'var(--bg-sunken)', font: '700 9.5px \'Inter\', sans-serif',
-        color: 'var(--ink-tertiary)', textTransform: 'uppercase', letterSpacing: '.3px',
-      }}>
-        <div>Producto</div><div>SKU</div><div>Color</div><div>Cant.</div>
-        <div style={{ textAlign: 'right' }}>P. venta C/U</div><div style={{ textAlign: 'right' }}>Subtotal</div>
-      </div>
-      {version.products.map((p, i) => (
-        <div key={i} style={{
-          display: 'grid', gridTemplateColumns: '1.6fr .5fr .7fr .7fr .85fr .85fr',
-          alignItems: 'center', padding: '9px 14px', background: '#fff', borderTop: '1px solid var(--border-subtle)',
-          font: 'var(--text-label)', color: 'var(--ink-secondary)',
-        }}>
-          <div style={{ font: 'var(--text-body-strong)', color: 'var(--ink)' }}>
-            {p.producto}{p.embellecimiento ? ' 🎨' : ''}
-          </div>
-          <div>{p.sku ? <MonoTag style={{ display: 'inline-block' }}>{p.sku}</MonoTag> : '—'}</div>
-          <div>{p.color || '—'}</div>
-          <div>{p.cantidad}</div>
-          <div style={{ textAlign: 'right' }}>{p.precioUnitario ? fmtMoney(p.precioUnitario) : '—'}</div>
-          <div style={{ textAlign: 'right' }}>{fmtMoney((p.precioUnitario ?? 0) * p.cantidad)}</div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-interface GridCol {
-  id: string;
-  label: string;
-  align: 'left' | 'right';
-  kind: 'text' | 'money' | 'percent';
-}
-
-const GRID_COLS_COSTEO: GridCol[] = [
-  { id: 'lookup_mm0x4kda', label: 'Producto', align: 'left', kind: 'text' },
-  { id: 'lookup_mkzn7x9a', label: 'SKU', align: 'left', kind: 'text' },
-  { id: 'numeric_mkzm6399', label: 'Cant.', align: 'left', kind: 'text' },
-  { id: ETAPA_COSTEO_COL, label: 'Etapa costeo', align: 'left', kind: 'text' },
-  { id: 'lookup_mm11t8gj', label: 'Moneda', align: 'left', kind: 'text' },
-  { id: 'numeric_mm0bph99', label: 'Costo distr. C/U', align: 'right', kind: 'money' },
-  { id: 'numeric_mkzn2q51', label: 'Desc. %', align: 'right', kind: 'percent' },
-  { id: 'formula_mkzngnjm', label: 'Costo real C/U', align: 'right', kind: 'money' },
-  { id: 'numeric_mm0rvhgs', label: 'Conversión', align: 'right', kind: 'text' },
-  { id: 'numeric_mkzngs9x', label: 'Gastos %', align: 'right', kind: 'percent' },
-  { id: 'numeric_mm0gxvpa', label: 'Costo embell. C/U', align: 'right', kind: 'money' },
-  { id: 'formula_mkznpfgg', label: 'Costo total C/U', align: 'right', kind: 'money' },
-  { id: 'numeric_mm2qzzbe', label: 'P. venta sugerido', align: 'right', kind: 'money' },
-  { id: 'numeric_mkzneg3d', label: 'P. venta', align: 'right', kind: 'money' },
-  { id: 'numeric_mkznnm5s', label: 'Margen Gob %', align: 'right', kind: 'percent' },
-  { id: 'formula_mkznpw5p', label: 'Margen', align: 'right', kind: 'percent' },
-];
-
-// Ventas-side view: no cost breakdown, just what the customer is quoted.
-const GRID_COLS_VENTA: GridCol[] = [
-  { id: 'lookup_mm0x4kda', label: 'Producto', align: 'left', kind: 'text' },
-  { id: 'lookup_mkzn7x9a', label: 'SKU', align: 'left', kind: 'text' },
-  { id: COLOR_COL, label: 'Color', align: 'left', kind: 'text' },
-  { id: 'numeric_mkzm6399', label: 'Cant.', align: 'left', kind: 'text' },
-  { id: EMB_STATUS_COL, label: 'Con Embellecimiento', align: 'left', kind: 'text' },
-  { id: 'numeric_mkzneg3d', label: 'P. venta C/U', align: 'right', kind: 'money' },
-  { id: 'formula_mkznmjh6', label: 'Subtotal', align: 'right', kind: 'money' },
-  { id: 'formula_mm0rtdqp', label: 'IVA', align: 'right', kind: 'money' },
-  { id: 'formula_mm00xy0n', label: 'Total c/IVA', align: 'right', kind: 'money' },
-];
-
-// Mismo fallback que worker/lib/quoteVersions.ts's productoNombre(): el mirror
-// (lookup_mm0x4kda) solo se puebla cuando hay relación real a Productos; sin
-// relación, cae al texto libre (text_mm0bkm1j). `preview` gana primero — es el
-// valor recién guardado antes de que el mirror asíncrono de Monday lo confirme.
-function displayProducto(product: ItemDTO, preview?: Record<string, ColVal>): string {
-  return preview?.[PRODUCTO_COL]?.text || product.cols[PRODUCTO_COL]?.text || product.cols[PRODUCTO_TXT_COL]?.text || '';
-}
-
-function cellValue(col: GridCol, val?: ColVal): string {
-  if (!val || val.text === '') return '—';
-  if (col.kind === 'money') {
-    const n = Number(val.value ?? val.text);
-    return Number.isNaN(n) ? val.text : fmtMoney(n);
-  }
-  if (col.kind === 'percent') {
-    const n = Number(val.value ?? val.text);
-    return Number.isNaN(n) ? val.text : `${n}%`;
-  }
-  return val.text;
-}
-
-const inputStyle: React.CSSProperties = {
-  width: '100%', font: 'var(--text-label)', color: 'var(--ink)',
-  border: '1px solid var(--border)', borderRadius: 6, padding: '6px 9px',
-  textAlign: 'right', boxSizing: 'border-box',
-};
-
-const warningStyle: React.CSSProperties = {
-  font: 'var(--text-caption)', color: '#9c4c3d', marginTop: 3,
-};
-
-function RowWarning({ children }: { children: React.ReactNode }) {
-  return <div style={warningStyle}>⚠ {children}</div>;
-}
-
-interface RowEditState {
-  editing: Record<string, string>;   // colId -> in-progress raw text
-  preview: Record<string, ColVal>;   // colId -> locally recomputed formula preview
-  saving: Record<string, boolean>;   // colId -> PATCH in flight
-  error?: string;
-}
-
-const EMPTY_ROW: RowEditState = { editing: {}, preview: {}, saving: {} };
-
-/** Fila de totales alineada a la misma grid de columnas que el header/filas —
- * cada total cae exactamente debajo de su columna en vez de una barra aparte
- * (Efraín 2026-07-16: "los quiero abajo de cada columna"). Suma lo que ya
- * trae cada línea (Monday ya calculó subtotal/IVA/costo/utilidad por fila;
- * aquí solo se agregan); el Margen total es ponderado (utilidad total /
- * subtotal total), no el promedio simple de cada fila. Las columnas sin un
- * total con sentido (SKU, Etapa costeo, Moneda, C/U de costo…) quedan vacías. */
-function TotalsRow({ variant, visibleCols, products, rows }: {
-  variant: 'venta' | 'costeo'; visibleCols: GridCol[]; products: ItemDTO[]; rows: Record<string, RowEditState>;
-}) {
-  let cantidad = 0, subtotal = 0, iva = 0, totalConIva = 0, costoTotal = 0, utilidadTotal = 0, margenGobTotal = 0;
-  for (const p of products) {
-    const state = rows[p.id] ?? EMPTY_ROW;
-    cantidad += numFrom(state, p, COL.cantidad);
-    subtotal += numFrom(state, p, SUBTOTAL_COL);
-    iva += numFrom(state, p, IVA_COL);
-    totalConIva += numFrom(state, p, TOTAL_CON_IVA_COL);
-    costoTotal += numFrom(state, p, COSTO_TOTAL_ROW_COL);
-    utilidadTotal += numFrom(state, p, UTILIDAD_TOTAL_COL);
-    margenGobTotal += numFrom(state, p, COL.margenGobTotal);
-  }
-  const margenPct = subtotal > 0 ? (utilidadTotal / subtotal) * 100 : 0;
-  // Igual que Margen: ponderado sobre el subtotal total, no el promedio simple
-  // del % de cada fila.
-  const margenGobPct = subtotal > 0 ? (margenGobTotal / subtotal) * 100 : 0;
-
-  // colId -> { value, color? } — costeo reusa la posición de las columnas
-  // "…C/U" (per-unit) para mostrar el gran total, ya que la grid no tiene una
-  // columna de total de línea aparte.
-  const byCol: Record<string, { value: string; color?: string }> =
-    variant === 'venta'
-      ? {
-          [COL.cantidad]: { value: String(cantidad) },
-          [SUBTOTAL_COL]: { value: fmtMoney(subtotal) },
-          [IVA_COL]: { value: fmtMoney(iva) },
-          [TOTAL_CON_IVA_COL]: { value: fmtMoney(totalConIva) },
-        }
-      : {
-          [COL.cantidad]: { value: String(cantidad) },
-          [COL.costoTotalUnit]: { value: fmtMoney(costoTotal) },
-          [COL.precio]: { value: fmtMoney(subtotal) },
-          [COL.margenGobPct]: { value: `${margenGobPct.toFixed(1)}%` },
-          [MARGEN_COL]: { value: `${margenPct.toFixed(1)}%`, color: marginColor(margenPct) },
-        };
-
-  return (
-    <div style={{
-      display: 'grid', gridTemplateColumns: `1.8fr ${visibleCols.slice(1).map(() => '1fr').join(' ')}`,
-      gap: 14, alignItems: 'center', padding: '12px 16px', background: 'var(--bg-sunken)',
-      borderTop: '2px solid var(--border)',
-    }}>
-      {visibleCols.map((c, idx) => (
-        <div
-          key={c.id}
-          style={{
-            textAlign: c.align, font: 'var(--text-body-strong)',
-            color: byCol[c.id]?.color ?? 'var(--ink)',
-          }}
-        >
-          {idx === 0 ? 'TOTAL' : (byCol[c.id]?.value ?? '')}
-        </div>
-      ))}
-    </div>
-  );
-}
+import { VersionChips } from './cotizacion/VersionChips';
+import { SnapshotTable } from './cotizacion/SnapshotTable';
+import { TotalsRow } from './cotizacion/TotalsRow';
+import { CotizacionPdfRow } from './cotizacion/CotizacionPdfRow';
+import {
+  type RowEditState, EMPTY_ROW, numFrom, marginColor, suggestedPrecio23, inlineEditableCols,
+  ETAPA_COSTEO_COLORS, GRID_COLS_COSTEO, GRID_COLS_VENTA, displayProducto, cellValue,
+  inputStyle, RowWarning,
+  COSTO_DISTR_COL, ETAPA_COSTEO_COL, SUGERIDO_COL, MARGEN_COL,
+  PRODUCTO_COL, PRODUCTO_TXT_COL, PRODUCTO_REL_COL, COLOR_COL, COLORES_DISP_COL,
+  PRODUCTO_COLOR_DROPDOWN_COL, EMB_STATUS_COL, EMB_LABEL_CON, EMB_LABEL_SIN,
+} from './cotizacion/gridMeta';
 
 export function CotizacionTab({
   subCols, products, variant = 'venta', onSaved, versions = [], onNuevaVersion, editable = true, stage, oppId, item,
@@ -482,6 +65,9 @@ export function CotizacionTab({
   const visibleCols = gridCols.filter((gc) => subCols.some((c) => c.id === gc.id));
   const writableIds = new Set(subCols.filter((c) => c.w).map((c) => c.id));
   const editableCols = precioOnly ? new Set<string>([COL.precio]) : inlineEditableCols(stage, !readOnly);
+  // Crear/editar líneas inline: solo Nueva oportunidad, y nunca desde los
+  // boards de Costeo/Validación (eso es trabajo de Ventas en Oportunidades).
+  const canAddLines = stage === '4' && editable && !readOnly && !precioOnly;
 
   const [rows, setRows] = useState<Record<string, RowEditState>>({});
   const [creatingLine, setCreatingLine] = useState(false);
@@ -494,8 +80,8 @@ export function CotizacionTab({
   // inline (Nueva oportunidad), para el datalist y para resolver el nombre
   // tecleado a un item_id real (board_relation_mkzmafgp, igual que NuevaVersionForm).
   useEffect(() => {
-    if (stage === '4' && editable && !readOnly && !precioOnly) listItems('productos').then(setCatalog).catch(() => {});
-  }, [stage, editable, readOnly, precioOnly]);
+    if (canAddLines) listItems('productos').then(setCatalog).catch(() => {});
+  }, [canAddLines]);
 
   const onAddLine = async () => {
     if (!oppId) return;
@@ -515,6 +101,40 @@ export function CotizacionTab({
     }
   };
 
+  /** PATCH de `writes` a la línea marcando `marker` como saving; al éxito
+   * limpia editing[marker] (si `clearEditing`), aplica el `preview` local
+   * opcional (mirrors asíncronos de Monday) y notifica onSaved. Todos los
+   * writes de la grid pasan por aquí — un solo manejo de error/saving. */
+  const saveCols = async (
+    productId: string,
+    marker: string,
+    writes: Record<string, string>,
+    opts: { clearEditing?: boolean; preview?: Record<string, ColVal> } = {},
+  ) => {
+    patchRow(productId, { saving: { ...rowState(productId).saving, [marker]: true }, error: undefined });
+    try {
+      await patchItem('oportunidades_sub', productId, writes);
+    } catch (e) {
+      const after = rowState(productId);
+      const saving = { ...after.saving };
+      delete saving[marker];
+      patchRow(productId, { saving, error: e instanceof Error ? e.message : 'No se pudo guardar.' });
+      return;
+    }
+    const after = rowState(productId);
+    const saving = { ...after.saving };
+    delete saving[marker];
+    const patch: Partial<RowEditState> = { saving };
+    if (opts.clearEditing) {
+      const editing = { ...after.editing };
+      delete editing[marker];
+      patch.editing = editing;
+    }
+    if (opts.preview) patch.preview = { ...after.preview, ...opts.preview };
+    patchRow(productId, patch);
+    onSaved?.();
+  };
+
   const onEdit = (product: ItemDTO, colId: string, raw: string) => {
     const state = rowState(product.id);
     const editing = { ...state.editing, [colId]: raw };
@@ -527,7 +147,7 @@ export function CotizacionTab({
     patchRow(product.id, { editing, preview, error: undefined });
   };
 
-  const onBlur = async (product: ItemDTO, colId: string) => {
+  const onBlur = (product: ItemDTO, colId: string) => {
     const state = rowState(product.id);
     const raw = state.editing[colId];
     if (raw === undefined) return;
@@ -542,23 +162,7 @@ export function CotizacionTab({
       patchRow(product.id, { error: 'Valor inválido.' });
       return;
     }
-    patchRow(product.id, { saving: { ...state.saving, [colId]: true }, error: undefined });
-    try {
-      await patchItem('oportunidades_sub', product.id, { [colId]: raw });
-    } catch (e) {
-      const after = rowState(product.id);
-      const saving = { ...after.saving };
-      delete saving[colId];
-      patchRow(product.id, { saving, error: e instanceof Error ? e.message : 'No se pudo guardar.' });
-      return;
-    }
-    const after = rowState(product.id);
-    const editing = { ...after.editing };
-    delete editing[colId];
-    const saving = { ...after.saving };
-    delete saving[colId];
-    patchRow(product.id, { editing, saving });
-    onSaved?.();
+    void saveCols(product.id, colId, { [colId]: raw }, { clearEditing: true });
   };
 
   // Producto/Color son texto libre, no numérico — sin preview de fórmulas.
@@ -569,82 +173,40 @@ export function CotizacionTab({
 
   // Color es un <select> — se guarda al elegir (onChange), no al perder foco:
   // un <select> no tiene un "blur para confirmar" natural como un input de texto.
-  const onColorChange = async (product: ItemDTO, raw: string) => {
+  const onColorChange = (product: ItemDTO, raw: string) => {
     const state = rowState(product.id);
     const current = product.cols[COLOR_COL]?.text ?? '';
     patchRow(product.id, { editing: { ...state.editing, [COLOR_COL]: raw } });
     if (raw === current) return;
-    patchRow(product.id, { saving: { ...state.saving, [COLOR_COL]: true }, error: undefined });
-    try {
-      await patchItem('oportunidades_sub', product.id, { [COLOR_COL]: raw });
-    } catch (e) {
-      const after = rowState(product.id);
-      const saving = { ...after.saving };
-      delete saving[COLOR_COL];
-      patchRow(product.id, { saving, error: e instanceof Error ? e.message : 'No se pudo guardar.' });
-      return;
-    }
-    const after = rowState(product.id);
-    const saving = { ...after.saving };
-    delete saving[COLOR_COL];
-    patchRow(product.id, { saving });
-    onSaved?.();
+    void saveCols(product.id, COLOR_COL, { [COLOR_COL]: raw });
   };
 
   // Con/Sin Embellecimiento — mismo status column y labels que submitVersion
   // (worker/lib/quoteVersions.ts). Marcarla "Con" es lo que hace que la línea
   // aparezca en EmbellecimientosTab (filtra por ese mismo label).
-  const onEmbellecimientoChange = async (product: ItemDTO, con: boolean) => {
+  const onEmbellecimientoChange = (product: ItemDTO, con: boolean) => {
     const label = con ? EMB_LABEL_CON : EMB_LABEL_SIN;
-    const state = rowState(product.id);
-    patchRow(product.id, { saving: { ...state.saving, [EMB_STATUS_COL]: true }, error: undefined });
-    try {
-      await patchItem('oportunidades_sub', product.id, { [EMB_STATUS_COL]: label });
-    } catch (e) {
-      const after = rowState(product.id);
-      const saving = { ...after.saving };
-      delete saving[EMB_STATUS_COL];
-      patchRow(product.id, { saving, error: e instanceof Error ? e.message : 'No se pudo guardar.' });
-      return;
-    }
-    const after = rowState(product.id);
-    const saving = { ...after.saving };
-    delete saving[EMB_STATUS_COL];
-    const preview = { ...after.preview, [EMB_STATUS_COL]: { text: label, type: 'status' } };
-    patchRow(product.id, { saving, preview });
-    onSaved?.();
+    void saveCols(product.id, EMB_STATUS_COL, { [EMB_STATUS_COL]: label }, {
+      preview: { [EMB_STATUS_COL]: { text: label, type: 'status' } },
+    });
   };
 
   // Etapa Costeo — dropdown que compras usa para marcar dónde va el costeo de
   // esta línea (No iniciado/En curso/Listo/Detenido/Modificado).
-  const onEtapaCosteoChange = async (product: ItemDTO, label: string) => {
+  const onEtapaCosteoChange = (product: ItemDTO, label: string) => {
     if (!label) return;
-    const state = rowState(product.id);
     const current = product.cols[ETAPA_COSTEO_COL]?.text ?? '';
     if (label === current) return;
-    patchRow(product.id, { saving: { ...state.saving, [ETAPA_COSTEO_COL]: true }, error: undefined });
-    try {
-      await patchItem('oportunidades_sub', product.id, { [ETAPA_COSTEO_COL]: label });
-    } catch (e) {
-      const after = rowState(product.id);
-      const saving = { ...after.saving };
-      delete saving[ETAPA_COSTEO_COL];
-      patchRow(product.id, { saving, error: e instanceof Error ? e.message : 'No se pudo guardar.' });
-      return;
-    }
-    const after = rowState(product.id);
-    const saving = { ...after.saving };
-    delete saving[ETAPA_COSTEO_COL];
-    const preview = { ...after.preview, [ETAPA_COSTEO_COL]: { text: label, type: 'status' } };
-    patchRow(product.id, { saving, preview });
-    onSaved?.();
+    void saveCols(product.id, ETAPA_COSTEO_COL, { [ETAPA_COSTEO_COL]: label }, {
+      preview: { [ETAPA_COSTEO_COL]: { text: label, type: 'status' } },
+    });
   };
 
   // Al elegir un producto del catálogo escribe la relación real
   // (board_relation_mkzmafgp) — Monday puebla el mirror (lookup_mm0x4kda,
   // SKU, Marca…) solo. Sin match en catálogo, cae a texto libre
   // (text_mm0bkm1j) — mismo criterio que NuevaVersionForm/submitVersion.
-  const onProductoBlur = async (product: ItemDTO) => {
+  const onProductoBlur = (product: ItemDTO) => {
     const state = rowState(product.id);
     const raw = state.editing[PRODUCTO_COL];
     if (raw === undefined) return;
@@ -656,33 +218,16 @@ export function CotizacionTab({
       return;
     }
     const match = catalog.find((c) => c.name.trim().toLowerCase() === raw.trim().toLowerCase());
-    patchRow(product.id, { saving: { ...state.saving, [PRODUCTO_COL]: true }, error: undefined });
-    try {
-      if (match) {
-        await patchItem('oportunidades_sub', product.id, { [PRODUCTO_REL_COL]: match.id });
-      } else {
-        await patchItem('oportunidades_sub', product.id, { [PRODUCTO_TXT_COL]: raw });
-      }
-    } catch (e) {
-      const after = rowState(product.id);
-      const saving = { ...after.saving };
-      delete saving[PRODUCTO_COL];
-      patchRow(product.id, { saving, error: e instanceof Error ? e.message : 'No se pudo guardar.' });
-      return;
-    }
-    const after = rowState(product.id);
-    const editing = { ...after.editing };
-    delete editing[PRODUCTO_COL];
-    const saving = { ...after.saving };
-    delete saving[PRODUCTO_COL];
-    // El write real fue a board_relation_mkzmafgp o text_mm0bkm1j — el mirror
+    // El write real va a board_relation_mkzmafgp o text_mm0bkm1j — el mirror
     // que se MUESTRA (lookup_mm0x4kda) lo puebla Monday de forma asíncrona
     // (el outbox manda el mutation en waitUntil, después de responder). Sin
     // este preview local, el refetch inmediato de onSaved() todavía trae el
     // mirror viejo/vacío y parece que la edición no se guardó.
-    const preview = { ...after.preview, [PRODUCTO_COL]: { text: match ? match.name : raw, type: 'text' } };
-    patchRow(product.id, { editing, saving, preview });
-    onSaved?.();
+    void saveCols(
+      product.id, PRODUCTO_COL,
+      match ? { [PRODUCTO_REL_COL]: match.id } : { [PRODUCTO_TXT_COL]: raw },
+      { clearEditing: true, preview: { [PRODUCTO_COL]: { text: match ? match.name : raw, type: 'text' } } },
+    );
   };
 
   if (selectedVersion) {
@@ -703,7 +248,7 @@ export function CotizacionTab({
         <div style={{ font: 'var(--text-label)', color: 'var(--ink-quiet)', marginBottom: 16 }}>
           Sin líneas de producto registradas.
         </div>
-        {stage === '4' && editable && !readOnly && !precioOnly && (
+        {canAddLines && (
           <Button
             variant="primary"
             onClick={creatingLine ? undefined : onAddLine}
