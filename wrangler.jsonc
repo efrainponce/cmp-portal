@@ -22,8 +22,11 @@
   },
   "vars": {
     "ENVIRONMENT": "prod",
-    "CMP_TALLAS_BASE": "https://cmp-tallas.vercel.app"
+    "CMP_TALLAS_BASE": "https://cmp-tallas.vercel.app",
+    "ACCESS_TEAM_DOMAIN": "mexicanaproteccion.cloudflareaccess.com",
+    "ACCESS_AUD": "f0501e543254e1d671d2b6830e28edb1cb79b340131918ddfc05728cf4785296"
   },
+  "preview_urls": false,
   "observability": {
     "enabled": true
   }
