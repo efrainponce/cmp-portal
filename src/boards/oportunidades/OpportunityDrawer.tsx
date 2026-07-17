@@ -7,7 +7,7 @@
 import { useEffect, useState } from 'react';
 import { Button } from '../../components/core/Button';
 import { ConfirmButton } from '../../components/core/ConfirmButton';
-import { IconBack, IconLink } from '../../components/icons';
+import { IconBack, IconEdit, IconLink } from '../../components/icons';
 import { SyncIndicator } from '../../components/board/SyncIndicator';
 import {
   useBoards, colForBoard, checkCosteo, enviarCosteo, generarCotizacion, getItemDetail, getVersiones,
@@ -27,6 +27,7 @@ import { EmptyDocTab } from './tabs/EmptyDocTab';
 import { useProyecto, ProyectoOrdenesSection } from './ProyectoSection';
 import { PaymentRequestButton } from '../../components/board/PaymentRequestButton';
 import { EditClienteModal } from './EditClienteModal';
+import { EditPersonaModal } from './EditPersonaModal';
 
 interface Props {
   id: string;
@@ -41,6 +42,8 @@ const COSTEO_VARIANT_BOARDS: StageBoardKey[] = ['costeo', 'validacion'];
 const PRECIO_COL = 'numeric_mkzneg3d';   // Precio de Venta C/U (subitems)
 const INSTITUCION_COL = 'lookup_mm1bs976'; // mirror desde Contacto — nunca editable aquí
 const CONTACTO_COL = 'deal_contact';       // board_relation → Contactos ("Cliente")
+const VENDEDOR_COL = 'deal_owner';         // people
+const COMPRAS_COL = 'multiple_person_mm03qyw9'; // people ("Comprador")
 
 // SWR de sesión: al reabrir una oportunidad ya visitada, el drawer pinta al
 // instante desde este cache y el fetch fresco lo corrige en background. Vive a
@@ -50,11 +53,34 @@ const versionsCache = new Map<string, QuoteVersionDTO[]>();
 
 interface Notice { kind: 'ok' | 'error'; title: string; lines: string[] }
 
+/** Lápiz discreto junto a un campo del header — reemplaza el link "Cambiar" para
+ * que la fila Institución/Cliente/Vendedor/Comprador no se sienta saturada de texto. */
+function ChangeIconButton({ onClick, label }: { onClick: () => void; label: string }) {
+  return (
+    <button
+      onClick={onClick}
+      title={label}
+      aria-label={label}
+      style={{
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        border: 'none', background: 'none', padding: 2, marginLeft: -4,
+        color: 'var(--ink-quiet)', cursor: 'pointer', borderRadius: 4,
+      }}
+      onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--accent)'; }}
+      onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--ink-quiet)'; }}
+    >
+      <IconEdit style={{ width: 13, height: 13 }} />
+    </button>
+  );
+}
+
 export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey }: Props) {
   const { boards } = useBoards();
   const subCols = colForBoard(boards, 'oportunidades_sub');
   const oppCols = colForBoard(boards, 'oportunidades');
   const canEditCliente = !!oppCols.find((c) => c.id === CONTACTO_COL)?.w;
+  const canEditVendedor = !!oppCols.find((c) => c.id === VENDEDOR_COL)?.w;
+  const canEditComprador = !!oppCols.find((c) => c.id === COMPRAS_COL)?.w;
   const [item, setItem] = useState<ItemDetailDTO | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -65,6 +91,8 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey 
   const [versions, setVersions] = useState<QuoteVersionDTO[]>([]);
   const [showNuevaVersion, setShowNuevaVersion] = useState(false);
   const [showEditCliente, setShowEditCliente] = useState(false);
+  const [showEditVendedor, setShowEditVendedor] = useState(false);
+  const [showEditComprador, setShowEditComprador] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
 
   const load = () => {
@@ -188,16 +216,21 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey 
             <span>
               Cliente: <span style={{ color: 'var(--ink-secondary)' }}>{item.cols[CONTACTO_COL]?.text || '—'}</span>
             </span>
-            {canEditCliente && (
-              <button
-                onClick={() => setShowEditCliente(true)}
-                style={{ border: 'none', background: 'none', padding: 0, font: 'var(--text-label-strong)', color: 'var(--accent)', cursor: 'pointer' }}
-              >
-                Cambiar
-              </button>
-            )}
+            {canEditCliente && <ChangeIconButton label="Cambiar cliente" onClick={() => setShowEditCliente(true)} />}
           </div>
-          <SyncIndicator syncedAt={item.syncedAt} pending={item.pendingWrite ? 1 : 0} style={{ marginTop: 4 }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4, font: 'var(--text-caption)', color: 'var(--ink-faint)' }}>
+            <SyncIndicator syncedAt={item.syncedAt} pending={item.pendingWrite ? 1 : 0} />
+            <span>·</span>
+            <span>
+              Vendedor: <span style={{ color: 'var(--ink-tertiary)' }}>{item.cols[VENDEDOR_COL]?.text || '—'}</span>
+            </span>
+            {canEditVendedor && <ChangeIconButton label="Cambiar vendedor" onClick={() => setShowEditVendedor(true)} />}
+            <span>·</span>
+            <span>
+              Comprador: <span style={{ color: 'var(--ink-tertiary)' }}>{item.cols[COMPRAS_COL]?.text || '—'}</span>
+            </span>
+            {canEditComprador && <ChangeIconButton label="Cambiar comprador" onClick={() => setShowEditComprador(true)} />}
+          </div>
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
           {stage === '4' && (
@@ -327,6 +360,32 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey 
           oppName={item.name}
           currentCliente={item.cols[CONTACTO_COL]?.text || ''}
           onClose={() => setShowEditCliente(false)}
+          onSaved={load}
+        />
+      )}
+
+      {showEditVendedor && (
+        <EditPersonaModal
+          oppId={id}
+          oppName={item.name}
+          colId={VENDEDOR_COL}
+          role="vendedor"
+          label="Vendedor"
+          currentName={item.cols[VENDEDOR_COL]?.text || ''}
+          onClose={() => setShowEditVendedor(false)}
+          onSaved={load}
+        />
+      )}
+
+      {showEditComprador && (
+        <EditPersonaModal
+          oppId={id}
+          oppName={item.name}
+          colId={COMPRAS_COL}
+          role="compras"
+          label="Comprador"
+          currentName={item.cols[COMPRAS_COL]?.text || ''}
+          onClose={() => setShowEditComprador(false)}
           onSaved={load}
         />
       )}
