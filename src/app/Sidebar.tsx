@@ -1,6 +1,7 @@
 import { NavItem } from '../components/navigation/NavItem';
 import { UserChip } from './UserChip';
 import { useMe } from '../lib/useMe';
+import logo from '../assets/logo.webp';
 import {
   IconOportunidades, IconCosteo, IconValidacion, IconDocTallas, IconOrdenesCompra, IconLogistica,
   IconProductos, IconCuentas, IconClientes, IconInventario, IconCollapse, IconExpand, IconSettings,
@@ -69,8 +70,8 @@ export function Sidebar({ activeBoard, onSelectBoard, collapsed, onToggleCollaps
       flex: 'none',
       boxSizing: 'border-box',
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '4px 8px', height: 22 }}>
-        <div style={{ width: 22, height: 22, borderRadius: 6, background: 'var(--ink)', flex: 'none' }} />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', height: 32 }}>
+        <img src={logo} alt="CMP" style={{ width: 28, height: 28, flex: 'none' }} />
         {!collapsed && (
           <div style={{ font: '800 14px \'Inter\', sans-serif', color: 'var(--ink)', letterSpacing: '.2px', whiteSpace: 'nowrap', overflow: 'hidden' }}>
             CMP Portal
