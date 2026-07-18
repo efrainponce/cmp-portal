@@ -7,7 +7,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { BoardKey } from '../app/Sidebar';
 
 const VALID_BOARDS = new Set<BoardKey>([
-  'oportunidades', 'costeo', 'validacion', 'doctallas', 'ordenescompra', 'logistica',
+  'oportunidades', 'oportunidades_web', 'costeo', 'validacion', 'doctallas', 'ordenescompra', 'logistica',
   'productos', 'instituciones', 'contactos', 'proveedores', 'inventario', 'settings',
 ]);
 

@@ -32,7 +32,7 @@ function App() {
   const views = (
     <Suspense fallback={<div style={{ padding: 32 }}>Cargando…</div>}>
       {activeBoard === 'oportunidades' && <OportunidadesBoard openId={itemId} onOpenChange={onOpenChange} onDuplicated={onDuplicated} />}
-      {(activeBoard === 'costeo' || activeBoard === 'validacion') && (
+      {(activeBoard === 'oportunidades_web' || activeBoard === 'costeo' || activeBoard === 'validacion') && (
         // key: cambiar de board debe resetear el estado local (búsqueda),
         // igual que cuando eran 5 componentes distintos.
         <StageBoard key={activeBoard} boardKey={activeBoard} openId={itemId} onOpenChange={onOpenChange} onDuplicated={onDuplicated} />

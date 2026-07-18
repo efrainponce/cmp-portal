@@ -73,9 +73,9 @@ export function StageBoardList({ config, groupColId = 'deal_stage', q, onSearch,
   const etapaCosteoCol = cols.find((c) => c.id === ETAPA_COSTEO_COL);
   const { status, data } = usePoll('oportunidades', q);
   const allItems = data?.items ?? [];
-  const stageItems = config.stages
-    ? allItems.filter((it) => config.stages!.includes(statusIndex(it.cols.deal_stage)))
-    : allItems;
+  const stageItems = allItems
+    .filter((it) => !config.stages || config.stages.includes(statusIndex(it.cols.deal_stage)))
+    .filter((it) => !config.namePrefix || it.name.trim().toUpperCase().startsWith(config.namePrefix.toUpperCase()));
   const sync = lastMondayUpdateFromItems(stageItems);
 
   // Filter + collapsed-etapa state lives here, not in the wrapper — these

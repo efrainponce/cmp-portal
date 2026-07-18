@@ -2,7 +2,7 @@
 // assistant tools use the same source of truth; re-exported here for the UI.
 export { DEAL_STAGE_LABELS, DEAL_STAGE_ORDER, stageAtOrAfter } from '../../shared/dealStages';
 
-export type StageBoardKey = 'oportunidades' | 'costeo' | 'validacion' | 'doctallas' | 'ordenescompra' | 'logistica';
+export type StageBoardKey = 'oportunidades' | 'oportunidades_web' | 'costeo' | 'validacion' | 'doctallas' | 'ordenescompra' | 'logistica';
 
 export interface StageBoardConfig {
   key: StageBoardKey;
@@ -10,6 +10,9 @@ export interface StageBoardConfig {
   subtitleSuffix: string;       // appended after "{n} activas"
   /** deal_stage values this view filters to; undefined = full pipeline (Oportunidades). */
   stages?: string[];
+  /** Solo items cuyo nombre empieza con este prefijo (case-insensitive) — mismo
+   * board/data que 'oportunidades', filtrado por origen (Efraín, 2026-07-18). */
+  namePrefix?: string;
   defaultTab: string;
 }
 
@@ -18,6 +21,9 @@ export interface StageBoardConfig {
 // -> Esperando OC -> Ganada (doc/tallas + logística).
 export const STAGE_BOARDS: Record<StageBoardKey, StageBoardConfig> = {
   oportunidades: { key: 'oportunidades', title: 'Oportunidades', subtitleSuffix: '', defaultTab: 'cotizacion' },
+  // Mismo board/pipeline que 'oportunidades' — sin filtro de etapa, solo items
+  // cuyo nombre viene prefijado "WEB -" (leads del sitio web, ya así en Monday).
+  oportunidades_web: { key: 'oportunidades_web', title: 'Oportunidades Web', subtitleSuffix: ' · web', namePrefix: 'WEB -', defaultTab: 'cotizacion' },
   costeo: { key: 'costeo', title: 'Costeo', subtitleSuffix: '', defaultTab: 'cotizacion' },
   validacion: { key: 'validacion', title: 'Validación Costeo', subtitleSuffix: ' · validación de precio de venta', stages: ['7', '9'], defaultTab: 'cotizacion' },
   // El Proyecto (docs/tallas) solo existe una vez GANADA la oportunidad

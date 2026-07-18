@@ -4,12 +4,12 @@ import { useMe } from '../lib/useMe';
 import type { Role } from '../../shared/types';
 import logo from '../assets/logo.webp';
 import {
-  IconOportunidades, IconCosteo, IconValidacion, IconDocTallas, IconOrdenesCompra, IconLogistica,
+  IconOportunidades, IconGlobe, IconCosteo, IconValidacion, IconDocTallas, IconOrdenesCompra, IconLogistica,
   IconProductos, IconCuentas, IconClientes, IconInventario, IconCollapse, IconExpand, IconSettings,
 } from '../components/icons';
 
 export type BoardKey =
-  | 'oportunidades' | 'costeo' | 'validacion' | 'doctallas' | 'ordenescompra' | 'logistica'
+  | 'oportunidades' | 'oportunidades_web' | 'costeo' | 'validacion' | 'doctallas' | 'ordenescompra' | 'logistica'
   | 'productos' | 'instituciones' | 'contactos' | 'proveedores' | 'inventario' | 'settings';
 
 type NavIcon = (p: { style?: React.CSSProperties }) => React.ReactElement;
@@ -17,6 +17,7 @@ interface NavItemConfig { key: BoardKey; label: string; icon: NavIcon; roles?: R
 
 const VENTAS_ITEMS: NavItemConfig[] = [
   { key: 'oportunidades', label: 'Oportunidades', icon: IconOportunidades },
+  { key: 'oportunidades_web', label: 'Oportunidades Web', icon: IconGlobe },
   { key: 'costeo', label: 'Costeo', icon: IconCosteo },
   { key: 'validacion', label: 'Validación Costeo', icon: IconValidacion },
 ];

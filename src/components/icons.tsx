@@ -21,6 +21,13 @@ export const IconOportunidades = (p: IconProps) => (
   </svg>
 );
 
+export const IconGlobe = (p: IconProps) => (
+  <svg {...base} {...p}>
+    <circle cx="12" cy="12" r="10" /><path d="M2 12h20" />
+    <path d="M12 2a15 15 0 0 1 0 20 15 15 0 0 1 0-20z" />
+  </svg>
+);
+
 export const IconCosteo = (p: IconProps) => (
   <svg {...base} {...p}>
     <rect x="4" y="2" width="16" height="20" rx="2" /><path d="M8 6h8M8 10h.01M12 10h.01M16 10h.01M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01M16 18h.01" />
