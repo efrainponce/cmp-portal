@@ -170,3 +170,11 @@
 - **`96c9be4`** — Fix import de tipos en ActualizacionesTab; Documentación y Tallas filtra a Ganada
   - Efraín pidió cerrar y commitear todo lo pendiente. `ActualizacionesTab.tsx` importaba `UpdateAttachmentDTO`/`MentionUserDTO`/`UpdateDTO` desde `lib/api` en vez de `lib/apiClient` (`api.ts` los reexporta con `export *`, pero `tsc` marcaba el import de tipos como inexistente — sin impacto en runtime, solo en el typecheck). `STAGE_BOARDS.doctallas` pasa de filtrar `deal_stage` "9" (Costeo Confirmado) a "1" (Ganada): el Proyecto (docs/tallas) solo se crea una vez ganada la oportunidad, así que filtrar en Costeo Confirmado dejaba la lista vacía. Este último ya quedó como código muerto tras el commit anterior (los 3 accesos usan `ProyectoBoard`, no `StageBoard`), pero se deja corregido por si se vuelve a usar.
   - `screenshot.mjs` (script suelto de verificación de otra sesión, sin uso en la app) se commitea también a petición de Efraín.
+
+## 2026-07-18
+
+- **`727e95c`** — Filtros en móvil: colapsan a botón + modal en vez de 3 selects apilados
+  - Efraín reportó que en móvil los filtros de `StageBoardList` (Vendedor/Compras/Estado) ocupaban más de la mitad de la pantalla.
+  - `FilterBar.tsx` detecta `useIsMobile` y en ese caso oculta los tres `<select>` detrás de un botón "Filtros" con badge de conteo activo; al tocarlo abren los mismos selects apilados dentro del `Modal` ya existente en el repo, con "Limpiar"/"Listo" en el footer. Desktop queda igual (selects inline como antes).
+  - Nota de concurrencia: el working tree traía cambios sueltos de otra sesión (`mondayUpdatedAt` en `StageBoardList`/`ProyectoBoardList`/`ProyectoSection`/`apiClient`/worker) — se dejaron sin commitear, solo se tocó `FilterBar.tsx`.
+  - Verificado en vivo con Playwright a 390×844: la fila de filtros pasó de varias líneas envueltas a una sola; el filtrado sigue aplicando en vivo dentro del modal (599 → 12 activas al elegir un vendedor) y el badge de conteo refleja el filtro activo.
