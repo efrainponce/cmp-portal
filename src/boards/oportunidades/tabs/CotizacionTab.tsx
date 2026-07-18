@@ -21,12 +21,14 @@ import { MonoTag, StatusBadge } from '../../../components/core/Badges';
 import { Button } from '../../../components/core/Button';
 import { previewRow, COL } from '../../../lib/costeoCalc';
 import { useIsMobile } from '../../../lib/useIsMobile';
+import { useMe } from '../../../lib/useMe';
 import { latestFileUrl, NO_FIRMADAS_COL, FIRMADAS_COL } from './DocumentacionTab';
 import { VersionChips } from './cotizacion/VersionChips';
 import { SnapshotTable } from './cotizacion/SnapshotTable';
 import { TotalsRow } from './cotizacion/TotalsRow';
 import { CotizacionPdfRow } from './cotizacion/CotizacionPdfRow';
 import { MobileQuoteRow } from './cotizacion/MobileQuoteRow';
+import { LineDetailPanel } from './cotizacion/LineDetailPanel';
 import {
   type RowEditState, EMPTY_ROW, numFrom, marginColor, suggestedPrecio23, inlineEditableCols,
   ETAPA_COSTEO_COLORS, GRID_COLS_COSTEO, GRID_COLS_VENTA, displayProducto, cellValue,
@@ -34,6 +36,7 @@ import {
   COSTO_DISTR_COL, ETAPA_COSTEO_COL, SUGERIDO_COL, MARGEN_COL,
   PRODUCTO_COL, PRODUCTO_TXT_COL, PRODUCTO_REL_COL, COLOR_COL, COLORES_DISP_COL,
   PRODUCTO_COLOR_DROPDOWN_COL, EMB_STATUS_COL, EMB_LABEL_CON, EMB_LABEL_SIN,
+  PRODUCTO_CONFIRM_COL, linkedProductoId, productoConfirmado, chevronButtonStyle,
 } from './cotizacion/gridMeta';
 
 export function CotizacionTab({
@@ -89,12 +92,49 @@ export function CotizacionTab({
   const patchRow = (id: string, patch: Partial<RowEditState>) =>
     setRows((r) => ({ ...r, [id]: { ...rowState(id), ...patch } }));
 
-  // Catálogo de Productos — solo se necesita cuando el producto es editable
-  // inline (Nueva oportunidad o borrador de versión), para el datalist y para
-  // resolver el nombre tecleado a un item_id real (board_relation_mkzmafgp).
+  // Catálogo de Productos — necesario cuando el producto es editable inline
+  // (Nueva oportunidad o borrador de versión: datalist + resolver el nombre
+  // tecleado a un item_id real) Y en el board Costeo (chevron de detalle:
+  // Descripción/Tallas/confirmación viven en el catálogo por SKU).
   useEffect(() => {
-    if (canAddLines) listItems('productos').then(setCatalog).catch(() => {});
-  }, [canAddLines]);
+    if (canAddLines || variant === 'costeo') listItems('productos').then(setCatalog).catch(() => {});
+  }, [canAddLines, variant]);
+
+  // Chevron de detalle por línea — Descripción/Tallas completas + (en Costeo)
+  // el checkbox de Compras que bloquea "Mandar a Validación de costeo".
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const toggleExpanded = (id: string) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+
+  const me = useMe();
+  const canConfirm = me?.role === 'compras' || me?.role === 'admin';
+  const [confirmSaving, setConfirmSaving] = useState<Record<string, boolean>>({});
+  const [confirmError, setConfirmError] = useState<Record<string, string | undefined>>({});
+
+  // Escribe boolean_mm5cqtjs en el producto del catálogo (no en la línea — la
+  // ficha es del SKU, Efraín 2026-07-18) y refresca `catalog` en optimista
+  // para que el checkbox no "rebote" hasta el próximo refetch. onSaved() hace
+  // que el drawer vuelva a correr checkValidacion.
+  const onToggleConfirm = async (productoId: number, next: boolean) => {
+    const key = String(productoId);
+    setConfirmSaving((s) => ({ ...s, [key]: true }));
+    setConfirmError((e) => ({ ...e, [key]: undefined }));
+    try {
+      await patchItem('productos', key, { [PRODUCTO_CONFIRM_COL]: next ? 'true' : '' });
+      setCatalog((cat) => cat.map((c) => (c.id === key
+        ? { ...c, cols: { ...c.cols, [PRODUCTO_CONFIRM_COL]: { text: next ? 'v' : '', type: 'checkbox' } } }
+        : c)));
+      onSaved?.();
+    } catch (e) {
+      setConfirmError((er) => ({ ...er, [key]: e instanceof Error ? e.message : 'No se pudo guardar.' }));
+    } finally {
+      setConfirmSaving((s) => ({ ...s, [key]: false }));
+    }
+  };
 
   const onAddLine = async () => {
     if (!oppId) return;
@@ -311,6 +351,12 @@ export function CotizacionTab({
               onEmbellecimientoChange={onEmbellecimientoChange}
               onEtapaCosteoChange={onEtapaCosteoChange}
               onProductoBlur={onProductoBlur}
+              expanded={expanded.has(p.id)}
+              onToggleExpand={() => toggleExpanded(p.id)}
+              canConfirm={canConfirm}
+              confirmSaving={!!confirmSaving[String(linkedProductoId(p))]}
+              confirmError={confirmError[String(linkedProductoId(p))]}
+              onToggleConfirm={onToggleConfirm}
             />
           ))}
           <TotalsRow variant={variant} visibleCols={visibleCols} products={products} rows={rows} isMobile />
@@ -486,9 +532,22 @@ export function CotizacionTab({
                         font: idx === 0 ? 'var(--text-body-strong)' : 'var(--text-label)',
                         color: idx === 0 ? 'var(--ink)' : 'var(--ink-secondary)',
                       }}>
+                        {idx === 0 && (
+                          <button
+                            type="button"
+                            onClick={() => toggleExpanded(p.id)}
+                            title={expanded.has(p.id) ? 'Ocultar detalle' : 'Ver descripción y tallas'}
+                            style={chevronButtonStyle(expanded.has(p.id))}
+                          >
+                            ▸
+                          </button>
+                        )}
                         {idx === 0 && p.pendingWrite && <span title="guardado, sincronizando…" style={{ marginRight: 6, color: 'var(--accent)' }}>⏳</span>}
                         {idx === 0 && variant === 'costeo' && !p.cols[COSTO_DISTR_COL]?.text && (
                           <StatusBadge label="Pendiente de costeo" color="#9c4c3d" tint="#f3e5e1" style={{ marginRight: 6 }} />
+                        )}
+                        {idx === 0 && variant === 'costeo' && !productoConfirmado(p, catalog) && (
+                          <StatusBadge label="Sin confirmar" color="#9c4c3d" tint="#f3e5e1" style={{ marginRight: 6 }} />
                         )}
                         {c.id === PRODUCTO_COL && (displayProducto(p, state.preview) || '—')}
                         {c.id === 'lookup_mkzn7x9a' && (
@@ -541,6 +600,17 @@ export function CotizacionTab({
                   <div style={{ padding: '0 14px 8px', font: 'var(--text-caption)', color: 'var(--status-perdida)' }}>
                     {state.error}
                   </div>
+                )}
+                {expanded.has(p.id) && (
+                  <LineDetailPanel
+                    product={p}
+                    catalog={catalog}
+                    variant={variant}
+                    canConfirm={canConfirm}
+                    saving={!!confirmSaving[String(linkedProductoId(p))]}
+                    error={confirmError[String(linkedProductoId(p))]}
+                    onToggleConfirm={onToggleConfirm}
+                  />
                 )}
               </div>
             );

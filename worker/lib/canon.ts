@@ -98,6 +98,12 @@ export function canonValue(type: string, colVal: ReadColVal | string): string {
     // board_relation's write shape is a bare linked-item id (see columnEncode.ts) —
     // compare against the read shape's linked_item_ids below, not display text.
     if (type === 'board_relation') return colVal.trim();
+    // checkbox write shape is 'true'/'' (columnEncode.ts) — Monday echoes text "v"
+    // when checked, so normalize both sides to '1'/'' rather than comparing verbatim.
+    // submitWrite canonicalizes once for the mirror and once more inside writeHash
+    // (canonCols already holds '1'/'' by then) — must accept BOTH 'true' and '1' as
+    // checked, or the second pass collapses '1' to '' and content_hash is wrong.
+    if (type === 'checkbox') { const t = colVal.trim(); return t === 'true' || t === '1' ? '1' : ''; }
     return numeric ? numStr(colVal) : scalar(colVal).trim();
   }
   if (numeric) {
@@ -109,6 +115,7 @@ export function canonValue(type: string, colVal: ReadColVal | string): string {
     const ids = (parsed as { linked_item_ids?: string[] } | null)?.linked_item_ids ?? [];
     return [...ids].sort().join(',');
   }
+  if (type === 'checkbox') return colVal.text ? '1' : '';
   return scalar(colVal.text ?? '').trim();
 }
 

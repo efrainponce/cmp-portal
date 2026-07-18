@@ -7,12 +7,14 @@ import type { ItemDTO } from '../../../../lib/api';
 import { fmtMoney } from '../../../../lib/format';
 import { MonoTag, StatusBadge } from '../../../../components/core/Badges';
 import { COL } from '../../../../lib/costeoCalc';
+import { LineDetailPanel } from './LineDetailPanel';
 import {
   type GridCol, type RowEditState, marginColor, suggestedPrecio23, numFrom, displayProducto, cellValue,
   inputStyle, RowWarning, ETAPA_COSTEO_COLORS,
   COSTO_DISTR_COL, ETAPA_COSTEO_COL, SUGERIDO_COL, MARGEN_COL,
   PRODUCTO_COL, PRODUCTO_TXT_COL, PRODUCTO_REL_COL, COLOR_COL, COLORES_DISP_COL,
   PRODUCTO_COLOR_DROPDOWN_COL, EMB_STATUS_COL, EMB_LABEL_CON, EMB_LABEL_SIN,
+  productoConfirmado, chevronButtonStyle,
 } from './gridMeta';
 
 const labelStyle: React.CSSProperties = {
@@ -23,6 +25,7 @@ const labelStyle: React.CSSProperties = {
 export function MobileQuoteRow({
   product: p, state, visibleCols, variant, editable, editableCols, writableIds, catalog,
   onEdit, onBlur, onTextEdit, onColorChange, onEmbellecimientoChange, onEtapaCosteoChange, onProductoBlur,
+  expanded, onToggleExpand, canConfirm, confirmSaving, confirmError, onToggleConfirm,
 }: {
   product: ItemDTO; state: RowEditState; visibleCols: GridCol[]; variant: 'venta' | 'costeo'; editable: boolean;
   editableCols: Set<string>; writableIds: Set<string>; catalog: ItemDTO[];
@@ -33,6 +36,13 @@ export function MobileQuoteRow({
   onEmbellecimientoChange: (product: ItemDTO, con: boolean) => void;
   onEtapaCosteoChange: (product: ItemDTO, label: string) => void;
   onProductoBlur: (product: ItemDTO) => void;
+  /** Chevron de detalle (Descripción/Tallas + confirmación de Compras en Costeo). */
+  expanded: boolean;
+  onToggleExpand: () => void;
+  canConfirm: boolean;
+  confirmSaving: boolean;
+  confirmError?: string;
+  onToggleConfirm: (productoId: number, next: boolean) => void;
 }) {
   const titleCol = visibleCols[0];
   const restCols = visibleCols.slice(1);
@@ -194,6 +204,14 @@ export function MobileQuoteRow({
   return (
     <div style={{ borderTop: '1px solid var(--border-subtle)', background: '#fff', padding: '14px' }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+        <button
+          type="button"
+          onClick={onToggleExpand}
+          title={expanded ? 'Ocultar detalle' : 'Ver descripción y tallas'}
+          style={{ ...chevronButtonStyle(expanded), marginTop: 1, flexShrink: 0 }}
+        >
+          ▸
+        </button>
         {p.pendingWrite && <span title="guardado, sincronizando…" style={{ color: 'var(--accent)' }}>⏳</span>}
         <div style={{ flex: 1, minWidth: 0 }}>
           {titleWritable ? (
@@ -214,7 +232,10 @@ export function MobileQuoteRow({
         </div>
       </div>
       {variant === 'costeo' && !p.cols[COSTO_DISTR_COL]?.text && (
-        <StatusBadge label="Pendiente de costeo" color="#9c4c3d" tint="#f3e5e1" style={{ marginTop: 6 }} />
+        <StatusBadge label="Pendiente de costeo" color="#9c4c3d" tint="#f3e5e1" style={{ marginTop: 6, marginRight: 6 }} />
+      )}
+      {variant === 'costeo' && !productoConfirmado(p, catalog) && (
+        <StatusBadge label="Sin confirmar" color="#9c4c3d" tint="#f3e5e1" style={{ marginTop: 6 }} />
       )}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 14px', marginTop: 10 }}>
         {restCols.map((c) => (
@@ -226,6 +247,19 @@ export function MobileQuoteRow({
       </div>
       {state.error && (
         <div style={{ marginTop: 8, font: 'var(--text-caption)', color: 'var(--status-perdida)' }}>{state.error}</div>
+      )}
+      {expanded && (
+        <div style={{ margin: '10px -14px -14px' }}>
+          <LineDetailPanel
+            product={p}
+            catalog={catalog}
+            variant={variant}
+            canConfirm={canConfirm}
+            saving={confirmSaving}
+            error={confirmError}
+            onToggleConfirm={onToggleConfirm}
+          />
+        </div>
       )}
     </div>
   );

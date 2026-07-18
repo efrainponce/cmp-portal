@@ -163,12 +163,19 @@ Manga der., `long_text_mm1cyq91` Manga izq., `long_text_mm1c6ya0` Etiq. fabrican
 🔒: Costo Distr. C/U `numeric_mm1dj4fp`, Descuento, Moneda, Proveedor (+mirrors Razón
 Social / Correo Proveedor) — el vendedor no necesita saber el proveedor. ❓ confirmar.
 
-## Productos (18395657591) — catalog, no module-1 UI
+## Productos (18395657591) — catalog
 
 🔒 always: Costo Distribuidor `numeric_mkzpx7eb`, Descuento Distribuidor
 `numeric_mm0bgd2f`, Gastos envío/importación `numeric_mm0bnkch`, Historial precios
 `long_text_mm1tcga0`, Proveedor + mirrors. Rest available to authenticated roles when a
 module needs the catalog.
+
+✅ | Descripción y tallas confirmadas | `boolean_mm5cqtjs` | checkbox — creada 2026-07-18
+(vía Monday MCP) para el flujo "Mandar a Validación de costeo": Compras confirma por SKU
+que `long_text_mm0xse7v` (Descripción cotización) y `long_text_mm174q0j` (Tallas JSON) son
+correctas — esos dos campos mirrorean hacia `lookup_mm0xw8p7`/`lookup_mm19c0b6` en las
+líneas de Oportunidad vía `board_relation_mkzmafgp`. Escribible solo compras/admin
+(`shared/visibility.ts`); gate real en `worker/lib/costeo.ts` (`checkValidacion`).
 
 ## Identity anchors
 

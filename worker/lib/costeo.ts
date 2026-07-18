@@ -8,7 +8,7 @@
 import type { ExecutionContext } from 'hono';
 import type { Env } from '../env';
 import type { Identity, MirrorItem } from '../../shared/types';
-import { getItem, childrenOf } from './dal';
+import { getItem, childrenOf, linkedItemId } from './dal';
 import { validarCosteo } from './automations';
 import { submitWrite } from './outbox';
 import type { RawCol } from './serialize';
@@ -24,6 +24,9 @@ const SUB_ETAPA_COSTEO = 'color_mm084gvf';        // Etapa Costeo por línea
 
 // Oportunidad
 const OPP_INSTITUCION = 'lookup_mm1bs976';        // validar_costeo rechaza sin institución
+
+// Productos (18395657591) — checkbox creada 2026-07-18, docs/monday-column-map.md.
+const PRODUCTO_CONFIRM_COL = 'boolean_mm5cqtjs';  // "Descripción y tallas confirmadas"
 
 const ETAPA_NO_INICIADO = 'No iniciado';
 
@@ -187,9 +190,40 @@ export async function enviarACosteo(
   return { ok: false, errors: errors.length ? errors : ['La solicitud de costeo fue rechazada. Revisa el update en Monday.'] };
 }
 
+/** Solo lectura: cada línea debe tener su producto de catálogo ligado y ese
+ * producto debe traer "Descripción y tallas confirmadas" marcado por Compras
+ * (boolean_mm5cqtjs, Productos 18395657591) — Efraín 2026-07-18: la ficha
+ * (descripción/tallas) vive en el catálogo por SKU, no por línea de cotización,
+ * así que la confirmación también se guarda ahí. Dedupe por producto: un SKU
+ * repetido en varias líneas solo dispara un `getItem` de Productos. */
+export async function checkValidacion(env: Env, itemId: number, viewer: Identity): Promise<EnviarCosteoResult> {
+  const lineas = await childrenOf(env, 'oportunidades', itemId, viewer);
+  const errors: string[] = [];
+  const productoCache = new Map<number, boolean>(); // productoId -> confirmado
+
+  for (const linea of lineas) {
+    const productoId = linkedItemId(linea, SUB_PRODUCTO_REL);
+    if (productoId === null) {
+      errors.push(`"${linea.name}": sin producto de catálogo vinculado.`);
+      continue;
+    }
+    if (!productoCache.has(productoId)) {
+      const producto = await getItem(env, 'productos', productoId, viewer);
+      const confirmado = !!producto && !!colsOf(producto).get(PRODUCTO_CONFIRM_COL)?.text;
+      productoCache.set(productoId, confirmado);
+    }
+    if (!productoCache.get(productoId)) {
+      errors.push(`"${linea.name}": descripción y tallas sin confirmar.`);
+    }
+  }
+
+  return errors.length > 0 ? { ok: false, errors } : { ok: true };
+}
+
 /** "Mandar a Validación de costeo" — botón de Compras en el board Costeo (etapa
- * 15). Sin validación de líneas (a diferencia de enviarACosteo): Compras decide
- * cuándo terminó de costear. */
+ * 15). Sin validación de líneas de costeo (a diferencia de enviarACosteo): Compras
+ * decide cuándo terminó de costear. Sí exige checkValidacion (descripción/tallas
+ * confirmadas por producto) — Efraín 2026-07-18. */
 export async function enviarAValidacion(
   env: Env,
   ctx: ExecutionContext,
@@ -208,6 +242,9 @@ export async function enviarAValidacion(
   if (stageIndex !== STAGE_EN_COSTEO) {
     return { ok: false, errors: ['La oportunidad no está en "En costeo".'] };
   }
+
+  const confirm = await checkValidacion(env, itemId, viewer);
+  if (!confirm.ok) return confirm;
 
   await submitWrite(env, ctx, 'oportunidades', itemId, { deal_stage: DEAL_STAGE_VALIDACION_LABEL }, viewer, { trusted: true });
   return { ok: true };

@@ -13,7 +13,7 @@ import {
   generateCotizacion, generateSheet, confirmTallas, importTallas, generateOC,
   AutomationError,
 } from '../lib/automations';
-import { enviarACosteo, enviarAValidacion, checkCosteo, CosteoError } from '../lib/costeo';
+import { enviarACosteo, enviarAValidacion, checkCosteo, checkValidacion, CosteoError } from '../lib/costeo';
 import { listVersions, duplicateVersion, restoreVersion, esDraftVigente, recordFirstVersion, QuoteVersionError } from '../lib/quoteVersions';
 import { duplicateOportunidad, DuplicateOportunidadError } from '../lib/duplicateOportunidad';
 import { createSubitem, addFileToColumn, fetchAssetPublicUrls, gql } from '../lib/monday';
@@ -71,6 +71,21 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
 
     try {
       return c.json(await checkCosteo(c.env, itemId, c.get('viewer')));
+    } catch (err) {
+      if (err instanceof CosteoError) return jsonStatus({ ok: false, errors: [err.message] }, err.status);
+      return jsonStatus({ ok: false, errors: ['internal error'] }, 500);
+    }
+  });
+
+  // Pre-chequeo de solo lectura para "Mandar a Validación de costeo": la UI
+  // deshabilita el botón y lista qué productos les falta confirmación de
+  // Compras antes de que alguien pueda dar click. Sin ningún efecto.
+  app.get('/api/oportunidades/:id/validacion-check', async c => {
+    const itemId = Number(c.req.param('id'));
+    if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
+
+    try {
+      return c.json(await checkValidacion(c.env, itemId, c.get('viewer')));
     } catch (err) {
       if (err instanceof CosteoError) return jsonStatus({ ok: false, errors: [err.message] }, err.status);
       return jsonStatus({ ok: false, errors: ['internal error'] }, 500);

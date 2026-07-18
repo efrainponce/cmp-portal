@@ -759,6 +759,11 @@ export const COLUMN_META: Record<BoardSlug, Record<string, ColMeta>> = {
       "id": "file_mm5akjy5",
       "title": "Imagen embellecimiento",
       "type": "file"
+    },
+    "lookup_mm5ck4b3": {
+      "id": "lookup_mm5ck4b3",
+      "title": "Costo (auto)",
+      "type": "mirror"
     }
   },
   "proyectos": {
@@ -2051,6 +2056,11 @@ export const COLUMN_META: Record<BoardSlug, Record<string, ColMeta>> = {
       "id": "pulse_id_mm1w2z3h",
       "title": "ID de elemento",
       "type": "item_id"
+    },
+    "boolean_mm5cqtjs": {
+      "id": "boolean_mm5cqtjs",
+      "title": "Descripción y tallas confirmadas",
+      "type": "checkbox"
     }
   },
   "instituciones": {

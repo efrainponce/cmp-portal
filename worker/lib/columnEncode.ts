@@ -16,6 +16,12 @@ export function encodeColumnValue(type: string, raw: string): unknown {
     // column value structure.
     return { item_ids: value === '' ? [] : [Number(value)] };
   }
+  if (type === 'checkbox') {
+    // Igual que board_relation arriba: un '' plano lo rechaza ("invalid value…")
+    // y {} da "Invalid column type value" — Monday quiere JSON null para
+    // desmarcar (verificado en vivo 2026-07-18; docs: api.developer.monday.com/docs/checkbox).
+    return value === '' ? null : { checked: 'true' };
+  }
   if (value === '') return '';
   switch (type) {
     case 'date':

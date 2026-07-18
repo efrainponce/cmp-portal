@@ -11,7 +11,7 @@ import { IconBack, IconEdit, IconLink } from '../../components/icons';
 import { SyncIndicator } from '../../components/board/SyncIndicator';
 import { useMe } from '../../lib/useMe';
 import {
-  useBoards, colForBoard, checkCosteo, duplicarOportunidad, duplicarVersion, enviarCosteo, enviarValidacion, generarCotizacion, getItemDetail, getVersiones,
+  useBoards, colForBoard, checkCosteo, checkValidacion, duplicarOportunidad, duplicarVersion, enviarCosteo, enviarValidacion, generarCotizacion, getItemDetail, getVersiones,
   refreshItem, restaurarVersion, type ItemDetailDTO, type QuoteVersionDTO,
 } from '../../lib/api';
 import { statusIndex } from '../../lib/statusValue';
@@ -97,6 +97,10 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
   const [notice, setNotice] = useState<Notice | null>(null);
   // Pre-chequeo de costeo (todas las etapas): null = cargando; deshabilita el botón.
   const [costeoReady, setCosteoReady] = useState<{ ok: boolean; errors?: string[] } | null>(null);
+  // Pre-chequeo de "Mandar a Validación de costeo" (board Costeo, etapa 15): cada
+  // línea necesita su producto de catálogo confirmado por Compras (Descripción/Tallas
+  // — Efraín 2026-07-18). null = cargando; deshabilita el botón.
+  const [validacionReady, setValidacionReady] = useState<{ ok: boolean; errors?: string[] } | null>(null);
   const [versions, setVersions] = useState<QuoteVersionDTO[]>([]);
   const [showNuevaVersion, setShowNuevaVersion] = useState(false);
   const [duplicatingVersion, setDuplicatingVersion] = useState(false);
@@ -144,6 +148,18 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
     checkCosteo(id)
       .then(r => { if (!cancelled) setCosteoReady(r); })
       .catch(() => { if (!cancelled) setCosteoReady({ ok: true }); }); // el server re-valida al enviar
+    return () => { cancelled = true; };
+  }, [id, stage, item?.syncedAt, boardKey]);
+
+  // Mismo patrón: corre solo donde aplica el botón (board Costeo, etapa 15) y se
+  // vuelve a disparar cuando `item?.syncedAt` avanza — incluye el refetch que
+  // dispara CotizacionTab tras marcar/desmarcar una confirmación de Compras.
+  useEffect(() => {
+    if (!item || stage !== '15' || boardKey !== 'costeo') { setValidacionReady(null); return; }
+    let cancelled = false;
+    checkValidacion(id)
+      .then(r => { if (!cancelled) setValidacionReady(r); })
+      .catch(() => { if (!cancelled) setValidacionReady({ ok: true }); }); // el server re-valida al enviar
     return () => { cancelled = true; };
   }, [id, stage, item?.syncedAt, boardKey]);
 
@@ -329,6 +345,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
   // precio — mejor deshabilitar el botón desde aquí con la razón visible.
   const hasPrecio = products.some(p => (Number((p.cols[PRECIO_COL]?.text ?? '').replace(/,/g, '')) || 0) > 0);
   const costeoPending = stage === '4' && !readOnlyCosteo && costeoReady !== null && !costeoReady.ok;
+  const validacionPending = stage === '15' && readOnlyCosteo && validacionReady !== null && !validacionReady.ok;
 
   return (
     <div style={{ position: 'absolute', inset: 0, background: 'var(--bg)', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
@@ -403,7 +420,10 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
               label="Mandar a Validación de costeo"
               confirmLabel="¿Mandar a validación de costeo?"
               busyLabel="Mandando a validación…"
-              title="Pasa la etapa a 'Costeo en validación'"
+              disabled={validacionReady === null || !validacionReady.ok}
+              title={validacionReady === null ? 'Verificando requisitos…'
+                : !validacionReady.ok ? 'Faltan confirmaciones de Compras — revisa la lista abajo'
+                : "Pasa la etapa a 'Costeo en validación'"}
               onConfirm={onEnviarValidacion}
             />
           )}
@@ -433,6 +453,20 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
             Para mandar a costeo falta:
           </div>
           {(costeoReady?.errors ?? []).map((e, i) => (
+            <div key={i} style={{ font: 'var(--text-label)', color: 'var(--ink-secondary)', marginTop: 2 }}>• {e}</div>
+          ))}
+        </div>
+      )}
+
+      {validacionPending && !notice && (
+        <div style={{
+          margin: isMobile ? '12px 14px 0' : '14px 32px 0', padding: '12px 16px', border: '1px solid var(--status-esperando)',
+          borderRadius: 'var(--radius-lg)', background: 'var(--bg-raised)',
+        }}>
+          <div style={{ font: 'var(--text-label-strong)', color: 'var(--status-esperando)', marginBottom: 6 }}>
+            Para mandar a validación falta:
+          </div>
+          {(validacionReady?.errors ?? []).map((e, i) => (
             <div key={i} style={{ font: 'var(--text-label)', color: 'var(--ink-secondary)', marginTop: 2 }}>• {e}</div>
           ))}
         </div>

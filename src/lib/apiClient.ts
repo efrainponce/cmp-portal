@@ -110,6 +110,15 @@ export async function enviarCosteo(id: string): Promise<EnviarCosteoResponse> {
   return body;
 }
 
+/** Pre-chequeo de solo lectura: deshabilita "Mandar a Validación de costeo" y
+ * lista qué productos les falta confirmación de Compras (descripción/tallas). */
+export async function checkValidacion(id: string): Promise<EnviarCosteoResponse> {
+  const res = await apiFetch(`/oportunidades/${id}/validacion-check`);
+  const body: EnviarCosteoResponse = await res.json();
+  if (!res.ok && !body.errors) throw new Error('validacion-check failed: ' + res.status);
+  return body;
+}
+
 /** Mandar a Validación de costeo — avance manual de Compras (etapa 15→7),
  * sin flujo de cmp-tallas de por medio (no existe endpoint para este paso). */
 export async function enviarValidacion(id: string): Promise<EnviarCosteoResponse> {

@@ -20,6 +20,17 @@ export const UTILIDAD_TOTAL_COL = 'formula_mkznry25';    // Utilidad Total de la
 export const PRODUCTO_COL = 'lookup_mm0x4kda';        // mirror del producto ligado — solo lectura directa
 export const PRODUCTO_TXT_COL = 'text_mm0bkm1j';      // Producto (texto libre) — fallback sin catálogo
 export const PRODUCTO_REL_COL = 'board_relation_mkzmafgp'; // relación real a Productos — puebla el mirror
+export const DESCRIPCION_COL = 'lookup_mm0xw8p7';     // mirror: Descripción Cotización (fuente: Productos long_text_mm0xse7v)
+export const TALLAS_COL = 'lookup_mm19c0b6';          // mirror: Tallas (fuente: Productos long_text_mm174q0j "Tallas JSON")
+// Fuente real de los dos mirrors de arriba, en el catálogo de Productos — fallback
+// mientras el mirror asíncrono del subitem no se ha poblado todavía.
+export const CATALOGO_DESCRIPCION_COL = 'long_text_mm0xse7v';
+export const CATALOGO_TALLAS_COL = 'long_text_mm174q0j';
+// "Descripción y tallas confirmadas" — checkbox en Productos (18395657591), creada
+// 2026-07-18. Vive en el catálogo por SKU, no por línea (Efraín: la ficha es del
+// producto, no de la cotización) — Compras la marca y eso desbloquea "Mandar a
+// Validación de costeo" (worker/lib/costeo.ts checkValidacion).
+export const PRODUCTO_CONFIRM_COL = 'boolean_mm5cqtjs';
 export const COLOR_COL = 'text_mm07s2mg';
 export const COLORES_DISP_COL = 'lookup_mkznm0h3';    // mirror: colores disponibles del producto ligado (asíncrono)
 export const PRODUCTO_COLOR_DROPDOWN_COL = 'dropdown_mkztty4b'; // Color del producto en el catálogo — misma
@@ -127,6 +138,34 @@ export const GRID_COLS_VENTA: GridCol[] = [
 // valor recién guardado antes de que el mirror asíncrono de Monday lo confirme.
 export function displayProducto(product: ItemDTO, preview?: Record<string, ColVal>): string {
   return preview?.[PRODUCTO_COL]?.text || product.cols[PRODUCTO_COL]?.text || product.cols[PRODUCTO_TXT_COL]?.text || '';
+}
+
+// Mismo shape que worker/lib/dal.ts's linkedItemId — {linked_item_ids:[...]} ya viene
+// parseado en `value` porque board_relation está en serialize.ts's PARSE_VALUE_TYPES.
+export function linkedProductoId(row: ItemDTO): number | null {
+  const val = row.cols[PRODUCTO_REL_COL]?.value as { linked_item_ids?: unknown[] } | undefined;
+  const first = (val?.linked_item_ids ?? []).map(Number).find(Number.isFinite);
+  return first ?? null;
+}
+
+// true solo si el producto de catálogo ligado ya tiene el checkbox de Compras
+// marcado — usado para el badge "Sin confirmar" en la fila colapsada (Efraín,
+// 2026-07-18: la confirmación no se veía sin expandir cada línea).
+export function productoConfirmado(row: ItemDTO, catalog: ItemDTO[]): boolean {
+  const id = linkedProductoId(row);
+  if (id == null) return false;
+  const catalogItem = catalog.find((c) => Number(c.id) === id);
+  return !!catalogItem?.cols[PRODUCTO_CONFIRM_COL]?.text;
+}
+
+// Chevron de detalle — más prominente que un texto suelto (Efraín, 2026-07-18:
+// "no se ve mucho"): tamaño mayor, color de tinta plena y un target de click real.
+export function chevronButtonStyle(expanded: boolean): React.CSSProperties {
+  return {
+    background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px',
+    marginRight: 4, marginLeft: -4, font: '700 15px \'Inter\', sans-serif', color: 'var(--ink)',
+    transform: expanded ? 'rotate(90deg)' : undefined, display: 'inline-block', lineHeight: 1,
+  };
 }
 
 export function cellValue(col: GridCol, val?: ColVal): string {

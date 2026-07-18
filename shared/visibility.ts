@@ -130,6 +130,10 @@ export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
     ...vis(['numeric_mkzpx7eb', 'text_mkzp59zf', 'numeric_mm0bnkch',
       'numeric_mm0bgd2f', 'long_text_mm1tcga0', 'board_relation_mm1cwqky',
       'lookup_mm1cyy7f', 'lookup_mm1dv3jy', 'text_mkzmgvc7'], AC),
+    // "Descripción y tallas confirmadas" (checkbox, creada 2026-07-18) — Compras
+    // confirma por SKU que la ficha del catálogo (Descripción/Tallas) es correcta;
+    // bloquea "Mandar a Validación de costeo" (worker/lib/costeo.ts checkValidacion).
+    boolean_mm5cqtjs: { vis: V, w: WAC },
   },
 
   instituciones: {
