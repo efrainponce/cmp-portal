@@ -4,12 +4,14 @@
 // Destination (ajuste al alza) that's actually shown, since the type alone doesn't say.
 import { useEffect, useState } from 'react';
 import { Select } from '../../../components/forms/Select';
+import { SearchInput } from '../../../components/forms/SearchInput';
 import { Button } from '../../../components/core/Button';
 import {
   MOVEMENT_TYPES, movementFieldVisibility, validateMovementEndpoints,
   type MovementType,
 } from '../../../../shared/inventory';
 import { createMovement, getWarehouses, type WarehouseDTO } from '../../../lib/inventoryApi';
+import { usePoll, type ItemDTO } from '../../../lib/api';
 
 const fieldStyle: React.CSSProperties = {
   width: '100%', font: 'var(--text-body)', color: 'var(--ink)', border: '1px solid var(--border)',
@@ -26,7 +28,10 @@ export function NewMovementTab({ onCreated }: { onCreated: () => void }) {
   const [warehouses, setWarehouses] = useState<WarehouseDTO[]>([]);
   const [type, setType] = useState<MovementType>('Entrada');
   const [direction, setDirection] = useState<'up' | 'down'>('up');
-  const [productName, setProductName] = useState('');
+  const [producto, setProducto] = useState<ItemDTO | null>(null);
+  const [productQuery, setProductQuery] = useState('');
+  const { data: productData } = usePoll('productos', productQuery);
+  const productOptions = productData?.items ?? [];
   const [quantity, setQuantity] = useState('');
   const [originId, setOriginId] = useState('');
   const [destinationId, setDestinationId] = useState('');
@@ -49,7 +54,7 @@ export function NewMovementTab({ onCreated }: { onCreated: () => void }) {
   const onSubmit = async () => {
     setError(null);
     const qty = Number(quantity);
-    if (!productName.trim()) return setError('El producto es requerido.');
+    if (!producto) return setError('El producto es requerido.');
     if (!Number.isFinite(qty) || qty <= 0) return setError('La cantidad debe ser mayor a 0.');
     if (!capturedBy.trim()) return setError('Falta quién captura el movimiento.');
 
@@ -61,10 +66,12 @@ export function NewMovementTab({ onCreated }: { onCreated: () => void }) {
     setSaving(true);
     try {
       const res = await createMovement({
-        type, productName: productName.trim(), quantity: qty, originId: origin, destinationId: destination,
+        type, productName: producto!.name, quantity: qty, originId: origin, destinationId: destination,
         capturedBy: capturedBy.trim(), folio: folio.trim() || undefined, notes: notes.trim() || undefined,
       });
       if (!res.ok) { setError(res.error ?? 'No se pudo guardar el movimiento.'); return; }
+      setProducto(null);
+      setProductQuery('');
       onCreated();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo guardar el movimiento.');
@@ -95,7 +102,33 @@ export function NewMovementTab({ onCreated }: { onCreated: () => void }) {
         )}
 
         <Field label="Producto" required>
-          <input value={productName} onChange={(e) => setProductName(e.target.value)} style={fieldStyle} placeholder="Nombre del producto" />
+          {producto ? (
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '8px 12px',
+            }}>
+              <span style={{ font: 'var(--text-body)', color: 'var(--ink)' }}>{producto.name}</span>
+              <span onClick={() => setProducto(null)} style={{ cursor: 'pointer', color: 'var(--accent)', font: 'var(--text-caption)' }}>Cambiar</span>
+            </div>
+          ) : (
+            <>
+              <SearchInput value={productQuery} onChange={(e) => setProductQuery(e.target.value)} placeholder="Buscar producto…" style={{ maxWidth: 'none' }} />
+              <div style={{ maxHeight: 160, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', marginTop: 6 }}>
+                {productOptions.length === 0 ? (
+                  <div style={{ padding: 10, font: 'var(--text-label)', color: 'var(--ink-quiet)' }}>Sin resultados.</div>
+                ) : productOptions.map((p) => (
+                  <div
+                    key={p.id}
+                    className="row-hover"
+                    onClick={() => { setProducto(p); setProductQuery(''); }}
+                    style={{ padding: '8px 12px', borderBottom: '1px solid var(--border-subtle)', font: 'var(--text-label)', color: 'var(--ink)', cursor: 'pointer' }}
+                  >
+                    {p.name}
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </Field>
 
         <Field label="Cantidad" required>

@@ -4,8 +4,10 @@
 // Movido tal cual desde worker/index.ts (2026-07-16) — sin cambios de comportamiento.
 import type { Context, Hono } from 'hono';
 import type { Env } from '../env';
-import type { CreateMovementRequest, CreateMovementResponse } from '../../shared/inventory';
-import { listWarehouses, listMovements, listStock, createMovement, InventoryError } from '../lib/inventory';
+import type {
+  CreateMovementRequest, CreateMovementResponse, CreateWarehouseRequest, CreateWarehouseResponse,
+} from '../../shared/inventory';
+import { listWarehouses, listMovements, listStock, createMovement, createWarehouse, InventoryError } from '../lib/inventory';
 import { jsonStatus } from '../lib/http';
 
 function requireInventoryAccess(c: Context<{ Bindings: Env }>): Response | null {
@@ -18,6 +20,21 @@ export function inventarioRoutes(app: Hono<{ Bindings: Env }>) {
     const denied = requireInventoryAccess(c);
     if (denied) return denied;
     return c.json(await listWarehouses(c.env));
+  });
+
+  app.post('/api/inventario/warehouses', async c => {
+    const denied = requireInventoryAccess(c);
+    if (denied) return denied;
+    const body = await c.req.json<CreateWarehouseRequest>();
+    try {
+      const warehouse = await createWarehouse(c.env, body);
+      return c.json({ ok: true, id: warehouse.id } satisfies CreateWarehouseResponse);
+    } catch (err) {
+      if (err instanceof InventoryError) {
+        return jsonStatus({ ok: false, error: err.message } satisfies CreateWarehouseResponse, err.status);
+      }
+      return jsonStatus({ ok: false, error: 'internal error' } satisfies CreateWarehouseResponse, 500);
+    }
   });
 
   app.get('/api/inventario/stock', async c => {

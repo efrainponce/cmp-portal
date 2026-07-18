@@ -2,7 +2,7 @@
 // (warehouses/movements/stock view, worker/schema.sql), no BOARDS/BoardSlug involved.
 import type { Env } from '../env';
 import type {
-  CreateMovementRequest, MovementDTO, MovementType, StockRowDTO, WarehouseDTO,
+  CreateMovementRequest, CreateWarehouseRequest, MovementDTO, MovementType, StockRowDTO, WarehouseDTO,
 } from '../../shared/inventory';
 import { MOVEMENT_TYPES, validateMovementEndpoints } from '../../shared/inventory';
 
@@ -59,6 +59,25 @@ export async function listStock(env: Env): Promise<StockRowDTO[]> {
     productName: r.product_name, warehouseId: r.warehouse_id, warehouseName: r.name,
     warehouseType: r.type as StockRowDTO['warehouseType'], stock: r.stock,
   }));
+}
+
+export async function createWarehouse(env: Env, body: CreateWarehouseRequest): Promise<WarehouseDTO> {
+  const name = body.name?.trim();
+  if (!name) throw new InventoryError(400, 'El nombre del almacén es requerido.');
+  if (body.type !== 'bodega' && body.type !== 'person') {
+    throw new InventoryError(400, 'Tipo de almacén inválido.');
+  }
+
+  const res = await env.DB
+    .prepare('INSERT INTO warehouses (name, type, location) VALUES (?, ?, ?)')
+    .bind(name, body.type, body.location?.trim() || null)
+    .run();
+
+  const row = await env.DB
+    .prepare('SELECT * FROM warehouses WHERE id = ?')
+    .bind(res.meta.last_row_id)
+    .first<WarehouseRow>();
+  return toWarehouseDTO(row!);
 }
 
 async function activeWarehouseExists(env: Env, id: number): Promise<boolean> {

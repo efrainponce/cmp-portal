@@ -6,13 +6,15 @@ import { Tabs, type TabDef } from '../../components/navigation/Tabs';
 import { StockTab } from './tabs/StockTab';
 import { MovementsTab } from './tabs/MovementsTab';
 import { NewMovementTab } from './tabs/NewMovementTab';
+import { AlmacenesTab } from './tabs/AlmacenesTab';
 
-type InventarioTabKey = 'stock' | 'movimientos' | 'nuevo';
+type InventarioTabKey = 'stock' | 'movimientos' | 'nuevo' | 'almacenes';
 
 const TABS: TabDef[] = [
   { key: 'stock', label: 'Stock' },
   { key: 'movimientos', label: 'Movimientos' },
   { key: 'nuevo', label: 'Nuevo movimiento' },
+  { key: 'almacenes', label: 'Almacenes' },
 ];
 
 export function InventarioBoard() {
@@ -40,6 +42,7 @@ export function InventarioBoard() {
             }}
           />
         )}
+        {tab === 'almacenes' && <AlmacenesTab refreshToken={version} />}
       </div>
     </div>
   );

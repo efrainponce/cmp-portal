@@ -47,6 +47,13 @@ export interface CreateMovementRequest {
 }
 export interface CreateMovementResponse { ok: boolean; id?: number; error?: string }
 
+export interface CreateWarehouseRequest {
+  name: string;
+  type: WarehouseType;
+  location?: string;
+}
+export interface CreateWarehouseResponse { ok: boolean; id?: number; error?: string }
+
 /** Which of origin/destination the "New Movement" form should show for a given type.
  * Consolidación is bidirectional (2026-07-15 decision): a physical-count correction can
  * go either way — up (destination_id) or down (origin_id, magnitude only, never a

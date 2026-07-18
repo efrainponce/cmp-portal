@@ -3,11 +3,15 @@
 // same-origin credentials + 401/403 -> AccessError handling).
 import { apiFetch, AccessError } from './apiClient';
 import type {
-  CreateMovementRequest, CreateMovementResponse, MovementDTO, MovementType, StockRowDTO, WarehouseDTO,
+  CreateMovementRequest, CreateMovementResponse, CreateWarehouseRequest, CreateWarehouseResponse,
+  MovementDTO, MovementType, StockRowDTO, WarehouseDTO,
 } from '../../shared/inventory';
 
 export { AccessError };
-export type { CreateMovementRequest, CreateMovementResponse, MovementDTO, MovementType, StockRowDTO, WarehouseDTO };
+export type {
+  CreateMovementRequest, CreateMovementResponse, CreateWarehouseRequest, CreateWarehouseResponse,
+  MovementDTO, MovementType, StockRowDTO, WarehouseDTO,
+};
 
 export async function getWarehouses(): Promise<WarehouseDTO[]> {
   const res = await apiFetch('/inventario/warehouses');
@@ -25,6 +29,15 @@ export async function getMovements(): Promise<MovementDTO[]> {
   const res = await apiFetch('/inventario/movements');
   if (!res.ok) throw new Error('GET movements failed: ' + res.status);
   return res.json();
+}
+
+export async function createWarehouse(body: CreateWarehouseRequest): Promise<CreateWarehouseResponse> {
+  const res = await apiFetch('/inventario/warehouses', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
+  const json: CreateWarehouseResponse = await res.json();
+  if (!res.ok && !json.error) throw new Error('POST warehouse failed: ' + res.status);
+  return json;
 }
 
 export async function createMovement(body: CreateMovementRequest): Promise<CreateMovementResponse> {

@@ -154,6 +154,10 @@ INSERT INTO warehouses (name, type) SELECT 'Zeus',    'person' WHERE NOT EXISTS 
 INSERT INTO warehouses (name, type) SELECT 'Cesar',   'person' WHERE NOT EXISTS (SELECT 1 FROM warehouses WHERE name = 'Cesar'   AND type = 'person');
 INSERT INTO warehouses (name, type) SELECT 'Liv',     'person' WHERE NOT EXISTS (SELECT 1 FROM warehouses WHERE name = 'Liv'     AND type = 'person');
 
+-- Bodegas físicas (2026-07-18): Mérida y CDMX, primeros almacenes tipo 'bodega'.
+INSERT INTO warehouses (name, type) SELECT 'Mérida', 'bodega' WHERE NOT EXISTS (SELECT 1 FROM warehouses WHERE name = 'Mérida' AND type = 'bodega');
+INSERT INTO warehouses (name, type) SELECT 'CDMX',   'bodega' WHERE NOT EXISTS (SELECT 1 FROM warehouses WHERE name = 'CDMX'   AND type = 'bodega');
+
 -- Cache genérico de respuestas de APIs externas (2026-07-16). Hoy solo guarda el
 -- roster de usuarios de Monday para /api/users y /api/admin/monday-users
 -- (worker/lib/rosterCache.ts). Se crea lazy en runtime (CREATE TABLE IF NOT
