@@ -20,11 +20,13 @@ import { fmtMoney } from '../../../lib/format';
 import { MonoTag, StatusBadge } from '../../../components/core/Badges';
 import { Button } from '../../../components/core/Button';
 import { previewRow, COL } from '../../../lib/costeoCalc';
+import { useIsMobile } from '../../../lib/useIsMobile';
 import { latestFileUrl, NO_FIRMADAS_COL, FIRMADAS_COL } from './DocumentacionTab';
 import { VersionChips } from './cotizacion/VersionChips';
 import { SnapshotTable } from './cotizacion/SnapshotTable';
 import { TotalsRow } from './cotizacion/TotalsRow';
 import { CotizacionPdfRow } from './cotizacion/CotizacionPdfRow';
+import { MobileQuoteRow } from './cotizacion/MobileQuoteRow';
 import {
   type RowEditState, EMPTY_ROW, numFrom, marginColor, suggestedPrecio23, inlineEditableCols,
   ETAPA_COSTEO_COLORS, GRID_COLS_COSTEO, GRID_COLS_VENTA, displayProducto, cellValue,
@@ -63,6 +65,8 @@ export function CotizacionTab({
    * (Efraín, 2026-07-16). Tiene prioridad sobre `readOnly`. */
   precioOnly?: boolean;
 }) {
+  const isMobile = useIsMobile();
+  const tabPadding = isMobile ? '14px 14px 24px' : '24px 32px 40px';
   const [selectedVersionId, setSelectedVersionId] = useState<number | null>(null);
   const selectedVersion = selectedVersionId != null ? versions.find((v) => v.id === selectedVersionId) : undefined;
   const hasSinFirmar = !!(item && latestFileUrl(item.cols[NO_FIRMADAS_COL]?.text));
@@ -241,7 +245,7 @@ export function CotizacionTab({
 
   if (selectedVersion) {
     return (
-      <div style={{ padding: '24px 32px 40px', width: '100%', boxSizing: 'border-box' }}>
+      <div style={{ padding: tabPadding, width: '100%', boxSizing: 'border-box' }}>
         <VersionChips versions={versions} selected={selectedVersionId} onSelect={setSelectedVersionId} />
         {onRestoreVersion && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
@@ -261,7 +265,7 @@ export function CotizacionTab({
 
   if (products.length === 0) {
     return (
-      <div style={{ padding: '24px 32px 40px', width: '100%', boxSizing: 'border-box' }}>
+      <div style={{ padding: tabPadding, width: '100%', boxSizing: 'border-box' }}>
         <VersionChips versions={versions} selected={selectedVersionId} onSelect={setSelectedVersionId} onNuevaVersion={onNuevaVersion} />
         <CotizacionPdfRow oppId={oppId} hasSinFirmar={hasSinFirmar} hasFirmada={hasFirmada} />
         <div style={{ font: 'var(--text-label)', color: 'var(--ink-quiet)', marginBottom: 16 }}>
@@ -281,12 +285,37 @@ export function CotizacionTab({
   }
 
   return (
-    <div style={{ padding: '24px 32px 40px', width: '100%', boxSizing: 'border-box' }}>
+    <div style={{ padding: tabPadding, width: '100%', boxSizing: 'border-box' }}>
       <VersionChips versions={versions} selected={selectedVersionId} onSelect={setSelectedVersionId} onNuevaVersion={onNuevaVersion} />
       <CotizacionPdfRow oppId={oppId} hasSinFirmar={hasSinFirmar} hasFirmada={hasFirmada} />
       <datalist id="productos-catalogo-cotizacion">
         {catalog.map((p) => <option key={p.id} value={p.name} />)}
       </datalist>
+      {isMobile ? (
+        <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-xl)', overflow: 'hidden' }}>
+          {products.map((p) => (
+            <MobileQuoteRow
+              key={p.id}
+              product={p}
+              state={rowState(p.id)}
+              visibleCols={visibleCols}
+              variant={variant}
+              editable={editable}
+              editableCols={editableCols}
+              writableIds={writableIds}
+              catalog={catalog}
+              onEdit={onEdit}
+              onBlur={onBlur}
+              onTextEdit={onTextEdit}
+              onColorChange={onColorChange}
+              onEmbellecimientoChange={onEmbellecimientoChange}
+              onEtapaCosteoChange={onEtapaCosteoChange}
+              onProductoBlur={onProductoBlur}
+            />
+          ))}
+          <TotalsRow variant={variant} visibleCols={visibleCols} products={products} rows={rows} isMobile />
+        </div>
+      ) : (
       <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: 'var(--radius-xl)' }}>
         <div style={variant === 'costeo' ? { minWidth: 1360 } : undefined}>
           <div style={{
@@ -519,6 +548,7 @@ export function CotizacionTab({
           <TotalsRow variant={variant} visibleCols={visibleCols} products={products} rows={rows} />
         </div>
       </div>
+      )}
     </div>
   );
 }

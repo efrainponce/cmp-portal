@@ -13,8 +13,9 @@ import {
  * aquí solo se agregan); el Margen total es ponderado (utilidad total /
  * subtotal total), no el promedio simple de cada fila. Las columnas sin un
  * total con sentido (SKU, Etapa costeo, Moneda, C/U de costo…) quedan vacías. */
-export function TotalsRow({ variant, visibleCols, products, rows }: {
+export function TotalsRow({ variant, visibleCols, products, rows, isMobile = false }: {
   variant: 'venta' | 'costeo'; visibleCols: GridCol[]; products: ItemDTO[]; rows: Record<string, RowEditState>;
+  isMobile?: boolean;
 }) {
   let cantidad = 0, subtotal = 0, iva = 0, totalConIva = 0, costoTotal = 0, utilidadTotal = 0, margenGobTotal = 0;
   for (const p of products) {
@@ -50,6 +51,31 @@ export function TotalsRow({ variant, visibleCols, products, rows }: {
           [COL.margenGobPct]: { value: `${margenGobPct.toFixed(1)}%` },
           [MARGEN_COL]: { value: `${margenPct.toFixed(1)}%`, color: marginColor(margenPct) },
         };
+
+  if (isMobile) {
+    const entries = visibleCols.slice(1).filter((c) => byCol[c.id]?.value);
+    return (
+      <div style={{
+        padding: '14px', background: 'var(--bg-sunken)', borderTop: '2px solid var(--border)',
+        display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 14px',
+      }}>
+        <div style={{ gridColumn: '1 / -1', font: 'var(--text-body-strong)', color: 'var(--ink)' }}>TOTAL</div>
+        {entries.map((c) => (
+          <div key={c.id} style={{ minWidth: 0 }}>
+            <div style={{
+              font: '700 9px \'Inter\', sans-serif', color: 'var(--ink-tertiary)',
+              textTransform: 'uppercase', letterSpacing: '.3px', marginBottom: 4,
+            }}>
+              {c.label}
+            </div>
+            <div style={{ font: 'var(--text-body-strong)', color: byCol[c.id]?.color ?? 'var(--ink)' }}>
+              {byCol[c.id]?.value}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
 
   return (
     <div style={{

@@ -1,0 +1,232 @@
+// Tarjeta de línea de producto para mobile — mismo estado/edición que la fila
+// de grid de CotizacionTab (comparten RowEditState y callbacks), pero
+// apilada en vez de en columnas fijas: en <768px la grid de 9-16 columnas
+// obliga a scroll horizontal y celdas ilegibles (Efraín, 2026-07-18: "en
+// mobil esta horrible la ventana de cotizacion... quizas en lista").
+import type { ItemDTO } from '../../../../lib/api';
+import { fmtMoney } from '../../../../lib/format';
+import { MonoTag, StatusBadge } from '../../../../components/core/Badges';
+import { COL } from '../../../../lib/costeoCalc';
+import {
+  type GridCol, type RowEditState, marginColor, suggestedPrecio23, numFrom, displayProducto, cellValue,
+  inputStyle, RowWarning, ETAPA_COSTEO_COLORS,
+  COSTO_DISTR_COL, ETAPA_COSTEO_COL, SUGERIDO_COL, MARGEN_COL,
+  PRODUCTO_COL, PRODUCTO_TXT_COL, PRODUCTO_REL_COL, COLOR_COL, COLORES_DISP_COL,
+  PRODUCTO_COLOR_DROPDOWN_COL, EMB_STATUS_COL, EMB_LABEL_CON, EMB_LABEL_SIN,
+} from './gridMeta';
+
+const labelStyle: React.CSSProperties = {
+  font: '700 9px \'Inter\', sans-serif', color: 'var(--ink-tertiary)',
+  textTransform: 'uppercase', letterSpacing: '.3px', marginBottom: 4,
+};
+
+export function MobileQuoteRow({
+  product: p, state, visibleCols, variant, editable, editableCols, writableIds, catalog,
+  onEdit, onBlur, onTextEdit, onColorChange, onEmbellecimientoChange, onEtapaCosteoChange, onProductoBlur,
+}: {
+  product: ItemDTO; state: RowEditState; visibleCols: GridCol[]; variant: 'venta' | 'costeo'; editable: boolean;
+  editableCols: Set<string>; writableIds: Set<string>; catalog: ItemDTO[];
+  onEdit: (product: ItemDTO, colId: string, raw: string) => void;
+  onBlur: (product: ItemDTO, colId: string) => void;
+  onTextEdit: (product: ItemDTO, colId: string, raw: string) => void;
+  onColorChange: (product: ItemDTO, raw: string) => void;
+  onEmbellecimientoChange: (product: ItemDTO, con: boolean) => void;
+  onEtapaCosteoChange: (product: ItemDTO, label: string) => void;
+  onProductoBlur: (product: ItemDTO) => void;
+}) {
+  const titleCol = visibleCols[0];
+  const restCols = visibleCols.slice(1);
+  const titleWritable = editable && editableCols.has(titleCol.id)
+    && (writableIds.has(PRODUCTO_TXT_COL) || writableIds.has(PRODUCTO_REL_COL));
+
+  const renderField = (c: GridCol) => {
+    const writable = c.id === PRODUCTO_COL
+      ? titleWritable
+      : editable && writableIds.has(c.id) && editableCols.has(c.id);
+    const displayVal = state.preview[c.id] ?? p.cols[c.id];
+
+    if (writable && c.id === COLOR_COL) {
+      const raw = state.editing[COLOR_COL] ?? (p.cols[COLOR_COL]?.text ?? '');
+      const productoNombre = displayProducto(p, state.preview);
+      const productoElegido = productoNombre.trim() !== '';
+      const productoMatch = catalog.find(
+        (c2) => c2.name.trim().toLowerCase() === productoNombre.trim().toLowerCase(),
+      );
+      const catalogColores = (productoMatch?.cols[PRODUCTO_COLOR_DROPDOWN_COL]?.text ?? '')
+        .split(',').map((s) => s.trim()).filter(Boolean);
+      const mirrorColores = (p.cols[COLORES_DISP_COL]?.text ?? '')
+        .split(',').map((s) => s.trim()).filter(Boolean);
+      const disponibles = catalogColores.length > 0 ? catalogColores : mirrorColores;
+
+      if (disponibles.length === 0) {
+        return (
+          <input
+            value=""
+            disabled
+            placeholder={productoElegido ? 'Sin colores configurados' : 'Elige un producto primero'}
+            style={{ ...inputStyle, textAlign: 'left' }}
+          />
+        );
+      }
+      return (
+        <>
+          <select
+            value={raw}
+            disabled={!!state.saving[COLOR_COL]}
+            onChange={(e) => onColorChange(p, e.target.value)}
+            style={{ ...inputStyle, textAlign: 'left' }}
+          >
+            <option value="">Elegir color…</option>
+            {disponibles.map((d) => <option key={d} value={d}>{d}</option>)}
+            {raw && !disponibles.includes(raw) && <option value={raw}>{raw}</option>}
+          </select>
+          {!raw && <RowWarning>Elige un color</RowWarning>}
+        </>
+      );
+    }
+    if (writable && c.id === COL.cantidad) {
+      const raw = state.editing[c.id] ?? (p.cols[c.id]?.text ?? '');
+      const cantidadNum = parseFloat(raw);
+      const sinCantidad = !Number.isFinite(cantidadNum) || cantidadNum <= 0;
+      return (
+        <>
+          <input
+            type="number"
+            value={raw}
+            disabled={!!state.saving[c.id]}
+            onChange={(e) => onEdit(p, c.id, e.target.value)}
+            onBlur={() => onBlur(p, c.id)}
+            style={{ ...inputStyle, textAlign: 'left' }}
+          />
+          {sinCantidad && <RowWarning>Cantidad requerida</RowWarning>}
+        </>
+      );
+    }
+    if (writable && c.id === EMB_STATUS_COL) {
+      const label = state.preview[EMB_STATUS_COL]?.text ?? p.cols[EMB_STATUS_COL]?.text ?? '';
+      const checked = label === EMB_LABEL_CON;
+      return (
+        <label style={{
+          display: 'inline-flex', alignItems: 'center', gap: 6,
+          cursor: state.saving[EMB_STATUS_COL] ? 'default' : 'pointer',
+        }}>
+          <input
+            type="checkbox"
+            checked={checked}
+            disabled={!!state.saving[EMB_STATUS_COL]}
+            onChange={(e) => onEmbellecimientoChange(p, e.target.checked)}
+          />
+          <span style={{ font: 'var(--text-label)', color: 'var(--ink-secondary)' }}>
+            {checked ? EMB_LABEL_CON : EMB_LABEL_SIN}
+          </span>
+        </label>
+      );
+    }
+    if (writable && c.id === ETAPA_COSTEO_COL) {
+      const raw = state.preview[ETAPA_COSTEO_COL]?.text ?? p.cols[ETAPA_COSTEO_COL]?.text ?? '';
+      return (
+        <select
+          value={raw}
+          disabled={!!state.saving[ETAPA_COSTEO_COL]}
+          onChange={(e) => onEtapaCosteoChange(p, e.target.value)}
+          style={{ ...inputStyle, textAlign: 'left' }}
+        >
+          <option value="">Elegir etapa…</option>
+          {Object.keys(ETAPA_COSTEO_COLORS).map((k) => <option key={k} value={k}>{k}</option>)}
+        </select>
+      );
+    }
+    if (writable) {
+      const raw = state.editing[c.id] ?? (p.cols[c.id]?.text ?? '');
+      return (
+        <input
+          type="number"
+          value={raw}
+          disabled={!!state.saving[c.id]}
+          onChange={(e) => onEdit(p, c.id, e.target.value)}
+          onBlur={() => onBlur(p, c.id)}
+          style={{ ...inputStyle, textAlign: 'left' }}
+        />
+      );
+    }
+
+    // Solo lectura
+    if (c.id === 'lookup_mkzn7x9a') return <MonoTag style={{ display: 'inline-block' }}>{cellValue(c, displayVal)}</MonoTag>;
+    if (c.id === ETAPA_COSTEO_COL) {
+      const label = cellValue(c, displayVal);
+      if (label === '—') return <span style={{ font: 'var(--text-label)', color: 'var(--ink-secondary)' }}>—</span>;
+      const colors = ETAPA_COSTEO_COLORS[label] ?? ETAPA_COSTEO_COLORS['No iniciado'];
+      return <StatusBadge label={label} color={colors.color} tint={colors.tint} />;
+    }
+    if (c.id === EMB_STATUS_COL) {
+      const label = state.preview[EMB_STATUS_COL]?.text ?? p.cols[EMB_STATUS_COL]?.text;
+      const con = label === EMB_LABEL_CON;
+      return (
+        <StatusBadge
+          label={con ? EMB_LABEL_CON : EMB_LABEL_SIN}
+          color={con ? '#00b461' : '#68737d'}
+          tint={con ? '#d6f5e6' : '#e6e9eb'}
+        />
+      );
+    }
+    if (c.id === MARGEN_COL) {
+      const label = cellValue(c, displayVal);
+      if (label === '—') return <span style={{ font: 'var(--text-label)', color: 'var(--ink-secondary)' }}>—</span>;
+      const n = Number(displayVal?.value ?? displayVal?.text);
+      return <span style={{ font: 'var(--text-label)', color: Number.isFinite(n) ? marginColor(n) : undefined, fontWeight: 600 }}>{label}</span>;
+    }
+    if (c.id === SUGERIDO_COL) {
+      const label = cellValue(c, displayVal);
+      if (label !== '—') return <span style={{ font: 'var(--text-label)', color: 'var(--ink-secondary)' }}>{label}</span>;
+      const costoTotalUnit = numFrom(state, p, COL.costoTotalUnit);
+      const margenGobPctVal = Number(state.editing[COL.margenGobPct] ?? p.cols[COL.margenGobPct]?.text ?? 0) || 0;
+      const suggested = suggestedPrecio23(costoTotalUnit, margenGobPctVal);
+      if (suggested === undefined) return <span style={{ font: 'var(--text-label)', color: 'var(--ink-secondary)' }}>—</span>;
+      return (
+        <span style={{ fontStyle: 'italic', font: 'var(--text-label)', color: 'var(--ink-tertiary)' }} title="Calculado para 23% de margen — sin precio auto de Monday">
+          {fmtMoney(suggested)}
+        </span>
+      );
+    }
+    return <span style={{ font: 'var(--text-label)', color: 'var(--ink-secondary)' }}>{cellValue(c, displayVal)}</span>;
+  };
+
+  return (
+    <div style={{ borderTop: '1px solid var(--border-subtle)', background: '#fff', padding: '14px' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+        {p.pendingWrite && <span title="guardado, sincronizando…" style={{ color: 'var(--accent)' }}>⏳</span>}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {titleWritable ? (
+            <input
+              list="productos-catalogo-cotizacion"
+              value={state.editing[PRODUCTO_COL] ?? displayProducto(p, state.preview)}
+              disabled={!!state.saving[PRODUCTO_COL]}
+              onChange={(e) => onTextEdit(p, PRODUCTO_COL, e.target.value)}
+              onBlur={() => onProductoBlur(p)}
+              placeholder="Elegir producto…"
+              style={{ ...inputStyle, textAlign: 'left', font: 'var(--text-body-strong)' }}
+            />
+          ) : (
+            <div style={{ font: 'var(--text-body-strong)', color: 'var(--ink)' }}>
+              {displayProducto(p, state.preview) || '—'}
+            </div>
+          )}
+        </div>
+      </div>
+      {variant === 'costeo' && !p.cols[COSTO_DISTR_COL]?.text && (
+        <StatusBadge label="Pendiente de costeo" color="#9c4c3d" tint="#f3e5e1" style={{ marginTop: 6 }} />
+      )}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 14px', marginTop: 10 }}>
+        {restCols.map((c) => (
+          <div key={c.id} style={{ minWidth: 0 }}>
+            <div style={labelStyle}>{c.label}</div>
+            {renderField(c)}
+          </div>
+        ))}
+      </div>
+      {state.error && (
+        <div style={{ marginTop: 8, font: 'var(--text-caption)', color: 'var(--status-perdida)' }}>{state.error}</div>
+      )}
+    </div>
+  );
+}
