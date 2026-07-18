@@ -46,7 +46,9 @@ npm run preview   # preview del build de Vite
 Scripts de mantenimiento en `scripts/`: `hydrate.mjs` (carga inicial D1),
 `seed-identity.mjs` (roles de usuario), `introspect-boards.mjs` (regenera
 `shared/column-meta.gen.ts` y detecta drift de columnas en Monday),
-`create-webhooks.mjs` (registra webhooks de Monday hacia el Worker).
+`create-webhooks.mjs` (registra webhooks de Monday hacia el Worker),
+`backfill-r2-files.mjs` (copia a R2 los archivos de documento/embellecimiento
+subidos antes de la migración a R2 — no es prerequisito, solo pre-warm).
 
 ## Roles y visibilidad
 

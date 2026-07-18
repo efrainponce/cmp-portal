@@ -16,8 +16,9 @@ import {
 import { enviarACosteo, enviarAValidacion, checkCosteo, CosteoError } from '../lib/costeo';
 import { listVersions, duplicateVersion, restoreVersion, esDraftVigente, recordFirstVersion, QuoteVersionError } from '../lib/quoteVersions';
 import { duplicateOportunidad, DuplicateOportunidadError } from '../lib/duplicateOportunidad';
-import { createSubitem, addFileToColumn, gql } from '../lib/monday';
-import { listZoneImages, uploadZoneImage, EmbellImageError } from '../lib/embellecimientoImagenes';
+import { createSubitem, addFileToColumn, fetchAssetPublicUrls, gql } from '../lib/monday';
+import { listZoneImages, uploadZoneImage, parseFiles, splitZone, EmbellImageError } from '../lib/embellecimientoImagenes';
+import { putFile, oportunidadFileKey } from '../lib/r2';
 import { resolveCotizacionPdfUrl, CotizacionPdfError, type PdfKind } from '../lib/cotizacionPdfs';
 import { refetchItem, refetchItemTree, upsertItem } from '../sync';
 import { jsonStatus } from '../lib/http';
@@ -39,6 +40,27 @@ const PROYECTO_ACTIONS: Record<string, {
   'tallas-importar': { roles: ['compras', 'admin'], run: (env, id) => importTallas(env, id) },
   'generar-oc': { roles: ['compras', 'admin'], run: (env, id) => generateOC(env, id) },
 };
+
+/** Fallback de /api/files para assetIds aún no migrados a R2 — resuelve el
+ * link firmado vigente de Monday y bufferea los bytes (mismo patrón que
+ * /api/oportunidades/:id/cotizacion-pdf/:kind: streamear sin Content-Length
+ * cuelga el proxy de Vite en dev). */
+async function proxyMondayAsset(env: Env, assetId: number): Promise<Response> {
+  const urls = await fetchAssetPublicUrls(env, [String(assetId)]);
+  const url = urls.get(String(assetId));
+  if (!url) return jsonStatus({ error: 'not found' }, 404);
+  const upstream = await fetch(url);
+  if (!upstream.ok) return jsonStatus({ error: 'no se pudo obtener el archivo' }, 502);
+  const bytes = await upstream.arrayBuffer();
+  return new Response(bytes, {
+    status: 200,
+    headers: {
+      'Content-Type': upstream.headers.get('content-type') ?? 'application/octet-stream',
+      'Content-Length': String(bytes.byteLength),
+      'Cache-Control': 'private, max-age=60',
+    },
+  });
+}
 
 export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
   // Pre-chequeo de solo lectura: la UI deshabilita "Mandar a costeo" y lista lo
@@ -299,6 +321,62 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     }
   });
 
+  // Sirve archivos migrados a R2 (documento, embellecimiento — lo que el
+  // portal mismo sube; ver worker/lib/r2.ts). Si el key aún no existe en R2
+  // (archivo viejo, pre-backfill) cae de vuelta a Monday resolviendo el
+  // asset desde el mirror, para que el frontend pueda apuntar siempre a
+  // /api/files/... sin depender del orden del backfill.
+  app.get('/api/files/:key{.+}', async c => {
+    const key = c.req.param('key');
+    const viewer = c.get('viewer');
+
+    const object = await c.env.FILES.get(key);
+    if (object) {
+      return new Response(object.body, {
+        status: 200,
+        headers: {
+          'Content-Type': object.httpMetadata?.contentType ?? 'application/octet-stream',
+          'Content-Length': String(object.size),
+          'Cache-Control': 'private, max-age=3600',
+        },
+      });
+    }
+
+    const parts = key.split('/');
+    const oppId = Number(parts[1]);
+    if (parts[0] !== 'oportunidades' || !Number.isFinite(oppId)) return c.json({ error: 'not found' }, 404);
+    const categoria = parts[2];
+
+    try {
+      if (categoria === 'documento') {
+        const filename = parts.slice(3).join('/');
+        const proyecto = await proyectoForOportunidad(c.env, oppId, viewer);
+        if (!proyecto) return c.json({ error: 'not found' }, 404);
+        const entry = parseFiles(proyecto.columns, PROYECTO_DOCUMENTO_COL).find(f => f.name === filename);
+        if (!entry) return c.json({ error: 'not found' }, 404);
+        return await proxyMondayAsset(c.env, entry.assetId);
+      }
+
+      if (categoria === 'embellecimiento') {
+        const lineaId = Number(parts[3]);
+        const zone = parts[4];
+        const filename = parts.slice(5).join('/');
+        if (!Number.isFinite(lineaId)) return c.json({ error: 'not found' }, 404);
+        const row = await getItem(c.env, 'oportunidades_sub', lineaId, viewer);
+        if (!row) return c.json({ error: 'not found' }, 404);
+        const entry = parseFiles(row.columns)
+          .map(f => ({ ...f, split: splitZone(f.name) }))
+          .find(f => f.split?.zone === zone && f.split.original === filename);
+        if (!entry) return c.json({ error: 'not found' }, 404);
+        return await proxyMondayAsset(c.env, entry.assetId);
+      }
+
+      return c.json({ error: 'not found' }, 404);
+    } catch {
+      return c.json({ error: 'internal error' }, 500);
+    }
+  });
+
   app.post('/api/oportunidades/lineas/:id/embellecimiento-imagen', async c => {
     const itemId = Number(c.req.param('id'));
     if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
@@ -437,6 +515,16 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
 
     const asset = await addFileToColumn(c.env, itemId, PROYECTO_DOCUMENTO_COL, file, file.name);
     c.executionCtx.waitUntil(refetchItem(c.env, BOARDS.proyectos.id, itemId));
+
+    // Dual-write a R2: el Proyecto no trae el oppId directo, se resuelve del
+    // board_relation ya cargado en `row` (ver worker/lib/dal.ts). Si el
+    // proyecto aún no está ligado (caso raro), se queda solo en Monday.
+    const oppId = linkedItemId(row, PROYECTO_OPP_REL);
+    if (oppId != null) {
+      const key = oportunidadFileKey(oppId, 'documento', file.name);
+      await putFile(c.env, key, file);
+      return c.json({ ok: true, id: asset.id, name: asset.name, url: `/api/files/${key}` });
+    }
     return c.json({ ok: true, id: asset.id, name: asset.name, url: asset.publicUrl });
   });
 

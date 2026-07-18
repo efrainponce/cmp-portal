@@ -40,7 +40,7 @@ export function DocumentacionTab({ item, proyecto }: { item: ItemDetailDTO; proy
         </div>
       </div>
 
-      <OcContratoSection proyecto={proyecto} />
+      <OcContratoSection proyecto={proyecto} oppId={item.id} />
     </div>
   );
 }
@@ -93,7 +93,7 @@ function FileListOrEmpty({ files }: { files: DocFile[] }) {
 
 /** Único upload real de esta pestaña: sube al Proyecto ligado (file_mm0hayh4),
  * no a la Oportunidad — el resto de las secciones se queda deshabilitado. */
-export function OcContratoSection({ proyecto }: { proyecto?: ProyectoState }) {
+export function OcContratoSection({ proyecto, oppId }: { proyecto?: ProyectoState; oppId: string | null }) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -111,7 +111,12 @@ export function OcContratoSection({ proyecto }: { proyecto?: ProyectoState }) {
   };
 
   const p = proyecto?.proyecto;
-  const files = p ? parseFiles(p.cols[P_OC_CLIENTE]?.text) : [];
+  // Reconstruye el key de R2 (durable, sin expirar) en vez de usar la URL
+  // firmada de Monday que trae el mirror — GET /api/files/... cae de vuelta
+  // a Monday por sí solo si el archivo aún no se migró (ver worker/routes/oportunidades.ts).
+  const files = p && oppId ? parseFiles(p.cols[P_OC_CLIENTE]?.text).map((f) => ({
+    ...f, url: `/api/files/oportunidades/${oppId}/documento/${encodeURIComponent(f.name)}`,
+  })) : [];
   const canUpload = !!p;
   const hint = !proyecto || proyecto.loading ? 'Buscando el proyecto ligado…'
     : !p ? 'Esta oportunidad aún no tiene Proyecto en Monday — se crea al GANAR la oportunidad.'

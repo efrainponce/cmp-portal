@@ -7,7 +7,8 @@ import type { Env } from '../env';
 import type { Identity } from '../../shared/types';
 import { getItem } from './dal';
 import { canWrite } from '../../shared/visibility';
-import { addFileToColumn, fetchAssetPublicUrls } from './monday';
+import { addFileToColumn } from './monday';
+import { putFile, oportunidadFileKey } from './r2';
 import { refetchItem } from '../sync';
 import { BOARDS } from '../../shared/boards';
 import { EMBELL_TEMPLATE_KEYS, type EmbellZoneKey } from '../../shared/embellecimiento';
@@ -26,10 +27,21 @@ export class EmbellImageError extends Error {
 
 interface FileEntry { name: string; assetId: number }
 
-function parseFiles(columnsJson: string): FileEntry[] {
+/** key = oportunidades/{oppId}/embellecimiento/{lineaId}/{zona}/{filename} —
+ * incluye lineaId porque dos líneas de la misma oportunidad pueden subir el
+ * mismo nombre de archivo a la misma zona (en Monday no colisiona porque cada
+ * línea/subitem tiene su propia columna de archivo independiente). */
+export function embellImageKey(oppId: number, lineaId: number, zone: string, filename: string): string {
+  return oportunidadFileKey(oppId, `embellecimiento/${lineaId}/${zone}`, filename);
+}
+
+/** Entries de una columna de archivo genérica de Monday ({files:[{name,assetId}]}).
+ * colId por default es la de embellecimiento; el fallback de /api/files la
+ * reusa también para PROYECTO_DOCUMENTO_COL. */
+export function parseFiles(columnsJson: string, colId: string = COL): FileEntry[] {
   try {
     const cols: RawCol[] = JSON.parse(columnsJson || '[]');
-    const col = cols.find(c => c.id === COL);
+    const col = cols.find(c => c.id === colId);
     if (!col?.value) return [];
     return (JSON.parse(col.value) as { files?: FileEntry[] }).files ?? [];
   } catch {
@@ -37,7 +49,7 @@ function parseFiles(columnsJson: string): FileEntry[] {
   }
 }
 
-function splitZone(name: string): { zone: string; original: string } | null {
+export function splitZone(name: string): { zone: string; original: string } | null {
   const idx = name.indexOf(SEP);
   if (idx === -1) return null;
   return { zone: name.slice(0, idx), original: name.slice(idx + SEP.length) };
@@ -45,23 +57,24 @@ function splitZone(name: string): { zone: string; original: string } | null {
 
 const isZoneKey = (z: string): z is EmbellZoneKey => (EMBELL_TEMPLATE_KEYS as readonly string[]).includes(z);
 
-/** Zone -> fresh (short-lived signed) image URL, for a line the viewer can see. */
+/** Zone -> proxy URL served from R2 (durable, no expiry — GET /api/files/...
+ * falls back to Monday's signed URL by itself if the R2 object is missing,
+ * e.g. archivos subidos antes del backfill), for a line the viewer can see. */
 export async function listZoneImages(env: Env, itemId: number, viewer: Identity): Promise<Record<string, string>> {
   const row = await getItem(env, 'oportunidades_sub', itemId, viewer);
   if (!row) throw new EmbellImageError(404, 'not found');
+  if (row.parent_item_id == null) return {};
+  const oppId = row.parent_item_id;
 
   const entries = parseFiles(row.columns)
     .map(f => ({ ...f, split: splitZone(f.name) }))
     .filter((f): f is FileEntry & { split: { zone: string; original: string } } => !!f.split && isZoneKey(f.split.zone));
-  if (entries.length === 0) return {};
 
-  const urls = await fetchAssetPublicUrls(env, entries.map(f => String(f.assetId)));
   const out: Record<string, string> = {};
   // Files are appended in upload order — a later upload for the same zone
   // overwrites the earlier URL here, matching "last upload wins" visually.
   for (const f of entries) {
-    const url = urls.get(String(f.assetId));
-    if (url) out[f.split.zone] = url;
+    out[f.split.zone] = `/api/files/${embellImageKey(oppId, itemId, f.split.zone, f.split.original)}`;
   }
   return out;
 }
@@ -78,5 +91,11 @@ export async function uploadZoneImage(
 
   const asset = await addFileToColumn(env, itemId, COL, file, `${zone}${SEP}${filename}`);
   ctx.waitUntil(refetchItem(env, BOARDS.oportunidades_sub.id, itemId));
+
+  if (row.parent_item_id != null) {
+    const key = embellImageKey(row.parent_item_id, itemId, zone, filename);
+    await putFile(env, key, file);
+    return { zone, url: `/api/files/${key}` };
+  }
   return { zone, url: asset.publicUrl };
 }

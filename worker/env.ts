@@ -1,6 +1,7 @@
 export interface Env {
   DB: D1Database;
   ASSETS: Fetcher;
+  FILES: R2Bucket;
   MONDAY_API_KEY: string;
   WEBHOOK_TOKEN: string;          // unguessable path segment for /api/sync/webhook/:token
   ENVIRONMENT?: 'dev' | 'prod';

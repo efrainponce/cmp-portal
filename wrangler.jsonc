@@ -17,6 +17,12 @@
       "database_id": "babdcd7e-a3df-4350-a1fa-8db4722f3862"
     }
   ],
+  "r2_buckets": [
+    {
+      "binding": "FILES",
+      "bucket_name": "mexicanadeproteccion"
+    }
+  ],
   "triggers": {
     "crons": ["0 */6 * * *"]
   },
