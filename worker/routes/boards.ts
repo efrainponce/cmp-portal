@@ -15,7 +15,7 @@ import {
 import { toItemDTO, toColMeta } from '../lib/serialize';
 import { submitWrite, OutboxError } from '../lib/outbox';
 import { submitCreate, CreateError } from '../lib/createRecord';
-import { fetchUpdates, createUpdate, addFileToUpdate, fetchAssetPublicUrls } from '../lib/monday';
+import { fetchUpdates, createUpdate, addFileToUpdate, fetchAssetPublicUrls, deleteItem } from '../lib/monday';
 import { cachedFetchUsers } from '../lib/rosterCache';
 import { getBoardAccess } from '../lib/boardAccess';
 import { refetchItem } from '../sync';
@@ -141,6 +141,20 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
         return jsonStatus({ ok: false, pending: false, error: err.message } satisfies WriteResponse, err.status);
       }
       return jsonStatus({ ok: false, pending: false, error: 'internal error' } satisfies WriteResponse, 500);
+    }
+  });
+
+  app.delete('/api/boards/:slug/items/:id', async c => {
+    const slug = c.req.param('slug');
+    if (!isBoardSlug(slug)) return c.json({ error: 'not found' }, 404);
+    const itemId = Number(c.req.param('id'));
+    if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
+
+    try {
+      await deleteItem(c.env, itemId);
+      return c.json({ ok: true });
+    } catch (err) {
+      return jsonStatus({ ok: false, error: 'No se pudo eliminar' }, 500);
     }
   });
 

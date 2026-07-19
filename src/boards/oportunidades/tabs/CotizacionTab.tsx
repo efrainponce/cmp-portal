@@ -154,6 +154,20 @@ export function CotizacionTab({
     }
   };
 
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const onDeleteLine = async (productId: string) => {
+    setDeletingId(productId);
+    try {
+      const res = await apiFetch(`/oportunidades_sub/${productId}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('No se pudo eliminar la línea');
+      onSaved?.();
+    } catch (e) {
+      console.error('Error eliminando línea:', e);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   /** PATCH de `writes` a la línea marcando `marker` como saving; al éxito
    * limpia editing[marker] (si `clearEditing`), aplica el `preview` local
    * opcional (mirrors asíncronos de Monday) y notifica onSaved. Todos los
@@ -544,14 +558,35 @@ export function CotizacionTab({
                         color: idx === 0 ? 'var(--ink)' : 'var(--ink-secondary)',
                       }}>
                         {idx === 0 && (
-                          <button
-                            type="button"
-                            onClick={() => toggleExpanded(p.id)}
-                            title={expanded.has(p.id) ? 'Ocultar detalle' : 'Ver descripción y tallas'}
-                            style={chevronButtonStyle(expanded.has(p.id))}
-                          >
-                            ▸
-                          </button>
+                          <div style={{ display: 'inline-flex', gap: 4 }}>
+                            <button
+                              type="button"
+                              onClick={() => toggleExpanded(p.id)}
+                              title={expanded.has(p.id) ? 'Ocultar detalle' : 'Ver descripción y tallas'}
+                              style={chevronButtonStyle(expanded.has(p.id))}
+                            >
+                              ▸
+                            </button>
+                            {canAddLines && (
+                              <button
+                                type="button"
+                                onClick={() => onDeleteLine(p.id)}
+                                disabled={deletingId === p.id}
+                                title="Eliminar línea"
+                                style={{
+                                  background: 'none',
+                                  border: 'none',
+                                  cursor: deletingId === p.id ? 'wait' : 'pointer',
+                                  font: 'inherit',
+                                  padding: 0,
+                                  color: 'var(--status-perdida)',
+                                  opacity: deletingId === p.id ? 0.6 : 1,
+                                }}
+                              >
+                                ✕
+                              </button>
+                            )}
+                          </div>
                         )}
                         {idx === 0 && p.pendingWrite && <span title="guardado, sincronizando…" style={{ marginRight: 6, color: 'var(--accent)' }}>⏳</span>}
                         {idx === 0 && variant === 'costeo' && !p.cols[COSTO_DISTR_COL]?.text && (
