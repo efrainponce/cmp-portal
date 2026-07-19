@@ -10,7 +10,7 @@ import { SearchableSelect, type SearchableOption } from '../../components/forms/
 import { ChipSelect } from '../../components/forms/ChipSelect';
 import { useMe } from '../../lib/useMe';
 import {
-  apiFetch, useBoards, colForBoard, createItem, getVendedores, getItemDetail,
+  apiFetch, useBoards, colForBoard, createItem, getVendedores,
   type ColMeta, type ItemDTO, type ListResponse, type VendedorDTO,
 } from '../../lib/api';
 
@@ -57,8 +57,8 @@ export default function CreateOportunidadModal({
   onClose, onCreated,
 }: {
   onClose: () => void;
-  /** Llamado cuando la opp está lista (folio asignado). Pasa el ID Monday y el folio. */
-  onCreated: (itemId: string, folio: string) => void;
+  /** Llamado cuando la opp se crea. Pasa el ID Monday (folio se asigna async). */
+  onCreated: (itemId: string) => void;
 }) {
   const me = useMe();
   const { boards } = useBoards();
@@ -119,29 +119,10 @@ export default function CreateOportunidadModal({
       const result = await createItem('oportunidades', name.trim(), nonEmpty);
       if (!result.ok || !result.id) throw new Error('No se asignó ID a la oportunidad.');
 
-      setError(null); // limpiar antes de polling para que se vea "Esperando folio…"
-      // Polling: esperar a que Monday asigne el folio (pulse_id_mm0qcq0m)
-      let folio: string | undefined;
-      let attempts = 0;
-      const maxAttempts = 30; // 30 intentos = ~6 segundos con delay 200ms
-      while (!folio && attempts < maxAttempts) {
-        await new Promise(resolve => setTimeout(resolve, 200));
-        try {
-          const detail = await getItemDetail('oportunidades', String(result.id));
-          folio = detail.item.cols.pulse_id_mm0qcq0m?.text;
-          if (folio) break;
-        } catch {
-          // Ignorar errores de fetch, reintentar
-        }
-        attempts++;
-      }
-
-      if (!folio) throw new Error('No se pudo asignar el folio. Refresca la página.');
-      onCreated(result.id, folio);
+      onCreated(result.id);
       onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo crear la oportunidad.');
-    } finally {
       setSaving(false);
     }
   };
