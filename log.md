@@ -2,6 +2,11 @@
 
 ## 2026-07-18
 
+- **`b6f3749`** — Crear oportunidad sin esperar folio — abre drawer inmediatamente
+  - Antes: el modal bloqueaba ~6 segundos esperando que Monday asignara el folio con polling (30 intentos × 200ms).
+  - Ahora: crea el item y abre el drawer al instante; el folio se asigna async en background (visible al refrescar el drawer o al actualizar desde Monday).
+  - Cambio de flujo: `CreateOportunidadModal` ya no bloquea, solo crea + callback inmediato. `OpportunityDrawer` carga el detail (que ya incluye el folio cuando está listo).
+  - Solución a la solicitud de Efraín: "la verdad esta muy dificil esto necesito que funcione aunque no tenga folio va? que lo recupera async PERO que me deje crearla".
 - **`26cf57e`** — Permisos por equipo: selección de boards visibles + limpieza de rol cliente
   - Efraín pidió continuar la parte de permisos: que el admin pueda elegir, por equipo, a qué boards del sidebar tiene acceso — ejemplo dado: Ventas no debe ver Inventario, Costeo ni Validación de costeo. Antes de codear se aclaró con él el alcance: "equipo" = los roles reales de Monday (ventas, compras, almacén, admin) y de paso confirmó borrar el rol `cliente` (sin uso real en el código) y que el rename `vendedor`→`ventas` fuera solo de label en UI, no del valor interno (evita tocar D1/bot de WhatsApp en vivo).
   - Pregunta aparte de Efraín ("ESTO ES CRUCIAL"): confirmado con código, no de memoria, que un vendedor no puede ver márgenes/costos de Oportunidades ni por el bot ni por el portal — ambos canales pasan por el mismo whitelist `shared/visibility.ts` (`toItemDTO` en `serialize.ts` para el portal, `readableRecord` en `assistantTools.ts` para el bot), y esas columnas solo están en el grupo `AC` (compras/admin).
