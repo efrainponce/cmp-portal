@@ -1,5 +1,10 @@
 # Log de commits
 
+## 2026-07-18
+
+- **`c66d9b9`** — Agregar logo de CMP como favicon
+  - Link favicon en index.html apuntando a `src/assets/logo.webp`.
+
 ## 2026-07-15
 
 - **`1ae8165`** — Initial commit: CMP portal (Vite/React + Cloudflare Worker)
