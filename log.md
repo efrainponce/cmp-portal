@@ -2,8 +2,10 @@
 
 ## 2026-07-19
 
+- **`d330fcb`** — En Nueva oportunidad, solo permitir Archivar (no Perder)
+  - No tiene sentido perder una oportunidad recién creada; solo se puede archivar.
 - **`386c18f`** — Expandir botones Perder/Ganar/Archivar en drawer de oportunidades
-  - Botón Perder: ahora disponible en cualquier etapa abierta (antes solo en 7, 8, 9).
+  - Botón Perder: disponible en etapas posteriores a Nueva oportunidad.
   - Botón Ganar: solo después de etapa Cotización (6) — coherente con el flujo de ventas.
   - Botón Archivar: renombrado de "Cancelar" y disponible en cualquier etapa abierta.
   - Los tres botones se ocultan en etapas terminales (Ganada, Perdida, Cancelada).
