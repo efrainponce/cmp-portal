@@ -1,5 +1,12 @@
 # Log de commits
 
+## 2026-07-19
+
+- **`1e2f41e`** — Corregir error de build: WriteResponse no tiene 'errors'
+  - El Deploy en GitHub Actions fallaba en `tsc -b` (build rojo desde el commit `73d8816`): tres call sites en `OpportunityDrawer.tsx` (cancelar/perder/ganar oportunidad) usaban `res.errors` (array), pero `WriteResponse` (`shared/dto.ts`) solo tiene `error?: string`.
+  - Fix: `lines: [res.error ?? 'Verifica tu conexión.']` en los tres handlers.
+  - Detectado vía `gh run list` / `gh run view --log-failed` a petición de Efraín ("deploy failed see github").
+
 ## 2026-07-18
 
 - **`73d8816`** — Agregar indicador de líneas incompletas en cotizaciones
