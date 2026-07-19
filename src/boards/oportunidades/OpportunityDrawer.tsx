@@ -482,16 +482,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
               onConfirm={onGenerarCotizacion}
             />
           )}
-          {(stage === '4' || stage === '15') && (
-            <ConfirmButton
-              label="Cancelar"
-              confirmLabel="¿Cancelar esta oportunidad?"
-              busyLabel="Cancelando…"
-              onConfirm={onCancelarOportunidad}
-              style={{ fontSize: '11px', padding: '6px 11px' }}
-            />
-          )}
-          {stage && ['7', '8', '9'].includes(stage) && (
+          {stage && !['1', '2', '5'].includes(stage) && (
             <>
               <ConfirmButton
                 label="Perder"
@@ -500,11 +491,20 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
                 onConfirm={onPerderOportunidad}
                 style={{ fontSize: '11px', padding: '6px 11px' }}
               />
+              {stageAtOrAfter(stage, '6') && (
+                <ConfirmButton
+                  label="Ganar"
+                  confirmLabel="¿Marcar como ganada?"
+                  busyLabel="Marcando…"
+                  onConfirm={onGanarOportunidad}
+                  style={{ fontSize: '11px', padding: '6px 11px' }}
+                />
+              )}
               <ConfirmButton
-                label="Ganar"
-                confirmLabel="¿Marcar como ganada?"
-                busyLabel="Marcando…"
-                onConfirm={onGanarOportunidad}
+                label="Archivar"
+                confirmLabel="¿Archivar esta oportunidad?"
+                busyLabel="Archivando…"
+                onConfirm={onCancelarOportunidad}
                 style={{ fontSize: '11px', padding: '6px 11px' }}
               />
             </>
