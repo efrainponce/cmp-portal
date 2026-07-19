@@ -2,6 +2,11 @@
 
 ## 2026-07-18
 
+- **`73d8816`** — Agregar indicador de líneas incompletas en cotizaciones
+  - Nueva función `getLineWarnings()`: detecta problemas en cada línea (falta producto/color/cantidad, pendiente costeo, sin confirmar).
+  - Web: banner ⚠️ con lista de problemas + fondo sutil #faf8f6 al inicio de cada fila.
+  - Móvil: mismo indicador (banner + fondo) para consistencia visual.
+  - Visible en ambas variantes (venta/costeo) y todos los stages.
 - **`3d2bbf7`** — Agregar soporte de iOS homescreen icon y PWA manifest
   - `apple-touch-icon` en index.html: iOS reconoce el logo del CMP al agregar a pantalla de inicio (en lugar de mostrar solo una "C").
   - Metas PWA: `apple-mobile-web-app-capable`, `apple-mobile-web-app-status-bar-style`, `apple-mobile-web-app-title`.
