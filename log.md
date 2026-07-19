@@ -2,6 +2,11 @@
 
 ## 2026-07-19
 
+- **`386c18f`** — Expandir botones Perder/Ganar/Archivar en drawer de oportunidades
+  - Botón Perder: ahora disponible en cualquier etapa abierta (antes solo en 7, 8, 9).
+  - Botón Ganar: solo después de etapa Cotización (6) — coherente con el flujo de ventas.
+  - Botón Archivar: renombrado de "Cancelar" y disponible en cualquier etapa abierta.
+  - Los tres botones se ocultan en etapas terminales (Ganada, Perdida, Cancelada).
 - **`1e2f41e`** — Corregir error de build: WriteResponse no tiene 'errors'
   - El Deploy en GitHub Actions fallaba en `tsc -b` (build rojo desde el commit `73d8816`): tres call sites en `OpportunityDrawer.tsx` (cancelar/perder/ganar oportunidad) usaban `res.errors` (array), pero `WriteResponse` (`shared/dto.ts`) solo tiene `error?: string`.
   - Fix: `lines: [res.error ?? 'Verifica tu conexión.']` en los tres handlers.
