@@ -2,6 +2,10 @@
 
 ## 2026-07-18
 
+- **`d739b3d`** — Agregar eliminar líneas en cotizaciones
+  - Botón ✕ (rojo, en Primera columna) para eliminar cada línea de producto.
+  - Disponible en Nueva oportunidad y borradores de versión (mismo flujo: `canAddLines` = true).
+  - Backend: DELETE endpoint en `/api/boards/:slug/items/:id` que llama a `deleteItem()` de Monday.
 - **`ee3103c`** — Agregar botón "+ Agregar línea" en cotizaciones con productos
   - Problema: en Nueva oportunidad y borradores de versión, solo se podía agregar la primera línea de producto (el botón desaparecía después de crear la línea).
   - Solución: ahora el botón "+ Agregar línea" aparece siempre después de la tabla de cotizaciones cuando `canAddLines` es true (Nueva oportunidad y borradores de versión), no solo cuando la tabla está vacía.
