@@ -2,6 +2,10 @@
 
 ## 2026-07-18
 
+- **`3d2bbf7`** — Agregar soporte de iOS homescreen icon y PWA manifest
+  - `apple-touch-icon` en index.html: iOS reconoce el logo del CMP al agregar a pantalla de inicio (en lugar de mostrar solo una "C").
+  - Metas PWA: `apple-mobile-web-app-capable`, `apple-mobile-web-app-status-bar-style`, `apple-mobile-web-app-title`.
+  - `public/manifest.json`: configuración completa de web app standalone con iconos y metadata.
 - **`d739b3d`** — Agregar eliminar líneas en cotizaciones
   - Botón ✕ (rojo, en Primera columna) para eliminar cada línea de producto.
   - Disponible en Nueva oportunidad y borradores de versión (mismo flujo: `canAddLines` = true).
