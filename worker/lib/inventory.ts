@@ -110,6 +110,15 @@ export async function createMovement(env: Env, body: CreateMovementRequest): Pro
     throw new InventoryError(400, 'El almacén de destino no existe.');
   }
 
+  let folio = body.folio?.trim() || null;
+  if (!folio) {
+    const maxRow = await env.DB
+      .prepare('SELECT MAX(CAST(folio AS INTEGER)) AS max_folio FROM movements WHERE folio IS NOT NULL')
+      .first<{ max_folio: number | null }>();
+    const nextNum = (maxRow?.max_folio ?? 0) + 1;
+    folio = String(nextNum);
+  }
+
   const res = await env.DB
     .prepare(
       `INSERT INTO movements (type, product_name, quantity, origin_id, destination_id, captured_by, folio, notes)
@@ -117,7 +126,7 @@ export async function createMovement(env: Env, body: CreateMovementRequest): Pro
     )
     .bind(
       type, productName, quantity, originId, destinationId, capturedBy,
-      body.folio?.trim() || null, body.notes?.trim() || null,
+      folio, body.notes?.trim() || null,
     )
     .run();
 

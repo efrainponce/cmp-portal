@@ -11,7 +11,7 @@ import {
   type MovementType,
 } from '../../../../shared/inventory';
 import { createMovement, getWarehouses, type WarehouseDTO } from '../../../lib/inventoryApi';
-import { usePoll, type ItemDTO } from '../../../lib/api';
+import { usePoll, getMe, type ItemDTO, type MeDTO } from '../../../lib/api';
 
 const fieldStyle: React.CSSProperties = {
   width: '100%', font: 'var(--text-body)', color: 'var(--ink)', border: '1px solid var(--border)',
@@ -26,6 +26,7 @@ const DIRECTION_OPTIONS = [
 
 export function NewMovementTab({ onCreated }: { onCreated: () => void }) {
   const [warehouses, setWarehouses] = useState<WarehouseDTO[]>([]);
+  const [currentUser, setCurrentUser] = useState<MeDTO | null>(null);
   const [type, setType] = useState<MovementType>('Entrada');
   const [direction, setDirection] = useState<'up' | 'down'>('up');
   const [producto, setProducto] = useState<ItemDTO | null>(null);
@@ -35,13 +36,14 @@ export function NewMovementTab({ onCreated }: { onCreated: () => void }) {
   const [quantity, setQuantity] = useState('');
   const [originId, setOriginId] = useState('');
   const [destinationId, setDestinationId] = useState('');
-  const [capturedBy, setCapturedBy] = useState('');
-  const [folio, setFolio] = useState('');
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => { getWarehouses().then(setWarehouses).catch(() => setWarehouses([])); }, []);
+  useEffect(() => {
+    getWarehouses().then(setWarehouses).catch(() => setWarehouses([]));
+    getMe().then(setCurrentUser).catch(() => setCurrentUser(null));
+  }, []);
 
   const isConsolidacion = type === 'Consolidación';
   const visibility = movementFieldVisibility(type);
@@ -56,7 +58,7 @@ export function NewMovementTab({ onCreated }: { onCreated: () => void }) {
     const qty = Number(quantity);
     if (!producto) return setError('El producto es requerido.');
     if (!Number.isFinite(qty) || qty <= 0) return setError('La cantidad debe ser mayor a 0.');
-    if (!capturedBy.trim()) return setError('Falta quién captura el movimiento.');
+    if (!currentUser?.nombre) return setError('No se pudo obtener el usuario actual.');
 
     const origin = showOrigin && originId ? Number(originId) : null;
     const destination = showDestination && destinationId ? Number(destinationId) : null;
@@ -67,7 +69,7 @@ export function NewMovementTab({ onCreated }: { onCreated: () => void }) {
     try {
       const res = await createMovement({
         type, productName: producto!.name, quantity: qty, originId: origin, destinationId: destination,
-        capturedBy: capturedBy.trim(), folio: folio.trim() || undefined, notes: notes.trim() || undefined,
+        capturedBy: currentUser.nombre, notes: notes.trim() || undefined,
       });
       if (!res.ok) { setError(res.error ?? 'No se pudo guardar el movimiento.'); return; }
       setProducto(null);
@@ -148,11 +150,15 @@ export function NewMovementTab({ onCreated }: { onCreated: () => void }) {
         )}
 
         <Field label="Capturó" required>
-          <input value={capturedBy} onChange={(e) => setCapturedBy(e.target.value)} style={fieldStyle} placeholder="Nombre de quien captura" />
+          <div style={{ ...fieldStyle, background: 'var(--bg-disabled)', cursor: 'default', color: currentUser?.nombre ? 'var(--ink)' : 'var(--ink-quiet)' }}>
+            {currentUser?.nombre || 'Cargando usuario…'}
+          </div>
         </Field>
 
         <Field label="Folio">
-          <input value={folio} onChange={(e) => setFolio(e.target.value)} style={fieldStyle} placeholder="Opcional" />
+          <div style={{ ...fieldStyle, background: 'var(--bg-disabled)', cursor: 'default', color: 'var(--ink-quiet)' }}>
+            Se genera automáticamente
+          </div>
         </Field>
 
         <Field label="Notas">
