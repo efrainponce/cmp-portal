@@ -17,6 +17,7 @@ import { submitWrite, OutboxError } from '../lib/outbox';
 import { submitCreate, CreateError } from '../lib/createRecord';
 import { fetchUpdates, createUpdate, addFileToUpdate, fetchAssetPublicUrls } from '../lib/monday';
 import { cachedFetchUsers } from '../lib/rosterCache';
+import { getBoardAccess } from '../lib/boardAccess';
 import { refetchItem } from '../sync';
 import { jsonStatus } from '../lib/http';
 
@@ -25,12 +26,13 @@ function isBoardSlug(s: string): s is BoardSlug {
 }
 
 export function boardRoutes(app: Hono<{ Bindings: Env }>) {
-  app.get('/api/me', c => {
+  app.get('/api/me', async c => {
     const viewer = c.get('viewer');
     const admin = c.get('impersonatedBy');
     const dto: MeDTO = {
       email: viewer.email, nombre: viewer.nombre ?? '', role: viewer.role, mondayUserId: viewer.monday_user_id,
       impersonatedBy: admin ? { email: admin.email, nombre: admin.nombre ?? admin.email } : null,
+      boardAccess: await getBoardAccess(c.env, viewer.role),
     };
     return c.json(dto);
   });

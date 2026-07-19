@@ -101,8 +101,8 @@ ${channelStyle(channel)}
 ${REGLAS_COMUNES}`;
 }
 
-/** System prompt del agente según rol y canal. 'cliente' nunca llega aquí
- * (las rutas lo rechazan antes), pero fail-safe al prompt más restringido. */
+/** System prompt del agente según rol y canal. Roles sin persona dedicada
+ * (p.ej. almacen) caen al prompt de vendedor, el más restringido. */
 export function systemPromptFor(viewer: Identity, channel: Channel): string {
   switch (viewer.role) {
     case 'admin': return adminPrompt(viewer, channel);

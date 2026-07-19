@@ -164,7 +164,7 @@ export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
 };
 
 export const canRead = (b: BoardSlug, col: string, r: Role) =>
-  r !== 'cliente' && !!VISIBILITY[b][col]?.vis.includes(r);
+  !!VISIBILITY[b][col]?.vis.includes(r);
 export const canWrite = (b: BoardSlug, col: string, r: Role) =>
   !!VISIBILITY[b][col]?.w?.includes(r);
 export const readableCols = (b: BoardSlug, r: Role): string[] =>

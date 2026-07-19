@@ -1,29 +1,33 @@
 // Inventario (2026-07-15): native D1 feature, not a Monday-mirrored board — quantity-
-// based stock across bodegas + vendedores carrying samples. Open to any authenticated
-// non-cliente identity (same policy as the open catalogs: productos/instituciones/contactos).
-// Movido tal cual desde worker/index.ts (2026-07-16) — sin cambios de comportamiento.
+// based stock across bodegas + vendedores carrying samples. Acceso gateado por equipo
+// (shared/boardAccess.ts, board_key 'inventario') — igual que el nav, pero aquí también
+// protege la API (2026-07-18: antes de esto cualquier rol autenticado podía pegarle
+// directo al endpoint sin pasar por el sidebar).
 import type { Context, Hono } from 'hono';
 import type { Env } from '../env';
 import type {
   CreateMovementRequest, CreateMovementResponse, CreateWarehouseRequest, CreateWarehouseResponse,
 } from '../../shared/inventory';
 import { listWarehouses, listMovements, listStock, createMovement, createWarehouse, InventoryError } from '../lib/inventory';
+import { getBoardAccess } from '../lib/boardAccess';
 import { jsonStatus } from '../lib/http';
 
-function requireInventoryAccess(c: Context<{ Bindings: Env }>): Response | null {
-  if (c.get('viewer').role === 'cliente') return c.json({ error: 'forbidden' }, 403);
+async function requireInventoryAccess(c: Context<{ Bindings: Env }>): Promise<Response | null> {
+  const viewer = c.get('viewer');
+  const access = await getBoardAccess(c.env, viewer.role);
+  if (!access.includes('inventario')) return c.json({ error: 'forbidden' }, 403);
   return null;
 }
 
 export function inventarioRoutes(app: Hono<{ Bindings: Env }>) {
   app.get('/api/inventario/warehouses', async c => {
-    const denied = requireInventoryAccess(c);
+    const denied = await requireInventoryAccess(c);
     if (denied) return denied;
     return c.json(await listWarehouses(c.env));
   });
 
   app.post('/api/inventario/warehouses', async c => {
-    const denied = requireInventoryAccess(c);
+    const denied = await requireInventoryAccess(c);
     if (denied) return denied;
     const body = await c.req.json<CreateWarehouseRequest>();
     try {
@@ -38,19 +42,19 @@ export function inventarioRoutes(app: Hono<{ Bindings: Env }>) {
   });
 
   app.get('/api/inventario/stock', async c => {
-    const denied = requireInventoryAccess(c);
+    const denied = await requireInventoryAccess(c);
     if (denied) return denied;
     return c.json(await listStock(c.env));
   });
 
   app.get('/api/inventario/movements', async c => {
-    const denied = requireInventoryAccess(c);
+    const denied = await requireInventoryAccess(c);
     if (denied) return denied;
     return c.json(await listMovements(c.env));
   });
 
   app.post('/api/inventario/movements', async c => {
-    const denied = requireInventoryAccess(c);
+    const denied = await requireInventoryAccess(c);
     if (denied) return denied;
     const body = await c.req.json<CreateMovementRequest>();
     try {

@@ -1,4 +1,4 @@
-export type Role = 'vendedor' | 'compras' | 'admin' | 'cliente';
+export type Role = 'vendedor' | 'compras' | 'admin' | 'almacen';
 
 export interface Identity {
   email: string;

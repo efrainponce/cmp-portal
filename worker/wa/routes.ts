@@ -46,7 +46,7 @@ async function processMessage(env: Env, msg: WaMessage): Promise<void> {
   if (await alreadyProcessed(env, msg.id)) return;
 
   const viewer = await identityByPhone(env, msg.from);
-  if (!viewer || viewer.role === 'cliente') {
+  if (!viewer) {
     await sendText(env, msg.from, 'Hola 👋 Este asistente es solo para el equipo de CMP. Si eres vendedor, pide al administrador que dé de alta tu número.');
     return;
   }

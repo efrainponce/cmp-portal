@@ -2,7 +2,7 @@
 import type { BoardSlug } from '../../shared/boards';
 import type {
   AssistantChatRequest, AssistantChatResponse, AssistantHistoryResponse, AssistantMessage,
-  ColMeta, ColVal, CreateResponse, DuplicarOportunidadResponse, DuplicarVersionResponse, EnviarCosteoResponse, IdentityDTO, ItemDTO, ItemDetailDTO,
+  BoardAccessDTO, ColMeta, ColVal, CreateResponse, DuplicarOportunidadResponse, DuplicarVersionResponse, EnviarCosteoResponse, IdentityDTO, ItemDTO, ItemDetailDTO,
   ListResponse, MeDTO, MentionUserDTO, MondayUserDTO, ProyectoActionResponse, ProyectoResponse,
   QuoteLineSnapshot, QuoteVersionDTO, QuoteVersionsResponse,
   UpdateAttachmentDTO, UpdateDTO, VendedorDTO, WriteResponse,
@@ -11,7 +11,7 @@ import { mockBoardMeta, mockItemDetail, mockPatch } from './mockFallback';
 import { getImpersonateTarget } from './impersonation';
 
 export type {
-  BoardSlug, ColMeta, ColVal, IdentityDTO, ItemDTO, ItemDetailDTO, ListResponse, MeDTO, MentionUserDTO,
+  BoardAccessDTO, BoardSlug, ColMeta, ColVal, IdentityDTO, ItemDTO, ItemDetailDTO, ListResponse, MeDTO, MentionUserDTO,
   MondayUserDTO, QuoteLineSnapshot, QuoteVersionDTO, UpdateAttachmentDTO, UpdateDTO, VendedorDTO,
 };
 
@@ -349,6 +349,19 @@ export async function getMondayUsers(): Promise<MondayUserDTO[]> {
   const res = await apiFetch('/admin/monday-users');
   if (!res.ok) throw new Error('GET monday-users failed: ' + res.status);
   return res.json();
+}
+
+export async function getBoardAccess(): Promise<BoardAccessDTO> {
+  const res = await apiFetch('/admin/board-access');
+  if (!res.ok) throw new Error('GET board-access failed: ' + res.status);
+  return res.json();
+}
+
+export async function putBoardAccess(role: string, boardKeys: string[]): Promise<void> {
+  const res = await apiFetch(`/admin/board-access/${encodeURIComponent(role)}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ boardKeys }),
+  });
+  if (!res.ok) throw new Error('PUT board-access failed: ' + res.status);
 }
 
 // Portal chat bubble — same Claude agent/tools as the WhatsApp bot, a second channel.

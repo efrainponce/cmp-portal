@@ -5,8 +5,8 @@
 import { useEffect, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import {
-  getIdentities, putIdentity, getMondayUsers,
-  type IdentityDTO, type MondayUserDTO,
+  getIdentities, putIdentity, getMondayUsers, getBoardAccess, putBoardAccess,
+  type IdentityDTO, type MondayUserDTO, type BoardAccessDTO,
 } from '../lib/api';
 import { Button } from '../components/core/Button';
 import { SearchInput } from '../components/forms/SearchInput';
@@ -16,11 +16,13 @@ import { GroupCard } from '../components/layout/GroupCard';
 import { textIncludes } from '../lib/textMatch';
 import { startImpersonation } from '../lib/impersonation';
 import { useMe } from '../lib/useMe';
+import { BOARD_LABELS } from './Sidebar';
+import { BOARD_KEYS, TEAM_ROLES } from '../../shared/boardAccess';
 
 type Role = IdentityDTO['role'];
 
 const ROLE_LABELS: Record<Role, string> = {
-  vendedor: 'Vendedor', compras: 'Compras', admin: 'Admin', cliente: 'Cliente',
+  vendedor: 'Ventas', compras: 'Compras', admin: 'Admin', almacen: 'Almacén',
 };
 const ROLE_OPTIONS = (Object.keys(ROLE_LABELS) as Role[]).map((r) => ({ value: r, label: ROLE_LABELS[r] }));
 
@@ -84,6 +86,13 @@ export function SettingsPage() {
           ownEmail={me?.email ?? null}
           onSaved={(next) => { upsertIdentity(next); showToast('success', `Teléfono actualizado para ${next.email}.`); }}
           onError={() => showToast('error', 'No se pudo guardar el teléfono.')}
+        />
+
+        <div style={{ height: 24 }} />
+
+        <BoardAccessSection
+          onSaved={(role) => showToast('success', `Accesos de ${ROLE_LABELS[role]} actualizados.`)}
+          onError={() => showToast('error', 'No se pudieron guardar los accesos.')}
         />
 
         <div style={{ height: 24 }} />
@@ -199,6 +208,114 @@ function IdentityRow({ identity, isSelf, onSaved, onError }: {
             style={{ padding: '6px 12px', whiteSpace: 'nowrap' }}
           >
             Ver como
+          </Button>
+        )}
+      </td>
+    </tr>
+  );
+}
+
+// Accesos por equipo a los boards del sidebar (shared/boardAccess.ts) — declutter de
+// nav, no la protección real de datos (esa sigue en shared/visibility.ts por columna).
+// 'admin' siempre trae todos los boards y no es editable (worker/lib/boardAccess.ts).
+const MATRIX_ROLES: Role[] = [...TEAM_ROLES, 'admin'];
+
+function BoardAccessSection({ onSaved, onError }: {
+  onSaved: (role: Role) => void;
+  onError: () => void;
+}) {
+  const [access, setAccess] = useState<BoardAccessDTO | null>(null);
+  const [loadError, setLoadError] = useState(false);
+
+  useEffect(() => {
+    getBoardAccess().then(setAccess).catch(() => setLoadError(true));
+  }, []);
+
+  return (
+    <GroupCard label="Accesos por equipo" color="var(--accent-red)" tint="var(--status-esperando-tint)" count={MATRIX_ROLES.length}>
+      {loadError ? (
+        <RowMessage>No se pudieron cargar los accesos por equipo.</RowMessage>
+      ) : !access ? (
+        <RowMessage>Cargando…</RowMessage>
+      ) : (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr>
+                <th style={thStyle}>Equipo</th>
+                {BOARD_KEYS.map((k) => <th key={k} style={{ ...thStyle, textAlign: 'center' }}>{BOARD_LABELS[k]}</th>)}
+                <th style={thStyle} />
+              </tr>
+            </thead>
+            <tbody>
+              {MATRIX_ROLES.map((role) => (
+                <BoardAccessRow
+                  key={role}
+                  role={role}
+                  boardKeys={access[role] ?? []}
+                  onSaved={(keys) => { setAccess((prev) => prev && { ...prev, [role]: keys }); onSaved(role); }}
+                  onError={onError}
+                />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </GroupCard>
+  );
+}
+
+function BoardAccessRow({ role, boardKeys, onSaved, onError }: {
+  role: Role;
+  boardKeys: string[];
+  onSaved: (boardKeys: string[]) => void;
+  onError: () => void;
+}) {
+  const editable = TEAM_ROLES.includes(role);
+  const [draft, setDraft] = useState(new Set(boardKeys));
+  const [saving, setSaving] = useState(false);
+  const dirty = draft.size !== boardKeys.length || boardKeys.some((k) => !draft.has(k));
+
+  function toggle(k: string) {
+    if (!editable) return;
+    setDraft((prev) => {
+      const next = new Set(prev);
+      if (next.has(k)) next.delete(k); else next.add(k);
+      return next;
+    });
+  }
+
+  async function save() {
+    setSaving(true);
+    try {
+      const keys = [...draft];
+      await putBoardAccess(role, keys);
+      onSaved(keys);
+    } catch {
+      onError();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <tr style={{ borderTop: '1px solid var(--border-subtle)' }}>
+      <td style={tdStyle}>{ROLE_LABELS[role]}</td>
+      {BOARD_KEYS.map((k) => (
+        <td key={k} style={{ ...tdStyle, textAlign: 'center' }}>
+          <input
+            type="checkbox"
+            checked={draft.has(k)}
+            disabled={!editable}
+            onChange={() => toggle(k)}
+            style={{ cursor: editable ? 'pointer' : 'default' }}
+          />
+        </td>
+      ))}
+      <td style={tdStyle}>
+        {editable && (
+          <Button variant={dirty && !saving ? 'primary' : 'disabled'} onClick={save} style={{ padding: '6px 12px', whiteSpace: 'nowrap' }}>
+            {saving ? 'Guardando…' : 'Guardar'}
           </Button>
         )}
       </td>

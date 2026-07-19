@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS identity (
   phone          TEXT UNIQUE,
   nombre         TEXT,
   monday_user_id INTEGER NOT NULL,
-  role           TEXT NOT NULL CHECK (role IN ('vendedor','compras','admin','cliente')),
+  role           TEXT NOT NULL CHECK (role IN ('vendedor','compras','admin','almacen')),
   active         INTEGER NOT NULL DEFAULT 1
 );
 
@@ -167,3 +167,26 @@ CREATE TABLE IF NOT EXISTS api_cache (
   value      TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
+
+-- Accesos por equipo a boards del sidebar (2026-07-18, shared/boardAccess.ts). Presencia
+-- de fila = acceso permitido; 'admin' no vive aquí (bypass hardcoded en
+-- worker/lib/boardAccess.ts — nunca queda sin acceso por accidente desde la UI).
+-- Esto solo declutters el nav: la protección real de datos sigue en
+-- shared/visibility.ts (columnas) + worker/lib/dal.ts (scoping de renglones).
+CREATE TABLE IF NOT EXISTS role_board_access (
+  role       TEXT NOT NULL CHECK (role IN ('vendedor','compras','almacen')),
+  board_key  TEXT NOT NULL,
+  PRIMARY KEY (role, board_key)
+);
+
+-- Seed inicial — ver shared/boardAccess.ts DEFAULT_BOARD_ACCESS para el criterio.
+INSERT OR IGNORE INTO role_board_access (role, board_key) VALUES
+  ('vendedor', 'oportunidades'), ('vendedor', 'oportunidades_web'),
+  ('vendedor', 'doctallas'), ('vendedor', 'ordenescompra'), ('vendedor', 'logistica'),
+  ('vendedor', 'productos'), ('vendedor', 'instituciones'), ('vendedor', 'contactos'),
+  ('compras', 'oportunidades'), ('compras', 'oportunidades_web'),
+  ('compras', 'costeo'), ('compras', 'validacion'),
+  ('compras', 'doctallas'), ('compras', 'ordenescompra'), ('compras', 'logistica'),
+  ('compras', 'productos'), ('compras', 'instituciones'), ('compras', 'contactos'),
+  ('compras', 'proveedores'), ('compras', 'inventario'),
+  ('almacen', 'inventario');

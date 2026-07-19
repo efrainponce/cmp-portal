@@ -36,6 +36,9 @@ export interface MeDTO {
   // Presente cuando un admin está viendo el portal como este usuario — nombre/email
   // del admin real, para el banner "Salir de impersonación".
   impersonatedBy?: { email: string; nombre: string } | null;
+  // BoardKeys del sidebar visibles para el rol del viewer (shared/boardAccess.ts) —
+  // solo declutter de nav, no es la protección real de datos.
+  boardAccess: string[];
 }
 
 export interface WriteRequest { cols: Record<string, string> }  // colId -> new raw value
@@ -136,6 +139,11 @@ export interface IdentityDTO {
 }
 // Monday directory entry offered for import in Settings.
 export interface MondayUserDTO { id: number; nombre: string; email: string; phone: string | null; teams: string[] }
+
+// Accesos por equipo a boards del sidebar (shared/boardAccess.ts) — matriz que edita
+// el admin en Settings. Las llaves son Role; 'admin' siempre trae todos los boardKeys
+// y no es editable (ver worker/lib/boardAccess.ts).
+export type BoardAccessDTO = Record<Role, string[]>;
 
 // Column metadata the UI needs to render board-like tables (titles, types,
 // status label colors from Monday settings). Generated — see shared/column-meta.ts.

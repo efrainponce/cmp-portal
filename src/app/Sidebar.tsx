@@ -1,7 +1,6 @@
 import { NavItem } from '../components/navigation/NavItem';
 import { UserChip } from './UserChip';
 import { useMe } from '../lib/useMe';
-import type { Role } from '../../shared/types';
 import logo from '../assets/logo.webp';
 import {
   IconOportunidades, IconGlobe, IconCosteo, IconValidacion, IconDocTallas, IconOrdenesCompra, IconLogistica,
@@ -13,7 +12,7 @@ export type BoardKey =
   | 'productos' | 'instituciones' | 'contactos' | 'proveedores' | 'inventario' | 'settings';
 
 type NavIcon = (p: { style?: React.CSSProperties }) => React.ReactElement;
-interface NavItemConfig { key: BoardKey; label: string; icon: NavIcon; roles?: Role[] }
+interface NavItemConfig { key: BoardKey; label: string; icon: NavIcon }
 
 const VENTAS_ITEMS: NavItemConfig[] = [
   { key: 'oportunidades', label: 'Oportunidades', icon: IconOportunidades },
@@ -34,10 +33,7 @@ const CATALOG_ITEMS: NavItemConfig[] = [
   { key: 'productos', label: 'Productos', icon: IconProductos },
   { key: 'instituciones', label: 'Instituciones', icon: IconCuentas },
   { key: 'contactos', label: 'Contactos', icon: IconClientes },
-  // Solo compras/admin: mismas columnas AC-only que el picker de línea manual
-  // del Proyecto (shared/visibility.ts) — para vendedor el board vendría sin
-  // columnas visibles (Efraín, 2026-07-17).
-  { key: 'proveedores', label: 'Proveedores', icon: IconOrdenesCompra, roles: ['compras', 'admin'] },
+  { key: 'proveedores', label: 'Proveedores', icon: IconOrdenesCompra },
 ];
 
 const INVENTARIO_ITEMS: NavItemConfig[] = [
@@ -64,6 +60,11 @@ interface SidebarProps {
 
 export function Sidebar({ activeBoard, onSelectBoard, collapsed, onToggleCollapsed, hideCollapse }: SidebarProps) {
   const me = useMe();
+  const visible = (items: NavItemConfig[]) => items.filter((item) => me?.boardAccess.includes(item.key));
+  const ventasItems = visible(VENTAS_ITEMS);
+  const proyectosItems = visible(PROYECTOS_ITEMS);
+  const inventarioItems = visible(INVENTARIO_ITEMS);
+  const catalogItems = visible(CATALOG_ITEMS);
   return (
     <div style={{
       width: collapsed ? 60 : 220,
@@ -85,64 +86,78 @@ export function Sidebar({ activeBoard, onSelectBoard, collapsed, onToggleCollaps
         )}
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 26 }}>
-        {!collapsed && <SectionLabel>Ventas</SectionLabel>}
-        {VENTAS_ITEMS.map((item) => (
-          <NavItem
-            key={item.key}
-            icon={<item.icon />}
-            label={item.label}
-            active={activeBoard === item.key}
-            collapsed={collapsed}
-            onClick={() => onSelectBoard(item.key)}
-          />
-        ))}
-      </div>
+      {ventasItems.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 26 }}>
+          {!collapsed && <SectionLabel>Ventas</SectionLabel>}
+          {ventasItems.map((item) => (
+            <NavItem
+              key={item.key}
+              icon={<item.icon />}
+              label={item.label}
+              active={activeBoard === item.key}
+              collapsed={collapsed}
+              onClick={() => onSelectBoard(item.key)}
+            />
+          ))}
+        </div>
+      )}
 
-      <Divider />
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-        {!collapsed && <SectionLabel color="#7f8f78">Proyectos</SectionLabel>}
-        {PROYECTOS_ITEMS.map((item) => (
-          <NavItem
-            key={item.key}
-            icon={<item.icon />}
-            label={item.label}
-            active={activeBoard === item.key}
-            collapsed={collapsed}
-            onClick={() => onSelectBoard(item.key)}
-          />
-        ))}
-      </div>
+      {proyectosItems.length > 0 && (
+        <>
+          <Divider />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {!collapsed && <SectionLabel color="#7f8f78">Proyectos</SectionLabel>}
+            {proyectosItems.map((item) => (
+              <NavItem
+                key={item.key}
+                icon={<item.icon />}
+                label={item.label}
+                active={activeBoard === item.key}
+                collapsed={collapsed}
+                onClick={() => onSelectBoard(item.key)}
+              />
+            ))}
+          </div>
+        </>
+      )}
 
-      <Divider />
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-        {!collapsed && <SectionLabel color="#a9835a">Inventario</SectionLabel>}
-        {INVENTARIO_ITEMS.map((item) => (
-          <NavItem
-            key={item.key}
-            icon={<item.icon />}
-            label={item.label}
-            active={activeBoard === item.key}
-            collapsed={collapsed}
-            onClick={() => onSelectBoard(item.key)}
-          />
-        ))}
-      </div>
+      {inventarioItems.length > 0 && (
+        <>
+          <Divider />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {!collapsed && <SectionLabel color="#a9835a">Inventario</SectionLabel>}
+            {inventarioItems.map((item) => (
+              <NavItem
+                key={item.key}
+                icon={<item.icon />}
+                label={item.label}
+                active={activeBoard === item.key}
+                collapsed={collapsed}
+                onClick={() => onSelectBoard(item.key)}
+              />
+            ))}
+          </div>
+        </>
+      )}
 
-      <Divider />
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-        {!collapsed && <SectionLabel>Catálogos</SectionLabel>}
-        {CATALOG_ITEMS.filter((item) => !item.roles || (me?.role && item.roles.includes(me.role))).map((item) => (
-          <NavItem
-            key={item.key}
-            icon={<item.icon />}
-            label={item.label}
-            active={activeBoard === item.key}
-            collapsed={collapsed}
-            onClick={() => onSelectBoard(item.key)}
-          />
-        ))}
-      </div>
+      {catalogItems.length > 0 && (
+        <>
+          <Divider />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {!collapsed && <SectionLabel>Catálogos</SectionLabel>}
+            {catalogItems.map((item) => (
+              <NavItem
+                key={item.key}
+                icon={<item.icon />}
+                label={item.label}
+                active={activeBoard === item.key}
+                collapsed={collapsed}
+                onClick={() => onSelectBoard(item.key)}
+              />
+            ))}
+          </div>
+        </>
+      )}
 
       <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 10 }}>
         {me?.role === 'admin' && (

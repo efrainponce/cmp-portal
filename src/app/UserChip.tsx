@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { getMe, type MeDTO } from '../lib/api';
 
 const ROLE_LABELS: Record<string, string> = {
-  vendedor: 'Vendedor', compras: 'Compras', admin: 'Admin', cliente: 'Cliente',
+  vendedor: 'Ventas', compras: 'Compras', admin: 'Admin', almacen: 'Almacén',
 };
 
 export function UserChip({ collapsed }: { collapsed: boolean }) {

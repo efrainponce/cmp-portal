@@ -59,7 +59,7 @@ export function ChatBubble({ variant = 'floating' }: ChatBubbleProps) {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
   }, [messages, sending]);
 
-  if (!me || me.role === 'cliente') return null;
+  if (!me) return null;
 
   async function send() {
     const text = input.trim();

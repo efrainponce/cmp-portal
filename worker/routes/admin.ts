@@ -3,9 +3,12 @@
 // cual desde worker/index.ts (2026-07-16) — sin cambios de comportamiento.
 import type { Hono } from 'hono';
 import type { Env } from '../env';
-import type { IdentityDTO, MondayUserDTO } from '../../shared/dto';
+import type { Role } from '../../shared/types';
+import type { IdentityDTO, MondayUserDTO, BoardAccessDTO } from '../../shared/dto';
+import { TEAM_ROLES } from '../../shared/boardAccess';
 import { listIdentities, upsertIdentity } from '../lib/dal';
 import { cachedFetchUsers } from '../lib/rosterCache';
+import { listAllBoardAccess, setBoardAccess, BoardAccessError } from '../lib/boardAccess';
 
 export function adminRoutes(app: Hono<{ Bindings: Env }>) {
   app.get('/api/admin/identities', async c => {
@@ -24,7 +27,7 @@ export function adminRoutes(app: Hono<{ Bindings: Env }>) {
     const body = await c.req.json<Partial<IdentityDTO>>();
     if (!email.trim()) return c.json({ error: 'email is required' }, 400);
     const role = body.role ?? 'vendedor';
-    const validRoles = ['vendedor', 'compras', 'admin', 'cliente'];
+    const validRoles = ['vendedor', 'compras', 'admin', 'almacen'];
     if (!validRoles.includes(role)) return c.json({ error: 'invalid role' }, 400);
     if (!Number.isFinite(body.mondayUserId)) return c.json({ error: 'mondayUserId is required' }, 400);
 
@@ -52,6 +55,27 @@ export function adminRoutes(app: Hono<{ Bindings: Env }>) {
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
       return c.json({ error: `monday fetch failed: ${detail}` }, 502);
+    }
+  });
+
+  app.get('/api/admin/board-access', async c => {
+    if (c.get('viewer').role !== 'admin') return c.json({ error: 'forbidden' }, 403);
+    const dto: BoardAccessDTO = await listAllBoardAccess(c.env);
+    return c.json(dto);
+  });
+
+  app.put('/api/admin/board-access/:role', async c => {
+    if (c.get('viewer').role !== 'admin') return c.json({ error: 'forbidden' }, 403);
+    const role = c.req.param('role') as Role;
+    if (!TEAM_ROLES.includes(role)) return c.json({ error: 'role no editable' }, 400);
+    const body = await c.req.json<{ boardKeys: string[] }>();
+    if (!Array.isArray(body.boardKeys)) return c.json({ error: 'boardKeys is required' }, 400);
+    try {
+      await setBoardAccess(c.env, role, body.boardKeys);
+      return c.json({ ok: true });
+    } catch (err) {
+      if (err instanceof BoardAccessError) return c.json({ error: err.message }, 400);
+      throw err;
     }
   });
 }
