@@ -360,6 +360,17 @@ export function CotizacionTab({
             />
           ))}
           <TotalsRow variant={variant} visibleCols={visibleCols} products={products} rows={rows} isMobile />
+          {canAddLines && (
+            <div style={{ padding: '16px', borderTop: '1px solid var(--border)', display: 'flex', gap: 8 }}>
+              <Button
+                variant="secondary"
+                onClick={creatingLine ? undefined : onAddLine}
+                style={{ opacity: creatingLine ? 0.6 : 1 }}
+              >
+                {creatingLine ? 'Agregando línea…' : '+ Agregar línea'}
+              </Button>
+            </div>
+          )}
         </div>
       ) : (
       <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: 'var(--radius-xl)' }}>
@@ -617,6 +628,17 @@ export function CotizacionTab({
           })}
           <TotalsRow variant={variant} visibleCols={visibleCols} products={products} rows={rows} />
         </div>
+        {canAddLines && (
+          <div style={{ padding: '16px', borderTop: '1px solid var(--border)', display: 'flex', gap: 8 }}>
+            <Button
+              variant="secondary"
+              onClick={creatingLine ? undefined : onAddLine}
+              style={{ opacity: creatingLine ? 0.6 : 1 }}
+            >
+              {creatingLine ? 'Agregando línea…' : '+ Agregar línea'}
+            </Button>
+          </div>
+        )}
       </div>
       )}
     </div>
