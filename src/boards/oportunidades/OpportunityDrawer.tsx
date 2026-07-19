@@ -319,7 +319,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
         setNotice({ kind: 'ok', title: 'Oportunidad cancelada', lines: ['La etapa pasó a "Cancelada".'] });
         load();
       } else {
-        setNotice({ kind: 'error', title: 'No se pudo cancelar la oportunidad:', lines: res.errors ?? ['Verifica tu conexión.'] });
+        setNotice({ kind: 'error', title: 'No se pudo cancelar la oportunidad:', lines: [res.error ?? 'Verifica tu conexión.'] });
       }
     } catch {
       setNotice({ kind: 'error', title: 'No se pudo cancelar la oportunidad:', lines: ['Verifica tu conexión.'] });
@@ -334,7 +334,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
         setNotice({ kind: 'ok', title: 'Oportunidad perdida', lines: ['La etapa pasó a "Perdida".'] });
         load();
       } else {
-        setNotice({ kind: 'error', title: 'No se pudo marcar como perdida:', lines: res.errors ?? ['Verifica tu conexión.'] });
+        setNotice({ kind: 'error', title: 'No se pudo marcar como perdida:', lines: [res.error ?? 'Verifica tu conexión.'] });
       }
     } catch {
       setNotice({ kind: 'error', title: 'No se pudo marcar como perdida:', lines: ['Verifica tu conexión.'] });
@@ -349,7 +349,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
         setNotice({ kind: 'ok', title: 'Oportunidad ganada', lines: ['La etapa pasó a "Ganada".'] });
         load();
       } else {
-        setNotice({ kind: 'error', title: 'No se pudo marcar como ganada:', lines: res.errors ?? ['Verifica tu conexión.'] });
+        setNotice({ kind: 'error', title: 'No se pudo marcar como ganada:', lines: [res.error ?? 'Verifica tu conexión.'] });
       }
     } catch {
       setNotice({ kind: 'error', title: 'No se pudo marcar como ganada:', lines: ['Verifica tu conexión.'] });
