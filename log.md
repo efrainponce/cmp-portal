@@ -2,6 +2,11 @@
 
 ## 2026-07-18
 
+- **`fb13878`** — Hacer 'Capturó' y 'Folio' read-only en inventario con autonumeración
+  - Capturó: read-only, auto-rellenado con el nombre del usuario actual de sesión vía `getMe()`.
+  - Folio: read-only, generado automáticamente en secuencia (1, 2, 3…) por el backend.
+    - Backend calcula el máximo folio numérico existente e incrementa.
+    - Frontend indica "Se genera automáticamente".
 - **`c66d9b9`** — Agregar logo de CMP como favicon
   - Link favicon en index.html apuntando a `src/assets/logo.webp`.
 
