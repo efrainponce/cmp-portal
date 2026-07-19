@@ -9,7 +9,7 @@ import { Button } from '../../components/core/Button';
 import { IconPlus } from '../../components/icons';
 import { lastMondayUpdateFromItems } from '../../lib/syncStatus';
 import { CreateRecordModal } from './CreateRecordModal';
-import { EditInstitucionModal } from './EditInstitucionModal';
+import { EditContactoModal } from './EditContactoModal';
 import { useIsMobile } from '../../lib/useIsMobile';
 import type { ItemDTO } from '../../lib/api';
 
@@ -34,7 +34,7 @@ export function GenericBoardView({ slug, title }: Props) {
   // aquí solo aplican los dos catálogos genéricos.
   const createSlug = slug === 'instituciones' || slug === 'contactos' ? slug : null;
   const creatable = createSlug !== null;
-  const canEditInstitucion = slug === 'contactos' && !!cols.find((c) => c.id === 'contact_account')?.w;
+  const canEditContacto = slug === 'contactos' && cols.some((c) => (c.id === 'contact_account' || c.id === 'multiple_person_mm03vqwx') && c.w);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -61,9 +61,9 @@ export function GenericBoardView({ slug, title }: Props) {
         </div>
       </div>
 
-      <div style={{ overflowY: 'auto', flex: 1 }}>
+      <div style={{ overflow: 'auto', flex: 1 }}>
         <BoardStatus status={status}>
-          <BoardTable cols={cols} items={items} onRowClick={canEditInstitucion ? setEditingContact : undefined} />
+          <BoardTable cols={cols} items={items} onRowClick={canEditContacto ? setEditingContact : undefined} />
         </BoardStatus>
       </div>
 
@@ -77,7 +77,7 @@ export function GenericBoardView({ slug, title }: Props) {
       )}
 
       {editingContact && (
-        <EditInstitucionModal
+        <EditContactoModal
           contact={editingContact}
           onClose={() => setEditingContact(null)}
           onSaved={refetch}

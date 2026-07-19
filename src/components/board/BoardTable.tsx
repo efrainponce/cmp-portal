@@ -3,7 +3,7 @@
 // Instituciones, Contactos) — nothing here is board-specific.
 import type { ColMeta, ItemDTO } from '../../lib/api';
 import { CellContent } from './cells';
-import { cellAlign } from './cellHelpers';
+import { cellAlign, renderCellText } from './cellHelpers';
 
 interface BoardTableProps {
   cols: ColMeta[];
@@ -22,38 +22,43 @@ export function BoardTable({ cols, items, onRowClick, emptyLabel = 'Sin elemento
   }
 
   return (
-    <div style={{ overflowX: 'auto' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-        <thead>
-          <tr>
-            <th style={thStyle('left')}>Nombre</th>
-            {visibleCols.map((c) => <th key={c.id} style={thStyle(cellAlign(c))}>{c.title}</th>)}
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((item) => (
-            <tr
-              key={item.id}
-              className={onRowClick ? 'row-hover' : undefined}
-              onClick={() => onRowClick?.(item)}
-              style={{ cursor: onRowClick ? 'pointer' : 'default', borderTop: '1px solid var(--border-subtle)' }}
-            >
-              <td style={tdStyle('left')}>
-                <span style={{ font: '600 13px \'Inter\', sans-serif', color: 'var(--ink)' }}>{item.name}</span>
-                {item.pendingWrite && <span title="guardado, sincronizando…" style={{ marginLeft: 6 }}>⏳</span>}
+    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+      <thead>
+        <tr>
+          <th style={{ ...thStyle('left'), maxWidth: NAME_COL_MAX_WIDTH }}>Nombre</th>
+          {visibleCols.map((c) => <th key={c.id} style={{ ...thStyle(cellAlign(c)), maxWidth: COL_MAX_WIDTH }}>{c.title}</th>)}
+        </tr>
+      </thead>
+      <tbody>
+        {items.map((item) => (
+          <tr
+            key={item.id}
+            className={onRowClick ? 'row-hover' : undefined}
+            onClick={() => onRowClick?.(item)}
+            style={{ cursor: onRowClick ? 'pointer' : 'default', borderTop: '1px solid var(--border-subtle)' }}
+          >
+            <td style={{ ...tdStyle('left'), maxWidth: NAME_COL_MAX_WIDTH, overflow: 'hidden', textOverflow: 'ellipsis' }} title={item.name}>
+              <span style={{ font: '600 13px \'Inter\', sans-serif', color: 'var(--ink)' }}>{item.name}</span>
+              {item.pendingWrite && <span title="guardado, sincronizando…" style={{ marginLeft: 6 }}>⏳</span>}
+            </td>
+            {visibleCols.map((c) => (
+              <td
+                key={c.id}
+                style={{ ...tdStyle(cellAlign(c)), maxWidth: COL_MAX_WIDTH, overflow: 'hidden', textOverflow: 'ellipsis' }}
+                title={renderCellText(c, item.cols[c.id])}
+              >
+                <CellContent col={c} val={item.cols[c.id]} />
               </td>
-              {visibleCols.map((c) => (
-                <td key={c.id} style={tdStyle(cellAlign(c))}>
-                  <CellContent col={c} val={item.cols[c.id]} />
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
+
+const NAME_COL_MAX_WIDTH = 280;
+const COL_MAX_WIDTH = 280;
 
 const thStyle = (align: 'left' | 'right'): React.CSSProperties => ({
   textAlign: align, padding: '9px 14px', font: 'var(--text-micro)',

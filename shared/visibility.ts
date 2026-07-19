@@ -145,12 +145,14 @@ export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
   },
 
   contactos: {
-    ...vis(['name', 'multiple_person_mm03vqwx', 'contact_email',
+    ...vis(['name', 'contact_email',
       'contact_phone', 'text_mm0dz8yj', 'long_text4', 'text_mm454qq1',
       'text_mm45xn3', 'text_mm45tqrm', 'text_mm456fbp', 'text_mm562a0m'], V),
     // Writable since the 2025-04 API bump fixed board_relation writes to this
     // CRM "Account" column (silently no-op'd on 2024-10) — verified live 2026-07-14.
     contact_account: { vis: V, w: WV },   // Institución
+    // Reasignable desde el picker de Contactos (Efraín, 2026-07-18): mismo set que Institución.
+    multiple_person_mm03vqwx: { vis: V, w: WV },   // Vendedor
   },
 
   // Catálogo interno para el picker de "línea manual" en el Proyecto (OC
