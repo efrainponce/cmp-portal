@@ -2,6 +2,11 @@
 
 ## 2026-07-18
 
+- **`0d1c62e`** — Agregar botones Perder, Cancelar y Ganar en drawer de oportunidades
+  - Cancelar: disponible en stages 4 (Nueva oportunidad) y 15 (En costeo), cambia a stage 5 (Cancelada).
+  - Perder: disponible desde stage 7 (Validación) en adelante, cambia a stage 2 (Perdida).
+  - Ganar: disponible desde stage 7 (Validación) en adelante, cambia a stage 1 (Ganada).
+  - Botones compactos (11px font-size, 6px 11px padding) con confirmaciones 2-step vía ConfirmButton.
 - **`fb13878`** — Hacer 'Capturó' y 'Folio' read-only en inventario con autonumeración
   - Capturó: read-only, auto-rellenado con el nombre del usuario actual de sesión vía `getMe()`.
   - Folio: read-only, generado automáticamente en secuencia (1, 2, 3…) por el backend.
