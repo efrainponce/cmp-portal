@@ -2,6 +2,10 @@
 
 ## 2026-07-18
 
+- **`ee3103c`** — Agregar botón "+ Agregar línea" en cotizaciones con productos
+  - Problema: en Nueva oportunidad y borradores de versión, solo se podía agregar la primera línea de producto (el botón desaparecía después de crear la línea).
+  - Solución: ahora el botón "+ Agregar línea" aparece siempre después de la tabla de cotizaciones cuando `canAddLines` es true (Nueva oportunidad y borradores de versión), no solo cuando la tabla está vacía.
+  - Se agregó el botón en dos lugares: en la vista mobile (después de `TotalsRow` con `isMobile`) y en la vista desktop (después de `TotalsRow` sin mobile).
 - **`b6f3749`** — Crear oportunidad sin esperar folio — abre drawer inmediatamente
   - Antes: el modal bloqueaba ~6 segundos esperando que Monday asignara el folio con polling (30 intentos × 200ms).
   - Ahora: crea el item y abre el drawer al instante; el folio se asigna async en background (visible al refrescar el drawer o al actualizar desde Monday).
