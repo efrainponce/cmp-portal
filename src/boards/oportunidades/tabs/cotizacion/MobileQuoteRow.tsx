@@ -10,7 +10,7 @@ import { COL } from '../../../../lib/costeoCalc';
 import { LineDetailPanel } from './LineDetailPanel';
 import {
   type GridCol, type RowEditState, marginColor, suggestedPrecio23, numFrom, displayProducto, cellValue,
-  inputStyle, RowWarning, ETAPA_COSTEO_COLORS,
+  inputStyle, RowWarning, ETAPA_COSTEO_COLORS, getLineWarnings,
   COSTO_DISTR_COL, ETAPA_COSTEO_COL, SUGERIDO_COL, MARGEN_COL,
   PRODUCTO_COL, PRODUCTO_TXT_COL, PRODUCTO_REL_COL, COLOR_COL, COLORES_DISP_COL,
   PRODUCTO_COLOR_DROPDOWN_COL, EMB_STATUS_COL, EMB_LABEL_CON, EMB_LABEL_SIN,
@@ -201,8 +201,17 @@ export function MobileQuoteRow({
     return <span style={{ font: 'var(--text-label)', color: 'var(--ink-secondary)' }}>{cellValue(c, displayVal)}</span>;
   };
 
+  const lineWarnings = getLineWarnings(p, state, variant, catalog);
+
   return (
-    <div style={{ borderTop: '1px solid var(--border-subtle)', background: '#fff', padding: '14px' }}>
+    <div style={{ borderTop: '1px solid var(--border-subtle)', background: lineWarnings.length > 0 ? '#faf8f6' : '#fff', padding: '14px' }}>
+      {lineWarnings.length > 0 && (
+        <div style={{ marginBottom: 10, font: 'var(--text-caption)', color: '#9c4c3d' }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            ⚠️ {lineWarnings.join(' • ')}
+          </span>
+        </div>
+      )}
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
         <button
           type="button"

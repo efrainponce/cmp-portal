@@ -32,7 +32,7 @@ import { LineDetailPanel } from './cotizacion/LineDetailPanel';
 import {
   type RowEditState, EMPTY_ROW, numFrom, marginColor, suggestedPrecio23, inlineEditableCols,
   ETAPA_COSTEO_COLORS, GRID_COLS_COSTEO, GRID_COLS_VENTA, displayProducto, cellValue,
-  inputStyle, RowWarning,
+  inputStyle, RowWarning, getLineWarnings,
   COSTO_DISTR_COL, ETAPA_COSTEO_COL, SUGERIDO_COL, MARGEN_COL,
   PRODUCTO_COL, PRODUCTO_TXT_COL, PRODUCTO_REL_COL, COLOR_COL, COLORES_DISP_COL,
   PRODUCTO_COLOR_DROPDOWN_COL, EMB_STATUS_COL, EMB_LABEL_CON, EMB_LABEL_SIN,
@@ -400,8 +400,16 @@ export function CotizacionTab({
           </div>
           {products.map((p) => {
             const state = rowState(p.id);
+            const lineWarnings = getLineWarnings(p, state, variant, catalog);
             return (
-              <div key={p.id} style={{ borderTop: '1px solid var(--border-subtle)', background: '#fff' }}>
+              <div key={p.id} style={{ borderTop: '1px solid var(--border-subtle)', background: lineWarnings.length > 0 ? '#faf8f6' : '#fff' }}>
+                {lineWarnings.length > 0 && (
+                  <div style={{ padding: '8px 16px 0', font: 'var(--text-caption)', color: '#9c4c3d' }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      ⚠️ {lineWarnings.join(' • ')}
+                    </span>
+                  </div>
+                )}
                 <div style={{
                   display: 'grid', gridTemplateColumns: `1.8fr ${visibleCols.slice(1).map(() => '1fr').join(' ')}`,
                   gap: 14, alignItems: 'center', padding: '12px 16px',

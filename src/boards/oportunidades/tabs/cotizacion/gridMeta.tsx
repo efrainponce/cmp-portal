@@ -207,3 +207,48 @@ export function numFrom(state: RowEditState, product: ItemDTO, colId: string): n
   const n = Number(v?.value ?? v?.text);
   return Number.isFinite(n) ? n : 0;
 }
+
+// Detecta problemas en una línea de cotización — retorna una lista de warnings
+// o array vacío si la línea está completa. Se usa para mostrar un indicador
+// visual (⚠️) al inicio de la fila.
+export function getLineWarnings(
+  product: ItemDTO,
+  state: RowEditState,
+  variant: 'venta' | 'costeo',
+  catalog: ItemDTO[],
+): string[] {
+  const warnings: string[] = [];
+  const displayProd = displayProducto(product, state.preview);
+
+  // Siempre requerido: producto
+  if (!displayProd?.trim()) {
+    warnings.push('Falta producto');
+  }
+
+  // En venta: color es requerido si hay producto
+  if (variant === 'venta' && displayProd?.trim()) {
+    const color = state.editing[COLOR_COL] ?? product.cols[COLOR_COL]?.text ?? '';
+    if (!color.trim()) {
+      warnings.push('Falta color');
+    }
+  }
+
+  // Siempre requerido: cantidad
+  const cantRaw = state.editing['numeric_mkzm6399'] ?? product.cols['numeric_mkzm6399']?.text ?? '';
+  const cantNum = parseFloat(cantRaw);
+  if (!Number.isFinite(cantNum) || cantNum <= 0) {
+    warnings.push('Falta cantidad');
+  }
+
+  // En costeo: debe tener costo distribuido asignado
+  if (variant === 'costeo' && !product.cols[COSTO_DISTR_COL]?.text) {
+    warnings.push('Pendiente de costeo');
+  }
+
+  // En costeo: producto debe estar confirmado
+  if (variant === 'costeo' && !productoConfirmado(product, catalog)) {
+    warnings.push('Sin confirmar');
+  }
+
+  return warnings;
+}
