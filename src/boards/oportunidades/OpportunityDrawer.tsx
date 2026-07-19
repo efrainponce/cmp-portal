@@ -484,13 +484,15 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
           )}
           {stage && !['1', '2', '5'].includes(stage) && (
             <>
-              <ConfirmButton
-                label="Perder"
-                confirmLabel="¿Marcar como perdida?"
-                busyLabel="Marcando…"
-                onConfirm={onPerderOportunidad}
-                style={{ fontSize: '11px', padding: '6px 11px' }}
-              />
+              {stage !== '4' && (
+                <ConfirmButton
+                  label="Perder"
+                  confirmLabel="¿Marcar como perdida?"
+                  busyLabel="Marcando…"
+                  onConfirm={onPerderOportunidad}
+                  style={{ fontSize: '11px', padding: '6px 11px' }}
+                />
+              )}
               {stageAtOrAfter(stage, '6') && (
                 <ConfirmButton
                   label="Ganar"
