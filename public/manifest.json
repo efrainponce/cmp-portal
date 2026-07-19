@@ -1,0 +1,19 @@
+{
+  "name": "CMP Portal",
+  "short_name": "CMP",
+  "description": "CMP Portal - Gestión de cotizaciones y oportunidades",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#ffffff",
+  "theme_color": "#FFA500",
+  "icons": [
+    {
+      "src": "/src/assets/logo.webp",
+      "sizes": "any",
+      "type": "image/webp",
+      "purpose": "any"
+    }
+  ]
+}
