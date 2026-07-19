@@ -205,7 +205,7 @@ function Row({ item, etapaCosteoCol, onClick }: { item: ItemDTO; etapaCosteoCol?
             return <StatusBadge label={dedupeMirrorText(etapaCosteoVal.text)} color={color} tint={tint} />;
           })()}
           <div style={{ font: 'var(--text-caption)', color: 'var(--ink-faint)', marginLeft: 'auto' }}>
-            {fmtSyncAgo(item.syncedAt)}
+            {item.mondayUpdatedAt ? fmtSyncAgo(item.mondayUpdatedAt) : '—'}
           </div>
         </div>
       </div>
@@ -233,7 +233,7 @@ function Row({ item, etapaCosteoCol, onClick }: { item: ItemDTO; etapaCosteoCol?
         })()}
         <MonoTag>{folio}</MonoTag>
         <div style={{ font: 'var(--text-caption)', color: 'var(--ink-faint)', width: 70, textAlign: 'right' }}>
-          {fmtSyncAgo(item.syncedAt)}
+          {item.mondayUpdatedAt ? fmtSyncAgo(item.mondayUpdatedAt) : '—'}
         </div>
       </div>
     </div>

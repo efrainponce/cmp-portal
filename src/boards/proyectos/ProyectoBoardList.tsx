@@ -137,7 +137,7 @@ function Row({ item, estadoProductosCol, onClick }: {
             return <StatusBadge label={dedupeMirrorText(estadoVal.text)} color={color} tint={tint} />;
           })()}
           <div style={{ font: 'var(--text-caption)', color: 'var(--ink-faint)', marginLeft: 'auto' }}>
-            {fechaEntrega ? `Entrega ${fechaEntrega}` : fmtSyncAgo(item.syncedAt)}
+            {fechaEntrega ? `Entrega ${fechaEntrega}` : item.mondayUpdatedAt ? fmtSyncAgo(item.mondayUpdatedAt) : '—'}
           </div>
         </div>
       </div>
@@ -166,7 +166,7 @@ function Row({ item, estadoProductosCol, onClick }: {
         {fechaEntrega && <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)' }}>Entrega {fechaEntrega}</div>}
         <MonoTag>{folio}</MonoTag>
         <div style={{ font: 'var(--text-caption)', color: 'var(--ink-faint)', width: 70, textAlign: 'right' }}>
-          {fmtSyncAgo(item.syncedAt)}
+          {item.mondayUpdatedAt ? fmtSyncAgo(item.mondayUpdatedAt) : '—'}
         </div>
       </div>
     </div>

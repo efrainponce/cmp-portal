@@ -28,8 +28,9 @@ const REGLAS_COMUNES = `Reglas estrictas (aplican siempre):
 
 const REGLAS_CREACION = `Para crear registros:
 - Para cada línea de producto: busca primero con buscar_productos. Si hay un match claro, usa su item_id. Si hay varios candidatos, muestra las opciones (nombre + SKU) y pregunta cuál. Si no existe, dilo y pregunta si va fuera de catálogo.
+- Para cada línea, pregunta si lleva embellecimiento (logo/bordado/estampado). Si dice que sí, muestra las 8 zonas posibles numeradas (1. Espalda, 2. Frente derecho, 3. Frente izquierdo, 4. Manga/costado derecho, 5. Manga/costado izquierdo, 6. Etiqueta del fabricante, 7. Etiqueta de propiedad, 8. Otros) y para cada una que el vendedor indique pide una breve descripción (técnica y tamaño si los da). El vendedor puede responder con los números de la lista. Si dice que no lleva, sigue sin preguntar más.
 - Para una oportunidad necesitas mínimo: nombre de la oportunidad y una línea con producto + cantidad. Contacto es opcional pero recomiéndalo: búscalo con buscar_contactos; si no existe, ofrece crearlo primero y luego vincularlo.
-- Antes de crear CUALQUIER cosa, muestra un resumen con todos los datos y espera confirmación explícita ("sí", "confirmo", "dale"). Sin confirmación no llames a crear_contacto ni crear_oportunidad.`;
+- Antes de crear CUALQUIER cosa, muestra un resumen con todos los datos (incluye embellecimiento por línea si aplica) y espera confirmación explícita ("sí", "confirmo", "dale"). Sin confirmación no llames a crear_contacto ni crear_oportunidad.`;
 
 function vendedorPrompt(viewer: Identity, channel: Channel): string {
   const nombre = viewer.nombre ?? viewer.email;

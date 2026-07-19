@@ -1,10 +1,15 @@
 #!/usr/bin/env node
-// scripts/backfill-r2-files.mjs — copia a R2 los archivos ya subidos por el
-// portal (documento en Proyectos, imágenes de embellecimiento en
-// oportunidades_sub) ANTES de esta migración, usando el mismo esquema de key
-// que worker/lib/r2.ts + worker/lib/embellecimientoImagenes.ts. No es un
-// prerequisito estricto (GET /api/files/... cae de vuelta a Monday si el key
-// no existe), es un pre-warm para que lo viejo también quede servido desde R2.
+// scripts/backfill-r2-files.mjs — copia a R2 los archivos de dos fuentes:
+// (1) lo que el portal mismo sube (documento en Proyectos, imágenes de
+// embellecimiento en oportunidades_sub) — pre-warm, no es prerequisito
+// estricto, GET /api/files/... cae de vuelta a Monday si el key no existe; y
+// (2) lo que genera cmp-tallas subiendo directo a Monday (solicitud de
+// costeo/cotización sin firmar/cotización firmada en Oportunidades, tallas/OC
+// en Proyectos) — aquí SÍ conviene correrlo seguido (fase 2, 2026-07-18): no
+// hay dual-write posible para esas columnas, así que cada archivo nuevo que
+// cmp-tallas genere depende del fallback a Monday hasta que este script lo
+// levante a R2. Mismo esquema de key que worker/lib/r2.ts +
+// worker/lib/embellecimientoImagenes.ts + worker/routes/oportunidades.ts.
 //
 // Usage: node --env-file=.env scripts/backfill-r2-files.mjs [--exec]
 //   (no flag) solo reporta qué se subiría, no toca R2.
@@ -12,7 +17,7 @@
 //
 // A diferencia de hydrate.mjs (que siembra el D1 LOCAL de dev), este script
 // opera contra el bucket R2 de PRODUCCIÓN — está migrando archivos reales que
-// vendedores/compras ya subieron, no hay equivalente "local" que migrar.
+// vendedores/compras/cmp-tallas ya subieron, no hay equivalente "local" que migrar.
 //
 // Reusa fetchItems/fetchAssetPublicUrls de worker/lib/monday.ts (Node 25 carga
 // .ts sin imports cruzados de valor directo, sin bundler). El parseo de
@@ -39,6 +44,18 @@ const PROYECTO_DOCUMENTO_COL = 'file_mm0hayh4';
 const PROYECTO_OPP_REL = 'board_relation_mm0hf0y3';
 const EMBELL_FILE_COL = 'file_mm5akjy5';
 const EMBELL_SEP = '__';
+
+// Documentos que genera cmp-tallas (nunca sube al portal) — mismo mapeo que
+// OPP_FILE_COLS/PROYECTO_FILE_COLS en worker/routes/oportunidades.ts.
+const OPP_FILE_COLS = {
+  'solicitud-costeo': 'file_mm0z6rze',
+  'cotizacion-no-firmada': 'file_mm0fgrzq',
+  'cotizacion-firmada': 'file_mm0zjras',
+};
+const PROYECTO_FILE_COLS = {
+  tallas: 'file_mm0hcrtz',
+  oc: 'file_mm0hj9pn',
+};
 
 function parseFileEntries(columnValues, colId) {
   const col = columnValues.find(c => c.id === colId);
@@ -88,8 +105,24 @@ async function collectTasks() {
     for (const f of parseFileEntries(item.column_values, PROYECTO_DOCUMENTO_COL)) {
       tasks.push({ key: `oportunidades/${oppId}/documento/${f.name}`, assetId: f.assetId, name: f.name });
     }
+    for (const [categoria, colId] of Object.entries(PROYECTO_FILE_COLS)) {
+      for (const f of parseFileEntries(item.column_values, colId)) {
+        tasks.push({ key: `oportunidades/${oppId}/${categoria}/${f.name}`, assetId: f.assetId, name: f.name });
+      }
+    }
   }
   console.log(`proyectos: ${proyectos.length} items revisados`);
+
+  const oportunidades = await fetchAllItems(BOARDS.oportunidades.id);
+  for (const item of oportunidades) {
+    const oppId = Number(item.id);
+    for (const [categoria, colId] of Object.entries(OPP_FILE_COLS)) {
+      for (const f of parseFileEntries(item.column_values, colId)) {
+        tasks.push({ key: `oportunidades/${oppId}/${categoria}/${f.name}`, assetId: f.assetId, name: f.name });
+      }
+    }
+  }
+  console.log(`oportunidades: ${oportunidades.length} items revisados`);
 
   const lineas = await fetchAllItems(BOARDS.oportunidades_sub.id);
   for (const item of lineas) {
@@ -109,12 +142,30 @@ async function collectTasks() {
   return tasks;
 }
 
+// Monday no lanza error si `assets(ids:$ids)` recibe un array grande — devuelve
+// una respuesta 200 con menos assets de los pedidos, igual que el cap implícito
+// (~1000) que documentan para otros endpoints tipo lista sin `limit` explícito.
+// Descubierto en vivo en la fase 2 (2026-07-18): con ~2339 ids en una sola
+// llamada, solo ~1000 resolvían y el resto se reportaba "sin url" sin ningún
+// error — nada que ver con assets inexistentes. Trocear evita el truncamiento.
+const ASSET_URL_CHUNK = 200;
+
+async function fetchAllAssetPublicUrls(assetIds) {
+  const out = new Map();
+  for (let i = 0; i < assetIds.length; i += ASSET_URL_CHUNK) {
+    const chunk = assetIds.slice(i, i + ASSET_URL_CHUNK);
+    const urls = await fetchAssetPublicUrls(env, chunk);
+    for (const [id, url] of urls) out.set(id, url);
+  }
+  return out;
+}
+
 async function main() {
   const tasks = await collectTasks();
   console.log(`\n${tasks.length} archivo(s) a migrar a R2.`);
   if (tasks.length === 0) return;
 
-  const urls = await fetchAssetPublicUrls(env, tasks.map(t => String(t.assetId)));
+  const urls = await fetchAllAssetPublicUrls(tasks.map(t => String(t.assetId)));
   const tmpDir = mkdtempSync(join(tmpdir(), 'r2-backfill-'));
   let ok = 0, fail = 0;
 

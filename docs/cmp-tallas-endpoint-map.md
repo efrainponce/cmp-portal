@@ -1,5 +1,10 @@
 # cmp-tallas — mapa de endpoints y flujos (introspección 2026-07-15)
 
+> Nota 2026-07-18: la tabla "Mapa fase del portal → endpoint" de abajo quedó
+> desactualizada — los 5 flujos que decía "❌ Falta" ya se implementaron
+> (botones + rutas). Se corrigió esa tabla; el resto del doc (endpoints, Make,
+> columnas) sigue vigente.
+
 Fuente: código en `~/Documents/dev/cmp-tallas/api/*.py` + blueprints reales de los
 escenarios de Make (org CMP 6294235, team 1775188). Regla del portal: **disparar,
 nunca reimplementar** (`worker/lib/automations.ts`).
@@ -49,12 +54,12 @@ Proyecto". Al crearse, Make 200 genera solo el archivo de tallas (+60 s).
 | Fase (sidebar) | deal_stage | Acción de usuario | Endpoint | Estado en portal |
 |---|---|---|---|---|
 | Oportunidades | 4 | (automático al crear) carpeta Drive + subcarpetas | create_subfolders vía Make 100 — se dispara solo con el webhook de Monday, incluso para items creados desde el portal/WhatsApp | Nada que llamar; falta mostrar link `link_mm468m26` |
-| Oportunidades | 4 | "Mandar a costeo" | **validar_costeo** (el flujo real: snapshot + PDF + rechazo automático) | ⚠️ Hoy el portal solo valida localmente y cambia stage (`worker/lib/costeo.ts`) — NO genera el PDF de costeo ni snapshotea. Divergencia a resolver |
-| Costeo | 15 | Compras captura costos; pasar a validación | (sin endpoint — cambio de stage manual) | Editable vía columnas; falta botón de avance si se quiere |
-| Validación Costeo | 7 | "Generar Cotización" | generate_cotizacion | ✅ Ruta `POST /api/oportunidades/:id/cotizacion` + `automations.ts` ya existen; falta el botón en la UI del drawer |
-| Documentación y Tallas | 9 | Crear/regenerar archivo de tallas | generate_sheet | ❌ Falta (ruta + botón, sobre el Proyecto ligado) |
-| Documentación y Tallas | 9 | VENDEDOR: validar tallas | confirm_tallas | ❌ Falta |
-| Documentación y Tallas | 9 | COMPRAS: importar tallas | import_tallas | ❌ Falta (destructivo: borra y recrea subitems del Proyecto) |
-| Órdenes de Compra | 8 | Generar OC por proveedor | generate_oc | ❌ Falta |
+| Oportunidades | 4 | "Mandar a costeo" | **validar_costeo** (el flujo real: snapshot + PDF + rechazo automático) | ✅ `worker/lib/costeo.ts` (`enviarACosteo`) llama al endpoint real — snapshotea, genera el PDF y mueve el stage o rechaza |
+| Costeo | 15 | Compras captura costos; pasar a validación | (sin endpoint — cambio de stage manual) | Editable vía columnas; botón "Mandar a Validación de costeo" (`enviar-validacion`) ya existe |
+| Validación Costeo | 7 | "Generar Cotización" | generate_cotizacion | ✅ Ruta + botón en el drawer (`generarCotizacion`, `OpportunityDrawer.tsx`) |
+| Documentación y Tallas | 9 | Crear/regenerar archivo de tallas | generate_sheet | ✅ Botón "Crear/Regenerar archivo de tallas" (`ProyectoSection.tsx`) |
+| Documentación y Tallas | 9 | VENDEDOR: validar tallas | confirm_tallas | ✅ Botón "Validar tallas (vendedor)", gated por rol |
+| Documentación y Tallas | 9 | COMPRAS: importar tallas | import_tallas | ✅ Botón "Importar tallas a Monday (compras)" (destructivo: borra y recrea subitems del Proyecto) |
+| Órdenes de Compra | 8 | Generar OC por proveedor | generate_oc | ✅ Botón general + grid por proveedor con OC individual (`onlyProveedor`, `ProveedorGrid`) |
 | Logística | 1 | — | (sin endpoint; firmados llegan solos vía 801) | Solo lectura de archivos |
 | Catálogo Productos | — | — | sync_producto / generate_ficha / generate_licitacion son pipeline Airtable, no acciones del portal | N/A |

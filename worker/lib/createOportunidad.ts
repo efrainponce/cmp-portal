@@ -4,6 +4,7 @@
 import type { Env } from '../env';
 import type { Identity } from '../../shared/types';
 import { BOARDS } from '../../shared/boards';
+import { EMB_LABEL_CON, EMB_LABEL_SIN, serializeEmbellecimiento } from '../../shared/embellecimiento';
 import { createItem, createSubitem, gql } from './monday';
 import { upsertItem } from '../sync';
 
@@ -27,6 +28,8 @@ const SUB_PRODUCTO_REL = 'board_relation_mkzmafgp'; // "Producto (auto)" → Pro
 const SUB_CANTIDAD = 'numeric_mkzm6399';
 const SUB_COLOR = 'text_mm07s2mg';
 const SUB_COMENTARIOS = 'long_text_mm1hyszv';       // Comentarios Ventas
+const SUB_EMB_STATUS = 'color_mm1b34bg';            // Embellecimiento (status) — mismo id que quoteVersions.ts
+const SUB_EMB_DESC = 'long_text_mm1bj4pt';          // Descripción Embellecimientos
 
 export interface LineaInput {
   /** Free-text product name (subitem name). */
@@ -36,6 +39,8 @@ export interface LineaInput {
   cantidad: number;
   color?: string;
   comentarios?: string;
+  /** Zona (EMBELL_TEMPLATE_KEYS) → descripción libre; solo zonas con texto. */
+  embellecimientoZonas?: Record<string, string>;
 }
 
 export interface OportunidadInput {
@@ -96,6 +101,9 @@ export async function createOportunidad(
     const subCols: Record<string, unknown> = { [SUB_CANTIDAD]: String(l.cantidad) };
     if (l.productoItemId) subCols[SUB_PRODUCTO_REL] = { item_ids: [Number(l.productoItemId)] };
     if (l.color?.trim()) subCols[SUB_COLOR] = l.color.trim();
+    const zonasTexto = serializeEmbellecimiento(l.embellecimientoZonas ?? {});
+    subCols[SUB_EMB_STATUS] = { label: zonasTexto ? EMB_LABEL_CON : EMB_LABEL_SIN };
+    if (zonasTexto) subCols[SUB_EMB_DESC] = zonasTexto;
     const comentarios = [
       l.comentarios?.trim(),
       l.productoItemId ? undefined : 'Producto fuera de catálogo (creado desde WhatsApp).',

@@ -529,7 +529,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
           <div style={{ font: 'var(--text-small-strong)', color: 'var(--ink)', marginBottom: 4 }}>Órdenes de compra a proveedores</div>
           <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)', marginBottom: 10 }}>Cuando se mandan de CMP a los proveedores.</div>
           <PaymentRequestButton slug="oportunidades" itemId={id} kind="proveedor" />
-          <ProyectoOrdenesSection state={proyecto} />
+          <ProyectoOrdenesSection state={proyecto} oppId={id} />
         </div>
       )}
       {activeTab === 'logistica' && (

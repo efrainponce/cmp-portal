@@ -28,17 +28,34 @@ import { canWrite } from '../../shared/visibility';
 // campo de documentación habilitado para upload por ahora (Efraín, 2026-07-17).
 const PROYECTO_DOCUMENTO_COL = 'file_mm0hayh4';
 
+// Documentos que genera cmp-tallas subiendo directo a Monday (nunca al portal,
+// nunca dual-write) — el fallback de /api/files es lo único que los mantiene
+// funcionando vía R2 (fase 2 de la migración, 2026-07-18). Las 3 primeras son
+// columnas de la propia Oportunidad (itemId = oppId, sin lookup); tallas/oc
+// viven en el Proyecto ligado, igual que 'documento'.
+const OPP_FILE_COLS: Record<string, string> = {
+  'solicitud-costeo': 'file_mm0z6rze',
+  'cotizacion-no-firmada': 'file_mm0fgrzq',
+  'cotizacion-firmada': 'file_mm0zjras',
+};
+const PROYECTO_FILE_COLS: Record<string, string> = {
+  'tallas': 'file_mm0hcrtz',
+  'oc': 'file_mm0hj9pn',
+};
+
 // Acciones de cmp-tallas sobre el Proyecto. Cada una exige que el viewer pueda
 // ver el Proyecto (scoping de dal) + un gate de rol que refleja el botón de
 // Monday: confirmar=VENDEDOR, importar/oc=COMPRAS, regenerar=ambos.
 const PROYECTO_ACTIONS: Record<string, {
   roles: string[];
-  run: (env: Env, id: number) => Promise<{ ok: boolean; [k: string]: unknown }>;
+  run: (env: Env, id: number, opts: { onlyProveedor?: string }) => Promise<{ ok: boolean; [k: string]: unknown }>;
 }> = {
   'tallas-regenerar': { roles: ['vendedor', 'compras', 'admin'], run: (env, id) => generateSheet(env, id) },
   'tallas-confirmar': { roles: ['vendedor', 'admin'], run: (env, id) => confirmTallas(env, id) },
   'tallas-importar': { roles: ['compras', 'admin'], run: (env, id) => importTallas(env, id) },
-  'generar-oc': { roles: ['compras', 'admin'], run: (env, id) => generateOC(env, id) },
+  // onlyProveedor: id del item de `proveedores` — genera la OC de un solo proveedor
+  // en vez de todos (ProveedorGrid, botón por tarjeta).
+  'generar-oc': { roles: ['compras', 'admin'], run: (env, id, opts) => generateOC(env, id, { onlyProveedor: opts.onlyProveedor }) },
 };
 
 /** Fallback de /api/files para assetIds aún no migrados a R2 — resuelve el
@@ -336,11 +353,14 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     }
   });
 
-  // Sirve archivos migrados a R2 (documento, embellecimiento — lo que el
-  // portal mismo sube; ver worker/lib/r2.ts). Si el key aún no existe en R2
-  // (archivo viejo, pre-backfill) cae de vuelta a Monday resolviendo el
-  // asset desde el mirror, para que el frontend pueda apuntar siempre a
-  // /api/files/... sin depender del orden del backfill.
+  // Sirve archivos migrados a R2: documento/embellecimiento (los sube el
+  // portal, dual-write real — ver worker/lib/r2.ts) y solicitud-costeo/
+  // cotizacion-no-firmada/cotizacion-firmada/tallas/oc (los genera cmp-tallas
+  // subiendo directo a Monday — sin dual-write posible, así que el fallback de
+  // abajo es el único mecanismo que los sirve, no una optimización). Si el key
+  // aún no existe en R2 (archivo viejo o recién generado por cmp-tallas) cae
+  // de vuelta a Monday resolviendo el asset desde el mirror, para que el
+  // frontend pueda apuntar siempre a /api/files/... sin depender del backfill.
   app.get('/api/files/:key{.+}', async c => {
     const key = c.req.param('key');
     const viewer = c.get('viewer');
@@ -382,6 +402,24 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
         const entry = parseFiles(row.columns)
           .map(f => ({ ...f, split: splitZone(f.name) }))
           .find(f => f.split?.zone === zone && f.split.original === filename);
+        if (!entry) return c.json({ error: 'not found' }, 404);
+        return await proxyMondayAsset(c.env, entry.assetId);
+      }
+
+      if (categoria in OPP_FILE_COLS) {
+        const filename = parts.slice(3).join('/');
+        const row = await getItem(c.env, 'oportunidades', oppId, viewer);
+        if (!row) return c.json({ error: 'not found' }, 404);
+        const entry = parseFiles(row.columns, OPP_FILE_COLS[categoria]).find(f => f.name === filename);
+        if (!entry) return c.json({ error: 'not found' }, 404);
+        return await proxyMondayAsset(c.env, entry.assetId);
+      }
+
+      if (categoria in PROYECTO_FILE_COLS) {
+        const filename = parts.slice(3).join('/');
+        const proyecto = await proyectoForOportunidad(c.env, oppId, viewer);
+        if (!proyecto) return c.json({ error: 'not found' }, 404);
+        const entry = parseFiles(proyecto.columns, PROYECTO_FILE_COLS[categoria]).find(f => f.name === filename);
         if (!entry) return c.json({ error: 'not found' }, 404);
         return await proxyMondayAsset(c.env, entry.assetId);
       }
@@ -554,8 +592,13 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     const row = await getItem(c.env, 'proyectos', itemId, viewer);
     if (!row) return c.json({ error: 'not found' }, 404);
 
+    // Body opcional — solo 'generar-oc' lo usa (onlyProveedor); las otras 3 acciones
+    // siguen llamándose sin body, por eso el .catch cubre el JSON vacío.
+    const body = await c.req.json().catch(() => ({} as Record<string, unknown>));
+    const opts = { onlyProveedor: typeof body.onlyProveedor === 'string' ? body.onlyProveedor : undefined };
+
     try {
-      const result = await action.run(c.env, itemId);
+      const result = await action.run(c.env, itemId, opts);
       // cmp-tallas escribe directo en Monday (links, archivos, subitems) — refresca el mirror.
       await refetchItemTree(c.env, BOARDS.proyectos.id, itemId);
       return c.json(result);

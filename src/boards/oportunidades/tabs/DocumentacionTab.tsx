@@ -27,16 +27,25 @@ export function latestFileUrl(text?: string): string | undefined {
   return files.length ? files[files.length - 1].url : undefined;
 }
 
+/** Reconstruye el key de R2 (durable, sin expirar) en vez de la URL firmada de
+ * Monday que trae el mirror — GET /api/files/... cae de vuelta a Monday por sí
+ * solo si el archivo (generado por cmp-tallas) aún no está en R2 (ver
+ * worker/routes/oportunidades.ts). Estas 3 columnas son de la propia
+ * Oportunidad, así que el key usa item.id directo, sin lookup de Proyecto. */
+function toR2Files(files: DocFile[], oppId: string, categoria: string): DocFile[] {
+  return files.map((f) => ({ ...f, url: `/api/files/oportunidades/${oppId}/${categoria}/${encodeURIComponent(f.name)}` }));
+}
+
 export function DocumentacionTab({ item, proyecto }: { item: ItemDetailDTO; proyecto?: ProyectoState }) {
   return (
     <div style={{ padding: '24px 32px 40px', maxWidth: 920, width: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 20 }}>
-      <DocSection title="Solicitudes de costeo" files={parseFiles(item.cols[SOLICITUDES_COL]?.text)} uploadLabel="Subir solicitud de costeo" />
+      <DocSection title="Solicitudes de costeo" files={toR2Files(parseFiles(item.cols[SOLICITUDES_COL]?.text), item.id, 'solicitud-costeo')} uploadLabel="Subir solicitud de costeo" />
 
       <div>
         <SectionTitle>Cotizaciones</SectionTitle>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 10 }}>
-          <DocSection title={null} accentColor="var(--status-esperando)" label="No firmadas por vendedor" files={parseFiles(item.cols[NO_FIRMADAS_COL]?.text)} uploadLabel="Subir cotización" />
-          <DocSection title={null} accentColor="var(--status-ganada)" label="Firmadas por vendedor" files={parseFiles(item.cols[FIRMADAS_COL]?.text)} uploadLabel="Subir cotización firmada" />
+          <DocSection title={null} accentColor="var(--status-esperando)" label="No firmadas por vendedor" files={toR2Files(parseFiles(item.cols[NO_FIRMADAS_COL]?.text), item.id, 'cotizacion-no-firmada')} uploadLabel="Subir cotización" />
+          <DocSection title={null} accentColor="var(--status-ganada)" label="Firmadas por vendedor" files={toR2Files(parseFiles(item.cols[FIRMADAS_COL]?.text), item.id, 'cotizacion-firmada')} uploadLabel="Subir cotización firmada" />
         </div>
       </div>
 

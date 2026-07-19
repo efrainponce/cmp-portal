@@ -6,6 +6,8 @@
 import type { ColVal, ItemDTO } from '../../../../lib/api';
 import { fmtMoney } from '../../../../lib/format';
 import { COL } from '../../../../lib/costeoCalc';
+import { EMB_STATUS_COL } from '../../../../../shared/embellecimiento';
+export { EMB_STATUS_COL, EMB_LABEL_CON, EMB_LABEL_SIN } from '../../../../../shared/embellecimiento';
 
 export const COSTO_DISTR_COL = 'numeric_mm0bph99';
 export const ETAPA_COSTEO_COL = 'color_mm084gvf';
@@ -36,13 +38,6 @@ export const COLORES_DISP_COL = 'lookup_mkznm0h3';    // mirror: colores disponi
 export const PRODUCTO_COLOR_DROPDOWN_COL = 'dropdown_mkztty4b'; // Color del producto en el catálogo — misma
 // fuente que valida enviarCosteo. Se lee directo del `catalog` ya cargado en memoria (sin esperar
 // al mirror asíncrono del subitem, que solo se puebla después de que Monday recompute la relación).
-
-// Mismo status column y labels que worker/lib/quoteVersions.ts (SUB_EMB_STATUS) —
-// marcar "Con Embellecimiento" aquí es lo que hace que la línea aparezca en la
-// tab Embellecimientos (EmbellecimientosTab filtra por este mismo label).
-export const EMB_STATUS_COL = 'color_mm1b34bg';
-export const EMB_LABEL_CON = 'Con Embellecimiento';
-export const EMB_LABEL_SIN = 'Sin Embellecimiento';
 
 // Rojo <0%, amarillo <20%, verde ≥20% — mismo criterio para una línea o para
 // el total agregado (Efraín, 2026-07-16).

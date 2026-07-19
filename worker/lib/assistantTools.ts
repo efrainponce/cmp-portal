@@ -15,6 +15,7 @@ import type { Identity, MirrorItem, Role } from '../../shared/types';
 import { BOARDS } from '../../shared/boards';
 import { COLUMN_META } from '../../shared/column-meta.gen';
 import { readableCols } from '../../shared/visibility';
+import { EMBELL_TEMPLATE_KEYS } from '../../shared/embellecimiento';
 import { DEAL_STAGE_LABELS, DEAL_STAGE_ORDER, CLOSED_STAGES, stageKeyForLabel } from '../../shared/dealStages';
 import { listItems, getItem, childrenOf } from './dal';
 import { listStock, listMovements, listWarehouses } from './inventory';
@@ -149,7 +150,19 @@ export const TOOLS: Anthropic.Tool[] = [
               producto_item_id: { type: 'number', description: 'item_id del producto en catálogo (de buscar_productos). Omitir SOLO si el producto no existe en catálogo y el usuario confirmó que va fuera de catálogo.' },
               cantidad: { type: 'number', description: 'Cantidad de piezas' },
               color: { type: 'string', description: 'Color solicitado' },
-              comentarios: { type: 'string', description: 'Detalles: tallas, embellecimientos, notas del cliente' },
+              comentarios: { type: 'string', description: 'Detalles: tallas, notas del cliente (embellecimiento va en embellecimiento_zonas, no aquí)' },
+              embellecimiento_zonas: {
+                type: 'array',
+                description: 'Zonas de embellecimiento (logo/bordado/estampado) que el vendedor confirmó para esta línea. Omitir/vacío si la línea no lleva embellecimiento.',
+                items: {
+                  type: 'object',
+                  properties: {
+                    zona: { type: 'string', enum: [...EMBELL_TEMPLATE_KEYS], description: 'Zona exacta de la lista de 8 zonas' },
+                    descripcion: { type: 'string', description: 'Descripción libre de lo que lleva esa zona (técnica/tamaño si el vendedor los dio)' },
+                  },
+                  required: ['zona', 'descripcion'],
+                },
+              },
             },
             required: ['nombre', 'cantidad'],
           },
@@ -581,13 +594,24 @@ export async function runTool(
       }
       case 'crear_oportunidad': {
         const rawLineas = Array.isArray(input.lineas) ? input.lineas as Array<Record<string, unknown>> : [];
-        const lineas: LineaInput[] = rawLineas.map(l => ({
-          nombre: String(l.nombre ?? ''),
-          productoItemId: typeof l.producto_item_id === 'number' ? l.producto_item_id : undefined,
-          cantidad: Number(l.cantidad),
-          color: typeof l.color === 'string' ? l.color : undefined,
-          comentarios: typeof l.comentarios === 'string' ? l.comentarios : undefined,
-        }));
+        const zonaSet: Set<string> = new Set(EMBELL_TEMPLATE_KEYS);
+        const lineas: LineaInput[] = rawLineas.map(l => {
+          const rawZonas = Array.isArray(l.embellecimiento_zonas) ? l.embellecimiento_zonas as Array<Record<string, unknown>> : [];
+          const embellecimientoZonas: Record<string, string> = {};
+          for (const z of rawZonas) {
+            const zona = typeof z.zona === 'string' ? z.zona : '';
+            const descripcion = typeof z.descripcion === 'string' ? z.descripcion.trim() : '';
+            if (zonaSet.has(zona) && descripcion) embellecimientoZonas[zona] = descripcion;
+          }
+          return {
+            nombre: String(l.nombre ?? ''),
+            productoItemId: typeof l.producto_item_id === 'number' ? l.producto_item_id : undefined,
+            cantidad: Number(l.cantidad),
+            color: typeof l.color === 'string' ? l.color : undefined,
+            comentarios: typeof l.comentarios === 'string' ? l.comentarios : undefined,
+            embellecimientoZonas: Object.keys(embellecimientoZonas).length ? embellecimientoZonas : undefined,
+          };
+        });
         const result = await createOportunidad(env, {
           nombre: String(input.nombre ?? ''),
           contactoItemId: typeof input.contacto_item_id === 'number' ? input.contacto_item_id : undefined,

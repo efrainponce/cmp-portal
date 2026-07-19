@@ -13,7 +13,9 @@ export interface RawCol {
 }
 
 // Only these types carry a meaningful parsed `value`; everything else is text-only.
-const PARSE_VALUE_TYPES = new Set(['numbers', 'status', 'people']);
+// board_relation: value crudo es {linked_item_ids:[...]} (worker/lib/monday.ts) — se
+// necesita el id, no solo el texto, para agrupar por proveedor (ProveedorGrid).
+const PARSE_VALUE_TYPES = new Set(['numbers', 'status', 'people', 'board_relation']);
 
 function buildColVal(col: RawCol): ColVal {
   const out: ColVal = { text: col.text ?? '', type: col.type };
