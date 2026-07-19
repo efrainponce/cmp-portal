@@ -2,6 +2,7 @@
 // first click arms it ("¿Confirmar…?"), second click runs. Auto-disarms after
 // 6s so a stray click never fires a DocuSeal email or destructive import.
 import { useEffect, useRef, useState } from 'react';
+import type { CSSProperties } from 'react';
 import { Button, type ButtonVariant } from './Button';
 
 interface Props {
@@ -13,23 +14,25 @@ interface Props {
   disabled?: boolean;
   title?: string;
   onConfirm: () => Promise<void> | void;
+  style?: CSSProperties;
 }
 
-export function ConfirmButton({ label, confirmLabel, busyLabel, variant = 'primary', disabled, title, onConfirm }: Props) {
+export function ConfirmButton({ label, confirmLabel, busyLabel, variant = 'primary', disabled, title, onConfirm, style }: Props) {
   const [armed, setArmed] = useState(false);
   const [busy, setBusy] = useState(false);
   const timer = useRef<number | undefined>(undefined);
 
   useEffect(() => () => window.clearTimeout(timer.current), []);
 
-  if (disabled) return <Button variant="disabled" title={title}>{label}</Button>;
-  if (busy) return <Button variant="disabled">{busyLabel ?? 'Procesando…'}</Button>;
+  if (disabled) return <Button variant="disabled" title={title} style={style}>{label}</Button>;
+  if (busy) return <Button variant="disabled" style={style}>{busyLabel ?? 'Procesando…'}</Button>;
 
   if (!armed) {
     return (
       <Button
         variant={variant}
         title={title}
+        style={style}
         onClick={() => {
           setArmed(true);
           timer.current = window.setTimeout(() => setArmed(false), 6000);
@@ -44,6 +47,7 @@ export function ConfirmButton({ label, confirmLabel, busyLabel, variant = 'prima
     <span style={{ display: 'inline-flex', gap: 6 }}>
       <Button
         variant="danger"
+        style={style}
         onClick={async () => {
           window.clearTimeout(timer.current);
           setArmed(false);

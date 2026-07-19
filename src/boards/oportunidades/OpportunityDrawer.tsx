@@ -12,7 +12,7 @@ import { SyncIndicator } from '../../components/board/SyncIndicator';
 import { useMe } from '../../lib/useMe';
 import {
   useBoards, colForBoard, checkCosteo, checkValidacion, duplicarOportunidad, duplicarVersion, enviarCosteo, enviarValidacion, generarCotizacion, getItemDetail, getVersiones,
-  refreshItem, restaurarVersion, type ItemDetailDTO, type QuoteVersionDTO,
+  refreshItem, restaurarVersion, patchItem, type ItemDetailDTO, type QuoteVersionDTO,
 } from '../../lib/api';
 import { statusIndex } from '../../lib/statusValue';
 import { stageAtOrAfter, type StageBoardKey } from '../../lib/dealStages';
@@ -82,7 +82,7 @@ function ChangeIconButton({ onClick, label }: { onClick: () => void; label: stri
 export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey, onDuplicated }: Props) {
   const isMobile = useIsMobile();
   const me = useMe();
-  const canDuplicate = !!me && me.role !== 'cliente';
+  const canDuplicate = !!me;
   const [duplicating, setDuplicating] = useState(false);
   const { boards } = useBoards();
   const subCols = colForBoard(boards, 'oportunidades_sub');
@@ -311,6 +311,51 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
     }
   };
 
+  const onCancelarOportunidad = async () => {
+    setNotice(null);
+    try {
+      const res = await patchItem('oportunidades', id, { deal_stage: '5' });
+      if (res.ok) {
+        setNotice({ kind: 'ok', title: 'Oportunidad cancelada', lines: ['La etapa pasó a "Cancelada".'] });
+        load();
+      } else {
+        setNotice({ kind: 'error', title: 'No se pudo cancelar la oportunidad:', lines: res.errors ?? ['Verifica tu conexión.'] });
+      }
+    } catch {
+      setNotice({ kind: 'error', title: 'No se pudo cancelar la oportunidad:', lines: ['Verifica tu conexión.'] });
+    }
+  };
+
+  const onPerderOportunidad = async () => {
+    setNotice(null);
+    try {
+      const res = await patchItem('oportunidades', id, { deal_stage: '2' });
+      if (res.ok) {
+        setNotice({ kind: 'ok', title: 'Oportunidad perdida', lines: ['La etapa pasó a "Perdida".'] });
+        load();
+      } else {
+        setNotice({ kind: 'error', title: 'No se pudo marcar como perdida:', lines: res.errors ?? ['Verifica tu conexión.'] });
+      }
+    } catch {
+      setNotice({ kind: 'error', title: 'No se pudo marcar como perdida:', lines: ['Verifica tu conexión.'] });
+    }
+  };
+
+  const onGanarOportunidad = async () => {
+    setNotice(null);
+    try {
+      const res = await patchItem('oportunidades', id, { deal_stage: '1' });
+      if (res.ok) {
+        setNotice({ kind: 'ok', title: 'Oportunidad ganada', lines: ['La etapa pasó a "Ganada".'] });
+        load();
+      } else {
+        setNotice({ kind: 'error', title: 'No se pudo marcar como ganada:', lines: res.errors ?? ['Verifica tu conexión.'] });
+      }
+    } catch {
+      setNotice({ kind: 'error', title: 'No se pudo marcar como ganada:', lines: ['Verifica tu conexión.'] });
+    }
+  };
+
   if (error) return <div style={{ padding: 32, color: 'var(--ink-quiet)' }}>{error}</div>;
   if (!item) return <div style={{ padding: 32 }}>Cargando…</div>;
 
@@ -436,6 +481,33 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
               title={hasPrecio ? 'PDFs con y sin precio + firma del vendedor (DocuSeal)' : 'Ningún producto tiene Precio de Venta — captúralo antes de cotizar'}
               onConfirm={onGenerarCotizacion}
             />
+          )}
+          {(stage === '4' || stage === '15') && (
+            <ConfirmButton
+              label="Cancelar"
+              confirmLabel="¿Cancelar esta oportunidad?"
+              busyLabel="Cancelando…"
+              onConfirm={onCancelarOportunidad}
+              style={{ fontSize: '11px', padding: '6px 11px' }}
+            />
+          )}
+          {stage && ['7', '8', '9'].includes(stage) && (
+            <>
+              <ConfirmButton
+                label="Perder"
+                confirmLabel="¿Marcar como perdida?"
+                busyLabel="Marcando…"
+                onConfirm={onPerderOportunidad}
+                style={{ fontSize: '11px', padding: '6px 11px' }}
+              />
+              <ConfirmButton
+                label="Ganar"
+                confirmLabel="¿Marcar como ganada?"
+                busyLabel="Marcando…"
+                onConfirm={onGanarOportunidad}
+                style={{ fontSize: '11px', padding: '6px 11px' }}
+              />
+            </>
           )}
           <Button variant="secondary" onClick={onCopyLink}>
             <IconLink /> {linkCopied ? 'Copiado' : 'Copiar link'}
