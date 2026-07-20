@@ -82,11 +82,14 @@ export default function CreateOportunidadModal({
   }, []);
 
   // El vendedor que crea es el dueño por default (igual que el bot de WhatsApp).
+  // Se checa contra `vendedores` (no contra el role del viewer) porque admins
+  // también pueden ser dueños de una oportunidad — worker/lib/dal.ts los
+  // incluye en la lista (pedido de Efraín, 2026-07-20).
   useEffect(() => {
-    if (me?.role === 'vendedor' && me.mondayUserId && !cols[COL_VENDEDOR]) {
+    if (me?.mondayUserId && !cols[COL_VENDEDOR] && vendedores.some((v) => v.id === me.mondayUserId)) {
       setCols((c) => ({ ...c, [COL_VENDEDOR]: String(me.mondayUserId) }));
     }
-  }, [me]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [me, vendedores]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Un contacto es "de" un vendedor: la columna Vendedor del board Contactos debe
   // incluirlo. Filtra la lista al vendedor elegido en el form (pedido de Efraín,

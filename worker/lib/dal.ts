@@ -152,11 +152,14 @@ export async function etagFor(env: Env, slug: BoardSlug, viewer: Identity): Prom
 }
 
 // role: 'vendedor' (default) o 'compras' — alimenta los selects de personas del
-// form de nueva oportunidad. Cualquier otro valor cae a 'vendedor'.
+// form de nueva oportunidad. Cualquier otro valor cae a 'vendedor'. Los admins
+// siempre se incluyen en ambas listas (pueden ser dueños de una oportunidad o
+// responsables de compras aunque su fila de identity sea role='admin' — pedido
+// de Efraín, 2026-07-20).
 export async function listVendedores(env: Env, role: string = 'vendedor'): Promise<{ monday_user_id: number; nombre: string }[]> {
   const safeRole = role === 'compras' ? 'compras' : 'vendedor';
   const res = await env.DB
-    .prepare(`SELECT monday_user_id, nombre FROM identity WHERE role = ? AND active = 1 ORDER BY nombre`)
+    .prepare(`SELECT monday_user_id, nombre FROM identity WHERE (role = ? OR role = 'admin') AND active = 1 ORDER BY nombre`)
     .bind(safeRole)
     .all<{ monday_user_id: number; nombre: string }>();
   return res.results ?? [];
