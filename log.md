@@ -2,7 +2,7 @@
 
 ## 2026-07-20
 
-- **`<pendiente>`** — Auto-recuperar sesión de Cloudflare Access cuando queda pegada a otra cuenta
+- **`9a9c3bb`** — Auto-recuperar sesión de Cloudflare Access cuando queda pegada a otra cuenta
   - Reporte de Efraín: a Jorge (webcmp) el login con Google no le pone la cuenta correcta.
   - Causa: la cookie de sesión de Cloudflare Access es independiente de con qué cuenta de Google esté logueado el navegador — si quedó pegada a un correo viejo, el portal sigue viendo ese correo aunque el usuario entre con la cuenta correcta, y no había forma de forzar un re-login desde la UI.
   - Fix en `apiFetch` ([src/lib/apiClient.ts](src/lib/apiClient.ts)): ante un 401 (JWT de Access inválido) o un 403 específicamente de "pide acceso" (mw/identity.ts — correo válido pero no encontrado en `identity`), redirige una sola vez por pestaña a `https://mexicanaproteccion.cloudflareaccess.com/cdn-cgi/access/logout?returnTo=...`, lo que limpia la sesión de Access y fuerza un login de Google fresco; vuelve a la URL donde estaba.
