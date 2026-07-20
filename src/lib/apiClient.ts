@@ -26,12 +26,48 @@ export class AccessError extends Error {
   }
 }
 
+// Cloudflare Access mantiene su propia sesión (independiente de con qué cuenta
+// de Google esté logueado el navegador ahora mismo). Si esa sesión quedó
+// pegada a un correo viejo, el 401/403 nunca se resuelve solo con reintentos
+// normales — hay que tirar la cookie de Access con /cdn-cgi/access/logout y
+// dejar que vuelva a correr el login de Google. Se hace una sola vez por
+// pestaña (sessionStorage) para no entrar en loop con un "pide acceso" real.
+const ACCESS_TEAM_DOMAIN = 'mexicanaproteccion.cloudflareaccess.com';
+const ACCESS_RETRY_KEY = 'cmp:accessRetried';
+
+function isBehindAccess(): boolean {
+  const h = window.location.hostname;
+  return h.endsWith('.mexicanadeproteccion.com') || h.endsWith('.workers.dev');
+}
+
+function recoverFromAccessSession(): boolean {
+  if (!isBehindAccess() || sessionStorage.getItem(ACCESS_RETRY_KEY)) return false;
+  sessionStorage.setItem(ACCESS_RETRY_KEY, '1');
+  const returnTo = encodeURIComponent(window.location.href);
+  window.location.href = `https://${ACCESS_TEAM_DOMAIN}/cdn-cgi/access/logout?returnTo=${returnTo}`;
+  return true;
+}
+
 export async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
   const target = getImpersonateTarget();
   const headers = new Headers(init?.headers);
   if (target) headers.set('X-Impersonate-Email', target);
   const res = await fetch('/api' + path, { credentials: 'same-origin', ...init, headers });
-  if (res.status === 401 || res.status === 403) throw new AccessError(res.status);
+  if (res.status === 401) {
+    if (recoverFromAccessSession()) return new Promise<Response>(() => {});
+    throw new AccessError(401);
+  }
+  if (res.status === 403) {
+    // Solo el 403 de mw/identity.ts ("no encuentro este correo en la tabla
+    // identity") es señal de sesión de Access desalineada; el resto de los
+    // 403 del worker son "forbidden" por rol (usuario correcto, sin permiso
+    // para esa acción) y deben mostrarse tal cual, no gatillar un re-login.
+    const body: unknown = await res.clone().json().catch(() => null);
+    const isIdentityMismatch = !!body && typeof body === 'object' && (body as { error?: string }).error === 'pide acceso';
+    if (isIdentityMismatch && recoverFromAccessSession()) return new Promise<Response>(() => {});
+    throw new AccessError(403);
+  }
+  sessionStorage.removeItem(ACCESS_RETRY_KEY);
   return res;
 }
 
