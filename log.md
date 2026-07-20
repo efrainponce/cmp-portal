@@ -2,6 +2,11 @@
 
 ## 2026-07-20
 
+- **`c96b7bd`** — Ampliar selectores de Vendedor/Compras a admins y completar equipo de Compras
+  - Efraín reportó que no podía elegirse a sí mismo (salinasefrain, role=admin en `identity`) como vendedor al crear una Nueva oportunidad, y que el selector de Compras solo mostraba a Pamela.
+  - Causa: `listVendedores` ([worker/lib/dal.ts](worker/lib/dal.ts)) filtraba estrictamente `role = 'vendedor'`/`'compras'` — los admins nunca entraban aunque también puedan ser dueños de una oportunidad. Fix: se incluye siempre `role IN (rol, 'admin')`. El default automático de Vendedor al abrir el modal (antes gateado a `me.role === 'vendedor'`) ahora se activa para cualquier usuario presente en la lista ya ampliada, sin depender de su rol.
+  - Compras: en D1 solo Pamela tenía `role='compras'` pese a que el team real "Compras" en Monday (consultado vía MCP) tiene 6 personas más. Confirmado el roster con Efraín contra ese team (excluyendo una cuenta personal de prueba, `poncesalinasefrain@gmail.com`) y actualizado `role='compras'` para Josue Rubio, Liliana Chale, Elizabeth Ocaña, Emily Martinez y Luis Enrique Hernandez (UPDATE directo a D1 remoto).
+  - Nota de concurrencia: el working tree traía cambios sueltos de otra sesión en `CreateOportunidadModal.tsx` (fix de date picker), `CotizacionTab.tsx`, `MobileQuoteRow.tsx`, `gridMeta.tsx`, `worker/lib/costeo.ts` y `worker/lib/monday.ts` — se aisló el commit con un patch manual sobre solo el hunk propio en `CreateOportunidadModal.tsx` (`git apply --cached`), el resto se dejó sin commitear.
 - **`9a9c3bb`** — Auto-recuperar sesión de Cloudflare Access cuando queda pegada a otra cuenta
   - Reporte de Efraín: a Jorge (webcmp) el login con Google no le pone la cuenta correcta.
   - Causa: la cookie de sesión de Cloudflare Access es independiente de con qué cuenta de Google esté logueado el navegador — si quedó pegada a un correo viejo, el portal sigue viendo ese correo aunque el usuario entre con la cuenta correcta, y no había forma de forzar un re-login desde la UI.
