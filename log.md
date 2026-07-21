@@ -2,6 +2,11 @@
 
 ## 2026-07-20 (cont.)
 
+- **`ec8ce08`** — Mostrar PDF de solicitud de costeo antes de las cotizaciones en el tab
+  - Efraín pidió, en la pestaña Cotización del drawer, ver también el archivo de solicitud de costeo antes de las tarjetas de Sin firmar/Firmada (mismo patrón visual que ya existía para esas dos).
+  - Nueva tarjeta "Solicitud de costeo" en `CotizacionPdfRow.tsx`, a la izquierda de las otras dos — apunta a `file_mm0z6rze`, la misma columna que `DocumentacionTab.tsx` ya etiquetaba "Solicitudes de costeo" y que ya estaba whitelisteada en `shared/visibility.ts` (no se tocó el whitelist). Existe otra columna (`file_mm10k65a`, "Solicitud Costeo", generada por el botón "Solicitar costeo") que no está expuesta en el mirror — se le avisó a Efraín por si en realidad se refería a esa, no se agregó sin confirmar (regla dura del repo: whitelist es decisión suya).
+  - Extendido el `kind` del endpoint `/api/oportunidades/:id/cotizacion-pdf/:kind` y de `worker/lib/cotizacionPdfs.ts` para el nuevo tercer tipo.
+  - Verificado en vivo con Playwright (OPP-0504): la tarjeta nueva aparece antes de Sin firmar/Firmada y "Ver" abre el PDF correcto en el modal. `tsc --noEmit` y `oxlint` limpios.
 - **`c66550e`** — Compactar altura de filas en listas de boards y tablas de catálogo
   - Efraín reportó demasiado espacio vertical entre filas en la lista de Oportunidades (captura de "NUEVA OPORTUNIDAD"); pidió luego extenderlo a todos los boards, incluyendo Proyectos.
   - Padding de fila reducido de `11px 18px` a `3px 18px` en el `Row` compartido de `StageBoardList.tsx` (Oportunidades/Costeo/Validación/etc.) y del `Row` idéntico en `ProyectoBoardList.tsx` (Documentación y Tallas/Órdenes de Compra/Logística) — mismo patrón, componentes distintos.
