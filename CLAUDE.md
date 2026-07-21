@@ -32,6 +32,9 @@ con el Worker (`/api/*`). Bot de WhatsApp + chat del portal comparten agente Cla
 
 ## Mapa del repo
 
+- **`docs/code-index.md`** — índice curado archivo→propósito+exports de `src/`, `worker/`,
+  `shared/`. **Grepéalo antes de explorar** (ahorra tokens); si algo no cuadra, verifica
+  contra el código.
 - `shared/` — contratos front↔worker: `boards.ts` (ids de boards), `dto.ts`,
   `visibility.ts` (roles/writable), `dealStages.ts` (etapas canon), `column-meta.gen.ts`
   (generado, 2.4k líneas — solo grep), `embellecimiento.ts`, `inventory.ts`.
