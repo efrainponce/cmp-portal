@@ -65,7 +65,7 @@ export async function listItems(env: Env, slug: BoardSlug, viewer: Identity, q?:
     )`;
     binds.push(`%${q}%`, ...SEARCHABLE_COLS, `%${q}%`);
   }
-  sql += ' ORDER BY name LIMIT 4000';
+  sql += ' ORDER BY monday_updated_at DESC LIMIT 4000';
   const res = await env.DB.prepare(sql).bind(...binds).all<MirrorItem>();
   return res.results ?? [];
 }
