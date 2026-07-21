@@ -10,7 +10,7 @@ import {
  * cada total cae exactamente debajo de su columna en vez de una barra aparte
  * (Efraín 2026-07-16: "los quiero abajo de cada columna"). Suma lo que ya
  * trae cada línea (Monday ya calculó subtotal/IVA/costo/utilidad por fila;
- * aquí solo se agregan); el Margen total es ponderado (utilidad total /
+ * aquí solo se agregan); la Utilidad % total es ponderada (utilidad total /
  * subtotal total), no el promedio simple de cada fila. Las columnas sin un
  * total con sentido (SKU, Etapa costeo, Moneda, C/U de costo…) quedan vacías. */
 export function TotalsRow({ variant, visibleCols, products, rows, isMobile = false }: {
@@ -29,8 +29,8 @@ export function TotalsRow({ variant, visibleCols, products, rows, isMobile = fal
     margenGobTotal += numFrom(state, p, COL.margenGobTotal);
   }
   const margenPct = subtotal > 0 ? (utilidadTotal / subtotal) * 100 : 0;
-  // Igual que Margen: ponderado sobre el subtotal total, no el promedio simple
-  // del % de cada fila.
+  // Igual que Utilidad %: ponderado sobre el subtotal total, no el promedio
+  // simple del % de cada fila.
   const margenGobPct = subtotal > 0 ? (margenGobTotal / subtotal) * 100 : 0;
 
   // colId -> { value, color? } — costeo reusa la posición de las columnas
@@ -50,6 +50,7 @@ export function TotalsRow({ variant, visibleCols, products, rows, isMobile = fal
           [COL.precio]: { value: fmtMoney(subtotal) },
           [COL.margenGobPct]: { value: `${margenGobPct.toFixed(1)}%` },
           [COL.margenGobTotal]: { value: fmtMoney(margenGobTotal) },
+          [UTILIDAD_TOTAL_COL]: { value: fmtMoney(utilidadTotal), color: marginColor(margenPct) },
           [MARGEN_COL]: { value: `${margenPct.toFixed(1)}%`, color: marginColor(margenPct) },
         };
 

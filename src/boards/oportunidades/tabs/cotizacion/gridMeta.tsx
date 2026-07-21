@@ -12,7 +12,7 @@ export { EMB_STATUS_COL, EMB_LABEL_CON, EMB_LABEL_SIN } from '../../../../../sha
 export const COSTO_DISTR_COL = 'numeric_mm0bph99';
 export const ETAPA_COSTEO_COL = 'color_mm084gvf';
 export const SUGERIDO_COL = 'numeric_mm2qzzbe';       // P. venta sugerido (auto) — vacío en muchas líneas
-export const MARGEN_COL = 'formula_mkznpw5p';         // Margen % (utilidad/subtotal)
+export const MARGEN_COL = 'formula_mkznpw5p';         // Utilidad % (utilidad/subtotal)
 export const SUBTOTAL_COL = 'formula_mkznmjh6';
 export const IVA_COL = 'formula_mm0rtdqp';
 export const TOTAL_CON_IVA_COL = 'formula_mm00xy0n';
@@ -48,9 +48,9 @@ export function marginColor(pct: number): string {
 }
 
 // Cuando cmp-tallas todavía no generó el Precio de Venta sugerido (columna
-// vacía), se ofrece un fallback calculado con la misma fórmula de Margen que
-// ya usa el resto del tab: Margen% = 1 − MargenGob% − CostoTotalC/U/Precio.
-// Se despeja Precio para Margen% = 23 — un ancla útil mientras compras decide
+// vacía), se ofrece un fallback calculado con la misma fórmula de Utilidad %
+// que ya usa el resto del tab: Utilidad% = 1 − MargenGob% − CostoTotalC/U/Precio.
+// Se despeja Precio para Utilidad% = 23 — un ancla útil mientras compras decide
 // el precio real (Efraín, 2026-07-16).
 export function suggestedPrecio23(costoTotalUnit: number, margenGobPct: number): number | undefined {
   const denom = 1 - 0.23 - margenGobPct / 100;
@@ -124,7 +124,8 @@ export const GRID_COLS_COSTEO: GridCol[] = [
   // TotalsRow. Efraín 2026-07-20: falta el total del margen GOB en la grid
   // de Validación.
   { id: 'formula_mkznsb7m', label: 'Margen Gob Total', align: 'right', kind: 'money', width: 100 },
-  { id: 'formula_mkznpw5p', label: 'Margen', align: 'right', kind: 'percent', width: 72 },
+  { id: 'formula_mkznry25', label: 'Utilidad', align: 'right', kind: 'money', width: 100 },
+  { id: 'formula_mkznpw5p', label: 'Utilidad %', align: 'right', kind: 'percent', width: 80 },
 ];
 
 // Ancho fijo de la columna "Avisos" al final de la grid — siempre presente
