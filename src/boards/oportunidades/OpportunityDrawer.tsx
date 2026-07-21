@@ -334,7 +334,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
   const onCancelarOportunidad = async () => {
     setNotice(null);
     try {
-      const res = await patchItem('oportunidades', id, { deal_stage: '5' });
+      const res = await patchItem('oportunidades', id, { deal_stage: DEAL_STAGE_LABELS['5'] });
       if (res.ok) {
         applyStageOptimistic('5');
         setNotice({ kind: 'ok', title: 'Oportunidad cancelada', lines: ['La etapa pasó a "Cancelada".'] });
@@ -350,7 +350,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
   const onPerderOportunidad = async () => {
     setNotice(null);
     try {
-      const res = await patchItem('oportunidades', id, { deal_stage: '2' });
+      const res = await patchItem('oportunidades', id, { deal_stage: DEAL_STAGE_LABELS['2'] });
       if (res.ok) {
         applyStageOptimistic('2');
         setNotice({ kind: 'ok', title: 'Oportunidad perdida', lines: ['La etapa pasó a "Perdida".'] });
@@ -366,7 +366,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
   const onGanarOportunidad = async () => {
     setNotice(null);
     try {
-      const res = await patchItem('oportunidades', id, { deal_stage: '1' });
+      const res = await patchItem('oportunidades', id, { deal_stage: DEAL_STAGE_LABELS['1'] });
       if (res.ok) {
         applyStageOptimistic('1');
         setNotice({ kind: 'ok', title: 'Oportunidad ganada', lines: ['La etapa pasó a "Ganada".'] });

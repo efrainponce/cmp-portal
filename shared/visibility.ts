@@ -20,7 +20,7 @@ const vis = (ids: string[], r: Role[]): Record<string, ColRule> =>
 
 export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
   oportunidades: {
-    ...vis(['name', 'pulse_id_mm0qcq0m', 'deal_stage',
+    ...vis(['name', 'pulse_id_mm0qcq0m',
       'multiple_person_mm0wt53c', 'deal_expected_close_date',
       'lookup_mm1bs976', 'lookup_mm0xf2r5', 'dropdown_mm03g067', 'lookup_mm0pt4mj',
       'lookup_mkznd66k', 'lookup_mm00p07m', 'date_mm09mv5b', 'file_mm0fgrzq',
@@ -29,6 +29,12 @@ export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
       'date_mm0mc3dj',
       // PROPOSED 2026-07-15 (create-oportunidad form): ¿nuevos productos?
       'color_mm0ex0ed'], V),
+    // Ganar/Perder/Archivar (OpportunityDrawer.tsx) write deal_stage directly via
+    // the generic PATCH — found completely broken (403, unconditionally, for
+    // every role) during the 2026-07-21 stress test: this column had no `w` at
+    // all, so canWrite() always failed. Bug-fixed per Efraín's go-ahead in that
+    // session; same role set as deal_owner/comprador reassignment just below.
+    deal_stage: { vis: V, w: V },
     // PROPOSED writable (per write-path discussion; flip = one-line change):
     text_mm0gje0:       { vis: V, w: WV },   // Vigencia de la cotización
     text_mm0gjrrd:      { vis: V, w: WV },   // Tiempo de entrega
