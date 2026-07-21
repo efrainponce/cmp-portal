@@ -49,6 +49,7 @@ export function TotalsRow({ variant, visibleCols, products, rows, isMobile = fal
           [COL.costoTotalUnit]: { value: fmtMoney(costoTotal) },
           [COL.precio]: { value: fmtMoney(subtotal) },
           [COL.margenGobPct]: { value: `${margenGobPct.toFixed(1)}%` },
+          [COL.margenGobTotal]: { value: fmtMoney(margenGobTotal) },
           [MARGEN_COL]: { value: `${margenPct.toFixed(1)}%`, color: marginColor(margenPct) },
         };
 

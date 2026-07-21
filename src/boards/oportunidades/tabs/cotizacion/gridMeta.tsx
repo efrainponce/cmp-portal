@@ -118,6 +118,12 @@ export const GRID_COLS_COSTEO: GridCol[] = [
   { id: 'numeric_mm2qzzbe', label: 'P. venta sugerido', align: 'right', kind: 'money', width: 92 },
   { id: 'numeric_mkzneg3d', label: 'P. venta', align: 'right', kind: 'money', width: 82 },
   { id: 'numeric_mkznnm5s', label: 'Margen Gob %', align: 'right', kind: 'percent', width: 82 },
+  // Margen Gob Total (money, cantidad × margen gob C/U) — visible en subCols
+  // para compras/admin (AC, shared/visibility.ts) pero nunca se pintaba como
+  // columna: solo se sumaba en silencio para calcular el % ponderado del
+  // TotalsRow. Efraín 2026-07-20: falta el total del margen GOB en la grid
+  // de Validación.
+  { id: 'formula_mkznsb7m', label: 'Margen Gob Total', align: 'right', kind: 'money', width: 100 },
   { id: 'formula_mkznpw5p', label: 'Margen', align: 'right', kind: 'percent', width: 72 },
 ];
 
