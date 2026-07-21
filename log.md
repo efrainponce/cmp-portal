@@ -24,6 +24,13 @@ Sesión de optimización pedida por Efraín (rama `optimizacion/tokens-y-writes`
   - `CLAUDE.md` gana un puntero al índice al inicio del "Mapa del repo" ("grepéalo antes de explorar; si algo no cuadra, verifica contra el código").
   - Índice curado a mano por el subagente (146 entradas) y luego un pase de limpieza (25KB, −26%: se quitaron rutas duplicadas y se dejaron solo nombres de exports).
 
+- **`102b99b`** — Fix: Ganar/Perder/Cancelar oportunidad no escribían `deal_stage` (403 + valor equivocado)
+  - `deal_stage` no tenía entrada `w` en `shared/visibility.ts` — `canWrite()` fallaba siempre, para cualquier rol, sin que nada en la UI lo señalara (los botones parecían funcionar: mostraban el aviso de éxito porque el `applyStageOptimistic` local pintaba la etapa antes de que el PATCH real fallara en el flush).
+  - Además `patchItem` mandaba el índice crudo (`'1'`, `'2'`, `'5'`) en vez del label que Monday espera para columnas de status (regla dura del repo: `{label:"..."}`, nunca el índice) — se cambió a `DEAL_STAGE_LABELS[idx]`, mismo patrón que ya usaba `applyStageOptimistic`.
+  - Encontrado durante una prueba de estrés de la sesión de optimización del día; Efraín dio luz verde para el fix en la misma sesión. `deal_stage` queda con el mismo set de roles (`V`) que el resto de columnas de solo-lectura-para-vendedor ya en esa lista.
+- **`11d37fa`** — UI: renombrar miniatura "Solicitud de costeo" a "Costeo" en el tab Cotización
+  - Efraín pidió acortar el label de la primera tarjeta de PDFs en `CotizacionPdfRow.tsx` (venía de `ec8ce08`); solo cambia el texto visible, no el `kind`/columna/endpoint detrás.
+
 ## 2026-07-20 (cont.)
 
 - **`4ba4a98`** — Agregar columna Margen Gob Total en grid de Costeo/Validación
