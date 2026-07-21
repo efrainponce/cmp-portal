@@ -20,7 +20,7 @@ const callbackUrl = `${BASE_URL.replace(/\/$/, '')}/api/sync/webhook/${WEBHOOK_T
 
 const TOP_LEVEL = ['oportunidades', 'proyectos', 'productos', 'instituciones', 'contactos'];
 const BASE_EVENTS = ['create_item', 'change_column_value', 'change_name', 'item_deleted'];
-const SUBITEM_EVENTS = ['create_subitem', 'change_subitem_column_value'];
+const SUBITEM_EVENTS = ['create_subitem', 'change_subitem_column_value', 'subitem_deleted'];
 const hasSubitems = (slug) => Object.values(BOARDS).some(d => d.parent === slug);
 
 const MUTATION = `mutation($board:ID!,$url:String!,$event:WebhookEventType!){

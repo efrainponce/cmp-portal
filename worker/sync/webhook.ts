@@ -31,7 +31,7 @@ export function syncRoutes(app: Hono<{ Bindings: Env }>): void {
 
     if (!boardId || !itemId) return c.json({ ok: true, skipped: true, reason: 'missing boardId/itemId' });
 
-    if (type === 'item_deleted') {
+    if (type === 'item_deleted' || type === 'subitem_deleted') {
       await c.env.DB.prepare(`DELETE FROM items WHERE board_id = ? AND item_id = ?`)
         .bind(boardId, itemId).run();
       await logSync(c.env, 'webhook', boardId, itemId, true, `${type} — mirror row deleted`);
