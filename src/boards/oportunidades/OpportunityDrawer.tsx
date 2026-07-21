@@ -15,7 +15,7 @@ import {
   refreshItem, restaurarVersion, patchItem, type ItemDetailDTO, type QuoteVersionDTO,
 } from '../../lib/api';
 import { statusIndex } from '../../lib/statusValue';
-import { stageAtOrAfter, type StageBoardKey } from '../../lib/dealStages';
+import { DEAL_STAGE_LABELS, stageAtOrAfter, type StageBoardKey } from '../../lib/dealStages';
 import { useIsMobile } from '../../lib/useIsMobile';
 import { BoardTabsBar, type DrawerTabKey } from './BoardTabsBar';
 import { CotizacionTab } from './tabs/CotizacionTab';
@@ -319,11 +319,24 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
     }
   };
 
+  // Pinta la nueva etapa de inmediato en `item` (deriva `stage` y con él los
+  // botones Perder/Ganar/Archivar y demás condicionales) — el mirror en D1
+  // solo se actualiza cuando llega el echo de Monday, así que sin esto load()
+  // seguía devolviendo la etapa vieja y el botón que se acababa de usar
+  // no desaparecía (Efraín, 2026-07-21).
+  const applyStageOptimistic = (idx: string) => {
+    setItem((cur) => cur ? {
+      ...cur,
+      cols: { ...cur.cols, deal_stage: { ...cur.cols.deal_stage, text: DEAL_STAGE_LABELS[idx] ?? cur.cols.deal_stage?.text ?? '', value: { index: Number(idx) } } },
+    } : cur);
+  };
+
   const onCancelarOportunidad = async () => {
     setNotice(null);
     try {
       const res = await patchItem('oportunidades', id, { deal_stage: '5' });
       if (res.ok) {
+        applyStageOptimistic('5');
         setNotice({ kind: 'ok', title: 'Oportunidad cancelada', lines: ['La etapa pasó a "Cancelada".'] });
         load();
       } else {
@@ -339,6 +352,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
     try {
       const res = await patchItem('oportunidades', id, { deal_stage: '2' });
       if (res.ok) {
+        applyStageOptimistic('2');
         setNotice({ kind: 'ok', title: 'Oportunidad perdida', lines: ['La etapa pasó a "Perdida".'] });
         load();
       } else {
@@ -354,6 +368,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
     try {
       const res = await patchItem('oportunidades', id, { deal_stage: '1' });
       if (res.ok) {
+        applyStageOptimistic('1');
         setNotice({ kind: 'ok', title: 'Oportunidad ganada', lines: ['La etapa pasó a "Ganada".'] });
         load();
       } else {

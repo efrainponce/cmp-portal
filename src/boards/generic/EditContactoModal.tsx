@@ -6,7 +6,9 @@
 import { useEffect, useState } from 'react';
 import { Modal } from '../../components/core/Modal';
 import { SearchInput } from '../../components/forms/SearchInput';
+import { PickerRow } from '../../components/forms/PickerRow';
 import { usePoll, patchItem, getVendedores, type ItemDTO, type VendedorDTO } from '../../lib/api';
+import { useSaveState } from '../../lib/useSaveState';
 
 interface Props {
   contact: ItemDTO;
@@ -26,26 +28,21 @@ export function EditContactoModal({ contact, onClose, onSaved }: Props) {
   const [vendQ, setVendQ] = useState('');
   const [currentVendedor, setCurrentVendedor] = useState(contact.cols[VENDEDOR_COL]?.text || '—');
 
-  const [savingCol, setSavingCol] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  // `saving` guarda el colId que se está escribiendo (no solo un booleano) —
+  // no se usa para distinguir la fila en pantalla (ambas listas se deshabilitan
+  // igual mientras cualquiera de las dos guarda, mismo comportamiento que antes),
+  // pero queda disponible por si hace falta más adelante.
+  const { saving: savingCol, error, run } = useSaveState<string>();
 
   useEffect(() => { getVendedores().then(setVendedores); }, []);
 
   const vendedorOptions = vendedores.filter((v) => v.nombre.toLowerCase().includes(vendQ.trim().toLowerCase()));
 
-  const save = async (colId: string, value: string, applyLocal: () => void) => {
-    setSavingCol(colId);
-    setError(null);
-    try {
-      await patchItem('contactos', contact.id, { [colId]: value });
-      applyLocal();
-      onSaved();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'No se pudo guardar.');
-    } finally {
-      setSavingCol(null);
-    }
-  };
+  const save = (colId: string, value: string, applyLocal: () => void) => run(async () => {
+    await patchItem('contactos', contact.id, { [colId]: value });
+    applyLocal();
+    onSaved();
+  }, colId);
 
   return (
     <Modal title={contact.name} onClose={onClose}>
@@ -59,18 +56,9 @@ export function EditContactoModal({ contact, onClose, onSaved }: Props) {
             {institucionOptions.length === 0 ? (
               <div style={{ padding: 14, font: 'var(--text-label)', color: 'var(--ink-quiet)' }}>Sin resultados.</div>
             ) : institucionOptions.map((inst) => (
-              <div
-                key={inst.id}
-                className="row-hover"
-                onClick={savingCol ? undefined : () => save('contact_account', inst.id, () => setCurrentInstitucion(inst.name))}
-                style={{
-                  padding: '10px 12px', borderBottom: '1px solid var(--border-subtle)',
-                  font: 'var(--text-label)', color: 'var(--ink)',
-                  cursor: savingCol ? 'default' : 'pointer',
-                }}
-              >
+              <PickerRow key={inst.id} onClick={() => save('contact_account', inst.id, () => setCurrentInstitucion(inst.name))} disabled={!!savingCol}>
                 {inst.name}
-              </div>
+              </PickerRow>
             ))}
           </div>
         </div>
@@ -84,18 +72,9 @@ export function EditContactoModal({ contact, onClose, onSaved }: Props) {
             {vendedorOptions.length === 0 ? (
               <div style={{ padding: 14, font: 'var(--text-label)', color: 'var(--ink-quiet)' }}>Sin resultados.</div>
             ) : vendedorOptions.map((v) => (
-              <div
-                key={v.id}
-                className="row-hover"
-                onClick={savingCol ? undefined : () => save(VENDEDOR_COL, String(v.id), () => setCurrentVendedor(v.nombre))}
-                style={{
-                  padding: '10px 12px', borderBottom: '1px solid var(--border-subtle)',
-                  font: 'var(--text-label)', color: 'var(--ink)',
-                  cursor: savingCol ? 'default' : 'pointer',
-                }}
-              >
+              <PickerRow key={v.id} onClick={() => save(VENDEDOR_COL, String(v.id), () => setCurrentVendedor(v.nombre))} disabled={!!savingCol}>
                 {v.nombre}
-              </div>
+              </PickerRow>
             ))}
           </div>
         </div>

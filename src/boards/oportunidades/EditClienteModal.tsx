@@ -5,7 +5,9 @@
 import { useState } from 'react';
 import { Modal } from '../../components/core/Modal';
 import { SearchInput } from '../../components/forms/SearchInput';
+import { PickerRow } from '../../components/forms/PickerRow';
 import { usePoll, patchItem, type ItemDTO } from '../../lib/api';
+import { useSaveState } from '../../lib/useSaveState';
 
 interface Props {
   oppId: string;
@@ -19,21 +21,13 @@ export function EditClienteModal({ oppId, oppName, currentCliente, onClose, onSa
   const [q, setQ] = useState('');
   const { data } = usePoll('contactos', q);
   const options = data?.items ?? [];
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { saving, error, run } = useSaveState();
 
-  const select = async (contacto: ItemDTO) => {
-    setSaving(true);
-    setError(null);
-    try {
-      await patchItem('oportunidades', oppId, { deal_contact: contacto.id });
-      onSaved();
-      onClose();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'No se pudo guardar.');
-      setSaving(false);
-    }
-  };
+  const select = (contacto: ItemDTO) => run(async () => {
+    await patchItem('oportunidades', oppId, { deal_contact: contacto.id });
+    onSaved();
+    onClose();
+  });
 
   return (
     <Modal title={`Cliente — ${oppName}`} onClose={onClose}>
@@ -49,18 +43,9 @@ export function EditClienteModal({ oppId, oppName, currentCliente, onClose, onSa
           {options.length === 0 ? (
             <div style={{ padding: 14, font: 'var(--text-label)', color: 'var(--ink-quiet)' }}>Sin resultados.</div>
           ) : options.map((c) => (
-            <div
-              key={c.id}
-              className="row-hover"
-              onClick={saving ? undefined : () => select(c)}
-              style={{
-                padding: '10px 12px', borderBottom: '1px solid var(--border-subtle)',
-                font: 'var(--text-label)', color: 'var(--ink)',
-                cursor: saving ? 'default' : 'pointer',
-              }}
-            >
+            <PickerRow key={c.id} onClick={() => select(c)} disabled={!!saving}>
               {c.name}
-            </div>
+            </PickerRow>
           ))}
         </div>
         {error && <div style={{ color: 'var(--status-perdida)', font: 'var(--text-label)' }}>{error}</div>}

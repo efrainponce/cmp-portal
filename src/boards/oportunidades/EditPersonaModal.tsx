@@ -6,6 +6,7 @@ import { Modal } from '../../components/core/Modal';
 import { Button } from '../../components/core/Button';
 import { Select } from '../../components/forms/Select';
 import { getVendedores, patchItem, type VendedorDTO } from '../../lib/api';
+import { useSaveState } from '../../lib/useSaveState';
 
 interface Props {
   oppId: string;
@@ -21,23 +22,17 @@ interface Props {
 export function EditPersonaModal({ oppId, oppName, colId, role, label, currentName, onClose, onSaved }: Props) {
   const [options, setOptions] = useState<VendedorDTO[]>([]);
   const [value, setValue] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { saving, error, run, setError } = useSaveState();
 
   useEffect(() => { getVendedores(role).then(setOptions); }, [role]);
 
-  const save = async () => {
+  const save = () => {
     if (!value) { setError(`Falta elegir ${label.toLowerCase()}.`); return; }
-    setSaving(true);
-    setError(null);
-    try {
+    run(async () => {
       await patchItem('oportunidades', oppId, { [colId]: value });
       onSaved();
       onClose();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'No se pudo guardar.');
-      setSaving(false);
-    }
+    });
   };
 
   return (
