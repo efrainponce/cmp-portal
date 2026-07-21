@@ -1,22 +1,23 @@
 // Signed-in user chip: initial avatar + nombre + role badge, from GET /api/me.
-import { useEffect, useState } from 'react';
-import { getMe, logout, type MeDTO } from '../lib/api';
+import { logout } from '../lib/api';
+import { useMe } from '../lib/useMe';
 
 const ROLE_LABELS: Record<string, string> = {
   vendedor: 'Ventas', compras: 'Compras', admin: 'Admin', almacen: 'Almacén',
 };
 
 export function UserChip({ collapsed }: { collapsed: boolean }) {
-  const [me, setMe] = useState<MeDTO | null>(null);
+  const me = useMe();
 
-  useEffect(() => { getMe().then(setMe).catch(() => setMe(null)); }, []);
-
-  const nombre = me?.nombre || me?.email || 'Invitado';
+  // App.tsx ya tapa toda la UI con SessionExpiredScreen si de verdad no hay
+  // sesión — si llegamos aquí con me===null es el parpadeo inicial mientras
+  // carga, no un usuario sin loguear.
+  const nombre = me?.nombre || me?.email || 'Cargando…';
   const roleLabel = me ? (ROLE_LABELS[me.role] ?? me.role) : '—';
 
   return (
     <div
-      title={me ? `${nombre} · ${roleLabel}` : 'Sin sesión'}
+      title={me ? `${nombre} · ${roleLabel}` : 'Cargando…'}
       style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 10px', borderRadius: 'var(--radius-lg)', background: 'var(--bg-raised)', border: '1px solid var(--border)' }}
     >
       <div style={{ width: 24, height: 24, borderRadius: '50%', background: 'var(--accent)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', font: '600 9.5px var(--font-ui)', flex: 'none' }}>

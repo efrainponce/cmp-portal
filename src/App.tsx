@@ -2,9 +2,11 @@ import { lazy, Suspense, useState } from 'react';
 import { Sidebar } from './app/Sidebar';
 import { MobileTopBar } from './app/MobileTopBar';
 import { ImpersonationBanner } from './app/ImpersonationBanner';
+import { SessionExpiredScreen } from './app/SessionExpiredScreen';
 import { ChatBubble } from './components/assistant/ChatBubble';
 import { useRoute } from './lib/routing';
 import { useIsMobile } from './lib/useIsMobile';
+import { useSessionExpired } from './lib/sessionState';
 
 // Cada vista es su propio chunk — el bundle inicial solo trae Sidebar + la vista
 // activa; las demás se cargan al navegar (misma UI, solo carga diferida).
@@ -20,9 +22,12 @@ const InventarioBoard = lazy(() => import('./boards/inventario/InventarioBoard')
 const SettingsPage = lazy(() => import('./app/SettingsPage').then((m) => ({ default: m.SettingsPage })));
 
 function App() {
+  const sessionExpired = useSessionExpired();
   const { board: activeBoard, itemId, navigate } = useRoute();
   const [collapsed, setCollapsed] = useState(false);
   const isMobile = useIsMobile();
+
+  if (sessionExpired) return <SessionExpiredScreen />;
 
   const onOpenChange = (id: string | null) => navigate(activeBoard, id);
   // Duplicar una oportunidad la crea en etapa "Nueva oportunidad" — la nueva

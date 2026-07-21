@@ -9,6 +9,7 @@ import type {
 } from '../../shared/dto';
 import { mockBoardMeta, mockItemDetail, mockPatch } from './mockFallback';
 import { getImpersonateTarget } from './impersonation';
+import { markSessionExpired } from './sessionState';
 
 export type {
   BoardAccessDTO, BoardSlug, ColMeta, ColVal, IdentityDTO, ItemDTO, ItemDetailDTO, ListResponse, MeDTO, MentionUserDTO,
@@ -71,6 +72,7 @@ export async function apiFetch(path: string, init?: RequestInit): Promise<Respon
   const res = await fetch('/api' + path, { credentials: 'same-origin', ...init, headers });
   if (res.status === 401) {
     if (recoverFromAccessSession()) return new Promise<Response>(() => {});
+    markSessionExpired();
     throw new AccessError(401);
   }
   if (res.status === 403) {
@@ -80,7 +82,10 @@ export async function apiFetch(path: string, init?: RequestInit): Promise<Respon
     // para esa acción) y deben mostrarse tal cual, no gatillar un re-login.
     const body: unknown = await res.clone().json().catch(() => null);
     const isIdentityMismatch = !!body && typeof body === 'object' && (body as { error?: string }).error === 'pide acceso';
-    if (isIdentityMismatch && recoverFromAccessSession()) return new Promise<Response>(() => {});
+    if (isIdentityMismatch) {
+      if (recoverFromAccessSession()) return new Promise<Response>(() => {});
+      markSessionExpired();
+    }
     throw new AccessError(403);
   }
   sessionStorage.removeItem(ACCESS_RETRY_KEY);
