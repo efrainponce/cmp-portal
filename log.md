@@ -2,6 +2,11 @@
 
 ## 2026-07-20 (cont.)
 
+- **`c66550e`** — Compactar altura de filas en listas de boards y tablas de catálogo
+  - Efraín reportó demasiado espacio vertical entre filas en la lista de Oportunidades (captura de "NUEVA OPORTUNIDAD"); pidió luego extenderlo a todos los boards, incluyendo Proyectos.
+  - Padding de fila reducido de `11px 18px` a `3px 18px` en el `Row` compartido de `StageBoardList.tsx` (Oportunidades/Costeo/Validación/etc.) y del `Row` idéntico en `ProyectoBoardList.tsx` (Documentación y Tallas/Órdenes de Compra/Logística) — mismo patrón, componentes distintos.
+  - Mismo criterio aplicado a las tablas de catálogo/inventario que comparten el patrón duplicado `thStyle`/`tdStyle` (`BoardTable.tsx` — Productos/Instituciones/Contactos/Proveedores —, `StockTab.tsx`, `MovementsTab.tsx`): celdas de `9-10px` a `5-6px` de padding vertical.
+  - Verificado con Playwright en Oportunidades, Documentación y Tallas y Productos.
 - **`7befccd`** — Board Costeo: ocultar etapas Seguimiento, Negociación, Ganada y Perdida
   - Efraín reportó que el board Costeo mostraba oportunidades de etapas que ya no le corresponden.
   - Causa: `costeo` en `STAGE_BOARDS` ([src/lib/dealStages.ts](src/lib/dealStages.ts)) no tenía `stages` definido, así que `StageBoardList.tsx` no aplicaba ningún filtro (`!config.stages` cae al fallback "pipeline completo", pensado para el board Oportunidades).
