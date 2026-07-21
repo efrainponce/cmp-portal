@@ -77,13 +77,13 @@ export function MovementsTab({ refreshToken }: { refreshToken: number }) {
 }
 
 const thStyle = (align: 'left' | 'right'): React.CSSProperties => ({
-  textAlign: align, padding: '9px 14px', font: 'var(--text-micro)',
+  textAlign: align, padding: '6px 14px', font: 'var(--text-micro)',
   color: 'var(--ink-quiet)', textTransform: 'uppercase', letterSpacing: '.4px',
   borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap',
 });
 
 const tdStyle = (align: 'left' | 'right'): React.CSSProperties => ({
-  textAlign: align, padding: '10px 14px', font: 'var(--text-label)',
+  textAlign: align, padding: '5px 14px', font: 'var(--text-label)',
   color: 'var(--ink-secondary)', whiteSpace: 'nowrap',
 });
 

@@ -150,10 +150,10 @@ function Row({ item, estadoProductosCol, onClick }: {
       onClick={onClick}
       style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16,
-        padding: '11px 18px', background: '#fff', borderTop: '1px solid var(--border-subtle)', cursor: 'pointer',
+        padding: '3px 18px', background: '#fff', borderTop: '1px solid var(--border-subtle)', cursor: 'pointer',
       }}
     >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
         <div style={{ font: 'var(--text-body-strong)', color: 'var(--ink)' }}>{item.name}</div>
         <div style={{ font: 'var(--text-label)', color: 'var(--ink-tertiary)' }}>{institucion}</div>
       </div>
