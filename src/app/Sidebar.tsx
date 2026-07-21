@@ -68,6 +68,8 @@ export function Sidebar({ activeBoard, onSelectBoard, collapsed, onToggleCollaps
   return (
     <div style={{
       width: collapsed ? 60 : 220,
+      height: '100%',
+      minHeight: 0,
       transition: 'var(--transition-collapse)',
       background: 'var(--surface-sidebar)',
       borderRight: '1px solid var(--border)',
@@ -76,6 +78,7 @@ export function Sidebar({ activeBoard, onSelectBoard, collapsed, onToggleCollaps
       flexDirection: 'column',
       flex: 'none',
       boxSizing: 'border-box',
+      overflowY: 'auto',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', height: 32 }}>
         <img src={logo} alt="CMP" style={{ width: 28, height: 28, flex: 'none' }} />
