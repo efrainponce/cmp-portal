@@ -528,7 +528,7 @@ export function CotizacionTab({
             const state = rowState(p.id);
             const lineWarnings = getLineWarnings(p, state, variant, catalog, precioOnly);
             return (
-              <div key={p.id} style={{ background: lineWarnings.length > 0 ? '#fdf1f2' : '#fff' }}>
+              <div key={p.id} style={{ ...gridWrapStyle, background: lineWarnings.length > 0 ? '#fdf1f2' : '#fff' }}>
                 <div style={{
                   ...gridWrapStyle,
                   display: 'grid', gridTemplateColumns: `28px ${colsTemplate(visibleCols)}`,
