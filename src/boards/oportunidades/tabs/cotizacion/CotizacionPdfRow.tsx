@@ -119,7 +119,7 @@ export function CotizacionPdfRow({ oppId, hasSolicitud, hasSinFirmar, hasFirmada
   return (
     <>
       <div style={{ display: 'flex', gap: 16, marginBottom: 16 }}>
-        <PdfThumb oppId={oppId} kind="solicitud_costeo" available={hasSolicitud} label="Solicitud de costeo" accentColor="var(--status-en-coste)" onPreview={() => setPreview('solicitud_costeo')} />
+        <PdfThumb oppId={oppId} kind="solicitud_costeo" available={hasSolicitud} label="Costeo" accentColor="var(--status-en-coste)" onPreview={() => setPreview('solicitud_costeo')} />
         <PdfThumb oppId={oppId} kind="sin_firmar" available={hasSinFirmar} label="Sin firmar" accentColor="var(--status-esperando)" onPreview={() => setPreview('sin_firmar')} />
         <PdfThumb oppId={oppId} kind="firmada" available={hasFirmada} label="Firmada" accentColor="var(--status-ganada)" onPreview={() => setPreview('firmada')} />
       </div>
