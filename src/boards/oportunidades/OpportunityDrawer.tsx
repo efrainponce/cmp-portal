@@ -150,25 +150,40 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
   // no faltara nada — `load()` siempre entrega un objeto nuevo, así que basta
   // con re-correr en cada refetch (Efraín, 2026-07-21: bug reportado en Nueva
   // oportunidad).
+  // Poll de respaldo cada 8s mientras no esté listo: algunas columnas que exige
+  // el chequeo (ej. la ficha comercial, un mirror que Monday calcula después de
+  // ligar el producto) tardan en sincronizar al mirror D1 sin que nada dispare
+  // un refetch del lado del cliente — sin este poll el botón se quedaba
+  // deshabilitado indefinidamente aunque el dato ya fuera válido en Monday
+  // (Efraín, stress test 2026-07-21: nunca se reactivaba con 25 líneas hasta
+  // recargar la página entera).
   useEffect(() => {
     if (!item || boardKey === 'costeo' || boardKey === 'validacion') { setCosteoReady(null); return; }
     let cancelled = false;
-    checkCosteo(id)
-      .then(r => { if (!cancelled) setCosteoReady(r); })
-      .catch(() => { if (!cancelled) setCosteoReady({ ok: true }); }); // el server re-valida al enviar
-    return () => { cancelled = true; };
+    let ready = false;
+    const check = () => checkCosteo(id)
+      .then(r => { if (cancelled) return; setCosteoReady(r); ready = r.ok; })
+      .catch(() => { if (!cancelled) { setCosteoReady({ ok: true }); ready = true; } }); // el server re-valida al enviar
+    check();
+    const interval = setInterval(() => { if (!ready) check(); }, 8000);
+    return () => { cancelled = true; clearInterval(interval); };
   }, [id, stage, item, boardKey]);
 
   // Mismo patrón: corre solo donde aplica el botón (board Costeo, etapa 15) y se
   // vuelve a disparar en cada refetch de `item` — incluye el que dispara
-  // CotizacionTab tras marcar/desmarcar una confirmación de Compras.
+  // CotizacionTab tras marcar/desmarcar una confirmación de Compras. También
+  // hace poll de respaldo (ver nota arriba) porque "descripción y tallas
+  // confirmadas" lo marca Compras desde el catálogo, no desde esta oportunidad.
   useEffect(() => {
     if (!item || stage !== '15' || boardKey !== 'costeo') { setValidacionReady(null); return; }
     let cancelled = false;
-    checkValidacion(id)
-      .then(r => { if (!cancelled) setValidacionReady(r); })
-      .catch(() => { if (!cancelled) setValidacionReady({ ok: true }); }); // el server re-valida al enviar
-    return () => { cancelled = true; };
+    let ready = false;
+    const check = () => checkValidacion(id)
+      .then(r => { if (cancelled) return; setValidacionReady(r); ready = r.ok; })
+      .catch(() => { if (!cancelled) { setValidacionReady({ ok: true }); ready = true; } }); // el server re-valida al enviar
+    check();
+    const interval = setInterval(() => { if (!ready) check(); }, 8000);
+    return () => { cancelled = true; clearInterval(interval); };
   }, [id, stage, item, boardKey]);
 
   const showPostventa = stageAtOrAfter(stage, '9');

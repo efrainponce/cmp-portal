@@ -158,8 +158,12 @@ export async function etagFor(env: Env, slug: BoardSlug, viewer: Identity): Prom
 // de Efraín, 2026-07-20).
 export async function listVendedores(env: Env, role: string = 'vendedor'): Promise<{ monday_user_id: number; nombre: string }[]> {
   const safeRole = role === 'compras' ? 'compras' : 'vendedor';
+  // GROUP BY monday_user_id: una misma persona puede tener más de una fila de
+  // identity (ej. login de trabajo + gmail personal, mismo monday_user_id) —
+  // sin esto salían duplicados en los selects de Vendedor/Compras (mismo id
+  // dos veces => key duplicada de React), encontrado en el stress test 2026-07-21.
   const res = await env.DB
-    .prepare(`SELECT monday_user_id, nombre FROM identity WHERE (role = ? OR role = 'admin') AND active = 1 ORDER BY nombre`)
+    .prepare(`SELECT monday_user_id, nombre FROM identity WHERE (role = ? OR role = 'admin') AND active = 1 GROUP BY monday_user_id ORDER BY nombre`)
     .bind(safeRole)
     .all<{ monday_user_id: number; nombre: string }>();
   return res.results ?? [];

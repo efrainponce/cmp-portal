@@ -52,23 +52,36 @@ export async function submitWrite(
   const types: Record<string, string> = {};
   for (const colId of colIds) types[colId] = boardMeta[colId]?.type ?? 'text';
 
-  // Optimistic merge into the mirror's raw columns array — Monday's refetch will
-  // correct any shape mismatch once the write round-trips (see confirmOutboxEcho).
-  const existing: RawCol[] = JSON.parse(row.columns || '[]');
-  const byId = new Map(existing.map(c => [c.id, c]));
+  // Optimistic merge into el mirror's raw columns array, un UPSERT atómico por
+  // columna via JSON1 (json_each/json_group_array) directo en SQLite en vez de
+  // leer-en-JS + UPDATE del blob completo. El patrón viejo (read row -> mutar en
+  // JS -> UPDATE) tenía una ventana entre el read y el write: dos submitWrite
+  // concurrentes a la MISMA línea pero columnas distintas (ej. Color y Cantidad,
+  // cada edición dispara su propio PATCH) podían leer el mismo `existing` antes
+  // de que cualquiera de los dos escribiera, y el que terminara después pisaba
+  // por completo el cambio del otro — confirmado contra la API real de Monday
+  // durante el stress test 2026-07-21 (pérdida de dato, no solo en el mirror).
+  // Fusionar el arreglo dentro del propio UPDATE hace que SQLite lea y escriba
+  // esa columna en una sola operación atómica, sin ventana de carrera.
+  const now = new Date().toISOString();
   for (const colId of colIds) {
     const canon = canonValue(types[colId], cols[colId]);
-    const merged: RawCol = { id: colId, type: types[colId], text: canon, value: JSON.stringify(canon) };
-    const prev = byId.get(colId);
-    if (prev) Object.assign(prev, merged);
-    else existing.push(merged);
+    const mergedCol: RawCol = { id: colId, type: types[colId], text: canon, value: JSON.stringify(canon) };
+    const mergedJson = JSON.stringify(mergedCol);
+    await env.DB
+      .prepare(
+        `UPDATE items SET columns = CASE
+           WHEN EXISTS (SELECT 1 FROM json_each(columns) WHERE json_extract(value, '$.id') = ?)
+           THEN (SELECT json_group_array(
+             CASE WHEN json_extract(je.value, '$.id') = ? THEN json(?) ELSE je.value END
+           ) FROM json_each(columns) AS je)
+           ELSE json_insert(columns, '$[#]', json(?))
+         END, synced_at = ?
+         WHERE board_id = ? AND item_id = ?`,
+      )
+      .bind(colId, colId, mergedJson, mergedJson, now, board.id, itemId)
+      .run();
   }
-
-  const now = new Date().toISOString();
-  await env.DB
-    .prepare('UPDATE items SET columns = ?, synced_at = ? WHERE board_id = ? AND item_id = ?')
-    .bind(JSON.stringify(existing), now, board.id, itemId)
-    .run();
 
   const canonCols: Record<string, string> = {};
   for (const colId of colIds) canonCols[colId] = canonValue(types[colId], cols[colId]);

@@ -568,9 +568,17 @@ export function CotizacionTab({
                       // que solo se puebla después de que Monday recompute la relación.
                       const productoNombre = displayProducto(p, state.preview);
                       const productoElegido = productoNombre.trim() !== '';
-                      const productoMatch = catalog.find(
-                        (c2) => c2.name.trim().toLowerCase() === productoNombre.trim().toLowerCase(),
-                      );
+                      // Match por relación real (board_relation_mkzmafgp), no por nombre: el
+                      // mirror que se MUESTRA (lookup_mm0x4kda) puede llegar abreviado
+                      // ("Camisa Zero" vs "1104 - Camisa Zero" del catálogo) y entonces el
+                      // match por texto fallaba en silencio — se veía "Sin colores
+                      // configurados" en una línea ya costeada con color guardado
+                      // correctamente (Efraín, stress test 2026-07-21). Solo cae a texto
+                      // libre cuando el producto no está ligado a catálogo (linea sin match).
+                      const linkedId = linkedProductoId(p);
+                      const productoMatch = linkedId != null
+                        ? catalog.find((c2) => Number(c2.id) === linkedId)
+                        : catalog.find((c2) => c2.name.trim().toLowerCase() === productoNombre.trim().toLowerCase());
                       const catalogColores = (productoMatch?.cols[PRODUCTO_COLOR_DROPDOWN_COL]?.text ?? '')
                         .split(',').map((s) => s.trim()).filter(Boolean);
                       const mirrorColores = (p.cols[COLORES_DISP_COL]?.text ?? '')
