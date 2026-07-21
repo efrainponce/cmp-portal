@@ -10,6 +10,9 @@ export interface StageBoardConfig {
   subtitleSuffix: string;       // appended after "{n} activas"
   /** deal_stage values this view filters to; undefined = full pipeline (Oportunidades). */
   stages?: string[];
+  /** deal_stage values this view hides, applied on top of `stages` (or on the
+   * full pipeline when `stages` is undefined). */
+  excludeStages?: string[];
   /** Solo items cuyo nombre empieza con este prefijo (case-insensitive) — mismo
    * board/data que 'oportunidades', filtrado por origen (Efraín, 2026-07-18). */
   namePrefix?: string;
@@ -24,7 +27,10 @@ export const STAGE_BOARDS: Record<StageBoardKey, StageBoardConfig> = {
   // Mismo board/pipeline que 'oportunidades' — sin filtro de etapa, solo items
   // cuyo nombre viene prefijado "WEB -" (leads del sitio web, ya así en Monday).
   oportunidades_web: { key: 'oportunidades_web', title: 'Oportunidades Web', subtitleSuffix: ' · web', namePrefix: 'WEB -', defaultTab: 'cotizacion' },
-  costeo: { key: 'costeo', title: 'Costeo', subtitleSuffix: '', defaultTab: 'cotizacion' },
+  // Sin `stages` (pipeline completo) pero oculta las etapas que ya no
+  // corresponden a costeo: Seguimiento, Negociación, Ganada, Perdida
+  // (Efraín, 2026-07-20).
+  costeo: { key: 'costeo', title: 'Costeo', subtitleSuffix: '', excludeStages: ['0', '3', '1', '2'], defaultTab: 'cotizacion' },
   validacion: { key: 'validacion', title: 'Validación Costeo', subtitleSuffix: ' · validación de precio de venta', stages: ['7', '9'], defaultTab: 'cotizacion' },
   // El Proyecto (docs/tallas) solo existe una vez GANADA la oportunidad
   // (ProyectoSection.tsx) — filtrar aquí a Ganada en vez de Costeo Confirmado

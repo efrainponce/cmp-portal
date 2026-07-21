@@ -75,6 +75,7 @@ export function StageBoardList({ config, groupColId = 'deal_stage', q, onSearch,
   const allItems = data?.items ?? [];
   const stageItems = allItems
     .filter((it) => !config.stages || config.stages.includes(statusIndex(it.cols.deal_stage)))
+    .filter((it) => !config.excludeStages || !config.excludeStages.includes(statusIndex(it.cols.deal_stage)))
     .filter((it) => !config.namePrefix || it.name.trim().toUpperCase().startsWith(config.namePrefix.toUpperCase()));
   const sync = lastMondayUpdateFromItems(stageItems);
 
