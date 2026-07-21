@@ -2,6 +2,11 @@
 
 ## 2026-07-20 (cont.)
 
+- **`4ba4a98`** — Agregar columna Margen Gob Total en grid de Costeo/Validación
+  - Efraín pidió mapear todas las columnas de los subitems de Oportunidades contra la grid y reportó que faltaba el total del margen GOB en Validación.
+  - Auditoría contra `shared/column-meta.gen.ts` (59 columnas reales del subitem board 18395657607) vs `GRID_COLS_COSTEO`/`visibility.ts`: `formula_mkznsb7m` ("Margen Gob Total", dinero por línea) ya estaba en `subCols` para compras/admin (nivel `AC`) y ya se sumaba en `TotalsRow.tsx` internamente solo para el % ponderado — pero nunca se pintaba, ni por línea ni el monto agregado. Distinto de "Costo Total"/"Utilidad Total", que sí se muestran a propósito como agregado bajo las columnas "…C/U" (patrón documentado, sin columna de línea aparte).
+  - Nueva columna "Margen Gob Total" en `GRID_COLS_COSTEO` (gridMeta.tsx), después de "Margen Gob %"; `TotalsRow.tsx` ahora también suma y muestra el monto agregado ahí. Hereda automáticamente el picker "Columnas" y su persistencia en localStorage (`cmp:costeoHiddenCols`), que ya existía y es compartida entre Costeo y Validación (`variant='costeo'` en ambos).
+  - Verificado en vivo con Playwright contra Validación Costeo real (OPP-0369): la columna aparece con $44,951 por línea y en el TOTAL. `tsc --noEmit` y `oxlint` limpios.
 - **`ec8ce08`** — Mostrar PDF de solicitud de costeo antes de las cotizaciones en el tab
   - Efraín pidió, en la pestaña Cotización del drawer, ver también el archivo de solicitud de costeo antes de las tarjetas de Sin firmar/Firmada (mismo patrón visual que ya existía para esas dos).
   - Nueva tarjeta "Solicitud de costeo" en `CotizacionPdfRow.tsx`, a la izquierda de las otras dos — apunta a `file_mm0z6rze`, la misma columna que `DocumentacionTab.tsx` ya etiquetaba "Solicitudes de costeo" y que ya estaba whitelisteada en `shared/visibility.ts` (no se tocó el whitelist). Existe otra columna (`file_mm10k65a`, "Solicitud Costeo", generada por el botón "Solicitar costeo") que no está expuesta en el mirror — se le avisó a Efraín por si en realidad se refería a esa, no se agregó sin confirmar (regla dura del repo: whitelist es decisión suya).
