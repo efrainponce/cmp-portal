@@ -48,6 +48,16 @@ function recoverFromAccessSession(): boolean {
   return true;
 }
 
+/** Cierra la sesión de Cloudflare Access (botón manual "Salir" — el usuario ya
+ * no tiene que teclear /cdn-cgi/access/logout a mano) y vuelve a la raíz para
+ * disparar un login de Google fresco. */
+export function logout() {
+  if (!isBehindAccess()) return;
+  sessionStorage.removeItem(ACCESS_RETRY_KEY);
+  const returnTo = encodeURIComponent(window.location.origin);
+  window.location.href = `https://${ACCESS_TEAM_DOMAIN}/cdn-cgi/access/logout?returnTo=${returnTo}`;
+}
+
 export async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
   const target = getImpersonateTarget();
   const headers = new Headers(init?.headers);
