@@ -1,5 +1,29 @@
 # Log de commits
 
+## 2026-07-21
+
+Sesión de optimización pedida por Efraín (rama `optimizacion/tokens-y-writes`, no `main`): (1) usar menos tokens al trabajar el repo con Claude vía código reutilizable + un índice, (2) escribir a Monday más rápido, (3) preparar la salida de Monday — el punto (3) se **pospuso** por decisión suya tras revisar las opciones; alcance de (1) conservador (extracciones seguras, sin reescribir archivos grandes) y (2) "ambos" (camino de sync + auditoría de UI óptimista). Se orquestó con 2 subagentes Sonnet (worker / UI) + 1 Haiku (índice); Claude revisó cada diff antes de commitear. Plan en `~/.claude/plans/spicy-wishing-pine.md`.
+
+- **`130bc11`** — Acelerar writes a Monday: confirmar desde la mutación, flush en paralelo y claim atómico
+  - Meta 2. El write path ya era óptimista (el PATCH responde `{ok, pending}` al instante y el sync corre en `ctx.waitUntil(flushOutbox)`), así que "más rápido" = menos trabajo/round-trips en el flush, no cambiar la latencia percibida.
+  - `flushGroup` ahora confirma el espejo desde la respuesta de `change_multiple_column_values` (se le pidió devolver `ITEM_FIELDS` con `column_values`) reusando `upsertItem`+`confirmOutboxEcho`, en vez de un `refetchItem` aparte: **elimina un round-trip a Monday por grupo**. Rama defensiva: si la mutación no trae columns utilizables, cae al `refetchItem` clásico.
+  - `flushOutbox` corre los grupos con `Promise.all` (antes en serie, `for...await`).
+  - `claimPendingBatch`: reclama el lote de filas `pending` de forma atómica (`UPDATE ... RETURNING`, marcándolas `sent`) para que dos `flushOutbox` solapados —cada PATCH dispara su propio `waitUntil`— no lean las mismas filas y muten el mismo item dos veces en Monday. Se reusó `'sent'` como marca de reclamo porque el `CHECK` de la tabla no admite un estado nuevo y `dal.ts`/`echo.ts` ya tratan `pending`+`sent` como "en vuelo"; en fallo del mutate las filas regresan a `pending`/`failed`.
+  - Columnas mirror/lookup asíncronas (p.ej. Institución `lookup_mm1bs976`, que Monday recalcula sola tras cambiar Cliente) no vienen en la respuesta inmediata — las recogen el webhook posterior o el reconcile de 6h, **igual que antes** (el `refetchItem` que se reemplaza tampoco las veía al instante). Documentado en comentario para que nadie lo "arregle".
+  - Verificación: `tsc -p tsconfig.worker.json` y `oxlint` limpios; el subagente probó `claimPendingBatch` (`UPDATE...RETURNING`) contra D1 **local** (3 filas reclamadas una sola vez, segundo claim inmediato devuelve 0). Prueba end-to-end contra Monday real pendiente de una edición manual desde el portal (requiere `MONDAY_API_KEY` viva) — riesgo residual acotado por la rama defensiva.
+
+- **`2dce569`** — UI: etapa óptimista en el drawer + hook `useSaveState` y `PickerRow` compartidos
+  - Metas 1 y 2 (parte UI). Auditoría de los 9 call sites reales de `patchItem`: CotizacionTab (2) y EmbellecimientosTab ya eran óptimistas (preview local antes del refetch); los 3 modales cierran/resuelven local al guardar (correcto).
+  - **Hallazgo corregido**: en `OpportunityDrawer` los botones Cancelar/Perder/Ganar hacían el PATCH y luego `load()`, que lee el mirror de D1 — aún con la etapa vieja (echo async de Monday), así que los botones condicionados a `stage` no desaparecían hasta un refresh manual. Nuevo `applyStageOptimistic(idx)` pinta `cols.deal_stage` local al instante (usa `DEAL_STAGE_LABELS` + `{index}`, que es lo que lee `statusIndex`), reconciliando con `load()` como antes.
+  - `useSaveState` (`src/lib/`, hook nuevo `{saving, error, run, setError}`): dedup el patrón `setSaving/try/catch/finally` idéntico en EditCliente/EditPersona/EditContacto. Se verificó que EditPersona sigue validando `if(!value)` antes de `run`, y que EditContacto conserva el bloqueo por `colId`.
+  - `PickerRow` (`src/components/forms/`, componente nuevo): fila clicable de lista con el mismo estilo exacto, reusada por EditCliente y EditContacto (2 listas). Formatters: no se creó nada — `fmtMoney`/`fmtSyncAgo` ya estaban centralizados en `src/lib/format.ts`, sin duplicación real que consolidar.
+  - Verificación: `tsc -p tsconfig.app.json` + `oxlint` limpios (sin warnings nuevos); `npm run build` OK.
+
+- **`c876091`** — Agregar `docs/code-index.md` (índice archivo→propósito+exports) y puntero en CLAUDE.md
+  - Meta 1. Índice curado de `src/`, `worker/` y `shared/` (146 archivos): una línea por archivo con propósito + exports clave, agrupado por área. Objetivo: en sesiones futuras grepear el índice antes de explorar el repo y ahorrar tokens de contexto. `shared/column-meta.gen.ts` marcado como generado (grepear, no leer completo).
+  - `CLAUDE.md` gana un puntero al índice al inicio del "Mapa del repo" ("grepéalo antes de explorar; si algo no cuadra, verifica contra el código").
+  - Índice curado a mano por el subagente (146 entradas) y luego un pase de limpieza (25KB, −26%: se quitaron rutas duplicadas y se dejaron solo nombres de exports).
+
 ## 2026-07-20 (cont.)
 
 - **`4ba4a98`** — Agregar columna Margen Gob Total en grid de Costeo/Validación
