@@ -10,20 +10,24 @@ export function ImpersonationBanner() {
 
   return (
     <div style={{
-      flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-      padding: '7px 16px', background: 'var(--status-seguimiento)', color: '#fff', font: 'var(--text-label-strong)',
+      flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16,
+      padding: '12px 24px', background: '#d32f2f', color: '#fff', font: 'var(--text-label-strong)', borderBottom: '3px solid #b71c1c',
     }}>
-      <span>
-        {me.impersonatedBy.nombre || me.impersonatedBy.email} está viendo el portal como {me.nombre || me.email} ({me.role})
-      </span>
+      <div style={{ flex: 1, textAlign: 'center' }}>
+        <strong style={{ fontSize: 14 }}>⚠️ MODO IMPERSONACIÓN</strong>
+        <div style={{ fontSize: 12, marginTop: 4, opacity: 0.95 }}>
+          {me.impersonatedBy.nombre || me.impersonatedBy.email} viendo como {me.nombre || me.email}
+        </div>
+      </div>
       <button
         onClick={stopImpersonation}
         style={{
-          background: 'rgba(255,255,255,0.2)', border: '1px solid rgba(255,255,255,0.5)', color: '#fff',
-          borderRadius: 'var(--radius-lg)', padding: '3px 10px', font: 'var(--text-label-strong)', cursor: 'pointer',
+          background: '#fff', color: '#d32f2f', border: 'none',
+          borderRadius: 'var(--radius-lg)', padding: '8px 16px', font: '600 13px \'Inter\', sans-serif',
+          cursor: 'pointer', flex: 'none', fontWeight: 'bold',
         }}
       >
-        Salir
+        ← SALIR
       </button>
     </div>
   );
