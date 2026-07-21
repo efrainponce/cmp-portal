@@ -2,6 +2,11 @@
 
 ## 2026-07-20 (cont.)
 
+- **`7befccd`** — Board Costeo: ocultar etapas Seguimiento, Negociación, Ganada y Perdida
+  - Efraín reportó que el board Costeo mostraba oportunidades de etapas que ya no le corresponden.
+  - Causa: `costeo` en `STAGE_BOARDS` ([src/lib/dealStages.ts](src/lib/dealStages.ts)) no tenía `stages` definido, así que `StageBoardList.tsx` no aplicaba ningún filtro (`!config.stages` cae al fallback "pipeline completo", pensado para el board Oportunidades).
+  - Le pregunté a Efraín si además de ocultar esas 4 debía restringirse a una sola etapa (p. ej. solo "En costeo"); eligió mantener el resto del pipeline visible y solo ocultar esas 4. Se agregó `excludeStages?: string[]` a `StageBoardConfig` (whitelist `stages` + ahora blacklist `excludeStages`, aplicados en cascada) en vez de convertir `costeo` en una whitelist estricta.
+  - Nota de concurrencia: el working tree traía cambios sueltos de otra sesión (densidad de tablas, feature de "solicitud de costeo" en PDFs) — se aisló el commit con `git apply --cached` sobre solo el hunk propio en `StageBoardList.tsx`, el resto se dejó sin commitear.
 - **`f9b7480`** — Rediseñar grid de Cotización (compacta, columnas fijas, columna Avisos) + ajustes de UI
   - Sesión larga e iterativa a partir de una captura de referencia que Efraín compartió ("mira como esto se ve sencillo, intenta imitarlo"): la grid de Cotización (`CotizacionTab.tsx`/`gridMeta.tsx`/`MobileQuoteRow.tsx`/`TotalsRow.tsx`) pasó de columnas repartidas en `1fr` (mucho espacio en blanco, chips estirados) a columnas de ancho fijo (`colsTemplate`) con celdas de solo lectura como chip gris plano y las editables en blanco con borde de acento — a propósito distintas, porque en Validación de Costeo P. venta es la única celda escribible de toda la fila y con el mismo tono no se notaba.
   - Columna "Avisos" nueva, siempre presente y de ancho fijo al final de cada grid — antes el aviso de una línea aparecía como celda opcional al final de la fila y las filas con/sin problema quedaban desalineadas entre sí; ahora es una pista real reservada siempre, con o sin contenido. "Sin confirmar"/"Pendiente de costeo"/etc. quedan exclusivos de Costeo — Validación de Costeo solo puede avisar "Falta precio".
