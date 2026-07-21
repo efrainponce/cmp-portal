@@ -13,7 +13,8 @@ export function StatusBadge({ label, color, tint, style }: StatusBadgeProps) {
     <div style={{
       display: 'inline-flex', alignItems: 'center', gap: 6,
       font: 'var(--text-chip)', color, background: tint,
-      padding: '3px 9px', borderRadius: 'var(--radius-pill)', whiteSpace: 'nowrap', ...style,
+      padding: '3px 9px', borderRadius: 'var(--radius-pill)', whiteSpace: 'nowrap',
+      maxWidth: '100%', boxSizing: 'border-box', overflow: 'hidden', textOverflow: 'ellipsis', ...style,
     }}>
       {label}
     </div>
@@ -48,7 +49,8 @@ export function MonoTag({ children, style }: MonoTagProps) {
   return (
     <div style={{
       font: 'var(--text-mono)', color: 'var(--ink-quiet)', background: 'var(--bg-sunken)',
-      padding: '3px 8px', borderRadius: 'var(--radius-sm)', ...style,
+      padding: '3px 8px', borderRadius: 'var(--radius-sm)', maxWidth: '100%', boxSizing: 'border-box',
+      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', ...style,
     }}>
       {children}
     </div>

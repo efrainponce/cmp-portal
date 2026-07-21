@@ -5,16 +5,73 @@
 // no de la cotización), y bloquea "Mandar a Validación de costeo" mientras falte
 // (worker/lib/costeo.ts checkValidacion). Compartido por CotizacionTab (desktop)
 // y MobileQuoteRow.
+//
+// En Costeo/Validación (variant='costeo', ambas comparten variant — ver
+// OpportunityDrawer COSTEO_VARIANT_BOARDS) también muestra el embellecimiento
+// de la línea (solo lectura: status + zonas + imágenes de referencia), para
+// no forzar a Compras/Ventas a saltar a la tab Embellecimientos solo para
+// verlo (Efraín, 2026-07-20). Sin edición ni validación aquí — eso sigue
+// viviendo en EmbellecimientosTab.
+import { useEffect, useState } from 'react';
 import type { ItemDTO } from '../../../../lib/api';
+import { getZoneImages } from '../../../../lib/api';
+import { StatusBadge } from '../../../../components/core/Badges';
+import { EMB_STATUS_COL, EMB_LABEL_CON, explodeEmbellecimiento } from '../../../../lib/embellecimiento';
 import {
   DESCRIPCION_COL, TALLAS_COL, PRODUCTO_CONFIRM_COL, CATALOGO_DESCRIPCION_COL, CATALOGO_TALLAS_COL,
   linkedProductoId,
 } from './gridMeta';
 
+const EMB_DESC_COL = 'long_text_mm1bj4pt';
+
 const fieldLabel: React.CSSProperties = {
   font: '700 9px \'Inter\', sans-serif', color: 'var(--ink-tertiary)',
   textTransform: 'uppercase', letterSpacing: '.3px', marginBottom: 4,
 };
+
+function EmbellecimientoDetail({ product }: { product: ItemDTO }) {
+  const con = product.cols[EMB_STATUS_COL]?.text === EMB_LABEL_CON;
+  const zones = con ? explodeEmbellecimiento(product.cols[EMB_DESC_COL]?.text, true) : [];
+  const [images, setImages] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (!con) return;
+    let cancelled = false;
+    getZoneImages(product.id).then((imgs) => { if (!cancelled) setImages(imgs); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [product.id, con]);
+
+  return (
+    <div>
+      <div style={fieldLabel}>Embellecimiento</div>
+      <div style={{ marginBottom: zones.length > 0 ? 8 : 0 }}>
+        <StatusBadge
+          label={con ? EMB_LABEL_CON : 'Sin Embellecimiento'}
+          color={con ? '#00b461' : '#68737d'}
+          tint={con ? '#d6f5e6' : '#e6e9eb'}
+        />
+      </div>
+      {zones.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {zones.map((z) => (
+            <div key={z.label} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ font: 'var(--text-label)', color: 'var(--ink-secondary)', flex: 1 }}>
+                <span style={{ color: 'var(--ink)' }}>{z.label}:</span> {z.value}
+              </div>
+              {images[z.label] && (
+                <img
+                  src={images[z.label]}
+                  alt={z.label}
+                  style={{ width: 28, height: 28, objectFit: 'cover', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)', flex: 'none' }}
+                />
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function LineDetailPanel({
   product, catalog, variant, canConfirm, saving, error, onToggleConfirm,
@@ -50,6 +107,7 @@ export function LineDetailPanel({
           {tallas || '—'}
         </div>
       </div>
+      {variant === 'costeo' && <EmbellecimientoDetail product={product} />}
       {variant === 'costeo' && (
         productoId == null ? (
           <div style={{ font: 'var(--text-caption)', color: 'var(--status-perdida)' }}>

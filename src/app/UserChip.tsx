@@ -19,21 +19,21 @@ export function UserChip({ collapsed }: { collapsed: boolean }) {
       title={me ? `${nombre} · ${roleLabel}` : 'Sin sesión'}
       style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 10px', borderRadius: 'var(--radius-lg)', background: 'var(--bg-raised)', border: '1px solid var(--border)' }}
     >
-      <div style={{ width: 26, height: 26, borderRadius: '50%', background: 'var(--accent)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', font: 'var(--text-small-strong)', flex: 'none' }}>
+      <div style={{ width: 24, height: 24, borderRadius: '50%', background: 'var(--accent)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', font: '600 9.5px var(--font-ui)', flex: 'none' }}>
         {nombre.slice(0, 1).toUpperCase()}
       </div>
       {!collapsed && (
         <>
           <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ font: 'var(--text-label-strong)', color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{nombre}</div>
-            <div style={{ font: 'var(--text-micro)', color: 'var(--ink-quiet)', textTransform: 'uppercase', letterSpacing: '.4px' }}>{roleLabel}</div>
+            <div style={{ font: '600 9.5px var(--font-ui)', color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{nombre}</div>
+            <div style={{ font: '700 8.5px var(--font-ui)', color: 'var(--ink-quiet)', textTransform: 'uppercase', letterSpacing: '.4px' }}>{roleLabel}</div>
           </div>
           <button
             onClick={logout}
             title="Cerrar sesión"
             style={{
               flex: 'none', border: '1px solid var(--border)', background: 'transparent', color: 'var(--ink-tertiary)',
-              borderRadius: 'var(--radius-lg)', padding: '4px 8px', font: 'var(--text-micro)', cursor: 'pointer',
+              borderRadius: 'var(--radius-lg)', padding: '3px 7px', font: '700 8.5px var(--font-ui)', cursor: 'pointer',
             }}
           >
             Salir

@@ -4,7 +4,7 @@ import { useMe } from '../lib/useMe';
 import logo from '../assets/logo.webp';
 import {
   IconOportunidades, IconGlobe, IconCosteo, IconValidacion, IconDocTallas, IconOrdenesCompra, IconLogistica,
-  IconProductos, IconCuentas, IconClientes, IconInventario, IconCollapse, IconExpand, IconSettings,
+  IconProductos, IconCuentas, IconClientes, IconInventario, IconChevronLeft, IconChevronRight, IconSettings,
 } from '../components/icons';
 
 export type BoardKey =
@@ -73,129 +73,157 @@ export function Sidebar({ activeBoard, onSelectBoard, collapsed, onToggleCollaps
       transition: 'var(--transition-collapse)',
       background: 'var(--surface-sidebar)',
       borderRight: '1px solid var(--border)',
-      padding: '16px 10px',
       display: 'flex',
       flexDirection: 'column',
       flex: 'none',
       boxSizing: 'border-box',
-      overflowY: 'auto',
+      // relative + z-index: el botón de colapsar flota sobre el borde derecho,
+      // encima del panel de contenido (que si no, pinta arriba por ir después en el DOM).
+      position: 'relative',
+      zIndex: 2,
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', height: 32 }}>
-        <img src={logo} alt="CMP" style={{ width: 28, height: 28, flex: 'none' }} />
-        {!collapsed && (
-          <div style={{ font: '800 14px \'Inter\', sans-serif', color: 'var(--ink)', letterSpacing: '.2px', whiteSpace: 'nowrap', overflow: 'hidden' }}>
-            CMP Portal
-          </div>
-        )}
-      </div>
-
-      {ventasItems.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 26 }}>
-          {!collapsed && <SectionLabel>Ventas</SectionLabel>}
-          {ventasItems.map((item) => (
-            <NavItem
-              key={item.key}
-              icon={<item.icon />}
-              label={item.label}
-              active={activeBoard === item.key}
-              collapsed={collapsed}
-              onClick={() => onSelectBoard(item.key)}
-            />
-          ))}
-        </div>
-      )}
-
-      {proyectosItems.length > 0 && (
-        <>
-          <Divider />
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {!collapsed && <SectionLabel color="#7f8f78">Proyectos</SectionLabel>}
-            {proyectosItems.map((item) => (
-              <NavItem
-                key={item.key}
-                icon={<item.icon />}
-                label={item.label}
-                active={activeBoard === item.key}
-                collapsed={collapsed}
-                onClick={() => onSelectBoard(item.key)}
-              />
-            ))}
-          </div>
-        </>
-      )}
-
-      {inventarioItems.length > 0 && (
-        <>
-          <Divider />
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {!collapsed && <SectionLabel color="#a9835a">Inventario</SectionLabel>}
-            {inventarioItems.map((item) => (
-              <NavItem
-                key={item.key}
-                icon={<item.icon />}
-                label={item.label}
-                active={activeBoard === item.key}
-                collapsed={collapsed}
-                onClick={() => onSelectBoard(item.key)}
-              />
-            ))}
-          </div>
-        </>
-      )}
-
-      {catalogItems.length > 0 && (
-        <>
-          <Divider />
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {!collapsed && <SectionLabel>Catálogos</SectionLabel>}
-            {catalogItems.map((item) => (
-              <NavItem
-                key={item.key}
-                icon={<item.icon />}
-                label={item.label}
-                active={activeBoard === item.key}
-                collapsed={collapsed}
-                onClick={() => onSelectBoard(item.key)}
-              />
-            ))}
-          </div>
-        </>
-      )}
-
-      <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {me?.role === 'admin' && (
-          <NavItem
-            icon={<IconSettings />}
-            label="Configuración"
-            active={activeBoard === 'settings'}
-            collapsed={collapsed}
-            onClick={() => onSelectBoard('settings')}
-          />
-        )}
-        <UserChip collapsed={collapsed} />
-        {!hideCollapse && <div
-          className="nav-item"
-          onClick={onToggleCollapsed}
-          title={collapsed ? 'Expandir barra lateral' : 'Colapsar barra lateral'}
-          style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '9px 10px', borderRadius: 'var(--radius-lg)', cursor: 'pointer' }}
-        >
-          <div style={{ width: 18, height: 18, flex: 'none', color: '#877f6f', display: 'flex' }}>
-            {collapsed ? <IconExpand /> : <IconCollapse />}
-          </div>
+      <div style={{
+        flex: 1,
+        minHeight: 0,
+        overflowY: 'auto',
+        overflowX: 'hidden',
+        padding: '16px 10px',
+        display: 'flex',
+        flexDirection: 'column',
+        boxSizing: 'border-box',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', height: 32 }}>
+          <img src={logo} alt="CMP" style={{ width: 28, height: 28, flex: 'none' }} />
           {!collapsed && (
-            <div style={{ font: '600 13px \'Inter\', sans-serif', color: 'var(--ink-secondary)', whiteSpace: 'nowrap' }}>
-              Colapsar barra lateral
+            <div style={{ font: '800 12px \'Inter\', sans-serif', color: 'var(--ink)', letterSpacing: '.2px', whiteSpace: 'nowrap', overflow: 'hidden' }}>
+              CMP Portal
             </div>
           )}
-        </div>}
+        </div>
+
+        {ventasItems.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 26 }}>
+            {!collapsed && <SectionLabel>Ventas</SectionLabel>}
+            {ventasItems.map((item) => (
+              <NavItem
+                key={item.key}
+                icon={<item.icon />}
+                label={item.label}
+                active={activeBoard === item.key}
+                collapsed={collapsed}
+                onClick={() => onSelectBoard(item.key)}
+              />
+            ))}
+          </div>
+        )}
+
+        {proyectosItems.length > 0 && (
+          <>
+            <Divider />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {!collapsed && <SectionLabel color="#7f8f78">Proyectos</SectionLabel>}
+              {proyectosItems.map((item) => (
+                <NavItem
+                  key={item.key}
+                  icon={<item.icon />}
+                  label={item.label}
+                  active={activeBoard === item.key}
+                  collapsed={collapsed}
+                  onClick={() => onSelectBoard(item.key)}
+                />
+              ))}
+            </div>
+          </>
+        )}
+
+        {inventarioItems.length > 0 && (
+          <>
+            <Divider />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {!collapsed && <SectionLabel color="#a9835a">Inventario</SectionLabel>}
+              {inventarioItems.map((item) => (
+                <NavItem
+                  key={item.key}
+                  icon={<item.icon />}
+                  label={item.label}
+                  active={activeBoard === item.key}
+                  collapsed={collapsed}
+                  onClick={() => onSelectBoard(item.key)}
+                />
+              ))}
+            </div>
+          </>
+        )}
+
+        {catalogItems.length > 0 && (
+          <>
+            <Divider />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {!collapsed && <SectionLabel>Catálogos</SectionLabel>}
+              {catalogItems.map((item) => (
+                <NavItem
+                  key={item.key}
+                  icon={<item.icon />}
+                  label={item.label}
+                  active={activeBoard === item.key}
+                  collapsed={collapsed}
+                  onClick={() => onSelectBoard(item.key)}
+                />
+              ))}
+            </div>
+          </>
+        )}
+
+        <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {me?.role === 'admin' && (
+            <NavItem
+              icon={<IconSettings />}
+              label="Configuración"
+              active={activeBoard === 'settings'}
+              collapsed={collapsed}
+              onClick={() => onSelectBoard('settings')}
+            />
+          )}
+          <UserChip collapsed={collapsed} />
+        </div>
       </div>
+
+      {!hideCollapse && (
+        <button
+          type="button"
+          className="sidebar-collapse-btn"
+          onClick={onToggleCollapsed}
+          title={collapsed ? 'Expandir barra lateral' : 'Colapsar barra lateral'}
+          aria-label={collapsed ? 'Expandir barra lateral' : 'Colapsar barra lateral'}
+          style={{
+            position: 'absolute',
+            top: 20,
+            right: -11,
+            width: 22,
+            height: 22,
+            flex: 'none',
+            borderRadius: '50%',
+            border: '1px solid var(--border)',
+            background: 'var(--surface-sidebar)',
+            color: 'var(--ink-secondary)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            boxShadow: '0 1px 2px rgba(0,0,0,.15)',
+            padding: 0,
+          }}
+        >
+          {collapsed ? <IconChevronRight /> : <IconChevronLeft />}
+        </button>
+      )}
     </div>
   );
 }
 
 function SectionLabel({ children, color }: { children: React.ReactNode; color?: string }) {
   return (
-    <div style={{ font: '700 10px \'Inter\', sans-serif', color: color ?? 'var(--ink-quiet)', letterSpacing: '.6px', textTransform: 'uppercase', padding: '0 10px 6px' }}>
+    <div style={{ font: '700 8.5px \'Inter\', sans-serif', color: color ?? 'var(--ink-quiet)', letterSpacing: '.5px', textTransform: 'uppercase', padding: '0 10px 6px' }}>
       {children}
     </div>
   );

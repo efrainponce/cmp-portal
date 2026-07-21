@@ -139,9 +139,17 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
   const stage = item?.cols.deal_stage ? statusIndex(item.cols.deal_stage) : undefined;
 
   // Evitar que den click: el check corre al abrir (y tras refrescar) y el botón
-  // queda deshabilitado — en etapa 4 con la lista de pendientes visible; después
+  // queda deshabilitado — en etapa 4 con los avisos ⚠ visibles por línea; después
   // de etapa 4 el server además exige una versión nueva sin costear (crear una
   // "Nueva versión" reactiva el botón — Efraín, 2026-07-17).
+  //
+  // Depende de `item` completo (no de `item?.syncedAt`): syncedAt es el mirror
+  // de la OPORTUNIDAD y las correcciones típicas (producto/color/cantidad/ficha)
+  // viven en las líneas (subitems), así que ese timestamp no avanzaba al
+  // corregir una línea y el botón se quedaba pegado en deshabilitado aunque ya
+  // no faltara nada — `load()` siempre entrega un objeto nuevo, así que basta
+  // con re-correr en cada refetch (Efraín, 2026-07-21: bug reportado en Nueva
+  // oportunidad).
   useEffect(() => {
     if (!item || boardKey === 'costeo' || boardKey === 'validacion') { setCosteoReady(null); return; }
     let cancelled = false;
@@ -149,11 +157,11 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
       .then(r => { if (!cancelled) setCosteoReady(r); })
       .catch(() => { if (!cancelled) setCosteoReady({ ok: true }); }); // el server re-valida al enviar
     return () => { cancelled = true; };
-  }, [id, stage, item?.syncedAt, boardKey]);
+  }, [id, stage, item, boardKey]);
 
   // Mismo patrón: corre solo donde aplica el botón (board Costeo, etapa 15) y se
-  // vuelve a disparar cuando `item?.syncedAt` avanza — incluye el refetch que
-  // dispara CotizacionTab tras marcar/desmarcar una confirmación de Compras.
+  // vuelve a disparar en cada refetch de `item` — incluye el que dispara
+  // CotizacionTab tras marcar/desmarcar una confirmación de Compras.
   useEffect(() => {
     if (!item || stage !== '15' || boardKey !== 'costeo') { setValidacionReady(null); return; }
     let cancelled = false;
@@ -161,7 +169,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
       .then(r => { if (!cancelled) setValidacionReady(r); })
       .catch(() => { if (!cancelled) setValidacionReady({ ok: true }); }); // el server re-valida al enviar
     return () => { cancelled = true; };
-  }, [id, stage, item?.syncedAt, boardKey]);
+  }, [id, stage, item, boardKey]);
 
   const showPostventa = stageAtOrAfter(stage, '9');
   const proyecto = useProyecto(id, !!item && showPostventa);
@@ -389,8 +397,6 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
   // Generar cotización (etapa 7): cmp-tallas la omite si ningún producto tiene
   // precio — mejor deshabilitar el botón desde aquí con la razón visible.
   const hasPrecio = products.some(p => (Number((p.cols[PRECIO_COL]?.text ?? '').replace(/,/g, '')) || 0) > 0);
-  const costeoPending = stage === '4' && !readOnlyCosteo && costeoReady !== null && !costeoReady.ok;
-  const validacionPending = stage === '15' && readOnlyCosteo && validacionReady !== null && !validacionReady.ok;
 
   return (
     <div style={{ position: 'absolute', inset: 0, background: 'var(--bg)', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
@@ -455,7 +461,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
               busyLabel="Validando y generando PDF…"
               disabled={costeoReady === null || !costeoReady.ok}
               title={costeoReady === null ? 'Verificando requisitos…'
-                : !costeoReady.ok ? (stage === '4' ? 'Faltan requisitos — revisa la lista abajo' : (costeoReady.errors?.[0] ?? 'No disponible todavía'))
+                : !costeoReady.ok ? (stage === '4' ? 'Faltan requisitos — revisa los avisos ⚠ en cada línea' : (costeoReady.errors?.[0] ?? 'No disponible todavía'))
                 : 'Genera el PDF de solicitud y pasa a "En costeo"'}
               onConfirm={onEnviarCosteo}
             />
@@ -467,7 +473,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
               busyLabel="Mandando a validación…"
               disabled={validacionReady === null || !validacionReady.ok}
               title={validacionReady === null ? 'Verificando requisitos…'
-                : !validacionReady.ok ? 'Faltan confirmaciones de Compras — revisa la lista abajo'
+                : !validacionReady.ok ? 'Faltan confirmaciones de Compras — revisa los avisos ⚠ en cada línea'
                 : "Pasa la etapa a 'Costeo en validación'"}
               onConfirm={onEnviarValidacion}
             />
@@ -517,34 +523,6 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
           <Button variant="secondary" onClick={onRefresh}>{refreshing ? 'Actualizando…' : 'Actualizar'}</Button>
         </div>
       </div>
-
-      {costeoPending && !notice && (
-        <div style={{
-          margin: isMobile ? '12px 14px 0' : '14px 32px 0', padding: '12px 16px', border: '1px solid var(--status-esperando)',
-          borderRadius: 'var(--radius-lg)', background: 'var(--bg-raised)',
-        }}>
-          <div style={{ font: 'var(--text-label-strong)', color: 'var(--status-esperando)', marginBottom: 6 }}>
-            Para mandar a costeo falta:
-          </div>
-          {(costeoReady?.errors ?? []).map((e, i) => (
-            <div key={i} style={{ font: 'var(--text-label)', color: 'var(--ink-secondary)', marginTop: 2 }}>• {e}</div>
-          ))}
-        </div>
-      )}
-
-      {validacionPending && !notice && (
-        <div style={{
-          margin: isMobile ? '12px 14px 0' : '14px 32px 0', padding: '12px 16px', border: '1px solid var(--status-esperando)',
-          borderRadius: 'var(--radius-lg)', background: 'var(--bg-raised)',
-        }}>
-          <div style={{ font: 'var(--text-label-strong)', color: 'var(--status-esperando)', marginBottom: 6 }}>
-            Para mandar a validación falta:
-          </div>
-          {(validacionReady?.errors ?? []).map((e, i) => (
-            <div key={i} style={{ font: 'var(--text-label)', color: 'var(--ink-secondary)', marginTop: 2 }}>• {e}</div>
-          ))}
-        </div>
-      )}
 
       {notice && (
         <div style={{

@@ -10,11 +10,11 @@ import { COL } from '../../../../lib/costeoCalc';
 import { LineDetailPanel } from './LineDetailPanel';
 import {
   type GridCol, type RowEditState, marginColor, suggestedPrecio23, numFrom, displayProducto, cellValue,
-  inputStyle, RowWarning, ETAPA_COSTEO_COLORS, getLineWarnings,
-  COSTO_DISTR_COL, ETAPA_COSTEO_COL, SUGERIDO_COL, MARGEN_COL,
+  inputStyle, valueChipStyle, ETAPA_COSTEO_COLORS, getLineWarnings,
+  ETAPA_COSTEO_COL, SUGERIDO_COL, MARGEN_COL,
   PRODUCTO_COL, PRODUCTO_TXT_COL, PRODUCTO_REL_COL, COLOR_COL, COLORES_DISP_COL,
   PRODUCTO_COLOR_DROPDOWN_COL, EMB_STATUS_COL, EMB_LABEL_CON, EMB_LABEL_SIN,
-  productoConfirmado, chevronButtonStyle,
+  chevronButtonStyle,
 } from './gridMeta';
 
 const labelStyle: React.CSSProperties = {
@@ -23,12 +23,21 @@ const labelStyle: React.CSSProperties = {
 };
 
 export function MobileQuoteRow({
-  product: p, state, visibleCols, variant, editable, editableCols, writableIds, catalog,
+  product: p, partida, state, visibleCols, variant, precioOnly = false, editable, editableCols, writableIds, catalog, catalogLoading,
   onEdit, onBlur, onTextEdit, onColorChange, onEmbellecimientoChange, onEtapaCosteoChange, onProductoBlur,
   expanded, onToggleExpand, canConfirm, confirmSaving, confirmError, onToggleConfirm,
+  canDelete, deleting, onDeleteLine,
 }: {
-  product: ItemDTO; state: RowEditState; visibleCols: GridCol[]; variant: 'venta' | 'costeo'; editable: boolean;
-  editableCols: Set<string>; writableIds: Set<string>; catalog: ItemDTO[];
+  product: ItemDTO;
+  /** Número 1-based de la línea en la grid — mismo orden que usan los mensajes
+   * de validación de costeo (worker/lib/costeo.ts), para poder identificar
+   * cuál línea tiene el problema. */
+  partida: number;
+  state: RowEditState; visibleCols: GridCol[]; variant: 'venta' | 'costeo';
+  /** true en Validación de Costeo — el único warning posible es Precio de venta vacío. */
+  precioOnly?: boolean;
+  editable: boolean;
+  editableCols: Set<string>; writableIds: Set<string>; catalog: ItemDTO[]; catalogLoading: boolean;
   onEdit: (product: ItemDTO, colId: string, raw: string) => void;
   onBlur: (product: ItemDTO, colId: string) => void;
   onTextEdit: (product: ItemDTO, colId: string, raw: string) => void;
@@ -43,6 +52,10 @@ export function MobileQuoteRow({
   confirmSaving: boolean;
   confirmError?: string;
   onToggleConfirm: (productoId: number, next: boolean) => void;
+  /** Mismo gate que el botón "✕" de desktop (canAddLines). */
+  canDelete: boolean;
+  deleting: boolean;
+  onDeleteLine: (productId: string) => void;
 }) {
   const titleCol = visibleCols[0];
   const restCols = visibleCols.slice(1);
@@ -73,63 +86,51 @@ export function MobileQuoteRow({
           <input
             value=""
             disabled
-            placeholder={productoElegido ? 'Sin colores configurados' : 'Elige un producto primero'}
+            placeholder={catalogLoading ? 'Cargando colores…' : (productoElegido ? 'Sin colores configurados' : 'Elige un producto primero')}
             style={{ ...inputStyle, textAlign: 'left' }}
           />
         );
       }
       return (
-        <>
-          <select
-            value={raw}
-            disabled={!!state.saving[COLOR_COL]}
-            onChange={(e) => onColorChange(p, e.target.value)}
-            style={{ ...inputStyle, textAlign: 'left' }}
-          >
-            <option value="">Elegir color…</option>
-            {disponibles.map((d) => <option key={d} value={d}>{d}</option>)}
-            {raw && !disponibles.includes(raw) && <option value={raw}>{raw}</option>}
-          </select>
-          {!raw && <RowWarning>Elige un color</RowWarning>}
-        </>
+        <select
+          value={raw}
+          disabled={!!state.saving[COLOR_COL]}
+          onChange={(e) => onColorChange(p, e.target.value)}
+          style={{ ...inputStyle, textAlign: 'left' }}
+        >
+          <option value="">Elegir color…</option>
+          {disponibles.map((d) => <option key={d} value={d}>{d}</option>)}
+          {raw && !disponibles.includes(raw) && <option value={raw}>{raw}</option>}
+        </select>
       );
     }
     if (writable && c.id === COL.cantidad) {
       const raw = state.editing[c.id] ?? (p.cols[c.id]?.text ?? '');
-      const cantidadNum = parseFloat(raw);
-      const sinCantidad = !Number.isFinite(cantidadNum) || cantidadNum <= 0;
       return (
-        <>
-          <input
-            type="number"
-            value={raw}
-            disabled={!!state.saving[c.id]}
-            onChange={(e) => onEdit(p, c.id, e.target.value)}
-            onBlur={() => onBlur(p, c.id)}
-            style={{ ...inputStyle, textAlign: 'left' }}
-          />
-          {sinCantidad && <RowWarning>Cantidad requerida</RowWarning>}
-        </>
+        <input
+          type="number"
+          className="cmp-grid-num-input"
+          value={raw}
+          disabled={!!state.saving[c.id]}
+          onChange={(e) => onEdit(p, c.id, e.target.value)}
+          onBlur={() => onBlur(p, c.id)}
+          style={{ ...inputStyle, textAlign: 'left' }}
+        />
       );
     }
     if (writable && c.id === EMB_STATUS_COL) {
       const label = state.preview[EMB_STATUS_COL]?.text ?? p.cols[EMB_STATUS_COL]?.text ?? '';
       const checked = label === EMB_LABEL_CON;
       return (
-        <label style={{
-          display: 'inline-flex', alignItems: 'center', gap: 6,
-          cursor: state.saving[EMB_STATUS_COL] ? 'default' : 'pointer',
-        }}>
-          <input
-            type="checkbox"
-            checked={checked}
-            disabled={!!state.saving[EMB_STATUS_COL]}
-            onChange={(e) => onEmbellecimientoChange(p, e.target.checked)}
-          />
-          <span style={{ font: 'var(--text-label)', color: 'var(--ink-secondary)' }}>
-            {checked ? EMB_LABEL_CON : EMB_LABEL_SIN}
-          </span>
-        </label>
+        <select
+          value={checked ? EMB_LABEL_CON : EMB_LABEL_SIN}
+          disabled={!!state.saving[EMB_STATUS_COL]}
+          onChange={(e) => onEmbellecimientoChange(p, e.target.value === EMB_LABEL_CON)}
+          style={{ ...inputStyle, textAlign: 'left' }}
+        >
+          <option value={EMB_LABEL_SIN}>{EMB_LABEL_SIN}</option>
+          <option value={EMB_LABEL_CON}>{EMB_LABEL_CON}</option>
+        </select>
       );
     }
     if (writable && c.id === ETAPA_COSTEO_COL) {
@@ -151,6 +152,7 @@ export function MobileQuoteRow({
       return (
         <input
           type="number"
+          className="cmp-grid-num-input"
           value={raw}
           disabled={!!state.saving[c.id]}
           onChange={(e) => onEdit(p, c.id, e.target.value)}
@@ -181,38 +183,42 @@ export function MobileQuoteRow({
     }
     if (c.id === MARGEN_COL) {
       const label = cellValue(c, displayVal);
-      if (label === '—') return <span style={{ font: 'var(--text-label)', color: 'var(--ink-secondary)' }}>—</span>;
+      if (label === '—') return <div style={{ ...valueChipStyle, font: 'var(--text-label)', color: 'var(--ink-secondary)' }}>—</div>;
       const n = Number(displayVal?.value ?? displayVal?.text);
-      return <span style={{ font: 'var(--text-label)', color: Number.isFinite(n) ? marginColor(n) : undefined, fontWeight: 600 }}>{label}</span>;
+      return <div style={{ ...valueChipStyle, font: 'var(--text-label)', color: Number.isFinite(n) ? marginColor(n) : undefined, fontWeight: 600 }}>{label}</div>;
     }
     if (c.id === SUGERIDO_COL) {
       const label = cellValue(c, displayVal);
-      if (label !== '—') return <span style={{ font: 'var(--text-label)', color: 'var(--ink-secondary)' }}>{label}</span>;
+      if (label !== '—') return <div style={{ ...valueChipStyle, font: 'var(--text-label)', color: 'var(--ink-secondary)' }}>{label}</div>;
       const costoTotalUnit = numFrom(state, p, COL.costoTotalUnit);
       const margenGobPctVal = Number(state.editing[COL.margenGobPct] ?? p.cols[COL.margenGobPct]?.text ?? 0) || 0;
       const suggested = suggestedPrecio23(costoTotalUnit, margenGobPctVal);
-      if (suggested === undefined) return <span style={{ font: 'var(--text-label)', color: 'var(--ink-secondary)' }}>—</span>;
+      if (suggested === undefined) return <div style={{ ...valueChipStyle, font: 'var(--text-label)', color: 'var(--ink-secondary)' }}>—</div>;
       return (
-        <span style={{ fontStyle: 'italic', font: 'var(--text-label)', color: 'var(--ink-tertiary)' }} title="Calculado para 23% de margen — sin precio auto de Monday">
+        <div style={{ ...valueChipStyle, fontStyle: 'italic', font: 'var(--text-label)', color: 'var(--ink-tertiary)' }} title="Calculado para 23% de margen — sin precio auto de Monday">
           {fmtMoney(suggested)}
-        </span>
+        </div>
       );
     }
-    return <span style={{ font: 'var(--text-label)', color: 'var(--ink-secondary)' }}>{cellValue(c, displayVal)}</span>;
+    // Chip gris (misma pill que desktop) en cualquier otra celda de solo lectura.
+    return <div style={{ ...valueChipStyle, font: 'var(--text-label)', color: 'var(--ink-secondary)' }}>{cellValue(c, displayVal)}</div>;
   };
 
-  const lineWarnings = getLineWarnings(p, state, variant, catalog);
+  const lineWarnings = getLineWarnings(p, state, variant, catalog, precioOnly);
 
   return (
-    <div style={{ borderTop: '1px solid var(--border-subtle)', background: lineWarnings.length > 0 ? '#faf8f6' : '#fff', padding: '14px' }}>
+    <div style={{ borderTop: '1px solid var(--border-subtle)', background: lineWarnings.length > 0 ? '#fdf1f2' : '#fff', padding: '14px' }}>
       {lineWarnings.length > 0 && (
-        <div style={{ marginBottom: 10, font: 'var(--text-caption)', color: '#9c4c3d' }}>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            ⚠️ {lineWarnings.join(' • ')}
-          </span>
+        <div style={{ marginBottom: 10 }}>
+          <StatusBadge label={`⚠ ${lineWarnings.join(' • ')}`} color="#ce3048" tint="#fbdbdf" />
         </div>
       )}
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+        <span style={{
+          font: '700 10px \'Inter\', sans-serif', color: 'var(--ink-tertiary)', marginTop: 4, flexShrink: 0,
+        }} title="Partida">
+          #{partida}
+        </span>
         <button
           type="button"
           onClick={onToggleExpand}
@@ -221,6 +227,21 @@ export function MobileQuoteRow({
         >
           ▸
         </button>
+        {canDelete && (
+          <button
+            type="button"
+            onClick={() => onDeleteLine(p.id)}
+            disabled={deleting}
+            title="Eliminar línea"
+            style={{
+              background: 'none', border: 'none', cursor: deleting ? 'wait' : 'pointer',
+              font: 'inherit', padding: 0, marginTop: 3, flexShrink: 0,
+              color: 'var(--status-perdida)', opacity: deleting ? 0.6 : 1,
+            }}
+          >
+            ✕
+          </button>
+        )}
         {p.pendingWrite && <span title="guardado, sincronizando…" style={{ color: 'var(--accent)' }}>⏳</span>}
         <div style={{ flex: 1, minWidth: 0 }}>
           {titleWritable ? (
@@ -240,12 +261,6 @@ export function MobileQuoteRow({
           )}
         </div>
       </div>
-      {variant === 'costeo' && !p.cols[COSTO_DISTR_COL]?.text && (
-        <StatusBadge label="Pendiente de costeo" color="#9c4c3d" tint="#f3e5e1" style={{ marginTop: 6, marginRight: 6 }} />
-      )}
-      {variant === 'costeo' && !productoConfirmado(p, catalog) && (
-        <StatusBadge label="Sin confirmar" color="#9c4c3d" tint="#f3e5e1" style={{ marginTop: 6 }} />
-      )}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 14px', marginTop: 10 }}>
         {restCols.map((c) => (
           <div key={c.id} style={{ minWidth: 0 }}>

@@ -93,39 +93,107 @@ export interface GridCol {
   label: string;
   align: 'left' | 'right';
   kind: 'text' | 'money' | 'percent';
+  /** Ancho fijo en px — todas las columnas salvo la primera (Producto, que se
+   * queda flexible) usan un ancho angosto y real en vez de repartir el
+   * espacio en partes iguales (`1fr` por columna). Con 16 columnas en Costeo
+   * eso estiraba cada celda/chip mucho más de lo que su contenido necesita
+   * y la grid se sentía "amplia" — Efraín, 2026-07-21: quiere ver casi toda
+   * la grid sin scroll horizontal. Ver `colsTemplate`. */
+  width: number;
 }
 
 export const GRID_COLS_COSTEO: GridCol[] = [
-  { id: 'lookup_mm0x4kda', label: 'Producto', align: 'left', kind: 'text' },
-  { id: 'lookup_mkzn7x9a', label: 'SKU', align: 'left', kind: 'text' },
-  { id: 'numeric_mkzm6399', label: 'Cant.', align: 'left', kind: 'text' },
-  { id: ETAPA_COSTEO_COL, label: 'Etapa costeo', align: 'left', kind: 'text' },
-  { id: 'lookup_mm11t8gj', label: 'Moneda', align: 'left', kind: 'text' },
-  { id: 'numeric_mm0bph99', label: 'Costo distr. C/U', align: 'right', kind: 'money' },
-  { id: 'numeric_mkzn2q51', label: 'Desc. %', align: 'right', kind: 'percent' },
-  { id: 'formula_mkzngnjm', label: 'Costo real C/U', align: 'right', kind: 'money' },
-  { id: 'numeric_mm0rvhgs', label: 'Conversión', align: 'right', kind: 'text' },
-  { id: 'numeric_mkzngs9x', label: 'Gastos %', align: 'right', kind: 'percent' },
-  { id: 'numeric_mm0gxvpa', label: 'Costo embell. C/U', align: 'right', kind: 'money' },
-  { id: 'formula_mkznpfgg', label: 'Costo total C/U', align: 'right', kind: 'money' },
-  { id: 'numeric_mm2qzzbe', label: 'P. venta sugerido', align: 'right', kind: 'money' },
-  { id: 'numeric_mkzneg3d', label: 'P. venta', align: 'right', kind: 'money' },
-  { id: 'numeric_mkznnm5s', label: 'Margen Gob %', align: 'right', kind: 'percent' },
-  { id: 'formula_mkznpw5p', label: 'Margen', align: 'right', kind: 'percent' },
+  { id: 'lookup_mm0x4kda', label: 'Producto', align: 'left', kind: 'text', width: 170 },
+  { id: 'lookup_mkzn7x9a', label: 'SKU', align: 'left', kind: 'text', width: 80 },
+  { id: 'numeric_mkzm6399', label: 'Cant.', align: 'left', kind: 'text', width: 55 },
+  { id: ETAPA_COSTEO_COL, label: 'Etapa costeo', align: 'left', kind: 'text', width: 100 },
+  { id: 'lookup_mm11t8gj', label: 'Moneda', align: 'left', kind: 'text', width: 55 },
+  { id: 'numeric_mm0bph99', label: 'Costo distr. C/U', align: 'right', kind: 'money', width: 88 },
+  { id: 'numeric_mkzn2q51', label: 'Desc. %', align: 'right', kind: 'percent', width: 65 },
+  { id: 'formula_mkzngnjm', label: 'Costo real C/U', align: 'right', kind: 'money', width: 88 },
+  { id: 'numeric_mm0rvhgs', label: 'Conversión', align: 'right', kind: 'text', width: 75 },
+  { id: 'numeric_mkzngs9x', label: 'Gastos %', align: 'right', kind: 'percent', width: 65 },
+  { id: 'numeric_mm0gxvpa', label: 'Costo embell. C/U', align: 'right', kind: 'money', width: 88 },
+  { id: 'formula_mkznpfgg', label: 'Costo total C/U', align: 'right', kind: 'money', width: 88 },
+  { id: 'numeric_mm2qzzbe', label: 'P. venta sugerido', align: 'right', kind: 'money', width: 92 },
+  { id: 'numeric_mkzneg3d', label: 'P. venta', align: 'right', kind: 'money', width: 82 },
+  { id: 'numeric_mkznnm5s', label: 'Margen Gob %', align: 'right', kind: 'percent', width: 82 },
+  { id: 'formula_mkznpw5p', label: 'Margen', align: 'right', kind: 'percent', width: 72 },
 ];
+
+// Ancho fijo de la columna "Avisos" al final de la grid — siempre presente
+// como pista real (header, cada fila y TotalsRow la definen), nunca un
+// espacio condicional: cuando el warning aparecía solo como celda opcional
+// al final de la fila, una línea sin problemas no reservaba ese espacio y
+// las columnas se sentían "desalineadas" fila a fila (Efraín, 2026-07-21:
+// "esta desalineado cuando esta o no con error"). Con una pista de ancho
+// fijo siempre reservada, cada fila mide exactamente igual tenga o no aviso.
+export const WARNINGS_COL_WIDTH = 150;
+
+// Genera el `gridTemplateColumns` para la porción de columnas de datos
+// (sin el # de línea, que header/fila/TotalsRow anteponen aparte con
+// `28px` según haga falta). Todas las pistas son anchos fijos (Producto con
+// un tope, el resto su ancho real) — sin ninguna pista `fr` de relleno.
+// Junto con `gridWrapStyle` (`width: fit-content` puesto directo en el propio
+// `display:grid`, no en un wrapper aparte — anidar el fit-content en un
+// bloque plano que envuelve al grid es fresco entre navegadores y causó un
+// bug real, ver commit de "esta desalineado…"), la tabla mide exactamente lo
+// que ocupan sus columnas: angosta en "Nueva oportunidad" (pocas columnas,
+// sin hueco antes de Avisos), y en Costeo (16 columnas) se desborda del
+// contenedor con scroll horizontal en vez de encogerse — es responsive por
+// construcción, no por media queries (Efraín, 2026-07-21: "que la tabla
+// llegue hasta avisos y se corte, que sea responsive").
+export function colsTemplate(cols: GridCol[]): string {
+  const [first, ...rest] = cols;
+  const firstW = first?.width ?? 160;
+  return `minmax(${firstW}px, ${Math.max(firstW, 340)}px) ${rest.map((c) => `${c.width}px`).join(' ')} ${WARNINGS_COL_WIDTH}px`;
+}
+
+// Puesto directo en el elemento `display:grid` (header, cada fila, TotalsRow)
+// — no en un `<div>` de fondo que lo envuelva — para que el fit-content se
+// calcule sobre el propio grid (mismos tracks, mismo padding) y no dependa
+// de cómo un bloque padre propague el tamaño intrínseco de un hijo anidado.
+export const gridWrapStyle: React.CSSProperties = { width: 'fit-content' };
+
+export const PRECIO_VENTA_COL = 'numeric_mkzneg3d';
+
+// Mostrar/ocultar columnas en Costeo/Validación de Costeo — preferencia
+// personal del viewer, no un permiso (eso ya lo filtra el server vía
+// ColMeta.w/visibility.ts). Persistida en localStorage, misma para ambos
+// boards ya que comparten GRID_COLS_COSTEO (Efraín, 2026-07-21).
+const HIDDEN_COLS_KEY = 'cmp:costeoHiddenCols';
+
+export function loadHiddenCols(): Set<string> {
+  try {
+    const raw = localStorage.getItem(HIDDEN_COLS_KEY);
+    return raw ? new Set(JSON.parse(raw) as string[]) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+export function saveHiddenCols(hidden: Set<string>) {
+  localStorage.setItem(HIDDEN_COLS_KEY, JSON.stringify([...hidden]));
+}
 
 // Ventas-side view: no cost breakdown, just what the customer is quoted.
 export const GRID_COLS_VENTA: GridCol[] = [
-  { id: 'lookup_mm0x4kda', label: 'Producto', align: 'left', kind: 'text' },
-  { id: 'lookup_mkzn7x9a', label: 'SKU', align: 'left', kind: 'text' },
-  { id: COLOR_COL, label: 'Color', align: 'left', kind: 'text' },
-  { id: 'numeric_mkzm6399', label: 'Cant.', align: 'left', kind: 'text' },
-  { id: EMB_STATUS_COL, label: 'Con Embellecimiento', align: 'left', kind: 'text' },
-  { id: 'numeric_mkzneg3d', label: 'P. venta C/U', align: 'right', kind: 'money' },
-  { id: 'formula_mkznmjh6', label: 'Subtotal', align: 'right', kind: 'money' },
-  { id: 'formula_mm0rtdqp', label: 'IVA', align: 'right', kind: 'money' },
-  { id: 'formula_mm00xy0n', label: 'Total c/IVA', align: 'right', kind: 'money' },
+  { id: 'lookup_mm0x4kda', label: 'Producto', align: 'left', kind: 'text', width: 200 },
+  { id: 'lookup_mkzn7x9a', label: 'SKU', align: 'left', kind: 'text', width: 80 },
+  { id: COLOR_COL, label: 'Color', align: 'left', kind: 'text', width: 150 },
+  { id: 'numeric_mkzm6399', label: 'Cant.', align: 'left', kind: 'text', width: 65 },
+  { id: EMB_STATUS_COL, label: 'Con Embellecimiento', align: 'left', kind: 'text', width: 170 },
+  { id: PRECIO_VENTA_COL, label: 'P. venta C/U', align: 'right', kind: 'money', width: 95 },
+  { id: SUBTOTAL_COL, label: 'Subtotal', align: 'right', kind: 'money', width: 100 },
+  { id: IVA_COL, label: 'IVA', align: 'right', kind: 'money', width: 90 },
+  { id: TOTAL_CON_IVA_COL, label: 'Total c/IVA', align: 'right', kind: 'money', width: 105 },
 ];
+
+// Sin costeo todavía no hay precios vigentes que mostrar — en "Nueva
+// oportunidad" (o un borrador de versión sin costear, mismo trato que
+// `lineEdits`) se ocultan en vez de enseñar columnas vacías/sin sentido
+// (Efraín, 2026-07-20).
+export const MONEY_COLS = new Set([PRECIO_VENTA_COL, SUBTOTAL_COL, IVA_COL, TOTAL_CON_IVA_COL]);
 
 // Mismo fallback que worker/lib/quoteVersions.ts's productoNombre(): el mirror
 // (lookup_mm0x4kda) solo se puebla cuando hay relación real a Productos; sin
@@ -176,19 +244,31 @@ export function cellValue(col: GridCol, val?: ColVal): string {
   return val.text;
 }
 
+// Blanco + borde de acento — a propósito distinto del chip gris plano de las
+// celdas de solo lectura (`valueChipStyle`): en Validación de Costeo, por
+// ejemplo, P. venta es la ÚNICA celda editable de toda la fila y con el
+// mismo tono que el resto no se notaba que ahí sí se podía escribir
+// (Efraín, 2026-07-21: "no parece que P. venta es lo único que podemos
+// editar").
 export const inputStyle: React.CSSProperties = {
-  width: '100%', font: 'var(--text-label)', color: 'var(--ink)',
-  border: '1px solid var(--border)', borderRadius: 6, padding: '6px 9px',
+  width: '100%', font: 'var(--text-caption)', color: 'var(--ink)',
+  border: '1px solid var(--accent)', background: '#fff',
+  borderRadius: 'var(--radius-md)', padding: '5px 7px',
   textAlign: 'right', boxSizing: 'border-box',
+  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0,
 };
 
-const warningStyle: React.CSSProperties = {
-  font: 'var(--text-caption)', color: '#9c4c3d', marginTop: 3,
+// Chip gris redondeado para celdas de solo lectura — mismo tratamiento visual
+// que `inputStyle` (misma pill) para que editable/no-editable se sientan
+// parte de la misma grid, imitando una referencia de diseño más simple que
+// la grid original con bordes/mayúsculas (Efraín, 2026-07-20). Padding angosto
+// a propósito — con columnas de ancho fijo (`colsTemplate`) el chip ya no
+// necesita "rellenar" espacio de sobra (Efraín, 2026-07-21: quiere la grid
+// compacta, ver casi todo sin scroll horizontal).
+export const valueChipStyle: React.CSSProperties = {
+  background: 'var(--bg-sunken)', borderRadius: 'var(--radius-md)', padding: '5px 7px',
+  boxSizing: 'border-box', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
 };
-
-export function RowWarning({ children }: { children: React.ReactNode }) {
-  return <div style={warningStyle}>⚠ {children}</div>;
-}
 
 export interface RowEditState {
   editing: Record<string, string>;   // colId -> in-progress raw text
@@ -216,7 +296,18 @@ export function getLineWarnings(
   state: RowEditState,
   variant: 'venta' | 'costeo',
   catalog: ItemDTO[],
+  // true en Validación de Costeo — ahí lo único editable es Precio de Venta,
+  // así que el único problema posible es que siga vacío. Los checks de
+  // Costeo (producto/cantidad/costeo pendiente/confirmación) no aplican: esa
+  // línea ya pasó por Costeo para llegar aquí (Efraín, 2026-07-21: "Sin
+  // confirmar" es solo de Costeo, no de Validación).
+  precioOnly = false,
 ): string[] {
+  if (precioOnly) {
+    const precio = numFrom(state, product, PRECIO_VENTA_COL);
+    return precio > 0 ? [] : ['Falta precio'];
+  }
+
   const warnings: string[] = [];
   const displayProd = displayProducto(product, state.preview);
 
@@ -231,6 +322,13 @@ export function getLineWarnings(
     if (!color.trim()) {
       warnings.push('Falta color');
     }
+  }
+
+  // En venta: ficha comercial (Compras la sube al catálogo) — mismo check que
+  // validateLinea en el server (worker/lib/costeo.ts), reflejado aquí para que
+  // el aviso viva en la línea y no solo en el pre-chequeo del botón.
+  if (variant === 'venta' && displayProd?.trim() && !(product.cols[DESCRIPCION_COL]?.text ?? '').trim()) {
+    warnings.push('Falta descripción');
   }
 
   // Siempre requerido: cantidad

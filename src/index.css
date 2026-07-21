@@ -40,6 +40,11 @@ input, textarea, select, button {
   .nav-item:hover {
     background: rgba(43, 41, 37, .05);
   }
+
+  .sidebar-collapse-btn:hover {
+    background: var(--surface);
+    color: var(--ink);
+  }
 }
 
 /* iOS hace zoom al enfocar inputs con fuente <16px; los estilos inline de los
@@ -48,4 +53,17 @@ input, textarea, select, button {
   input, textarea, select {
     font-size: 16px !important;
   }
+}
+
+/* Grid de Cotización: quita las flechitas nativas de los <input type=number>
+   — en columnas angostas (Cant., Desc. %…) esa UI le comía espacio al valor
+   y el número ya no se veía pegado a la derecha como los demás (Efraín,
+   2026-07-21). Escrito directo por Monday/blur igual, el spinner no se usaba. */
+.cmp-grid-num-input::-webkit-inner-spin-button,
+.cmp-grid-num-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.cmp-grid-num-input {
+  -moz-appearance: textfield;
 }

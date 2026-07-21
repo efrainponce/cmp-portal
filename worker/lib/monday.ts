@@ -54,8 +54,9 @@ export async function gql(
   env: Env,
   query: string,
   variables?: Record<string, unknown>,
+  opts?: { maxRetries?: number },
 ): Promise<any> {
-  const maxRetries = 4;
+  const maxRetries = opts?.maxRetries ?? 4;
   for (let attempt = 0; ; attempt++) {
     const res = await fetch(MONDAY_URL, {
       method: 'POST',
@@ -130,7 +131,11 @@ export async function deleteItem(env: Env, itemId: number): Promise<void> {
   await gql(env, query, { id: String(itemId) });
 }
 
-/** Create a subitem under a parent item. Same full item shape back. */
+/** Create a subitem under a parent item. Same full item shape back.
+ * maxRetries capped at 1 (not the default 4) — this is a synchronous, user-
+ * waited call ("+ Agregar línea"); a rate-limit hit with the default backoff
+ * can add 10s+ per attempt, so we bound the worst case instead of stacking
+ * up to 4 retries (Efraín, 2026-07-20 — reported ~15s adds). */
 export async function createSubitem(
   env: Env,
   parentItemId: number,
@@ -138,7 +143,7 @@ export async function createSubitem(
   columnValues: Record<string, unknown>,
 ): Promise<MondayItem> {
   const query = `mutation($p:ID!,$n:String!,$cv:JSON){ create_subitem(parent_item_id:$p,item_name:$n,column_values:$cv,create_labels_if_missing:true){ ${ITEM_FIELDS} } }`;
-  const data = await gql(env, query, { p: String(parentItemId), n: itemName, cv: JSON.stringify(columnValues) });
+  const data = await gql(env, query, { p: String(parentItemId), n: itemName, cv: JSON.stringify(columnValues) }, { maxRetries: 1 });
   const raw = data?.create_subitem;
   return { ...raw, column_values: normalizeCols(raw.column_values ?? []) };
 }

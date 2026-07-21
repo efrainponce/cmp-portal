@@ -79,30 +79,35 @@ function hasLinkedProduct(col?: RawCol): boolean {
 }
 
 /** Errores de una línea de producto; [] cuando la línea está lista para costeo.
- * Espejo local de las validaciones de cmp-tallas/api/validar_costeo.py. */
-export function validateLinea(name: string, cols: Map<string, RawCol>): string[] {
+ * Espejo local de las validaciones de cmp-tallas/api/validar_costeo.py.
+ * `partida` es el número 1-based de la línea en la grid — las líneas nuevas
+ * nacen todas con el nombre literal "Nueva línea" (worker/routes/oportunidades.ts),
+ * así que sin esto varios errores idénticos no dicen cuál línea es cuál
+ * (Efraín, 2026-07-20). */
+export function validateLinea(name: string, cols: Map<string, RawCol>, partida: number): string[] {
   const errors: string[] = [];
+  const tag = `#${partida} "${name}"`;
 
   if (!hasLinkedProduct(cols.get(SUB_PRODUCTO_REL)) && !(cols.get(SUB_PRODUCTO_TXT)?.text ?? '').trim()) {
-    errors.push(`"${name}": no tiene producto asignado.`);
+    errors.push(`${tag}: no tiene producto asignado.`);
   }
 
   const cantidad = Number((cols.get(SUB_CANTIDAD)?.text ?? '').replace(/,/g, ''));
   if (!Number.isFinite(cantidad) || cantidad <= 0) {
-    errors.push(`"${name}": falta la cantidad.`);
+    errors.push(`${tag}: falta la cantidad.`);
   }
 
   const color = (cols.get(SUB_COLOR)?.text ?? '').trim();
   const disponibles = (cols.get(SUB_COLORES_DISP)?.text ?? '')
     .split(',').map(s => s.trim()).filter(Boolean);
   if (!color) {
-    errors.push(`"${name}": falta elegir un color.`);
+    errors.push(`${tag}: falta elegir un color.`);
   } else if (disponibles.length > 0 && !disponibles.some(d => norm(d) === norm(color))) {
-    errors.push(`"${name}": el color "${color}" no está en la lista del producto (${disponibles.join(', ')}).`);
+    errors.push(`${tag}: el color "${color}" no está en la lista del producto (${disponibles.join(', ')}).`);
   }
 
   if (!(cols.get(SUB_FICHA)?.text ?? '').trim()) {
-    errors.push(`"${name}": falta la ficha comercial (Compras debe subirla al catálogo).`);
+    errors.push(`${tag}: falta la ficha comercial (Compras debe subirla al catálogo).`);
   }
 
   return errors;
@@ -155,7 +160,7 @@ export async function checkCosteo(env: Env, itemId: number, viewer: Identity): P
   if (lineas.length === 0) {
     errors.push('La oportunidad no tiene líneas de producto. Agrega al menos una.');
   } else {
-    errors.push(...lineas.flatMap(l => validateLinea(l.name, colsOf(l))));
+    errors.push(...lineas.flatMap((l, i) => validateLinea(l.name, colsOf(l), i + 1)));
   }
 
   return errors.length > 0 ? { ok: false, errors } : { ok: true };
@@ -201,10 +206,12 @@ export async function checkValidacion(env: Env, itemId: number, viewer: Identity
   const errors: string[] = [];
   const productoCache = new Map<number, boolean>(); // productoId -> confirmado
 
-  for (const linea of lineas) {
+  for (let i = 0; i < lineas.length; i++) {
+    const linea = lineas[i];
+    const tag = `#${i + 1} "${linea.name}"`;
     const productoId = linkedItemId(linea, SUB_PRODUCTO_REL);
     if (productoId === null) {
-      errors.push(`"${linea.name}": sin producto de catálogo vinculado.`);
+      errors.push(`${tag}: sin producto de catálogo vinculado.`);
       continue;
     }
     if (!productoCache.has(productoId)) {
@@ -213,7 +220,7 @@ export async function checkValidacion(env: Env, itemId: number, viewer: Identity
       productoCache.set(productoId, confirmado);
     }
     if (!productoCache.get(productoId)) {
-      errors.push(`"${linea.name}": descripción y tallas sin confirmar.`);
+      errors.push(`${tag}: descripción y tallas sin confirmar.`);
     }
   }
 

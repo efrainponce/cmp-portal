@@ -3,7 +3,7 @@
 // productos? y fecha límite. Las líneas de producto se capturan después; la
 // validación de enviar-costeo impide avanzar sin ellas. Cargado lazy desde
 // OportunidadesBoard para no pesar en el bundle inicial.
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Modal } from '../../components/core/Modal';
 import { Button } from '../../components/core/Button';
 import { SearchableSelect, type SearchableOption } from '../../components/forms/SearchableSelect';
@@ -71,6 +71,7 @@ export default function CreateOportunidadModal({
   const [contactos, setContactos] = useState<ItemDTO[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const fechaLimiteRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     getVendedores('vendedor').then(setVendedores);
@@ -178,7 +179,14 @@ export default function CreateOportunidadModal({
           <ChipSelect value={cols[COL_NUEVOS] ?? ''} onChange={set(COL_NUEVOS)} options={labelOptions(oppCols, COL_NUEVOS)} />
         </Field>
         <Field label="Fecha límite">
-          <input type="date" value={cols[COL_FECHA_LIMITE] ?? ''} onChange={(e) => set(COL_FECHA_LIMITE)(e.target.value)} style={fieldStyle} />
+          <input
+            ref={fechaLimiteRef}
+            type="date"
+            value={cols[COL_FECHA_LIMITE] ?? ''}
+            onChange={(e) => set(COL_FECHA_LIMITE)(e.target.value)}
+            onClick={() => fechaLimiteRef.current?.showPicker?.()}
+            style={fieldStyle}
+          />
         </Field>
         {error && <div style={{ color: 'var(--status-perdida)', font: 'var(--text-label)' }}>{error}</div>}
       </div>

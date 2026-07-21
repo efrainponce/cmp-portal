@@ -2,7 +2,7 @@ import type { ItemDTO } from '../../../../lib/api';
 import { fmtMoney } from '../../../../lib/format';
 import { COL } from '../../../../lib/costeoCalc';
 import {
-  type GridCol, type RowEditState, EMPTY_ROW, numFrom, marginColor,
+  type GridCol, type RowEditState, EMPTY_ROW, numFrom, marginColor, colsTemplate, gridWrapStyle,
   MARGEN_COL, SUBTOTAL_COL, IVA_COL, TOTAL_CON_IVA_COL, COSTO_TOTAL_ROW_COL, UTILIDAD_TOTAL_COL,
 } from './gridMeta';
 
@@ -79,21 +79,36 @@ export function TotalsRow({ variant, visibleCols, products, rows, isMobile = fal
 
   return (
     <div style={{
-      display: 'grid', gridTemplateColumns: `1.8fr ${visibleCols.slice(1).map(() => '1fr').join(' ')}`,
-      gap: 14, alignItems: 'center', padding: '12px 16px', background: 'var(--bg-sunken)',
+      ...gridWrapStyle,
+      // El `28px` inicial no es decorativo: header y filas de datos tienen esa
+      // columna extra para el # de línea que esta fila de totales no usa —
+      // sin ella, cada total quedaba una columna completa a la izquierda de
+      // donde debía (Efraín, 2026-07-21: "los totales no cuadran con las
+      // columnas").
+      display: 'grid', gridTemplateColumns: `28px ${colsTemplate(visibleCols)}`,
+      gap: 6, alignItems: 'center', padding: '10px', background: 'var(--bg-sunken)',
       borderTop: '2px solid var(--border)',
     }}>
+      <div />
       {visibleCols.map((c, idx) => (
         <div
           key={c.id}
           style={{
-            textAlign: c.align, font: 'var(--text-body-strong)',
+            // Los totales son siempre números (o la etiqueta "TOTAL" en la
+            // primera celda) — se alinean a la derecha sin importar `c.align`,
+            // que es la alineación de la COLUMNA (p.ej. Cant. es 'left' para
+            // el input de esa celda en las filas de datos, pero el total de
+            // Cant. es un número y se ve raro pegado a la izquierda mientras
+            // los demás totales están a la derecha (Efraín, 2026-07-21).
+            textAlign: idx === 0 ? 'left' : 'right', font: 'var(--text-body-strong)',
             color: byCol[c.id]?.color ?? 'var(--ink)',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}
         >
           {idx === 0 ? 'TOTAL' : (byCol[c.id]?.value ?? '')}
         </div>
       ))}
+      <div />
     </div>
   );
 }

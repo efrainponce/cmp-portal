@@ -39,10 +39,10 @@ export function SnapshotTable({ version }: { version: QuoteVersionDTO }) {
       <div style={{
         display: 'grid', gridTemplateColumns: '1.6fr .5fr .7fr .7fr .85fr .85fr',
         padding: '9px 14px', background: 'var(--bg-sunken)', font: '700 9.5px \'Inter\', sans-serif',
-        color: 'var(--ink-tertiary)', textTransform: 'uppercase', letterSpacing: '.3px',
+        color: 'var(--ink-tertiary)', textTransform: 'uppercase', letterSpacing: '.3px', textAlign: 'center',
       }}>
         <div>Producto</div><div>SKU</div><div>Color</div><div>Cant.</div>
-        <div style={{ textAlign: 'right' }}>P. venta C/U</div><div style={{ textAlign: 'right' }}>Subtotal</div>
+        <div>P. venta C/U</div><div>Subtotal</div>
       </div>
       {version.products.map((p, i) => (
         <div key={i} style={{

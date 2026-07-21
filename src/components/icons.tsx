@@ -86,15 +86,15 @@ export const IconInventario = (p: IconProps) => (
   </svg>
 );
 
-export const IconCollapse = (p: IconProps) => (
-  <svg {...base} width={15} height={15} {...p}>
-    <rect x="3" y="4" width="18" height="16" rx="2" /><path d="M9 4v16" /><path d="M14.5 9l-2.5 3 2.5 3" />
+export const IconChevronLeft = (p: IconProps) => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" {...p}>
+    <path d="M15 5l-7 7 7 7" />
   </svg>
 );
 
-export const IconExpand = (p: IconProps) => (
-  <svg {...base} width={15} height={15} {...p}>
-    <rect x="3" y="4" width="18" height="16" rx="2" /><path d="M9 4v16" /><path d="M12.5 9l2.5 3-2.5 3" />
+export const IconChevronRight = (p: IconProps) => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" {...p}>
+    <path d="M9 5l7 7-7 7" />
   </svg>
 );
 
