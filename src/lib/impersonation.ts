@@ -2,6 +2,8 @@
 // reload, and apiClient.ts attaches it as X-Impersonate-Email on every request.
 // The worker is the actual gate (only accepts the header from a real admin
 // identity), so this module is just UI-side bookkeeping.
+import { invalidateMeCache } from './useMe';
+
 const KEY = 'cmp:impersonateEmail';
 
 export function getImpersonateTarget(): string | null {
@@ -13,10 +15,12 @@ export function getImpersonateTarget(): string | null {
 // to wherever the admin happened to be.
 export function startImpersonation(email: string) {
   localStorage.setItem(KEY, email);
+  invalidateMeCache();
   window.location.href = '/oportunidades';
 }
 
 export function stopImpersonation() {
   localStorage.removeItem(KEY);
+  invalidateMeCache();
   window.location.href = '/oportunidades';
 }

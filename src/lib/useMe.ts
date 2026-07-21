@@ -17,6 +17,11 @@ function loadMe(): Promise<MeDTO> {
   return inflight;
 }
 
+export function invalidateMeCache() {
+  cached = null;
+  inflight = null;
+}
+
 export function useMe(): MeDTO | null {
   const [me, setMe] = useState<MeDTO | null>(cached);
   useEffect(() => {
