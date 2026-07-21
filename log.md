@@ -4,6 +4,12 @@
 
 Sesión de optimización pedida por Efraín (rama `optimizacion/tokens-y-writes`, no `main`): (1) usar menos tokens al trabajar el repo con Claude vía código reutilizable + un índice, (2) escribir a Monday más rápido, (3) preparar la salida de Monday — el punto (3) se **pospuso** por decisión suya tras revisar las opciones; alcance de (1) conservador (extracciones seguras, sin reescribir archivos grandes) y (2) "ambos" (camino de sync + auditoría de UI óptimista). Se orquestó con 2 subagentes Sonnet (worker / UI) + 1 Haiku (índice); Claude revisó cada diff antes de commitear. Plan en `~/.claude/plans/spicy-wishing-pine.md`.
 
+- **`be35c60`** — UI: renombrar columna Margen a Utilidad % y agregar columna Utilidad (total)
+  - Pedido de Efraín: la última columna de la grid de Costeo/Validación, "Margen" (`formula_mkznpw5p`), pasa a llamarse "Utilidad %" — mismo dato (% ponderado utilidad/subtotal), el label del portal estaba desfasado del nombre que ya tiene esa columna en Monday (`column-meta.gen.ts` ya la traía como "Utilidad (%)"). Ojo: "Margen Gob %"/"Margen Gob Total" es otra cosa, no se tocaron.
+  - Columna nueva "Utilidad" (`formula_mkznry25`, money) justo antes: ya existía en el mirror y en el whitelist de `visibility.ts`, solo no se pintaba en `GRID_COLS_COSTEO`. `TotalsRow` suma el total y lo colorea igual que el %.
+  - Verificado con `tsc -b` (3 tsconfigs, limpio) y captura real contra un item con costeo real (dev server local, `/costeo/<id>`): headers y color del TOTAL (rojo con margen negativo) correctos.
+  - Hallazgo aparte, no corregido (fuera de alcance): en filas sin margen calculable, la propia columna de Monday devuelve el texto literal `"null"` para Utilidad % — preexistente, no introducido por este cambio.
+
 - **`130bc11`** — Acelerar writes a Monday: confirmar desde la mutación, flush en paralelo y claim atómico
   - Meta 2. El write path ya era óptimista (el PATCH responde `{ok, pending}` al instante y el sync corre en `ctx.waitUntil(flushOutbox)`), así que "más rápido" = menos trabajo/round-trips en el flush, no cambiar la latencia percibida.
   - `flushGroup` ahora confirma el espejo desde la respuesta de `change_multiple_column_values` (se le pidió devolver `ITEM_FIELDS` con `column_values`) reusando `upsertItem`+`confirmOutboxEcho`, en vez de un `refetchItem` aparte: **elimina un round-trip a Monday por grupo**. Rama defensiva: si la mutación no trae columns utilizables, cae al `refetchItem` clásico.
