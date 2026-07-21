@@ -24,6 +24,10 @@ Sesión de optimización pedida por Efraín (rama `optimizacion/tokens-y-writes`
   - `CLAUDE.md` gana un puntero al índice al inicio del "Mapa del repo" ("grepéalo antes de explorar; si algo no cuadra, verifica contra el código").
   - Índice curado a mano por el subagente (146 entradas) y luego un pase de limpieza (25KB, −26%: se quitaron rutas duplicadas y se dejaron solo nombres de exports).
 
+- **`4abf133`** — Ordenar items de boards por última actualización de Monday (más reciente arriba)
+  - Pedido de Efraín: "acomoda todos los boards por fecha de actualización, lo más reciente hasta arriba". `listItems()` en `worker/lib/dal.ts` ordenaba `ORDER BY name` (alfabético); pasó a `ORDER BY monday_updated_at DESC`, que ya era un campo poblado en el mirror (usado antes solo para el "actualizado hace X min" de la UI, nunca para ordenar).
+  - Aplica a la lista de items de cualquier board (es el único `listItems` que alimenta `StageBoardList`/`groupByColumn`, que preserva el orden de llegada dentro de cada grupo de etapa sin re-ordenar). Los subitems (`childrenOf`, líneas de cotización) se dejaron con `ORDER BY name` a propósito — ahí el orden de captura importa.
+
 - **`102b99b`** — Fix: Ganar/Perder/Cancelar oportunidad no escribían `deal_stage` (403 + valor equivocado)
   - `deal_stage` no tenía entrada `w` en `shared/visibility.ts` — `canWrite()` fallaba siempre, para cualquier rol, sin que nada en la UI lo señalara (los botones parecían funcionar: mostraban el aviso de éxito porque el `applyStageOptimistic` local pintaba la etapa antes de que el PATCH real fallara en el flush).
   - Además `patchItem` mandaba el índice crudo (`'1'`, `'2'`, `'5'`) en vez del label que Monday espera para columnas de status (regla dura del repo: `{label:"..."}`, nunca el índice) — se cambió a `DEAL_STAGE_LABELS[idx]`, mismo patrón que ya usaba `applyStageOptimistic`.
