@@ -29,16 +29,15 @@ export class AccessError extends Error {
 // Cloudflare Access mantiene su propia sesión (independiente de con qué cuenta
 // de Google esté logueado el navegador ahora mismo). Si esa sesión quedó
 // pegada a un correo viejo, el 401/403 nunca se resuelve solo con reintentos
-// normales — hay que tirar la cookie de Access. PERO /cdn-cgi/access/logout
-// solo limpia esa cookie; no cierra la sesión de Google. Con
-// auto_redirect_to_identity activo en la app de Access, el rebote a la app
-// dispara de inmediato un login de Google que se resuelve en silencio con la
-// MISMA cuenta ya logueada en el navegador — por eso "Salir" no parecía hacer
-// nada. Se encadena también el logout de Google (vía el endpoint legado de
-// AppEngine, que sí acepta un `continue` externo — accounts.google.com/logout
-// no lo permite fuera de dominios google.com) antes de volver a Access, para
-// forzar un login de Google real. Se hace una sola vez por pestaña
-// (sessionStorage) para no entrar en loop con un "pide acceso" real.
+// normales — hay que tirar la cookie de Access con /cdn-cgi/access/logout y
+// dejar que vuelva a correr el login de Google. OJO: encadenar además un
+// logout de Google (accounts.google.com/logout) se probó y se descartó —
+// cierra TODA la sesión de Google del navegador (Gmail, Drive, etc.), no solo
+// la de este app; efecto colateral peor que el bug original. Si la cuenta de
+// Google activa en el navegador es la incorrecta, la salida real es que el
+// usuario cambie de cuenta a mano (o use una ventana de Incógnito) — este
+// botón solo puede limpiar la cookie de Access. Se hace una sola vez por
+// pestaña (sessionStorage) para no entrar en loop con un "pide acceso" real.
 const ACCESS_TEAM_DOMAIN = 'mexicanaproteccion.cloudflareaccess.com';
 const ACCESS_RETRY_KEY = 'cmp:accessRetried';
 
@@ -47,26 +46,22 @@ function isBehindAccess(): boolean {
   return h.endsWith('.mexicanadeproteccion.com') || h.endsWith('.workers.dev');
 }
 
-function fullLogoutUrl(returnTo: string): string {
-  const accessLogout = `https://${ACCESS_TEAM_DOMAIN}/cdn-cgi/access/logout?returnTo=${encodeURIComponent(returnTo)}`;
-  const appengineLogout = `https://appengine.google.com/_ah/logout?continue=${encodeURIComponent(accessLogout)}`;
-  return `https://accounts.google.com/logout?continue=${encodeURIComponent(appengineLogout)}`;
-}
-
 function recoverFromAccessSession(): boolean {
   if (!isBehindAccess() || sessionStorage.getItem(ACCESS_RETRY_KEY)) return false;
   sessionStorage.setItem(ACCESS_RETRY_KEY, '1');
-  window.location.href = fullLogoutUrl(window.location.href);
+  const returnTo = encodeURIComponent(window.location.href);
+  window.location.href = `https://${ACCESS_TEAM_DOMAIN}/cdn-cgi/access/logout?returnTo=${returnTo}`;
   return true;
 }
 
-/** Cierra la sesión de Cloudflare Access Y la de Google (botón manual "Salir")
- * y vuelve a la raíz para disparar un login de Google realmente fresco. Fuera
- * de Access (dev local) no hay sesión que cerrar — no hace nada. */
+/** Cierra la sesión de Cloudflare Access (botón manual "Salir") y vuelve a la
+ * raíz para disparar un login de Google fresco. Fuera de Access (dev local)
+ * no hay sesión que cerrar — no hace nada. */
 export function logout() {
   if (!isBehindAccess()) return;
   sessionStorage.removeItem(ACCESS_RETRY_KEY);
-  window.location.href = fullLogoutUrl(window.location.origin);
+  const returnTo = encodeURIComponent(window.location.origin);
+  window.location.href = `https://${ACCESS_TEAM_DOMAIN}/cdn-cgi/access/logout?returnTo=${returnTo}`;
 }
 
 export async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
