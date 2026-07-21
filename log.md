@@ -1,5 +1,15 @@
 # Log de commits
 
+## 2026-07-20 (cont.)
+
+- **`8793f8e`** — Banner de impersonación más evidente: fondo rojo, botón claro
+  - El banner de impersonación era apenas visible.
+  - Ahora: fondo rojo oscuro (#d32f2f), texto blanco, botón "← SALIR" blanco muy evidente, borde inferior rojo más oscuro.
+- **`dbcacb1`** — Hotfix: impersonación no permite regresar al perfil del admin
+  - Bug: cuando un admin impersona otro usuario y hace click en "Salir", el cache global de `useMe()` no se invalidaba — seguía mostrando el usuario impersonado.
+  - Causa: cache de `useMe()` es global y solo se refetcha al iniciar, nunca en cambios posteriores.
+  - Fix: exportar `invalidateMeCache()` e invalidar en `startImpersonation()`/`stopImpersonation()` antes de redirigir.
+
 ## 2026-07-20
 
 - **`c96b7bd`** — Ampliar selectores de Vendedor/Compras a admins y completar equipo de Compras
