@@ -1,6 +1,7 @@
-// Miniaturas + vista previa embebida de los PDFs de cotización (sin firmar /
-// firmada) — mismos archivos que DocumentacionTab (file_mm0fgrzq /
-// file_mm0zjras), pero visibles aquí para no tener que cambiar de pestaña.
+// Miniaturas + vista previa embebida de los PDFs de cotización (solicitud de
+// costeo / sin firmar / firmada) — mismos archivos que DocumentacionTab
+// (file_mm0z6rze / file_mm0fgrzq / file_mm0zjras), pero visibles aquí para no
+// tener que cambiar de pestaña.
 //
 // pdfjs-dist (~370 KB min) se carga de forma diferida: PdfCanvasPreview entra
 // vía React.lazy y warmPdfWorker vía import() dinámico, así el chunk del
@@ -34,7 +35,13 @@ function PdfIcon({ color }: { color: string }) {
   );
 }
 
-type PdfKind = 'sin_firmar' | 'firmada';
+type PdfKind = 'solicitud_costeo' | 'sin_firmar' | 'firmada';
+
+const PDF_LABEL: Record<PdfKind, string> = {
+  solicitud_costeo: 'Cotización — solicitud de costeo',
+  sin_firmar: 'Cotización — sin firmar',
+  firmada: 'Cotización — firmada',
+};
 
 /** Miniatura de un PDF de cotización — tarjeta de ícono clicable. "Ver" abre
  * la vista previa embebida (modal); "Descargar" fuerza la descarga del mismo
@@ -80,8 +87,10 @@ function PdfThumb({ oppId, kind, available, label, accentColor, onPreview }: {
   );
 }
 
-/** Cotización sin firmar / firmada por el vendedor, lado a lado. */
-export function CotizacionPdfRow({ oppId, hasSinFirmar, hasFirmada }: { oppId?: string; hasSinFirmar: boolean; hasFirmada: boolean }) {
+/** Solicitud de costeo, y cotización sin firmar / firmada por el vendedor, lado a lado. */
+export function CotizacionPdfRow({ oppId, hasSolicitud, hasSinFirmar, hasFirmada }: {
+  oppId?: string; hasSolicitud: boolean; hasSinFirmar: boolean; hasFirmada: boolean;
+}) {
   const [preview, setPreview] = useState<PdfKind | null>(null);
   const [bytes, setBytes] = useState<Partial<Record<PdfKind, ArrayBuffer>>>({});
 
@@ -90,10 +99,11 @@ export function CotizacionPdfRow({ oppId, hasSinFirmar, hasFirmada }: { oppId?: 
   // y los bytes del PDF ya están listos (o casi) en vez de arrancar la
   // descarga ahí mismo, que es lo que hacía sentir lenta la primera apertura.
   useEffect(() => {
-    if (!oppId || (!hasSinFirmar && !hasFirmada)) return;
+    if (!oppId || (!hasSolicitud && !hasSinFirmar && !hasFirmada)) return;
     import('../../../../components/core/PdfCanvasPreview').then((m) => m.warmPdfWorker()).catch(() => {});
     let cancelled = false;
     const kinds: PdfKind[] = [];
+    if (hasSolicitud) kinds.push('solicitud_costeo');
     if (hasSinFirmar) kinds.push('sin_firmar');
     if (hasFirmada) kinds.push('firmada');
     kinds.forEach((kind) => {
@@ -103,18 +113,19 @@ export function CotizacionPdfRow({ oppId, hasSinFirmar, hasFirmada }: { oppId?: 
         .catch(() => { /* PdfCanvasPreview reintenta por URL si no hubo prefetch */ });
     });
     return () => { cancelled = true; };
-  }, [oppId, hasSinFirmar, hasFirmada]);
+  }, [oppId, hasSolicitud, hasSinFirmar, hasFirmada]);
 
-  if (!oppId || (!hasSinFirmar && !hasFirmada)) return null;
+  if (!oppId || (!hasSolicitud && !hasSinFirmar && !hasFirmada)) return null;
   return (
     <>
       <div style={{ display: 'flex', gap: 16, marginBottom: 16 }}>
+        <PdfThumb oppId={oppId} kind="solicitud_costeo" available={hasSolicitud} label="Solicitud de costeo" accentColor="var(--status-en-coste)" onPreview={() => setPreview('solicitud_costeo')} />
         <PdfThumb oppId={oppId} kind="sin_firmar" available={hasSinFirmar} label="Sin firmar" accentColor="var(--status-esperando)" onPreview={() => setPreview('sin_firmar')} />
         <PdfThumb oppId={oppId} kind="firmada" available={hasFirmada} label="Firmada" accentColor="var(--status-ganada)" onPreview={() => setPreview('firmada')} />
       </div>
       {preview && (
         <Modal
-          title={preview === 'sin_firmar' ? 'Cotización — sin firmar' : 'Cotización — firmada'}
+          title={PDF_LABEL[preview]}
           onClose={() => setPreview(null)}
           width={760}
         >

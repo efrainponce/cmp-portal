@@ -20,11 +20,14 @@ export class CotizacionPdfError extends Error {
   }
 }
 
+const SOLICITUD_COSTEO_COL = 'file_mm0z6rze'; // Solicitud de costeo (cotización sin precio)
 const NO_FIRMADAS_COL = 'file_mm0fgrzq'; // Cotizaciones generadas (no firmadas por vendedor)
 const FIRMADAS_COL = 'file_mm0zjras';    // Cotizaciones Firmadas
 
-export type PdfKind = 'sin_firmar' | 'firmada';
-const COL_BY_KIND: Record<PdfKind, string> = { sin_firmar: NO_FIRMADAS_COL, firmada: FIRMADAS_COL };
+export type PdfKind = 'solicitud_costeo' | 'sin_firmar' | 'firmada';
+const COL_BY_KIND: Record<PdfKind, string> = {
+  solicitud_costeo: SOLICITUD_COSTEO_COL, sin_firmar: NO_FIRMADAS_COL, firmada: FIRMADAS_COL,
+};
 
 interface FileEntry { name: string; assetId: number }
 

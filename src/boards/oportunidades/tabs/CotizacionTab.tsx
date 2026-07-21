@@ -22,7 +22,7 @@ import { Button } from '../../../components/core/Button';
 import { previewRow, COL } from '../../../lib/costeoCalc';
 import { useIsMobile } from '../../../lib/useIsMobile';
 import { useMe } from '../../../lib/useMe';
-import { latestFileUrl, NO_FIRMADAS_COL, FIRMADAS_COL } from './DocumentacionTab';
+import { latestFileUrl, NO_FIRMADAS_COL, FIRMADAS_COL, SOLICITUDES_COL } from './DocumentacionTab';
 import { VersionChips } from './cotizacion/VersionChips';
 import { SnapshotTable } from './cotizacion/SnapshotTable';
 import { TotalsRow } from './cotizacion/TotalsRow';
@@ -73,6 +73,7 @@ export function CotizacionTab({
   const tabPadding = isMobile ? '14px 14px 24px' : '24px 32px 40px';
   const [selectedVersionId, setSelectedVersionId] = useState<number | null>(null);
   const selectedVersion = selectedVersionId != null ? versions.find((v) => v.id === selectedVersionId) : undefined;
+  const hasSolicitud = !!(item && latestFileUrl(item.cols[SOLICITUDES_COL]?.text));
   const hasSinFirmar = !!(item && latestFileUrl(item.cols[NO_FIRMADAS_COL]?.text));
   const hasFirmada = !!(item && latestFileUrl(item.cols[FIRMADAS_COL]?.text));
 
@@ -406,7 +407,7 @@ export function CotizacionTab({
             </span>
           </div>
         )}
-        <CotizacionPdfRow oppId={oppId} hasSinFirmar={hasSinFirmar} hasFirmada={hasFirmada} />
+        <CotizacionPdfRow oppId={oppId} hasSolicitud={hasSolicitud} hasSinFirmar={hasSinFirmar} hasFirmada={hasFirmada} />
         <SnapshotTable version={selectedVersion} />
       </div>
     );
@@ -430,7 +431,7 @@ export function CotizacionTab({
     return (
       <div style={{ padding: tabPadding, width: '100%', boxSizing: 'border-box' }}>
         <VersionChips versions={versions} selected={selectedVersionId} onSelect={setSelectedVersionId} onNuevaVersion={onNuevaVersion} />
-        <CotizacionPdfRow oppId={oppId} hasSinFirmar={hasSinFirmar} hasFirmada={hasFirmada} />
+        <CotizacionPdfRow oppId={oppId} hasSolicitud={hasSolicitud} hasSinFirmar={hasSinFirmar} hasFirmada={hasFirmada} />
         <div style={{ font: 'var(--text-label)', color: 'var(--ink-quiet)', marginBottom: 16 }}>
           Sin líneas de producto registradas.
         </div>
@@ -456,7 +457,7 @@ export function CotizacionTab({
           <ColumnVisibilityPicker columns={gridCols.slice(1)} hidden={hiddenCols} onToggle={onToggleColumn} />
         )}
       </div>
-      <CotizacionPdfRow oppId={oppId} hasSinFirmar={hasSinFirmar} hasFirmada={hasFirmada} />
+      <CotizacionPdfRow oppId={oppId} hasSolicitud={hasSolicitud} hasSinFirmar={hasSinFirmar} hasFirmada={hasFirmada} />
       <datalist id="productos-catalogo-cotizacion">
         {catalog.map((p) => <option key={p.id} value={p.name} />)}
       </datalist>

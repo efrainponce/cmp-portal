@@ -7,7 +7,7 @@ import type { ItemDetailDTO } from '../../../lib/api';
 import { uploadProyectoDocumento } from '../../../lib/api';
 import { P_OC_CLIENTE, type ProyectoState } from '../ProyectoSection';
 
-const SOLICITUDES_COL = 'file_mm0z6rze';       // Cotizaciones sin precio
+export const SOLICITUDES_COL = 'file_mm0z6rze'; // Cotizaciones sin precio
 export const NO_FIRMADAS_COL = 'file_mm0fgrzq'; // Cotizaciones generadas
 export const FIRMADAS_COL = 'file_mm0zjras';    // Cotizaciones Firmadas
 

@@ -326,7 +326,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
   app.get('/api/oportunidades/:id/cotizacion-pdf/:kind', async c => {
     const itemId = Number(c.req.param('id'));
     const kind = c.req.param('kind') as PdfKind;
-    if (!Number.isFinite(itemId) || (kind !== 'sin_firmar' && kind !== 'firmada')) return c.json({ error: 'not found' }, 404);
+    if (!Number.isFinite(itemId) || (kind !== 'sin_firmar' && kind !== 'firmada' && kind !== 'solicitud_costeo')) return c.json({ error: 'not found' }, 404);
     const viewer = c.get('viewer');
 
     try {
