@@ -87,4 +87,14 @@ export async function reconcileAll(env: Env): Promise<void> {
       await logSync(env, 'reconcile', id, null, false, String(e));
     }
   }
+
+  // Retención del centro de notificaciones: purga leídas con más de 30 días —
+  // best-effort, nunca debe tumbar el resto del reconcile.
+  try {
+    await env.DB.prepare(
+      `DELETE FROM notifications WHERE read_at IS NOT NULL AND created_at < datetime('now','-30 days')`,
+    ).run();
+  } catch (e) {
+    await logSync(env, 'reconcile', 0, null, false, `notifications prune failed: ${e}`);
+  }
 }

@@ -20,9 +20,18 @@ import { cachedFetchUsers } from '../lib/rosterCache';
 import { getBoardAccess } from '../lib/boardAccess';
 import { refetchItem } from '../sync';
 import { jsonStatus } from '../lib/http';
+import { emitNotification } from '../lib/notify';
 
 function isBoardSlug(s: string): s is BoardSlug {
   return Object.prototype.hasOwnProperty.call(BOARDS, s);
+}
+
+// Deep-link boardKey (src/lib/routing.ts) para la notificación de mención —
+// 'proyectos' vive bajo la ruta 'doctallas' en el front; el resto coincide con el slug.
+function mentionBoardKey(slug: string): string {
+  if (slug === 'oportunidades') return 'oportunidades';
+  if (slug === 'proyectos') return 'doctallas';
+  return slug;
 }
 
 export function boardRoutes(app: Hono<{ Bindings: Env }>) {
@@ -216,6 +225,32 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
 
     const signed = `${text}\n\n— ${viewer.nombre ?? viewer.email} vía Portal CMP`;
     const u = await createUpdate(c.env, itemId, signed, mentions);
+
+    // Notifica a cada compañero mencionado (nunca al propio autor). Best-effort:
+    // emitNotification ya se traga sus propios errores; aquí solo protegemos el
+    // lookup de identity para que un fallo de D1 no rompa la respuesta del update.
+    for (const mention of mentions) {
+      if (mention.id === viewer.monday_user_id) continue;
+      try {
+        const identityRow = await c.env.DB.prepare(
+          `SELECT email FROM identity WHERE monday_user_id = ? AND active = 1`,
+        ).bind(mention.id).first<{ email: string }>();
+        if (!identityRow) continue;
+        await emitNotification(c.env, {
+          recipientEmail: identityRow.email,
+          severity: 'importante',
+          kind: 'mention',
+          title: `Te mencionaron en ${row.name}`,
+          body: text.slice(0, 140),
+          boardKey: mentionBoardKey(slug),
+          boardId: BOARDS[slug].id,
+          itemId,
+          actor: viewer.nombre ?? viewer.email,
+          dedupeKey: `mention:${u.id}:${identityRow.email}`,
+        });
+      } catch { /* best-effort — no bloquea la respuesta del update */ }
+    }
+
     const dto: UpdateDTO = {
       id: u.id, body: u.text_body ?? signed, author: u.creator?.name ?? (viewer.nombre ?? viewer.email), createdAt: u.created_at,
       attachments: [],

@@ -3,10 +3,12 @@
 // panel deslizante sobre un scrim; seleccionar un board lo cierra.
 import { useState } from 'react';
 import { Sidebar, BOARD_LABELS, type BoardKey } from './Sidebar';
+import { NotificationBell } from '../components/notifications/NotificationBell';
 
 interface MobileTopBarProps {
   activeBoard: BoardKey;
   onSelectBoard: (key: BoardKey) => void;
+  onOpenNotification?: (boardKey: string, itemId: string | null) => void;
 }
 
 function IconMenu() {
@@ -17,7 +19,7 @@ function IconMenu() {
   );
 }
 
-export function MobileTopBar({ activeBoard, onSelectBoard }: MobileTopBarProps) {
+export function MobileTopBar({ activeBoard, onSelectBoard, onOpenNotification }: MobileTopBarProps) {
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (
@@ -38,9 +40,14 @@ export function MobileTopBar({ activeBoard, onSelectBoard }: MobileTopBarProps) 
           <IconMenu />
         </button>
         <div style={{ width: 20, height: 20, borderRadius: 5, background: 'var(--ink)', flex: 'none' }} />
-        <div style={{ font: '700 15px \'Inter\', sans-serif', color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        <div style={{ font: '700 15px \'Inter\', sans-serif', color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1 }}>
           {BOARD_LABELS[activeBoard] ?? 'CMP Portal'}
         </div>
+        {onOpenNotification && (
+          <div style={{ marginLeft: 'auto', flex: 'none' }}>
+            <NotificationBell onNavigate={onOpenNotification} />
+          </div>
+        )}
       </div>
 
       {menuOpen && (

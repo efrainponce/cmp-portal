@@ -13,6 +13,7 @@ import { boardRoutes } from './routes/boards';
 import { adminRoutes } from './routes/admin';
 import { oportunidadRoutes } from './routes/oportunidades';
 import { inventarioRoutes } from './routes/inventario';
+import { notificationRoutes } from './routes/notifications';
 import { flushOutbox } from './lib/outbox';
 
 const app = new Hono<{ Bindings: Env }>();
@@ -38,6 +39,7 @@ boardRoutes(app);
 adminRoutes(app);
 oportunidadRoutes(app);
 inventarioRoutes(app);
+notificationRoutes(app);
 
 app.all('*', c => c.env.ASSETS.fetch(c.req.raw));
 

@@ -159,3 +159,23 @@ export interface AssistantMessage { role: 'user' | 'assistant'; text: string }
 export interface AssistantHistoryResponse { messages: AssistantMessage[] }
 export interface AssistantChatRequest { text: string }
 export interface AssistantChatResponse { reply: string }
+
+// Centro de notificaciones (worker/routes/notifications.ts). Cada fila es personal —
+// scoped a viewer.email. Dos bandejas por `severity`. `boardKey`/`itemId` arman el deep
+// link /{boardKey}/{itemId} (src/lib/routing.ts) que abre el drawer de la oportunidad.
+export interface NotificationDTO {
+  id: number;
+  severity: 'importante' | 'actualizacion';
+  kind: string;                 // 'mention' | 'costeo_incompleto' | 'stage_change'
+  title: string;
+  body: string | null;
+  boardKey: string | null;
+  itemId: string | null;
+  actor: string | null;
+  read: boolean;
+  createdAt: string;            // ISO
+}
+export interface NotificationsResponse {
+  notifications: NotificationDTO[];
+  unread: { importante: number; actualizacion: number };
+}

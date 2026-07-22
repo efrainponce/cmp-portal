@@ -1,4 +1,5 @@
 import { NavItem } from '../components/navigation/NavItem';
+import { NotificationBell } from '../components/notifications/NotificationBell';
 import { UserChip } from './UserChip';
 import { useMe } from '../lib/useMe';
 import logo from '../assets/logo.webp';
@@ -56,9 +57,12 @@ interface SidebarProps {
   onToggleCollapsed: () => void;
   /** En móvil el sidebar vive dentro de un menú deslizante — sin botón de colapsar. */
   hideCollapse?: boolean;
+  /** Campana de notificaciones en el header — omitido dentro del Sidebar interno
+   * del menú deslizante móvil (MobileTopBar ya trae su propia campana). */
+  onOpenNotification?: (boardKey: string, itemId: string | null) => void;
 }
 
-export function Sidebar({ activeBoard, onSelectBoard, collapsed, onToggleCollapsed, hideCollapse }: SidebarProps) {
+export function Sidebar({ activeBoard, onSelectBoard, collapsed, onToggleCollapsed, hideCollapse, onOpenNotification }: SidebarProps) {
   const me = useMe();
   const visible = (items: NavItemConfig[]) => items.filter((item) => me?.boardAccess.includes(item.key));
   const ventasItems = visible(VENTAS_ITEMS);
@@ -92,12 +96,20 @@ export function Sidebar({ activeBoard, onSelectBoard, collapsed, onToggleCollaps
         flexDirection: 'column',
         boxSizing: 'border-box',
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', height: 32 }}>
-          <img src={logo} alt="CMP" style={{ width: 28, height: 28, flex: 'none' }} />
-          {!collapsed && (
-            <div style={{ font: '800 12px \'Inter\', sans-serif', color: 'var(--ink)', letterSpacing: '.2px', whiteSpace: 'nowrap', overflow: 'hidden' }}>
-              CMP Portal
-            </div>
+        <div style={{ display: 'flex', flexDirection: collapsed ? 'column' : 'row', alignItems: 'center', gap: collapsed ? 6 : 8, padding: '4px 8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: collapsed ? 'auto' : '100%', height: 32 }}>
+            <img src={logo} alt="CMP" style={{ width: 28, height: 28, flex: 'none' }} />
+            {!collapsed && (
+              <div style={{ font: '800 12px \'Inter\', sans-serif', color: 'var(--ink)', letterSpacing: '.2px', whiteSpace: 'nowrap', overflow: 'hidden', flex: 1 }}>
+                CMP Portal
+              </div>
+            )}
+            {onOpenNotification && !collapsed && (
+              <NotificationBell onNavigate={onOpenNotification} collapsed={collapsed} />
+            )}
+          </div>
+          {onOpenNotification && collapsed && (
+            <NotificationBell onNavigate={onOpenNotification} collapsed={collapsed} />
           )}
         </div>
 

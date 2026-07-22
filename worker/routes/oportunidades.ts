@@ -4,6 +4,7 @@
 // worker/index.ts (2026-07-16) — sin cambios de comportamiento.
 import type { Hono } from 'hono';
 import type { Env } from '../env';
+import type { Identity } from '../../shared/types';
 import { BOARDS } from '../../shared/boards';
 import type { DuplicarOportunidadResponse, DuplicarVersionResponse, ItemDetailDTO, QuoteVersionsResponse } from '../../shared/dto';
 import { getItem, childrenOf, pendingItemIds, proyectoForOportunidad, linkedItemId, PROYECTO_OPP_REL } from '../lib/dal';
@@ -23,6 +24,8 @@ import { resolveCotizacionPdfUrl, CotizacionPdfError, type PdfKind } from '../li
 import { refetchItem, refetchItemTree, upsertItem } from '../sync';
 import { jsonStatus } from '../lib/http';
 import { canWrite } from '../../shared/visibility';
+import { emitNotification } from '../lib/notify';
+import { md5 } from '../lib/canon';
 
 // OC / cotización / contrato firmado por el cliente (board Proyectos) — único
 // campo de documentación habilitado para upload por ahora (Efraín, 2026-07-17).
@@ -79,6 +82,28 @@ async function proxyMondayAsset(env: Env, assetId: number): Promise<Response> {
   });
 }
 
+// Notifica al propio vendedor cuando "Mandar a costeo" rechaza por datos
+// faltantes (pre-chequeo local o rechazo del endpoint de cmp-tallas) — best-effort,
+// nunca debe tumbar la respuesta 422 que ya trae la lista de errores.
+async function notifyCosteoIncompleto(env: Env, viewer: Identity, itemId: number, errors: string[]): Promise<void> {
+  try {
+    const oppRow = await getItem(env, 'oportunidades', itemId, viewer);
+    const oppName = oppRow?.name ?? '';
+    await emitNotification(env, {
+      recipientEmail: viewer.email,
+      severity: 'importante',
+      kind: 'costeo_incompleto',
+      title: `Faltan datos para mandar a costeo${oppName ? ': ' + oppName : ''}`,
+      body: errors.join('\n'),
+      boardKey: 'oportunidades',
+      boardId: BOARDS.oportunidades.id,
+      itemId,
+      actor: viewer.nombre ?? viewer.email,
+      dedupeKey: `costeo:${itemId}:${md5(errors.join('|'))}`,
+    });
+  } catch { /* best-effort — no bloquea la respuesta 422 */ }
+}
+
 export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
   // Pre-chequeo de solo lectura: la UI deshabilita "Mandar a costeo" y lista lo
   // que falta ANTES de que alguien pueda dar click. Sin ningún efecto.
@@ -115,15 +140,20 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
   app.post('/api/oportunidades/:id/enviar-costeo', async c => {
     const itemId = Number(c.req.param('id'));
     if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
+    const viewer = c.get('viewer');
 
     try {
-      const result = await enviarACosteo(c.env, itemId, c.get('viewer'));
+      const result = await enviarACosteo(c.env, itemId, viewer);
       // El stage, el PDF y los snapshots de subitems los escribió cmp-tallas
       // directo en Monday — refresca el árbol completo en el mirror.
       if (result.ok) await refetchItemTree(c.env, BOARDS.oportunidades.id, itemId);
+      if (!result.ok) await notifyCosteoIncompleto(c.env, viewer, itemId, result.errors ?? []);
       return result.ok ? c.json(result) : jsonStatus(result, 422);
     } catch (err) {
-      if (err instanceof CosteoError) return jsonStatus({ ok: false, errors: [err.message] }, err.status);
+      if (err instanceof CosteoError) {
+        await notifyCosteoIncompleto(c.env, viewer, itemId, [err.message]);
+        return jsonStatus({ ok: false, errors: [err.message] }, err.status);
+      }
       if (err instanceof AutomationError) return jsonStatus({ ok: false, errors: [err.message] }, err.status);
       if (err instanceof OutboxError) return jsonStatus({ ok: false, errors: [err.message] }, err.status);
       return jsonStatus({ ok: false, errors: ['internal error'] }, 500);

@@ -14,6 +14,7 @@ Formato: `- [ruta](ruta) — Propósito (1 frase). Exports: Export1, Export2, Ex
 - [shared/dto.ts](shared/dto.ts) — DTOs genéricos scoped por rol (único productor: serialize.ts). Exports: ColVal, ItemDTO, ItemDetailDTO, ListResponse, MeDTO.
 - [shared/embellecimiento.ts](shared/embellecimiento.ts) — Compartido con worker: parse/serialize embellecimiento por zona. Exports: EMBELL_TEMPLATE_KEYS, EmbellZoneKey, EMB_STATUS_COL, EMB_LABEL_CON, EMB_LABEL_SIN.
 - [shared/inventory.ts](shared/inventory.ts) — DTOs Inventario + reglas negocio (feature D1 nativa). Exports: MovementType, WarehouseType, MOVEMENT_TYPES, WarehouseDTO, MovementDTO.
+- [shared/notifications.ts](shared/notifications.ts) — Ruteo del centro de notificaciones (decisión de whitelist de Efraín). Exports: RecipientSelector, STAGE_NOTIFY.
 - [shared/types.ts](shared/types.ts) — Tipos base compartidos: Role, Identity, MirrorItem, EmbellecimientoSpec. Exports: Role, Identity, MirrorItem, EmbellecimientoSpec.
 - [shared/visibility.ts](shared/visibility.ts) — La whitelist como data: reglas de lectura/escritura por columna y rol (fail-closed). Exports: ColRule, VISIBILITY, canRead, canWrite, readableCols.
 
@@ -44,6 +45,7 @@ Formato: `- [ruta](ruta) — Propósito (1 frase). Exports: Export1, Export2, Ex
 - [worker/lib/http.ts](worker/lib/http.ts) — Helper mínimo compartido por rutas (statusCode responses). Exports: jsonStatus.
 - [worker/lib/inventory.ts](worker/lib/inventory.ts) — Inventario DAL + validación (feature D1 nativa, no espejado de Monday). Exports: InventoryError, listWarehouses, listMovements, listStock.
 - [worker/lib/monday.ts](worker/lib/monday.ts) — Cliente GraphQL thin de Monday.com (API 2024-10). Exports: MondayCol, MondayItem, gql, ItemsPage.
+- [worker/lib/notify.ts](worker/lib/notify.ts) — Emisor best-effort del centro de notificaciones (idempotente por dedupe_key). Exports: emitNotification, resolveRecipients, maybeEmitStageChange.
 - [worker/lib/outbox.ts](worker/lib/outbox.ts) — Write path optimista: D1 mirror primero, Monday async vía waitUntil + echo. Exports: OutboxError, submitWrite, flushOutbox.
 - [worker/lib/quoteVersions.ts](worker/lib/quoteVersions.ts) — Versiones de cotización: vigente siempre es primera subitem, borradores/snapshots para histórico. Exports: QuoteVersionError, listVersions, recordFirstVersion, esDraftVigente.
 - [worker/lib/r2.ts](worker/lib/r2.ts) — Helpers mínimos sobre binding FILES (bucket R2 para documentos). Exports: oportunidadFileKey, putFile, getFile.
@@ -60,6 +62,7 @@ Formato: `- [ruta](ruta) — Propósito (1 frase). Exports: Export1, Export2, Ex
 - [worker/routes/admin.ts](worker/routes/admin.ts) — Admin-only: gestionar roster y pullear users de Monday. Exports: adminRoutes.
 - [worker/routes/boards.ts](worker/routes/boards.ts) — Rutas genéricas de boards espejados (list/detail/patch/create). Exports: boardRoutes.
 - [worker/routes/inventario.ts](worker/routes/inventario.ts) — Inventario D1 nativo (no espejado de Monday). Exports: inventarioRoutes.
+- [worker/routes/notifications.ts](worker/routes/notifications.ts) — API del centro de notificaciones scoped al viewer (list ETag/304, marcar leída). Exports: notificationRoutes.
 - [worker/routes/oportunidades.ts](worker/routes/oportunidades.ts) — Rutas específicas de Oportunidades: costeo, versiones, duplicar. Exports: oportunidadRoutes.
 
 ### worker/sync/
@@ -111,6 +114,7 @@ Formato: `- [ruta](ruta) — Propósito (1 frase). Exports: Export1, Export2, Ex
 - [src/lib/groupBy.ts](src/lib/groupBy.ts) — Agrupa items por valor de columna status/dropdown (con labels). Exports: ColumnGroup, groupByColumn.
 - [src/lib/impersonation.ts](src/lib/impersonation.ts) — Admin "ver como": target email persiste en localStorage. Exports: getImpersonateTarget, startImpersonation, stopImpersonation.
 - [src/lib/inventoryApi.ts](src/lib/inventoryApi.ts) — Cliente fetch para /api/inventario/* (feature D1 nativa). Exports: (tipos), getWarehouses, getStock, createMovement.
+- [src/lib/notificationsApi.ts](src/lib/notificationsApi.ts) — Cliente + hook del centro de notificaciones (polling ETag 12s, optimista). Exports: markNotificationRead, markAllNotificationsRead, useNotifications.
 - [src/lib/mockFallback.ts](src/lib/mockFallback.ts) — Fallback offline-only para que board Oportunidades demo sin API. Exports: mockBoardMeta, mockPatch, mockList, mockItemDetail.
 - [src/lib/projectStages.ts](src/lib/projectStages.ts) — Config de los 3 accesos Proyectos (post-venta: Tallas, OC, Logística). Exports: ProjectBoardKey, ProjectBoardConfig, PROJECT_STATUS_ORDER, PROJECT_BOARDS.
 - [src/lib/routing.ts](src/lib/routing.ts) — Ruteo mínimo por History API (sin react-router, deep links). Exports: useRoute.
@@ -125,6 +129,8 @@ Formato: `- [ruta](ruta) — Propósito (1 frase). Exports: Export1, Export2, Ex
 ### src/components/
 
 - [src/components/assistant/ChatBubble.tsx](src/components/assistant/ChatBubble.tsx) — Floating chat bubble del agente Claude. Exports: ChatBubble.
+- [src/components/notifications/NotificationBell.tsx](src/components/notifications/NotificationBell.tsx) — Campana con badge (popover desktop / hoja móvil), vive en Sidebar + MobileTopBar. Exports: NotificationBell.
+- [src/components/notifications/NotificationCenter.tsx](src/components/notifications/NotificationCenter.tsx) — Panel de 2 bandejas (Importantes/Actualizaciones), deep-link al drawer. Exports: NotificationCenter.
 - [src/components/board/BoardStatus.tsx](src/components/board/BoardStatus.tsx) — Loading/denied/offline states compartidos. Exports: BoardStatus.
 - [src/components/board/BoardTable.tsx](src/components/board/BoardTable.tsx) — Tabla genérica estilo Monday. Exports: BoardTable.
 - [src/components/board/EditableField.tsx](src/components/board/EditableField.tsx) — Campo editable: label + input/textarea + save. Exports: EditableField.

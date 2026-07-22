@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState } from 'react';
-import { Sidebar } from './app/Sidebar';
+import { Sidebar, type BoardKey } from './app/Sidebar';
 import { MobileTopBar } from './app/MobileTopBar';
 import { ImpersonationBanner } from './app/ImpersonationBanner';
 import { SessionExpiredScreen } from './app/SessionExpiredScreen';
@@ -33,6 +33,9 @@ function App() {
   // Duplicar una oportunidad la crea en etapa "Nueva oportunidad" — la nueva
   // vive en el board Oportunidades sin importar desde qué board se duplicó.
   const onDuplicated = (newId: string) => navigate('oportunidades', newId);
+  // Deep link de una notificación: navega al board+item indicados (abre el
+  // drawer si es una oportunidad, igual que cualquier otro link directo).
+  const onOpenNotification = (board: string, id: string | null) => navigate(board as BoardKey, id);
 
   const views = (
     <Suspense fallback={<div style={{ padding: 32 }}>Cargando…</div>}>
@@ -66,7 +69,7 @@ function App() {
     return (
       <div className="app-root" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--bg)' }}>
         <ImpersonationBanner />
-        <MobileTopBar activeBoard={activeBoard} onSelectBoard={(key) => navigate(key, null)} />
+        <MobileTopBar activeBoard={activeBoard} onSelectBoard={(key) => navigate(key, null)} onOpenNotification={onOpenNotification} />
         <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
           {views}
         </div>
@@ -84,6 +87,7 @@ function App() {
           onSelectBoard={(key) => navigate(key, null)}
           collapsed={collapsed}
           onToggleCollapsed={() => setCollapsed((c) => !c)}
+          onOpenNotification={onOpenNotification}
         />
         <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
           {views}

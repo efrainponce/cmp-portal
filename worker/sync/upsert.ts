@@ -3,6 +3,7 @@ import type { Env } from '../env';
 import type { MondayItem } from '../lib/monday';
 import { rawHash, type RawColumn } from '../lib/canon';
 import { BOARDS, type BoardSlug } from '../../shared/boards';
+import { maybeEmitStageChange } from '../lib/notify';
 
 // authzCols are people columns; value JSON carries personsAndTeams:[{id,kind}].
 function extractVendedorIds(item: MondayItem, authzCols: string[]): number[] {
@@ -48,6 +49,20 @@ export async function upsertItem(
   const vendedorIds = def.parent ? [] : extractVendedorIds(item, def.authzCols ?? []);
   const now = new Date().toISOString();
 
+  // Solo para el board padre de Oportunidades: captura el estado previo de
+  // `columns` ANTES del write para poder diffear deal_stage después (el centro
+  // de notificaciones — worker/lib/notify.ts). Se hace aquí, no antes del
+  // skipIfUnchanged, para no pagar una SELECT extra en el resto de boards ni
+  // cuando el contenido no cambió.
+  const isOportunidades = slug === 'oportunidades';
+  let prevColumnsJson: string | null = null;
+  if (isOportunidades) {
+    const prevRow = await env.DB.prepare(
+      `SELECT columns FROM items WHERE board_id = ? AND item_id = ?`,
+    ).bind(def.id, itemId).first<{ columns: string }>();
+    prevColumnsJson = prevRow?.columns ?? null;
+  }
+
   await env.DB.prepare(
     `INSERT INTO items (board_id, item_id, parent_item_id, name, group_id, vendedor_ids, monday_updated_at, synced_at, content_hash, columns)
      VALUES (?,?,?,?,?,?,?,?,?,?)
@@ -61,6 +76,17 @@ export async function upsertItem(
     item.name, item.group?.id ?? null,
     JSON.stringify(vendedorIds), item.updated_at, now, contentHash, JSON.stringify(columns),
   ).run();
+
+  if (isOportunidades) {
+    await maybeEmitStageChange(env, {
+      boardId: def.id,
+      itemId,
+      itemName: item.name,
+      prevColumnsJson,
+      newColumnsJson: JSON.stringify(columns),
+      vendedorIds,
+    });
+  }
 
   return { changed: true };
 }

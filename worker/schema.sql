@@ -190,3 +190,26 @@ INSERT OR IGNORE INTO role_board_access (role, board_key) VALUES
   ('compras', 'productos'), ('compras', 'instituciones'), ('compras', 'contactos'),
   ('compras', 'proveedores'), ('compras', 'inventario'),
   ('almacen', 'inventario');
+
+-- Centro de notificaciones del portal (2026-07-22, worker/lib/notify.ts). Dos bandejas
+-- por `severity`: 'importante' (te mencionaron, costeo incompleto) y 'actualizacion'
+-- (la oportunidad cambió de etapa). Cada fila es personal: `recipient_email` apunta a
+-- identity.email. `dedupe_key` UNIQUE + INSERT OR IGNORE = idempotente aunque el webhook
+-- reintente o el reconcile re-corra. Vive solo en D1, no se espeja a Monday.
+CREATE TABLE IF NOT EXISTS notifications (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  recipient_email TEXT NOT NULL,
+  severity        TEXT NOT NULL CHECK (severity IN ('importante','actualizacion')),
+  kind            TEXT NOT NULL,     -- 'mention' | 'costeo_incompleto' | 'stage_change'
+  title           TEXT NOT NULL,
+  body            TEXT,
+  board_key       TEXT,              -- deep link /{board_key}/{item_id} (src/lib/routing.ts)
+  board_id        INTEGER,
+  item_id         INTEGER,
+  actor           TEXT,              -- nombre de quien lo causó (display)
+  dedupe_key      TEXT NOT NULL,
+  read_at         TEXT,              -- NULL = no leída
+  created_at      TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_notif_dedupe ON notifications(dedupe_key);
+CREATE INDEX IF NOT EXISTS idx_notif_inbox ON notifications(recipient_email, read_at, id);
