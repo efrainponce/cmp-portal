@@ -70,6 +70,29 @@ Y aplicar el schema nuevo en prod (tablas `wa_conversations`, `wa_processed`):
 npx wrangler d1 execute cmp-portal --remote --file=worker/schema.sql --env-file=/dev/null
 ```
 
+## Agente de inventario (rol `almacen`) — 2026-07-22
+
+El mismo bot atiende a logística con una persona dedicada (`almacenPrompt` en
+`worker/lib/assistantPersonas.ts`). Puede **registrar y consultar movimientos** de
+inventario por WhatsApp (o por la burbuja del portal — es el mismo agente):
+
+- Herramientas nuevas (`worker/lib/assistantTools.ts`):
+  - `listar_almacenes` — catálogo de almacenes activos con su id (para no inventar ids).
+  - `crear_movimiento` — captura un movimiento llamando a `createMovement`
+    (`worker/lib/inventory.ts`), **la misma función y reglas que el formulario del
+    portal** (`shared/inventory.ts`: `validateMovementEndpoints`, folio autoincremental,
+    `captured_by` = nombre del identity). Soporta los 4 tipos: Entrada / Salida /
+    Transferencia / Consolidación.
+- Gating (`TOOL_ROLES`): consulta (`consultar_inventario`, `movimientos_inventario`,
+  `listar_almacenes`, `buscar_productos`) = `almacen` + `compras` + `admin`; **escritura**
+  (`crear_movimiento`) = **`almacen` + `admin`** (decisión de Efraín — `compras` sigue
+  solo-consulta, como en el portal). El agente de almacén NO ve pipeline ni oportunidades.
+- El agente pregunta un dato a la vez y **exige confirmación explícita** antes de
+  capturar (regla en `REGLAS_INVENTARIO`), igual que crear_oportunidad.
+
+Alta de un usuario de almacén = una identidad con `role='almacen'` y `phone` (mismo
+mecanismo de whitelist de abajo).
+
 ## Alta de vendedores (whitelist — decisión de Efraín)
 
 El bot solo atiende teléfonos que estén en `identity.phone` (se comparan los últimos

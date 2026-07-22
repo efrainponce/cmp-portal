@@ -18,7 +18,8 @@ import { readableCols } from '../../shared/visibility';
 import { EMBELL_TEMPLATE_KEYS } from '../../shared/embellecimiento';
 import { DEAL_STAGE_LABELS, DEAL_STAGE_ORDER, CLOSED_STAGES, stageKeyForLabel } from '../../shared/dealStages';
 import { listItems, getItem, childrenOf } from './dal';
-import { listStock, listMovements, listWarehouses } from './inventory';
+import { listStock, listMovements, listWarehouses, createMovement, InventoryError } from './inventory';
+import { MOVEMENT_TYPES, type MovementType } from '../../shared/inventory';
 import { submitCreate, CreateError } from './createRecord';
 import { createOportunidad, OportunidadError, type LineaInput } from './createOportunidad';
 
@@ -70,12 +71,17 @@ const PROYECTO = {
 // ── Tool registry ─────────────────────────────────────────────────────────────
 
 const ALL: Role[] = ['vendedor', 'compras', 'admin'];
-const PRIVILEGED: Role[] = ['compras', 'admin'];
 const CREATORS: Role[] = ['vendedor', 'admin'];
+// Inventario (2026-07-22): almacén (logística) captura y consulta por WhatsApp/portal;
+// compras/admin solo consultan; la escritura de movimientos es de almacen + admin
+// (decisión de Efraín — compras sigue solo-consulta como en el portal).
+const INVENTORY_READ: Role[] = ['compras', 'admin', 'almacen'];
+const INVENTORY_WRITE: Role[] = ['almacen', 'admin'];
+const PRODUCT_SEARCH: Role[] = ['vendedor', 'compras', 'admin', 'almacen'];
 
 /** Which roles may call each tool. Fail-closed: unknown tool = nobody. */
 export const TOOL_ROLES: Record<string, Role[]> = {
-  buscar_productos: ALL,
+  buscar_productos: PRODUCT_SEARCH,
   buscar_contactos: ALL,
   buscar_instituciones: ALL,
   crear_contacto: CREATORS,
@@ -84,8 +90,10 @@ export const TOOL_ROLES: Record<string, Role[]> = {
   listar_oportunidades: ALL,
   detalle_oportunidad: ALL,
   listar_proyectos: ALL,
-  consultar_inventario: PRIVILEGED,
-  movimientos_inventario: PRIVILEGED,
+  consultar_inventario: INVENTORY_READ,
+  movimientos_inventario: INVENTORY_READ,
+  listar_almacenes: INVENTORY_READ,
+  crear_movimiento: INVENTORY_WRITE,
 };
 
 export const TOOLS: Anthropic.Tool[] = [
@@ -238,6 +246,36 @@ export const TOOLS: Anthropic.Tool[] = [
         producto: { type: 'string', description: 'Nombre parcial del producto' },
         limite: { type: 'number', description: 'Máximo de movimientos (default 10, máx 30)' },
       },
+    },
+  },
+  {
+    name: 'listar_almacenes',
+    description: 'Lista los almacenes activos (bodegas y vendedores) con su id. Úsala SIEMPRE antes de registrar un movimiento que lleve almacén de origen o destino, para obtener el id correcto — nunca inventes ids de almacén.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        q: { type: 'string', description: 'Texto parcial para filtrar por nombre de almacén o vendedor (opcional)' },
+      },
+    },
+  },
+  {
+    name: 'crear_movimiento',
+    description: 'Registra un movimiento de inventario (agregar o dar de baja stock). Es la MISMA captura que el formulario del portal: mismas reglas de qué almacenes lleva cada tipo. Solo llamar después de que el usuario confirmó explícitamente el resumen. Antes, usa buscar_productos para el nombre exacto del producto y listar_almacenes para los ids de almacén.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        tipo: {
+          type: 'string',
+          enum: [...MOVEMENT_TYPES],
+          description: 'Entrada = agrega stock (solo almacén de destino). Salida = da de baja stock (solo almacén de origen). Transferencia = mueve entre dos almacenes (origen y destino distintos). Consolidación = ajuste de conteo físico: exactamente un almacén (destino si sobran piezas/ajuste al alza, origen si faltan/ajuste a la baja).',
+        },
+        producto: { type: 'string', description: 'Nombre del producto tal como aparece en el catálogo (de buscar_productos). Si el producto no está en catálogo, el nombre que el usuario confirmó.' },
+        cantidad: { type: 'number', description: 'Cantidad de piezas (siempre positiva, mayor a 0). Para Salida/ajuste a la baja también es positiva: el tipo ya indica que sale stock.' },
+        almacen_origen_id: { type: 'number', description: 'id del almacén de origen (de listar_almacenes). Requerido para Salida y Transferencia, y para Consolidación a la baja. Omitir en Entrada.' },
+        almacen_destino_id: { type: 'number', description: 'id del almacén de destino (de listar_almacenes). Requerido para Entrada y Transferencia, y para Consolidación al alza. Omitir en Salida.' },
+        notas: { type: 'string', description: 'Nota opcional del movimiento' },
+      },
+      required: ['tipo', 'producto', 'cantidad'],
     },
   },
 ];
@@ -556,6 +594,47 @@ async function toolMovimientosInventario(env: Env, input: Record<string, unknown
   return JSON.stringify({ movimientos: rows });
 }
 
+async function toolListarAlmacenes(env: Env, input: Record<string, unknown>): Promise<string> {
+  const q = typeof input.q === 'string' ? input.q.trim() : '';
+  const warehouses = await listWarehouses(env);
+  const rows = warehouses
+    .filter(w => !q || like(w.name, q))
+    .map(w => ({ id: w.id, nombre: w.name, tipo: w.type === 'person' ? 'vendedor' : 'bodega', ubicacion: w.location }));
+  return JSON.stringify({
+    almacenes: rows,
+    ...(rows.length === 0 ? { nota: q ? 'Ningún almacén coincide.' : 'No hay almacenes activos.' } : {}),
+  });
+}
+
+async function toolCrearMovimiento(env: Env, viewer: Identity, input: Record<string, unknown>): Promise<string> {
+  const tipo = input.tipo as MovementType;
+  if (!MOVEMENT_TYPES.includes(tipo)) {
+    return JSON.stringify({ ok: false, error: `Tipo inválido. Usa uno de: ${MOVEMENT_TYPES.join(', ')}.` });
+  }
+  const capturedBy = viewer.nombre ?? viewer.email;
+  // createMovement (worker/lib/inventory.ts) aplica exactamente las mismas reglas
+  // que el formulario del portal: validateMovementEndpoints por tipo, cantidad > 0,
+  // existencia de almacenes y folio autoincremental.
+  const movement = await createMovement(env, {
+    type: tipo,
+    productName: String(input.producto ?? ''),
+    quantity: Number(input.cantidad),
+    originId: typeof input.almacen_origen_id === 'number' ? input.almacen_origen_id : null,
+    destinationId: typeof input.almacen_destino_id === 'number' ? input.almacen_destino_id : null,
+    capturedBy,
+    notes: typeof input.notas === 'string' ? input.notas : undefined,
+  });
+  return JSON.stringify({
+    ok: true,
+    id: movement.id,
+    folio: movement.folio,
+    tipo: movement.type,
+    producto: movement.productName,
+    cantidad: movement.quantity,
+    capturado_por: movement.capturedBy,
+  });
+}
+
 // ── Dispatcher ────────────────────────────────────────────────────────────────
 
 /** Execute one tool call; always returns a string for the tool_result. */
@@ -633,11 +712,15 @@ export async function runTool(
         return { content: await toolConsultarInventario(env, input), isError: false };
       case 'movimientos_inventario':
         return { content: await toolMovimientosInventario(env, input), isError: false };
+      case 'listar_almacenes':
+        return { content: await toolListarAlmacenes(env, input), isError: false };
+      case 'crear_movimiento':
+        return { content: await toolCrearMovimiento(env, viewer, input), isError: false };
       default:
         return { content: `Herramienta desconocida: ${name}`, isError: true };
     }
   } catch (err) {
-    if (err instanceof CreateError || err instanceof OportunidadError) {
+    if (err instanceof CreateError || err instanceof OportunidadError || err instanceof InventoryError) {
       return { content: `Error (${err.status}): ${err.message}`, isError: true };
     }
     const detail = err instanceof Error ? err.message : String(err);
