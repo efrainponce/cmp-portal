@@ -2,6 +2,9 @@
 
 ## 2026-07-22
 
+- **`6a2e903`** — Runbook de activación de la capa nativa (plan 3)
+  - Documento operativo en la branch `native/salir-de-monday`: `docs/plan-3-runbook.md`. Estado (dormido/verificado), pasos exactos para prender el shadow (aplicar `worker/schema-native.sql` a D1 remoto con el quirk de wrangler, `NATIVE_SHADOW=1`, `POST /api/native/admin/backfill`, verificar con `admin/status`), cómo revertir, y las fases futuras que son decisión de Efraín (dual-write, flip de lecturas, reemplazar automations). Solo doc — no cambia código.
+
 - **`e96b942`** — Capa nativa: campos semánticos de los catálogos
   - Extensión del commit anterior: los 4 boards de catálogo (productos/instituciones/contactos/proveedores) pasaron de solo-passthrough (`x_<colId>`) a nombres de campo semánticos + relación producto→proveedor + folio caliente en productos/proveedores. Ids/títulos tomados de `shared/column-meta.gen.ts` (reales, no inventados). Sigue **dormido** tras `NATIVE_SHADOW`, sin cambio de comportamiento. `tsc`+`oxlint` limpios.
 
