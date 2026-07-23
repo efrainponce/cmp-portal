@@ -2,6 +2,9 @@
 
 ## 2026-07-22
 
+- **`e96b942`** — Capa nativa: campos semánticos de los catálogos
+  - Extensión del commit anterior: los 4 boards de catálogo (productos/instituciones/contactos/proveedores) pasaron de solo-passthrough (`x_<colId>`) a nombres de campo semánticos + relación producto→proveedor + folio caliente en productos/proveedores. Ids/títulos tomados de `shared/column-meta.gen.ts` (reales, no inventados). Sigue **dormido** tras `NATIVE_SHADOW`, sin cambio de comportamiento. `tsc`+`oxlint` limpios.
+
 - **`bbd1951`** — Fundación de la capa nativa "salir de Monday" (plan 3, dormida)
   - Efraín retomó el "Goal 3 — salir de Monday" que había pospuesto el 2026-07-21 (memoria `optimizacion-2026-07-21`): pidió empezar a construir el **modelo de datos** para poder vivir sin Monday, incluyendo **APIs sin usar** que repliquen las interacciones de Monday, y una instrucción dura en mayúsculas: **NO tocar el comportamiento actual — todo debe seguir sincronizado con Monday como hoy**. Dio autonomía total para decidir ("me voy toda la noche, no pares, toma las decisiones tú").
   - Diagnóstico: la app **ya lee 100% de D1** (mirror), así que la dependencia real de Monday es (1) la identidad de cada registro es un item_id de Monday, (2) la data se guarda como blobs opacos de `column_values`, (3) writes/creates pasan por Monday. Independencia = modelo **semántico** propio (nombres de campo en español, tipos, relaciones explícitas, log de actividad), no blobs.
