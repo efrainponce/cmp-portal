@@ -14,6 +14,7 @@ Formato: `- [ruta](ruta) — Propósito (1 frase). Exports: Export1, Export2, Ex
 - [shared/dto.ts](shared/dto.ts) — DTOs genéricos scoped por rol (único productor: serialize.ts). Exports: ColVal, ItemDTO, ItemDetailDTO, ListResponse, MeDTO.
 - [shared/embellecimiento.ts](shared/embellecimiento.ts) — Compartido con worker: parse/serialize embellecimiento por zona. Exports: EMBELL_TEMPLATE_KEYS, EmbellZoneKey, EMB_STATUS_COL, EMB_LABEL_CON, EMB_LABEL_SIN.
 - [shared/inventory.ts](shared/inventory.ts) — DTOs Inventario + reglas negocio (feature D1 nativa). Exports: MovementType, WarehouseType, MOVEMENT_TYPES, WarehouseDTO, MovementDTO.
+- [shared/native.ts](shared/native.ts) — Contrato del modelo NATIVO "salir de Monday" (plan 3, dormido): mapa columna-Monday→campo-nativo, tipos, calientes, relaciones. Exports: NativeEntity, ENTITY_FOR_SLUG, FIELD_MAP, HOT, RELATION_MAP, NativeRecordDTO, nativeFieldName, mondayColForField.
 - [shared/notifications.ts](shared/notifications.ts) — Ruteo del centro de notificaciones (decisión de whitelist de Efraín). Exports: RecipientSelector, STAGE_NOTIFY.
 - [shared/types.ts](shared/types.ts) — Tipos base compartidos: Role, Identity, MirrorItem, EmbellecimientoSpec. Exports: Role, Identity, MirrorItem, EmbellecimientoSpec.
 - [shared/visibility.ts](shared/visibility.ts) — La whitelist como data: reglas de lectura/escritura por columna y rol (fail-closed). Exports: ColRule, VISIBILITY, canRead, canWrite, readableCols.
@@ -45,6 +46,9 @@ Formato: `- [ruta](ruta) — Propósito (1 frase). Exports: Export1, Export2, Ex
 - [worker/lib/http.ts](worker/lib/http.ts) — Helper mínimo compartido por rutas (statusCode responses). Exports: jsonStatus.
 - [worker/lib/inventory.ts](worker/lib/inventory.ts) — Inventario DAL + validación (feature D1 nativa, no espejado de Monday). Exports: InventoryError, listWarehouses, listMovements, listStock.
 - [worker/lib/monday.ts](worker/lib/monday.ts) — Cliente GraphQL thin de Monday.com (API 2024-10). Exports: MondayCol, MondayItem, gql, ItemsPage.
+- [worker/lib/native/schema.ts](worker/lib/native/schema.ts) — Bootstrap lazy del esquema nativo (plan 3) + asignación de ids nativos. Exports: ensureNativeSchema, nextNativeId.
+- [worker/lib/native/project.ts](worker/lib/native/project.ts) — Proyección mirror→nativo (shadow, best-effort) + backfill. Exports: buildNativeRecord, projectToNative, backfillAll, logActivity, ProjectInput.
+- [worker/lib/native/repo.ts](worker/lib/native/repo.ts) — Repo del modelo nativo (mismo scoping/visibilidad que dal.ts/serialize.ts). Exports: NativeError, nativeList, nativeGet, nativePatch, nativeCreate, nativeActivity, nativeAddComment, nativeStatus.
 - [worker/lib/notify.ts](worker/lib/notify.ts) — Emisor best-effort del centro de notificaciones (idempotente por dedupe_key). Exports: emitNotification, resolveRecipients, maybeEmitStageChange.
 - [worker/lib/outbox.ts](worker/lib/outbox.ts) — Write path optimista: D1 mirror primero, Monday async vía waitUntil + echo. Exports: OutboxError, submitWrite, flushOutbox.
 - [worker/lib/quoteVersions.ts](worker/lib/quoteVersions.ts) — Versiones de cotización: vigente siempre es primera subitem, borradores/snapshots para histórico. Exports: QuoteVersionError, listVersions, recordFirstVersion, esDraftVigente.
@@ -62,6 +66,7 @@ Formato: `- [ruta](ruta) — Propósito (1 frase). Exports: Export1, Export2, Ex
 - [worker/routes/admin.ts](worker/routes/admin.ts) — Admin-only: gestionar roster y pullear users de Monday. Exports: adminRoutes.
 - [worker/routes/boards.ts](worker/routes/boards.ts) — Rutas genéricas de boards espejados (list/detail/patch/create). Exports: boardRoutes.
 - [worker/routes/inventario.ts](worker/routes/inventario.ts) — Inventario D1 nativo (no espejado de Monday). Exports: inventarioRoutes.
+- [worker/routes/native.ts](worker/routes/native.ts) — API PARALELA dormida del modelo nativo (plan 3): 404 salvo NATIVE_SHADOW=1. Exports: nativeRoutes.
 - [worker/routes/notifications.ts](worker/routes/notifications.ts) — API del centro de notificaciones scoped al viewer (list ETag/304, marcar leída). Exports: notificationRoutes.
 - [worker/routes/oportunidades.ts](worker/routes/oportunidades.ts) — Rutas específicas de Oportunidades: costeo, versiones, duplicar. Exports: oportunidadRoutes.
 

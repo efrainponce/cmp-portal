@@ -4,6 +4,7 @@ import type { MondayItem } from '../lib/monday';
 import { rawHash, type RawColumn } from '../lib/canon';
 import { BOARDS, type BoardSlug } from '../../shared/boards';
 import { maybeEmitStageChange } from '../lib/notify';
+import { projectToNative } from '../lib/native/project';
 
 // authzCols are people columns; value JSON carries personsAndTeams:[{id,kind}].
 function extractVendedorIds(item: MondayItem, authzCols: string[]): number[] {
@@ -85,6 +86,18 @@ export async function upsertItem(
       prevColumnsJson,
       newColumnsJson: JSON.stringify(columns),
       vendedorIds,
+    });
+  }
+
+  // Proyección shadow al modelo nativo (plan 3, "salir de Monday"). DORMIDA: solo
+  // corre con NATIVE_SHADOW=1 — apagada, esto es un único `if` y sigue de largo, sin
+  // tocar ninguna tabla nativa ni cambiar el comportamiento actual. projectToNative
+  // es best-effort (traga sus errores): nunca rompe el sync que lo dispara.
+  if (env.NATIVE_SHADOW === '1') {
+    await projectToNative(env, {
+      slug, mondayItemId: itemId,
+      parentItemId: item.parent_item?.id ? Number(item.parent_item.id) : null,
+      name: item.name, vendedorIds, columns,
     });
   }
 

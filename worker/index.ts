@@ -14,6 +14,7 @@ import { adminRoutes } from './routes/admin';
 import { oportunidadRoutes } from './routes/oportunidades';
 import { inventarioRoutes } from './routes/inventario';
 import { notificationRoutes } from './routes/notifications';
+import { nativeRoutes } from './routes/native';
 import { flushOutbox } from './lib/outbox';
 
 const app = new Hono<{ Bindings: Env }>();
@@ -40,6 +41,7 @@ adminRoutes(app);
 oportunidadRoutes(app);
 inventarioRoutes(app);
 notificationRoutes(app);
+nativeRoutes(app); // capa nativa dormida (plan 3) — 404 salvo NATIVE_SHADOW=1
 
 app.all('*', c => c.env.ASSETS.fetch(c.req.raw));
 

@@ -11,6 +11,11 @@ export interface Env {
   CMP_TALLAS_BASE?: string;       // Vercel automations base URL
   CMP_SECRET?: string;            // X-CMP-Secret header for cmp-tallas
 
+  // Capa nativa "salir de Monday" (plan 3) — DORMIDA. '1' enciende la proyección
+  // shadow en upsertItem y despierta el router /api/native/*. Sin definir (default),
+  // nada nativo corre: cero tablas tocadas, cero latencia, comportamiento idéntico a hoy.
+  NATIVE_SHADOW?: string;
+
   // Claude agent, shared by two channels: WhatsApp bot (worker/wa/) and the
   // portal chat bubble (worker/assistant/). Both reply politely when unset.
   ANTHROPIC_API_KEY?: string;     // Claude API key (Haiku agent)
