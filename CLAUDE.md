@@ -37,12 +37,14 @@ con el Worker (`/api/*`). Bot de WhatsApp + chat del portal comparten agente Cla
   contra el código.
 - `shared/` — contratos front↔worker: `boards.ts` (ids de boards), `dto.ts`,
   `visibility.ts` (roles/writable), `dealStages.ts` (etapas canon), `column-meta.gen.ts`
-  (generado, 2.4k líneas — solo grep), `embellecimiento.ts`, `inventory.ts`.
+  (generado, 2.4k líneas — solo grep), `embellecimiento.ts`, `inventory.ts`,
+  `documents.ts` (plantillas de PDF + firma electrónica).
 - `worker/index.ts` — solo wiring de Hono. Rutas en `worker/routes/{boards,oportunidades,admin,inventario}.ts`;
   webhooks/sync en `worker/sync/`; WhatsApp en `worker/wa/`; chat portal en `worker/assistant/`.
 - `worker/lib/` — dal (scoping por viewer), outbox (writes → Monday con echo),
   monday (GraphQL), costeo/quoteVersions/automations (flujos cmp-tallas),
-  agentLoop (agente compartido WA+portal, prompt caching), serialize, rosterCache.
+  agentLoop (agente compartido WA+portal, prompt caching), serialize, rosterCache,
+  documents + `pdf/` (generación de PDFs y firma electrónica), portalFiles.
 - `src/lib/` — `apiClient.ts` (fetch + DTOs), `api.ts` (hooks de polling/ETag),
   `dealStages.ts` (config de los 6 boards de pipeline), `costeoCalc.ts` (fórmulas 1:1
   con Monday para preview local), `routing.ts` (deep links `/boardKey/itemId`).
@@ -54,7 +56,8 @@ con el Worker (`/api/*`). Bot de WhatsApp + chat del portal comparten agente Cla
   CotizacionPdfRow con pdfjs lazy).
 - `docs/` — **léelos antes de tocar el área**: `monday-column-map.md` (ids de columnas),
   `dev-contracts.md` (contratos entre módulos), `cmp-tallas-endpoint-map.md`
-  (automatizaciones Vercel: dispara, no reimplementes), `whatsapp-bot.md`.
+  (automatizaciones Vercel: dispara, no reimplementes), `whatsapp-bot.md`,
+  `documentos-firma.md` (PDFs del portal + firma).
 - `log.md` — bitácora de commits con contexto de decisiones (qué pidió Efraín y por qué).
 
 ## Flujos clave (no reimplementar)
@@ -68,3 +71,9 @@ con el Worker (`/api/*`). Bot de WhatsApp + chat del portal comparten agente Cla
   (`worker/lib/quoteVersions.ts`). Precio NUNCA editable por vendedor.
 - Writes: front → `PATCH /api/boards/:slug/items/:id` → outbox D1 → Monday → echo/refetch.
   El mirror tarda: usa previews locales en la UI (patrón ya en CotizacionTab).
+- Documentos del portal + firma electrónica (`docs/documentos-firma.md`): el PDF se
+  renderiza desde el snapshot que guarda `documents.data` (nunca de una lectura
+  fresca del mirror) y `sha256` se re-verifica antes de asentar cada firma. Un PDF
+  ajeno (cotización de cmp-tallas) NO se modifica: se sella una copia en R2 y la
+  firma vive en su constancia. El escritor de PDF es propio, sin dependencias —
+  solo escribe, no parsea.

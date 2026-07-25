@@ -2,16 +2,23 @@
 // endpoint de upload — dropzone deshabilitada "(próximamente)". OC/contrato
 // firmado por el cliente sí vive en el Proyecto ligado (file_mm0hayh4) y ya
 // tiene upload real — único caso habilitado por ahora (Efraín, 2026-07-17).
+//
+// 2026-07-25: aquí también vive la firma electrónica. Dos caminos distintos:
+//  · un PDF que YA existe (cotización generada por cmp-tallas) se sella y se le
+//    emite una constancia de firma — el original no se puede modificar;
+//  · el resumen de oportunidad lo genera el portal y se firma dentro del propio
+//    PDF (ver shared/documents.ts).
 import { useState, type ChangeEvent } from 'react';
 import type { ItemDetailDTO } from '../../../lib/api';
 import { uploadProyectoDocumento } from '../../../lib/api';
 import { P_OC_CLIENTE, type ProyectoState } from '../ProyectoSection';
+import { DocumentsPanel } from '../../../components/documents/DocumentsPanel';
 
 export const SOLICITUDES_COL = 'file_mm0z6rze'; // Cotizaciones sin precio
 export const NO_FIRMADAS_COL = 'file_mm0fgrzq'; // Cotizaciones generadas
 export const FIRMADAS_COL = 'file_mm0zjras';    // Cotizaciones Firmadas
 
-interface DocFile { url: string; name: string }
+interface DocFile { url: string; name: string; key?: string }
 
 function parseFiles(text?: string): DocFile[] {
   if (!text) return [];
@@ -33,7 +40,10 @@ export function latestFileUrl(text?: string): string | undefined {
  * worker/routes/oportunidades.ts). Estas 3 columnas son de la propia
  * Oportunidad, así que el key usa item.id directo, sin lookup de Proyecto. */
 function toR2Files(files: DocFile[], oppId: string, categoria: string): DocFile[] {
-  return files.map((f) => ({ ...f, url: `/api/files/oportunidades/${oppId}/${categoria}/${encodeURIComponent(f.name)}` }));
+  return files.map((f) => {
+    const key = `oportunidades/${oppId}/${categoria}/${encodeURIComponent(f.name)}`;
+    return { ...f, key, url: `/api/files/${key}` };
+  });
 }
 
 export function DocumentacionTab({ item, proyecto }: { item: ItemDetailDTO; proyecto?: ProyectoState }) {
@@ -44,22 +54,42 @@ export function DocumentacionTab({ item, proyecto }: { item: ItemDetailDTO; proy
       <div>
         <SectionTitle>Cotizaciones</SectionTitle>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 10 }}>
-          <DocSection title={null} accentColor="var(--status-esperando)" label="No firmadas por vendedor" files={toR2Files(parseFiles(item.cols[NO_FIRMADAS_COL]?.text), item.id, 'cotizacion-no-firmada')} uploadLabel="Subir cotización" />
+          {/* Las generadas se pueden firmar electrónicamente aquí mismo: el PDF
+              se sella (SHA-256) y la firma queda en su constancia. */}
+          <DocSection title={null} accentColor="var(--status-esperando)" label="No firmadas por vendedor" signable files={toR2Files(parseFiles(item.cols[NO_FIRMADAS_COL]?.text), item.id, 'cotizacion-no-firmada')} uploadLabel="Subir cotización" />
           <DocSection title={null} accentColor="var(--status-ganada)" label="Firmadas por vendedor" files={toR2Files(parseFiles(item.cols[FIRMADAS_COL]?.text), item.id, 'cotizacion-firmada')} uploadLabel="Subir cotización firmada" />
         </div>
       </div>
 
       <OcContratoSection proyecto={proyecto} oppId={item.id} />
+
+      <div>
+        <SectionTitle>Documentos del portal</SectionTitle>
+        <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)', marginTop: 2, marginBottom: 8 }}>
+          Documentos que genera el portal a partir de los datos de esta oportunidad. Se firman dentro del propio PDF.
+        </div>
+        <DocumentsPanel
+          sourceKind="oportunidad"
+          sourceId={item.id}
+          templates={['resumen-oportunidad']}
+          filter={PORTAL_DOCS_ONLY}
+        />
+      </div>
     </div>
   );
 }
+
+/** El listado de una oportunidad trae también las constancias de sus archivos
+ * (comparten prefijo de source_id); esas se muestran junto a su archivo, no aquí. */
+const PORTAL_DOCS_ONLY = (doc: { sourceKind: string }) => doc.sourceKind === 'oportunidad';
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return <div style={{ font: 'var(--text-small-strong)', color: 'var(--ink)' }}>{children}</div>;
 }
 
-function DocSection({ title, subtitle, label, accentColor, files, uploadLabel }: {
-  title: string | null; subtitle?: string; label?: string; accentColor?: string; files: DocFile[]; uploadLabel: string;
+function DocSection({ title, subtitle, label, accentColor, files, uploadLabel, signable }: {
+  title: string | null; subtitle?: string; label?: string; accentColor?: string;
+  files: DocFile[]; uploadLabel: string; signable?: boolean;
 }) {
   return (
     <div>
@@ -77,6 +107,28 @@ function DocSection({ title, subtitle, label, accentColor, files, uploadLabel }:
         <span style={{ font: 'var(--text-label)', color: 'var(--ink-secondary)' }}>{uploadLabel} (próximamente)</span>
       </div>
       <FileListOrEmpty files={files} />
+      {signable && files.map((f) => (
+        f.key ? <FileSignature key={f.key} file={{ ...f, key: f.key }} /> : null
+      ))}
+    </div>
+  );
+}
+
+/** Firma electrónica de un PDF que el portal no generó: se sella una copia en R2
+ * y la firma vive en su constancia (shared/documents.ts explica por qué el
+ * original no se toca). */
+function FileSignature({ file }: { file: DocFile & { key: string } }) {
+  return (
+    <div style={{ marginTop: 10, paddingLeft: 12, borderLeft: '2px solid var(--border)' }}>
+      <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)', marginBottom: 6 }}>
+        Firma electrónica de <strong style={{ color: 'var(--ink-secondary)' }}>{file.name}</strong>
+      </div>
+      <DocumentsPanel
+        sourceKind="archivo"
+        sourceId={file.key}
+        sourceLabel={file.name}
+        templates={['constancia-firma']}
+      />
     </div>
   );
 }

@@ -14,6 +14,7 @@ Formato: `- [ruta](ruta) — Propósito (1 frase). Exports: Export1, Export2, Ex
 - [shared/dto.ts](shared/dto.ts) — DTOs genéricos scoped por rol (único productor: serialize.ts). Exports: ColVal, ItemDTO, ItemDetailDTO, ListResponse, MeDTO.
 - [shared/embellecimiento.ts](shared/embellecimiento.ts) — Compartido con worker: parse/serialize embellecimiento por zona. Exports: EMBELL_TEMPLATE_KEYS, EmbellZoneKey, EMB_STATUS_COL, EMB_LABEL_CON, EMB_LABEL_SIN.
 - [shared/inventory.ts](shared/inventory.ts) — DTOs Inventario + reglas negocio (feature D1 nativa). Exports: MovementType, WarehouseType, MOVEMENT_TYPES, WarehouseDTO, MovementDTO.
+- [shared/documents.ts](shared/documents.ts) — Contrato de documentos del portal + firma electrónica: registro de plantillas, roles que generan/firman, consentimiento (ver docs/documentos-firma.md). Exports: DOC_TEMPLATES, SIGN_INTENT, DocumentDTO, SignatureDTO, documentFilename.
 - [shared/notifications.ts](shared/notifications.ts) — Ruteo del centro de notificaciones (decisión de whitelist de Efraín). Exports: RecipientSelector, STAGE_NOTIFY.
 - [shared/types.ts](shared/types.ts) — Tipos base compartidos: Role, Identity, MirrorItem, EmbellecimientoSpec. Exports: Role, Identity, MirrorItem, EmbellecimientoSpec.
 - [shared/visibility.ts](shared/visibility.ts) — La whitelist como data: reglas de lectura/escritura por columna y rol (fail-closed). Exports: ColRule, VISIBILITY, canRead, canWrite, readableCols.
@@ -48,6 +49,11 @@ Formato: `- [ruta](ruta) — Propósito (1 frase). Exports: Export1, Export2, Ex
 - [worker/lib/notify.ts](worker/lib/notify.ts) — Emisor best-effort del centro de notificaciones (idempotente por dedupe_key). Exports: emitNotification, resolveRecipients, maybeEmitStageChange.
 - [worker/lib/outbox.ts](worker/lib/outbox.ts) — Write path optimista: D1 mirror primero, Monday async vía waitUntil + echo. Exports: OutboxError, submitWrite, flushOutbox.
 - [worker/lib/quoteVersions.ts](worker/lib/quoteVersions.ts) — Versiones de cotización: vigente siempre es primera subitem, borradores/snapshots para histórico. Exports: QuoteVersionError, listVersions, recordFirstVersion, esDraftVigente.
+- [worker/lib/documents.ts](worker/lib/documents.ts) — Documentos del portal: crea/lista/firma sobre D1+R2, snapshot de datos y portón de integridad SHA-256. Exports: createDocument, listDocuments, documentPdf, signDocument, DocumentError.
+- [worker/lib/pdf/writer.ts](worker/lib/pdf/writer.ts) — Escritor de PDF sin dependencias (Helvetica, líneas, rects, JPEG; texto en WinAnsi octal). Exports: PdfWriter, widthOf, pdfString, jpegInfo, LETTER.
+- [worker/lib/pdf/layout.ts](worker/lib/pdf/layout.ts) — Bloques → páginas: encabezado/pie, tablas paginadas, cajas de firma. Exports: renderDocument, wrapText, Block, DocumentMeta.
+- [worker/lib/pdf/templates.ts](worker/lib/pdf/templates.ts) — Las 3 plantillas (resumen de oportunidad, remisión, constancia de firma) como funciones puras. Exports: renderTemplate, buildBlocks, titleOf, DocData, RenderedSignature.
+- [worker/lib/portalFiles.ts](worker/lib/portalFiles.ts) — Resuelve un key de /api/files → assetId/bytes (R2 con fallback a Monday), mapa key→columna. Exports: readPortalFile, resolveMondayAsset, normalizeFileKey, OPP_FILE_COLS.
 - [worker/lib/r2.ts](worker/lib/r2.ts) — Helpers mínimos sobre binding FILES (bucket R2 para documentos). Exports: oportunidadFileKey, putFile, getFile.
 - [worker/lib/rosterCache.ts](worker/lib/rosterCache.ts) — Cache D1 del roster de usuarios de Monday con TTL configurable. Exports: cachedFetchUsers.
 - [worker/lib/serialize.ts](worker/lib/serialize.ts) — Mirror row → role-scoped DTOs: único productor de ItemDTO/ColMeta filtradas. Exports: RawCol, toItemDTO, toColMeta.
@@ -62,6 +68,7 @@ Formato: `- [ruta](ruta) — Propósito (1 frase). Exports: Export1, Export2, Ex
 - [worker/routes/admin.ts](worker/routes/admin.ts) — Admin-only: gestionar roster y pullear users de Monday. Exports: adminRoutes.
 - [worker/routes/boards.ts](worker/routes/boards.ts) — Rutas genéricas de boards espejados (list/detail/patch/create). Exports: boardRoutes.
 - [worker/routes/inventario.ts](worker/routes/inventario.ts) — Inventario D1 nativo (no espejado de Monday). Exports: inventarioRoutes.
+- [worker/routes/documents.ts](worker/routes/documents.ts) — API /api/documents*: generar, listar, PDF (base/firmado), firmar, trazo. Exports: documentRoutes.
 - [worker/routes/notifications.ts](worker/routes/notifications.ts) — API del centro de notificaciones scoped al viewer (list ETag/304, marcar leída). Exports: notificationRoutes.
 - [worker/routes/oportunidades.ts](worker/routes/oportunidades.ts) — Rutas específicas de Oportunidades: costeo, versiones, duplicar. Exports: oportunidadRoutes.
 
@@ -114,6 +121,7 @@ Formato: `- [ruta](ruta) — Propósito (1 frase). Exports: Export1, Export2, Ex
 - [src/lib/groupBy.ts](src/lib/groupBy.ts) — Agrupa items por valor de columna status/dropdown (con labels). Exports: ColumnGroup, groupByColumn.
 - [src/lib/impersonation.ts](src/lib/impersonation.ts) — Admin "ver como": target email persiste en localStorage. Exports: getImpersonateTarget, startImpersonation, stopImpersonation.
 - [src/lib/inventoryApi.ts](src/lib/inventoryApi.ts) — Cliente fetch para /api/inventario/* (feature D1 nativa). Exports: (tipos), getWarehouses, getStock, createMovement.
+- [src/lib/documentsApi.ts](src/lib/documentsApi.ts) — Cliente de /api/documents* (generar, listar, firmar, URL del PDF). Exports: listDocuments, createDocument, signDocument, documentPdfUrl.
 - [src/lib/notificationsApi.ts](src/lib/notificationsApi.ts) — Cliente + hook del centro de notificaciones (polling ETag 12s, optimista). Exports: markNotificationRead, markAllNotificationsRead, useNotifications.
 - [src/lib/mockFallback.ts](src/lib/mockFallback.ts) — Fallback offline-only para que board Oportunidades demo sin API. Exports: mockBoardMeta, mockPatch, mockList, mockItemDetail.
 - [src/lib/projectStages.ts](src/lib/projectStages.ts) — Config de los 3 accesos Proyectos (post-venta: Tallas, OC, Logística). Exports: ProjectBoardKey, ProjectBoardConfig, PROJECT_STATUS_ORDER, PROJECT_BOARDS.
@@ -145,6 +153,9 @@ Formato: `- [ruta](ruta) — Propósito (1 frase). Exports: Export1, Export2, Ex
 - [src/components/core/Modal.tsx](src/components/core/Modal.tsx) — Diálogo centrado (no fullscreen como OpportunityDrawer). Exports: Modal.
 - [src/components/core/PdfCanvasPreview.tsx](src/components/core/PdfCanvasPreview.tsx) — Renderiza PDF a canvas con pdfjs. Exports: warmPdfWorker, PdfCanvasPreview.
 - [src/components/core/PersonAvatar.tsx](src/components/core/PersonAvatar.tsx) — Avatar circular de iniciales. Exports: PersonAvatar, PersonPair.
+- [src/components/documents/DocumentsPanel.tsx](src/components/documents/DocumentsPanel.tsx) — Panel reusable por fuente: genera, lista y firma documentos del portal. Exports: DocumentsPanel.
+- [src/components/documents/SignDocumentModal.tsx](src/components/documents/SignDocumentModal.tsx) — Modal de firma: previsualiza el PDF, captura el trazo, consentimiento + huella. Exports: SignDocumentModal.
+- [src/components/documents/SignaturePad.tsx](src/components/documents/SignaturePad.tsx) — Captura del trazo con pointer events; exporta JPEG (el writer solo embebe DCTDecode). Exports: SignaturePad, SignaturePadHandle.
 - [src/components/forms/ChipSelect.tsx](src/components/forms/ChipSelect.tsx) — Picker de pills one-click para opciones pequeñas. Exports: ChipSelect.
 - [src/components/forms/DocUploadList.tsx](src/components/forms/DocUploadList.tsx) — Lista de upload de documentos. Exports: DocUploadList.
 - [src/components/forms/FilterBar.tsx](src/components/forms/FilterBar.tsx) — Fila de selects "Todos"-first para filtrar. Exports: FilterBar.

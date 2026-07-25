@@ -18,7 +18,8 @@ import { enviarACosteo, enviarAValidacion, checkCosteo, checkValidacion, CosteoE
 import { listVersions, duplicateVersion, restoreVersion, esDraftVigente, recordFirstVersion, QuoteVersionError } from '../lib/quoteVersions';
 import { duplicateOportunidad, DuplicateOportunidadError } from '../lib/duplicateOportunidad';
 import { createSubitem, addFileToColumn, fetchAssetPublicUrls, gql } from '../lib/monday';
-import { listZoneImages, uploadZoneImage, parseFiles, splitZone, EmbellImageError } from '../lib/embellecimientoImagenes';
+import { listZoneImages, uploadZoneImage, EmbellImageError } from '../lib/embellecimientoImagenes';
+import { resolveMondayAsset, PROYECTO_DOCUMENTO_COL } from '../lib/portalFiles';
 import { putFile, oportunidadFileKey } from '../lib/r2';
 import { resolveCotizacionPdfUrl, CotizacionPdfError, type PdfKind } from '../lib/cotizacionPdfs';
 import { refetchItem, refetchItemTree, upsertItem } from '../sync';
@@ -26,25 +27,6 @@ import { jsonStatus } from '../lib/http';
 import { canWrite } from '../../shared/visibility';
 import { emitNotification } from '../lib/notify';
 import { md5 } from '../lib/canon';
-
-// OC / cotización / contrato firmado por el cliente (board Proyectos) — único
-// campo de documentación habilitado para upload por ahora (Efraín, 2026-07-17).
-const PROYECTO_DOCUMENTO_COL = 'file_mm0hayh4';
-
-// Documentos que genera cmp-tallas subiendo directo a Monday (nunca al portal,
-// nunca dual-write) — el fallback de /api/files es lo único que los mantiene
-// funcionando vía R2 (fase 2 de la migración, 2026-07-18). Las 3 primeras son
-// columnas de la propia Oportunidad (itemId = oppId, sin lookup); tallas/oc
-// viven en el Proyecto ligado, igual que 'documento'.
-const OPP_FILE_COLS: Record<string, string> = {
-  'solicitud-costeo': 'file_mm0z6rze',
-  'cotizacion-no-firmada': 'file_mm0fgrzq',
-  'cotizacion-firmada': 'file_mm0zjras',
-};
-const PROYECTO_FILE_COLS: Record<string, string> = {
-  'tallas': 'file_mm0hcrtz',
-  'oc': 'file_mm0hj9pn',
-};
 
 // Acciones de cmp-tallas sobre el Proyecto. Cada una exige que el viewer pueda
 // ver el Proyecto (scoping de dal) + un gate de rol que refleja el botón de
@@ -395,6 +377,12 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     const key = c.req.param('key');
     const viewer = c.get('viewer');
 
+    // Esta ruta sirve cualquier key que exista en R2, así que se limita
+    // explícitamente al prefijo de documentación de oportunidades (2026-07-25):
+    // el bucket también guarda ya los PDFs de `documentos/…`, que tienen su
+    // propia ruta con scoping por fuente (worker/routes/documents.ts).
+    if (!key.startsWith('oportunidades/')) return c.json({ error: 'not found' }, 404);
+
     const object = await c.env.FILES.get(key);
     if (object) {
       return new Response(object.body, {
@@ -407,54 +395,12 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       });
     }
 
-    const parts = key.split('/');
-    const oppId = Number(parts[1]);
-    if (parts[0] !== 'oportunidades' || !Number.isFinite(oppId)) return c.json({ error: 'not found' }, 404);
-    const categoria = parts[2];
-
+    // El mapa key→columna de Monday vive en worker/lib/portalFiles.ts, para que
+    // documents.ts pueda leer los mismos bytes al sellarlos (2026-07-25).
     try {
-      if (categoria === 'documento') {
-        const filename = parts.slice(3).join('/');
-        const proyecto = await proyectoForOportunidad(c.env, oppId, viewer);
-        if (!proyecto) return c.json({ error: 'not found' }, 404);
-        const entry = parseFiles(proyecto.columns, PROYECTO_DOCUMENTO_COL).find(f => f.name === filename);
-        if (!entry) return c.json({ error: 'not found' }, 404);
-        return await proxyMondayAsset(c.env, entry.assetId);
-      }
-
-      if (categoria === 'embellecimiento') {
-        const lineaId = Number(parts[3]);
-        const zone = parts[4];
-        const filename = parts.slice(5).join('/');
-        if (!Number.isFinite(lineaId)) return c.json({ error: 'not found' }, 404);
-        const row = await getItem(c.env, 'oportunidades_sub', lineaId, viewer);
-        if (!row) return c.json({ error: 'not found' }, 404);
-        const entry = parseFiles(row.columns)
-          .map(f => ({ ...f, split: splitZone(f.name) }))
-          .find(f => f.split?.zone === zone && f.split.original === filename);
-        if (!entry) return c.json({ error: 'not found' }, 404);
-        return await proxyMondayAsset(c.env, entry.assetId);
-      }
-
-      if (categoria in OPP_FILE_COLS) {
-        const filename = parts.slice(3).join('/');
-        const row = await getItem(c.env, 'oportunidades', oppId, viewer);
-        if (!row) return c.json({ error: 'not found' }, 404);
-        const entry = parseFiles(row.columns, OPP_FILE_COLS[categoria]).find(f => f.name === filename);
-        if (!entry) return c.json({ error: 'not found' }, 404);
-        return await proxyMondayAsset(c.env, entry.assetId);
-      }
-
-      if (categoria in PROYECTO_FILE_COLS) {
-        const filename = parts.slice(3).join('/');
-        const proyecto = await proyectoForOportunidad(c.env, oppId, viewer);
-        if (!proyecto) return c.json({ error: 'not found' }, 404);
-        const entry = parseFiles(proyecto.columns, PROYECTO_FILE_COLS[categoria]).find(f => f.name === filename);
-        if (!entry) return c.json({ error: 'not found' }, 404);
-        return await proxyMondayAsset(c.env, entry.assetId);
-      }
-
-      return c.json({ error: 'not found' }, 404);
+      const assetId = await resolveMondayAsset(c.env, key, viewer);
+      if (assetId == null) return c.json({ error: 'not found' }, 404);
+      return await proxyMondayAsset(c.env, assetId);
     } catch {
       return c.json({ error: 'internal error' }, 500);
     }

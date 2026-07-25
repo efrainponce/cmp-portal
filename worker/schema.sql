@@ -213,3 +213,47 @@ CREATE TABLE IF NOT EXISTS notifications (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_notif_dedupe ON notifications(dedupe_key);
 CREATE INDEX IF NOT EXISTS idx_notif_inbox ON notifications(recipient_email, read_at, id);
+
+-- Documentos del portal + firma electrónica (2026-07-25, worker/lib/documents.ts).
+-- Se crean LAZY en runtime (ensureDocumentTables, mismo patrón que api_cache), así
+-- que la feature funciona sin aplicar este archivo a mano; están aquí como
+-- documentación y para bases nuevas. Viven solo en D1: nada se espeja a Monday.
+--
+-- `data` es el snapshot de datos con el que se renderizó el PDF. El PDF firmado se
+-- re-renderiza de ESE snapshot (nunca de una lectura fresca del mirror) para que lo
+-- firmado no cambie bajo los pies del firmante, y `sha256` — la huella del PDF base
+-- guardado en R2 (documentos/{id}/base.pdf) — es lo que ata la firma al contenido.
+CREATE TABLE IF NOT EXISTS documents (
+  id           TEXT PRIMARY KEY,   -- uuid; también el prefijo del key en R2
+  template_id  TEXT NOT NULL,      -- shared/documents.ts DOC_TEMPLATES
+  title        TEXT NOT NULL,
+  source_kind  TEXT NOT NULL,      -- 'oportunidad' | 'movimiento' | 'archivo'
+  source_id    TEXT NOT NULL,      -- itemId | movementId | key de /api/files (normalizado)
+  board_key    TEXT,               -- deep link /{board_key}/{item_id}
+  folio        TEXT,
+  data         TEXT NOT NULL,      -- snapshot JSON (DocData)
+  sha256       TEXT NOT NULL,      -- huella del PDF base sellado
+  bytes        INTEGER NOT NULL DEFAULT 0,
+  created_by   TEXT NOT NULL,
+  created_at   TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_documents_source ON documents(source_kind, source_id);
+
+-- Una firma por persona por documento (UNIQUE): el trazo va a R2 y aquí queda la
+-- evidencia de auditoría — identidad autenticada, consentimiento textual aceptado,
+-- IP que puso Cloudflare, y el hash del PDF exacto que se firmó.
+CREATE TABLE IF NOT EXISTS document_signatures (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  document_id  TEXT NOT NULL,
+  signer_email TEXT NOT NULL,
+  signer_name  TEXT NOT NULL,
+  signer_role  TEXT NOT NULL,
+  label        TEXT NOT NULL,      -- 'Entrega' / 'Recibe' / 'Elaboró' / 'Autorizó'…
+  intent       TEXT NOT NULL,      -- SIGN_INTENT tal cual lo aceptó
+  sha256       TEXT NOT NULL,
+  image_key    TEXT,               -- R2: trazo JPEG (NULL = firmó sin trazo)
+  ip           TEXT,
+  user_agent   TEXT,
+  signed_at    TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_docsig_once ON document_signatures(document_id, signer_email);

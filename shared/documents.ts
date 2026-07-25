@@ -1,0 +1,145 @@
+// Documentos del portal + firma electrónica (2026-07-25). Dos piezas que se
+// apoyan una en la otra:
+//
+//  1. GENERACIÓN — plantillas declarativas renderizadas server-side a PDF
+//     (worker/lib/pdf/*). No reemplazan lo que genera cmp-tallas (cotización
+//     al cliente, tallas, OC): son documentos internos del portal.
+//  2. FIRMA — cada documento se puede firmar dentro del portal. La firma es un
+//     trazo (JPEG) + un registro de auditoría en D1 (quién, cuándo, desde dónde,
+//     y el SHA-256 del PDF exacto que se firmó). El PDF firmado se REGENERA con
+//     el bloque de firma incluido, así que el hash sellado es lo que ata la
+//     firma al contenido.
+//
+// Los PDF ajenos (los que sube cmp-tallas a Monday) no se pueden re-renderizar,
+// así que para esos la firma produce una "Constancia de firma electrónica"
+// aparte que referencia el hash del archivo original.
+import type { Role } from './types';
+
+export type DocTemplateId = 'resumen-oportunidad' | 'remision-inventario' | 'constancia-firma';
+
+/** De dónde salen los datos del documento. `archivo` = PDF que ya existe en
+ * Monday/R2 y que el portal solo sella + certifica (no lo genera). */
+export type DocSourceKind = 'oportunidad' | 'movimiento' | 'archivo';
+
+export interface DocTemplate {
+  id: DocTemplateId;
+  label: string;
+  description: string;
+  source: DocSourceKind;
+  /** Roles que pueden generar el documento. */
+  create: Role[];
+  /** Roles que pueden firmarlo. Lista vacía = documento no firmable. */
+  sign: Role[];
+  /** Cuántas firmas admite antes de considerarse completo. */
+  maxSignatures: number;
+}
+
+const ALL: Role[] = ['vendedor', 'compras', 'admin'];
+
+export const DOC_TEMPLATES: Record<DocTemplateId, DocTemplate> = {
+  'resumen-oportunidad': {
+    id: 'resumen-oportunidad',
+    label: 'Resumen de oportunidad',
+    description: 'Resumen interno de la oportunidad y sus líneas vigentes, para revisión y firma de autorización. No es la cotización al cliente (esa la genera cmp-tallas).',
+    source: 'oportunidad',
+    create: ALL,
+    sign: ALL,
+    maxSignatures: 2,
+  },
+  'remision-inventario': {
+    id: 'remision-inventario',
+    label: 'Remisión de inventario',
+    description: 'Comprobante de entrega/salida de un movimiento de inventario, con firma de quien entrega y de quien recibe.',
+    source: 'movimiento',
+    create: ['almacen', 'compras', 'admin'],
+    sign: ['almacen', 'compras', 'admin', 'vendedor'],
+    maxSignatures: 2,
+  },
+  'constancia-firma': {
+    id: 'constancia-firma',
+    label: 'Constancia de firma',
+    description: 'Sella un PDF que ya existe (cotización generada, orden de compra, contrato) y emite la constancia de firma electrónica con su huella SHA-256.',
+    source: 'archivo',
+    create: ALL,
+    sign: ALL,
+    maxSignatures: 2,
+  },
+};
+
+export const DOC_TEMPLATE_IDS = Object.keys(DOC_TEMPLATES) as DocTemplateId[];
+
+export function isDocTemplateId(value: string): value is DocTemplateId {
+  return value in DOC_TEMPLATES;
+}
+
+/** Texto que el firmante acepta explícitamente antes de firmar; se guarda
+ * palabra por palabra en la fila de la firma (evidencia de consentimiento). */
+export const SIGN_INTENT =
+  'Acepto que el trazo y los datos de identidad registrados constituyen mi firma ' +
+  'electrónica sobre este documento, y que su contenido queda sellado por la huella ' +
+  'SHA-256 asentada en el acuse.';
+
+export interface SignatureDTO {
+  id: number;
+  signerEmail: string;
+  signerName: string;
+  signerRole: string;
+  signedAt: string;             // ISO
+  /** SHA-256 del PDF base en el momento de firmar — debe coincidir con el del documento. */
+  sha256: string;
+  /** Trazo de la firma; null cuando se firmó solo con nombre mecanografiado. */
+  imageUrl: string | null;
+  ip: string | null;
+}
+
+export interface DocumentDTO {
+  id: string;                   // uuid
+  templateId: DocTemplateId;
+  title: string;
+  sourceKind: DocSourceKind;
+  sourceId: string;
+  boardKey: string | null;
+  folio: string | null;
+  /** SHA-256 del PDF base (el que se firma). */
+  sha256: string;
+  bytes: number;
+  createdBy: string;
+  createdAt: string;
+  signatures: SignatureDTO[];
+  /** true cuando ya alcanzó maxSignatures. */
+  complete: boolean;
+}
+
+export interface CreateDocumentRequest {
+  templateId: DocTemplateId;
+  /** itemId de la oportunidad, id del movimiento, o key de /api/files para `archivo`. */
+  sourceId: string;
+  /** Solo para `archivo`: nombre legible del PDF que se está sellando. */
+  sourceLabel?: string;
+}
+export interface CreateDocumentResponse { ok: boolean; document?: DocumentDTO; error?: string }
+
+export interface SignDocumentRequest {
+  /** data URL image/jpeg del trazo (canvas). Opcional: sin trazo la firma queda
+   * asentada solo con la identidad autenticada + nombre mecanografiado. */
+  signatureJpeg?: string;
+  /** Nombre tal como el firmante lo escribió; por default el de su identidad. */
+  typedName?: string;
+  /** Debe llegar exactamente igual a SIGN_INTENT — el server rechaza cualquier otro. */
+  intent: string;
+}
+export interface SignDocumentResponse { ok: boolean; document?: DocumentDTO; error?: string }
+
+export interface DocumentsResponse { documents: DocumentDTO[] }
+
+/** Nombre del archivo que descarga el usuario. */
+export function documentFilename(doc: { templateId: DocTemplateId; folio: string | null; id: string }, signed: boolean): string {
+  const base = DOC_TEMPLATES[doc.templateId]?.label.replace(/\s+/g, '-') ?? 'Documento';
+  const ref = doc.folio || doc.id.slice(0, 8);
+  return `${base}-${ref}${signed ? '-firmado' : ''}.pdf`;
+}
+
+/** Huella corta para mostrar en la UI sin abrumar (los 16 primeros hex). */
+export function shortHash(sha256: string): string {
+  return sha256.slice(0, 16).replace(/(.{4})(?=.)/g, '$1 ');
+}

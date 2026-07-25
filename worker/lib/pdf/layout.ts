@@ -1,0 +1,276 @@
+// Motor de layout sobre PdfWriter: el documento se describe como una lista de
+// bloques y aquí se pagina, se dibuja el encabezado/pie de cada página y se
+// parten las tablas largas repitiendo su header. Las plantillas
+// (worker/lib/pdf/templates.ts) solo producen bloques — no tocan coordenadas.
+import { PdfWriter, LETTER, widthOf, type FontName } from './writer';
+
+const MARGIN = 48;
+const HEADER_BOTTOM = 96;   // primera línea base disponible del contenido
+const FOOTER_TOP = 748;     // por debajo de esto solo va el pie
+
+const INK = '#111111';
+const INK_SOFT = '#5b6472';
+const INK_FAINT = '#98a1ae';
+const RULE = '#dde2e8';
+const ZEBRA = '#f6f8fa';
+const ACCENT = '#1f4e79';
+
+export interface TableColumn {
+  header: string;
+  /** Fracción del ancho de contenido (todas deben sumar ~1). */
+  width: number;
+  align?: 'left' | 'right' | 'center';
+}
+
+export type Block =
+  | { kind: 'heading'; text: string }
+  | { kind: 'text'; text: string; size?: number; bold?: boolean; color?: string }
+  | { kind: 'kv'; rows: [string, string][]; columns?: 1 | 2 }
+  | { kind: 'table'; columns: TableColumn[]; rows: string[][]; footer?: string[] }
+  | { kind: 'divider' }
+  | { kind: 'spacer'; height: number }
+  | { kind: 'note'; text: string }
+  | { kind: 'signature'; label: string; name: string; detail: string[]; image?: Uint8Array };
+
+export interface DocumentMeta {
+  /** Título que va en el encabezado de todas las páginas. */
+  title: string;
+  subtitle?: string;
+  folio?: string;
+  /** Id del documento en D1 — el pie lo imprime como referencia verificable. */
+  docId: string;
+  generatedAt: string;
+  /** Línea legal opcional del pie (documentos firmados la usan para el hash). */
+  footerNote?: string;
+}
+
+const CONTENT_LEFT = MARGIN;
+const CONTENT_RIGHT = LETTER.width - MARGIN;
+const CONTENT_WIDTH = CONTENT_RIGHT - CONTENT_LEFT;
+
+/** Corta `text` en líneas que caben en `maxWidth`. Palabras más largas que el
+ * ancho se parten por carácter para que nunca se desborden de la caja. */
+export function wrapText(text: string, maxWidth: number, size: number, font: FontName = 'H'): string[] {
+  const out: string[] = [];
+  for (const paragraph of String(text ?? '').split('\n')) {
+    let line = '';
+    for (const word of paragraph.split(/\s+/).filter(Boolean)) {
+      const candidate = line ? `${line} ${word}` : word;
+      if (widthOf(candidate, size, font) <= maxWidth) { line = candidate; continue; }
+      if (line) out.push(line);
+      if (widthOf(word, size, font) <= maxWidth) { line = word; continue; }
+      let piece = '';
+      for (const ch of word) {
+        if (widthOf(piece + ch, size, font) > maxWidth) { out.push(piece); piece = ch; }
+        else piece += ch;
+      }
+      line = piece;
+    }
+    out.push(line);
+  }
+  return out.length ? out : [''];
+}
+
+/** Recorta con elipsis — para celdas de tabla, que nunca envuelven. */
+function ellipsize(text: string, maxWidth: number, size: number, font: FontName = 'H'): string {
+  if (widthOf(text, size, font) <= maxWidth) return text;
+  let out = '';
+  for (const ch of text) {
+    if (widthOf(out + ch + '…', size, font) > maxWidth) break;
+    out += ch;
+  }
+  return out + '…';
+}
+
+function columnBoxes(columns: TableColumn[]): { left: number; right: number }[] {
+  const total = columns.reduce((s, c) => s + c.width, 0) || 1;
+  const boxes: { left: number; right: number }[] = [];
+  let x = CONTENT_LEFT;
+  for (const col of columns) {
+    const w = (col.width / total) * CONTENT_WIDTH;
+    boxes.push({ left: x + 4, right: x + w - 4 });
+    x += w;
+  }
+  return boxes;
+}
+
+/** Cursor de escritura: sabe abrir páginas nuevas cuando el bloque no cabe. */
+class Cursor {
+  page: number;
+  y = HEADER_BOTTOM;
+
+  constructor(private readonly pdf: PdfWriter) {
+    this.page = pdf.addPage();
+  }
+
+  /** Asegura `height` puntos disponibles; abre página si no. Devuelve true si saltó. */
+  ensure(height: number): boolean {
+    if (this.y + height <= FOOTER_TOP) return false;
+    this.page = this.pdf.addPage();
+    this.y = HEADER_BOTTOM;
+    return true;
+  }
+}
+
+function drawHeading(pdf: PdfWriter, cur: Cursor, text: string): void {
+  cur.ensure(30);
+  cur.y += 6;
+  pdf.text(cur.page, CONTENT_LEFT, cur.y, text.toUpperCase(), { size: 9, font: 'HB', color: ACCENT });
+  cur.y += 5;
+  pdf.line(cur.page, CONTENT_LEFT, cur.y, CONTENT_RIGHT, cur.y, { color: ACCENT, width: 0.8 });
+  cur.y += 15;
+}
+
+function drawText(pdf: PdfWriter, cur: Cursor, block: Extract<Block, { kind: 'text' }>): void {
+  const size = block.size ?? 9.5;
+  const font: FontName = block.bold ? 'HB' : 'H';
+  const lineHeight = size * 1.45;
+  for (const line of wrapText(block.text, CONTENT_WIDTH, size, font)) {
+    cur.ensure(lineHeight);
+    pdf.text(cur.page, CONTENT_LEFT, cur.y, line, { size, font, color: block.color ?? INK });
+    cur.y += lineHeight;
+  }
+}
+
+function drawKv(pdf: PdfWriter, cur: Cursor, block: Extract<Block, { kind: 'kv' }>): void {
+  const cols = block.columns ?? 2;
+  const colWidth = CONTENT_WIDTH / cols;
+  const rowHeight = 26;
+  for (let i = 0; i < block.rows.length; i += cols) {
+    cur.ensure(rowHeight);
+    for (let c = 0; c < cols; c++) {
+      const pair = block.rows[i + c];
+      if (!pair) continue;
+      const x = CONTENT_LEFT + c * colWidth;
+      const maxW = colWidth - 12;
+      pdf.text(cur.page, x, cur.y, ellipsize(pair[0].toUpperCase(), maxW, 7.5, 'HB'), { size: 7.5, font: 'HB', color: INK_FAINT });
+      pdf.text(cur.page, x, cur.y + 12, ellipsize(pair[1] || '—', maxW, 10), { size: 10, color: INK });
+    }
+    cur.y += rowHeight;
+  }
+  cur.y += 4;
+}
+
+function drawTableHeader(pdf: PdfWriter, cur: Cursor, columns: TableColumn[]): void {
+  const boxes = columnBoxes(columns);
+  pdf.rect(cur.page, CONTENT_LEFT, cur.y - 10, CONTENT_WIDTH, 18, { fill: '#eef2f6' });
+  columns.forEach((col, i) => {
+    pdf.textAligned(cur.page, ellipsize(col.header.toUpperCase(), boxes[i].right - boxes[i].left, 7.5, 'HB'), cur.y + 2, boxes[i], col.align ?? 'left', { size: 7.5, font: 'HB', color: INK_SOFT });
+  });
+  cur.y += 18;
+}
+
+function drawTable(pdf: PdfWriter, cur: Cursor, block: Extract<Block, { kind: 'table' }>): void {
+  const boxes = columnBoxes(block.columns);
+  const rowHeight = 17;
+  cur.ensure(18 + rowHeight * 2);
+  drawTableHeader(pdf, cur, block.columns);
+
+  block.rows.forEach((row, r) => {
+    if (cur.ensure(rowHeight)) drawTableHeader(pdf, cur, block.columns);
+    if (r % 2 === 1) pdf.rect(cur.page, CONTENT_LEFT, cur.y - 9, CONTENT_WIDTH, rowHeight, { fill: ZEBRA });
+    block.columns.forEach((col, i) => {
+      const cell = row[i] ?? '';
+      pdf.textAligned(cur.page, ellipsize(cell, boxes[i].right - boxes[i].left, 9), cur.y + 2, boxes[i], col.align ?? 'left', { size: 9, color: INK });
+    });
+    cur.y += rowHeight;
+    pdf.line(cur.page, CONTENT_LEFT, cur.y - 8, CONTENT_RIGHT, cur.y - 8, { color: RULE, width: 0.4 });
+  });
+
+  if (block.footer) {
+    if (cur.ensure(rowHeight + 4)) drawTableHeader(pdf, cur, block.columns);
+    pdf.rect(cur.page, CONTENT_LEFT, cur.y - 9, CONTENT_WIDTH, rowHeight, { fill: '#eef2f6' });
+    block.columns.forEach((col, i) => {
+      const cell = block.footer?.[i] ?? '';
+      pdf.textAligned(cur.page, ellipsize(cell, boxes[i].right - boxes[i].left, 9.5, 'HB'), cur.y + 2, boxes[i], col.align ?? 'left', { size: 9.5, font: 'HB', color: INK });
+    });
+    cur.y += rowHeight;
+  }
+  cur.y += 10;
+}
+
+function drawNote(pdf: PdfWriter, cur: Cursor, text: string): void {
+  const lines = wrapText(text, CONTENT_WIDTH - 20, 8);
+  const height = lines.length * 11 + 14;
+  // Aire antes de la caja: si el bloque anterior fue texto, su última línea
+  // queda pegada al borde superior (visto en la remisión de muestra).
+  if (!cur.ensure(height + 6)) cur.y += 6;
+  pdf.rect(cur.page, CONTENT_LEFT, cur.y - 10, CONTENT_WIDTH, height, { fill: '#f6f8fa', stroke: RULE });
+  let y = cur.y + 2;
+  for (const line of lines) {
+    pdf.text(cur.page, CONTENT_LEFT + 10, y, line, { size: 8, color: INK_SOFT });
+    y += 11;
+  }
+  cur.y += height + 6;
+}
+
+/** Caja de firma: trazo (JPEG) o, si no hay imagen, la línea de firma vacía. */
+function drawSignature(pdf: PdfWriter, cur: Cursor, block: Extract<Block, { kind: 'signature' }>): void {
+  const height = 108;
+  cur.ensure(height);
+  const top = cur.y - 8;
+  pdf.rect(cur.page, CONTENT_LEFT, top, CONTENT_WIDTH, height, { stroke: RULE });
+  pdf.text(cur.page, CONTENT_LEFT + 12, top + 16, block.label.toUpperCase(), { size: 7.5, font: 'HB', color: INK_FAINT });
+
+  const strokeTop = top + 24;
+  const drawn = block.image ? pdf.image(cur.page, block.image, CONTENT_LEFT + 12, strokeTop, 190, 46) : false;
+  if (!drawn) {
+    pdf.line(cur.page, CONTENT_LEFT + 12, strokeTop + 44, CONTENT_LEFT + 210, strokeTop + 44, { color: INK_FAINT, width: 0.8 });
+  }
+  pdf.text(cur.page, CONTENT_LEFT + 12, top + 86, block.name, { size: 10, font: 'HB', color: INK });
+
+  let y = top + 20;
+  for (const line of block.detail.slice(0, 6)) {
+    pdf.text(cur.page, CONTENT_LEFT + 236, y, ellipsize(line, CONTENT_WIDTH - 248, 8), { size: 8, color: INK_SOFT });
+    y += 11;
+  }
+  cur.y += height + 8;
+}
+
+function drawChrome(pdf: PdfWriter, meta: DocumentMeta): void {
+  const total = pdf.pageCount;
+  for (let page = 0; page < total; page++) {
+    // Encabezado
+    pdf.text(page, CONTENT_LEFT, 44, 'MEXICANA DE PROTECCIÓN', { size: 11, font: 'HB', color: ACCENT });
+    pdf.textAligned(page, meta.title, 40, { left: CONTENT_LEFT + 200, right: CONTENT_RIGHT }, 'right', { size: 10, font: 'HB', color: INK });
+    const sub = [meta.subtitle, meta.folio ? `Folio ${meta.folio}` : ''].filter(Boolean).join(' · ');
+    if (sub) pdf.textAligned(page, sub, 53, { left: CONTENT_LEFT + 200, right: CONTENT_RIGHT }, 'right', { size: 8.5, color: INK_SOFT });
+    pdf.line(page, CONTENT_LEFT, 62, CONTENT_RIGHT, 62, { color: RULE, width: 0.8 });
+
+    // Pie
+    pdf.line(page, CONTENT_LEFT, FOOTER_TOP + 8, CONTENT_RIGHT, FOOTER_TOP + 8, { color: RULE, width: 0.6 });
+    pdf.text(page, CONTENT_LEFT, FOOTER_TOP + 22, `Generado por el portal CMP · ${meta.generatedAt} · Doc ${meta.docId}`, { size: 7, color: INK_FAINT });
+    if (meta.footerNote) {
+      pdf.text(page, CONTENT_LEFT, FOOTER_TOP + 32, ellipsize(meta.footerNote, CONTENT_WIDTH - 60, 7), { size: 7, color: INK_FAINT });
+    }
+    pdf.textAligned(page, `Página ${page + 1} de ${total}`, FOOTER_TOP + 22, { left: CONTENT_RIGHT - 120, right: CONTENT_RIGHT }, 'right', { size: 7, color: INK_FAINT });
+  }
+}
+
+/** Renderiza los bloques a un PDF completo (encabezado/pie incluidos). */
+export function renderDocument(meta: DocumentMeta, blocks: Block[]): Uint8Array {
+  const pdf = new PdfWriter();
+  const cur = new Cursor(pdf);
+
+  for (const block of blocks) {
+    switch (block.kind) {
+      case 'heading': drawHeading(pdf, cur, block.text); break;
+      case 'text': drawText(pdf, cur, block); break;
+      case 'kv': drawKv(pdf, cur, block); break;
+      case 'table': drawTable(pdf, cur, block); break;
+      case 'divider':
+        cur.ensure(12);
+        pdf.line(cur.page, CONTENT_LEFT, cur.y, CONTENT_RIGHT, cur.y, { color: RULE });
+        cur.y += 12;
+        break;
+      case 'spacer':
+        if (!cur.ensure(block.height)) cur.y += block.height;
+        break;
+      case 'note': drawNote(pdf, cur, block.text); break;
+      case 'signature': drawSignature(pdf, cur, block); break;
+    }
+  }
+
+  drawChrome(pdf, meta);
+  return pdf.build();
+}
