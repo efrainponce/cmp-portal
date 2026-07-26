@@ -117,6 +117,9 @@ export function DocumentsPanel({ sourceKind, sourceId, templates, title, sourceL
 function DocumentRow({ doc, canSign, onSign }: { doc: DocumentDTO; canSign: boolean; onSign: () => void }) {
   const template = DOC_TEMPLATES[doc.templateId];
   const signed = doc.signatures.length > 0;
+  // Plantillas de acuse automático: nadie firmó nada, así que el copy no habla
+  // de firmas (Efraín, 2026-07-26).
+  const acuse = template?.autoAcuse === true;
   const created = new Date(doc.createdAt).toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' });
 
   return (
@@ -131,7 +134,9 @@ function DocumentRow({ doc, canSign, onSign }: { doc: DocumentDTO; canSign: bool
           font: '600 10px \'Inter\', sans-serif', textTransform: 'uppercase', letterSpacing: '.3px',
           color: doc.complete ? 'var(--status-ganada)' : signed ? 'var(--status-esperando)' : 'var(--ink-faint)',
         }}>
-          {doc.complete ? 'Firmado' : signed ? `${doc.signatures.length} de ${template?.maxSignatures ?? 1} firmas` : 'Sin firmar'}
+          {acuse
+            ? (signed ? 'Acusado' : 'Sin acuse')
+            : doc.complete ? 'Firmado' : signed ? `${doc.signatures.length} de ${template?.maxSignatures ?? 1} firmas` : 'Sin firmar'}
         </span>
       </div>
 
@@ -164,7 +169,7 @@ function DocumentRow({ doc, canSign, onSign }: { doc: DocumentDTO; canSign: bool
         </a>
         {signed && (
           <a href={documentPdfUrl(doc, true)} target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>
-            <Button variant="ghost">Ver firmado</Button>
+            <Button variant="ghost">{acuse ? 'Ver con acuse' : 'Ver firmado'}</Button>
           </a>
         )}
         {canSign && <Button variant="primary" onClick={onSign}>Firmar</Button>}

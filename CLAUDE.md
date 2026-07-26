@@ -78,7 +78,11 @@ con el Worker (`/api/*`). Bot de WhatsApp + chat del portal comparten agente Cla
   2026-07-24). Anclado en `shared/visibility.test.ts`.
 - Writes: front → `PATCH /api/boards/:slug/items/:id` → outbox D1 → Monday → echo/refetch.
   El mirror tarda: usa previews locales en la UI (patrón ya en CotizacionTab).
-- Documentos del portal + firma electrónica (`docs/documentos-firma.md`): el PDF se
+- Documentos del portal (`docs/documentos-firma.md`): la **cotización al cliente
+  sigue en Eledo** — el portal NO la genera. Sí genera la solicitud de costeo
+  (líneas sin precios, sale sola al "Mandar a costeo") y, pendiente, la OC a
+  proveedor. Sin imágenes de producto: el motor solo embebe JPEG.
+- Firma electrónica (`docs/documentos-firma.md`): el PDF se
   renderiza desde el snapshot que guarda `documents.data` (nunca de una lectura
   fresca del mirror) y `sha256` se re-verifica antes de asentar cada firma. Un PDF
   ajeno (cotización de cmp-tallas) NO se modifica: se sella una copia en R2 y la

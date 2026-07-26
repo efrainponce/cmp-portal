@@ -5,7 +5,7 @@
 import { describe, it, expect } from 'vitest';
 import { PdfWriter, pdfString, widthOf, jpegInfo, LETTER } from './writer';
 import { wrapText, renderDocument } from './layout';
-import { renderTemplate } from './templates';
+import { renderTemplate, formatTallas, formatMultiline } from './templates';
 
 const decode = (bytes: Uint8Array): string => new TextDecoder('latin1').decode(bytes);
 
@@ -152,26 +152,61 @@ describe('renderDocument', () => {
 });
 
 describe('renderTemplate', () => {
-  it('renderiza el resumen de oportunidad con sus totales', () => {
+  it('renderiza la solicitud de costeo SIN ninguna columna de precio', () => {
     const bytes = renderTemplate({
       docId: 'doc-1',
       generatedAt: '2026-07-25T10:00:00.000Z',
       signatures: [],
       data: {
-        kind: 'resumen-oportunidad',
+        kind: 'solicitud-costeo',
         nombre: 'Uniformes Hospital General',
         folio: '1234',
         lineas: [
-          { producto: 'Filipina', color: 'Azul', cantidad: 10, precioUnitario: 350 },
-          { producto: 'Pantalón', color: 'Negro', cantidad: 5, precioUnitario: 400 },
+          { producto: 'Filipina', sku: 'FIL-001', marca: 'SK7', color: 'Azul', unidad: 'Pieza', cantidad: 10, descripcion: 'Tejido 50-50 poliéster' },
+          { producto: 'Pantalón', sku: 'PAN-014', color: 'Negro', cantidad: 5, tallas: 'CH-M-G', embellecimiento: true, descripcionEmbellecimiento: 'Bordado en manga' },
         ],
       },
     });
     const text = decode(bytes);
     expect(text).toContain('Uniformes Hospital General');
-    expect(text).toContain('Documento sin firmar');
-    // 10*350 + 5*400 = 5,500
-    expect(text).toContain('5,500.00');
+    expect(text).toContain('PRODUCTOS POR COSTEAR');
+    expect(text).toContain('FIL-001');
+    expect(text).toContain('2 partida\\(s\\)');
+    expect(text).toContain('15');                       // total de piezas
+    // El punto de la solicitud es que compras ponga los precios: el PDF no debe
+    // traer columna de precio, importe ni ningún monto.
+    expect(text).not.toContain('P. UNITARIO');
+    expect(text).not.toContain('IMPORTE');
+    expect(text).not.toMatch(/\$[\d,]/);
+    // Detalle largo fuera de la tabla (en la celda se recortaría).
+    expect(text).toContain('Tejido 50-50 poli\\351ster');
+    expect(text).toContain('Tallas: CH-M-G');
+    expect(text).toContain('Bordado en manga');
+  });
+
+  it('acusa el documento sin hablar de firmas cuando la plantilla es autoAcuse', () => {
+    const bytes = renderTemplate({
+      docId: 'doc-1b',
+      generatedAt: '2026-07-26T10:00:00.000Z',
+      baseSha256: 'c'.repeat(64),
+      signatures: [{
+        label: 'Solicitó',
+        name: 'César Emilio Díaz Trujillo',
+        role: 'vendedor',
+        email: 'cesar@x.com',
+        signedAt: '2026-07-26T10:00:01.000Z',
+        sha256: 'c'.repeat(64),
+        ip: '189.1.2.3',
+      }],
+      data: { kind: 'solicitud-costeo', nombre: 'OPP-0717', lineas: [] },
+    });
+    const text = decode(bytes);
+    expect(text).toContain('ACUSE');
+    expect(text).toContain('SOLICIT');
+    expect(text).toContain('C\\351sar Emilio D\\355az Trujillo');
+    // Sin ceremonia de firma: no se pide firmar ni se anuncian firmas pendientes.
+    expect(text).not.toContain('FIRMAS');
+    expect(text).not.toContain('admite una firma');
   });
 
   it('el mismo snapshot de datos produce bytes idénticos (el hash sellado depende de eso)', () => {
@@ -220,5 +255,42 @@ describe('renderTemplate', () => {
     expect(text).toContain('ray@x.com');
     // El pie imprime el hash COMPLETO del documento base, sin recortar.
     expect(text).toContain(`SHA-256 ${'a'.repeat(64)}`);
+  });
+});
+
+// Los valores crudos de Monday que se veían mal en la primera solicitud real
+// (OPP-0717): las Tallas llegan como bloque JSON y los long_text con ",,".
+describe('formatTallas', () => {
+  it('aplana el JSON del catálogo y omite lo vacío', () => {
+    const raw = '```json\n{\n"hombre": ["CH", "M", "G"],\n"mujer": [],\n"unitalla": false,\n"otros": []\n}\n```';
+    expect(formatTallas(raw)).toBe('Hombre: CH, M, G');
+  });
+
+  it('conserva varios grupos y las banderas verdaderas', () => {
+    expect(formatTallas('{"hombre":["CH"],"mujer":["M","G"],"unitalla":true}'))
+      .toBe('Hombre: CH · Mujer: M, G · Unitalla');
+  });
+
+  it('devuelve el texto tal cual si no es JSON, y nada si está vacío', () => {
+    expect(formatTallas('CH, M, G')).toBe('CH, M, G');
+    expect(formatTallas('   ')).toBeUndefined();
+    expect(formatTallas(undefined)).toBeUndefined();
+  });
+
+  it('no imprime nada cuando todos los grupos están vacíos', () => {
+    expect(formatTallas('{"hombre":[],"mujer":[],"unitalla":false}')).toBeUndefined();
+  });
+});
+
+describe('formatMultiline', () => {
+  it('parte por ",," y tira los campos sin llenar', () => {
+    const raw = 'Espalda: BOMBEROS a 2 líneas.,,Frente derecho: Escudo bordado,,Etiqueta del fabricante:,,Otros:';
+    expect(formatMultiline(raw)).toBe('Espalda: BOMBEROS a 2 líneas.\nFrente derecho: Escudo bordado');
+  });
+
+  it('respeta saltos de línea normales y devuelve nada si no queda contenido', () => {
+    expect(formatMultiline('uno\ndos')).toBe('uno\ndos');
+    expect(formatMultiline(',,,,')).toBeUndefined();
+    expect(formatMultiline('Etiqueta:')).toBeUndefined();
   });
 });

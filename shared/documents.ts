@@ -15,7 +15,7 @@
 // aparte que referencia el hash del archivo original.
 import type { Role } from './types';
 
-export type DocTemplateId = 'resumen-oportunidad' | 'remision-inventario' | 'constancia-firma';
+export type DocTemplateId = 'solicitud-costeo' | 'remision-inventario' | 'constancia-firma';
 
 /** De dónde salen los datos del documento. `archivo` = PDF que ya existe en
  * Monday/R2 y que el portal solo sella + certifica (no lo genera). */
@@ -32,19 +32,26 @@ export interface DocTemplate {
   sign: Role[];
   /** Cuántas firmas admite antes de considerarse completo. */
   maxSignatures: number;
+  /** El documento se asienta solo con el ACUSE de quien lo generó (identidad de
+   * Access + fecha + huella), sin pedirle a nadie que firme: "no es necesario
+   * firmar, es solo el hecho de que se hizo" (Efraín, 2026-07-26). Estas
+   * plantillas llevan `sign: []` — no hay firma manual que ofrecer. */
+  autoAcuse?: boolean;
 }
 
 const ALL: Role[] = ['vendedor', 'compras', 'admin'];
 
 export const DOC_TEMPLATES: Record<DocTemplateId, DocTemplate> = {
-  'resumen-oportunidad': {
-    id: 'resumen-oportunidad',
-    label: 'Resumen de oportunidad',
-    description: 'Resumen interno de la oportunidad y sus líneas vigentes, para revisión y firma de autorización. No es la cotización al cliente (esa la genera cmp-tallas).',
+  'solicitud-costeo': {
+    id: 'solicitud-costeo',
+    label: 'Solicitud de costeo',
+    description: 'Las líneas de producto de la oportunidad SIN precios, para que compras las costee. Sale con el acuse de quien la solicitó; no requiere firma.',
     source: 'oportunidad',
     create: ALL,
-    sign: ALL,
-    maxSignatures: 2,
+    // Sin firma manual: el acuse automático es todo lo que lleva.
+    sign: [],
+    maxSignatures: 1,
+    autoAcuse: true,
   },
   'remision-inventario': {
     id: 'remision-inventario',
@@ -74,6 +81,14 @@ export function isDocTemplateId(value: string): value is DocTemplateId {
 
 /** Texto que el firmante acepta explícitamente antes de firmar; se guarda
  * palabra por palabra en la fila de la firma (evidencia de consentimiento). */
+/** Texto que se asienta cuando el documento se acusa solo (autoAcuse): no hubo
+ * ceremonia de firma, lo que consta es que la acción se hizo desde una sesión
+ * autenticada del portal. */
+export const ATTEST_INTENT =
+  'Documento generado desde el portal por la cuenta autenticada que aparece en el ' +
+  'acuse. No requiere firma: lo que consta es la acción, su fecha y la huella ' +
+  'SHA-256 del documento.';
+
 export const SIGN_INTENT =
   'Acepto que el trazo y los datos de identidad registrados constituyen mi firma ' +
   'electrónica sobre este documento, y que su contenido queda sellado por la huella ' +

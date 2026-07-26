@@ -33,7 +33,7 @@ R2: `documentos/{docId}/base.pdf`, `.../firmado.pdf`, `.../firma-N.jpg`.
 
 | Id | Fuente | Firman | Para qué |
 |---|---|---|---|
-| `resumen-oportunidad` | oportunidad (`item_id`) | vendedor · compras · admin | Resumen interno con las líneas vigentes, para revisión/autorización. **No** es la cotización al cliente. |
+| `solicitud-costeo` | oportunidad (`item_id`) | — (acuse automático) | Las líneas de la oportunidad **sin precios**, para que compras las costee. Se genera sola al dar "Mandar a costeo". |
 | `remision-inventario` | movimiento (`movements.id`) | almacén · compras · admin · vendedor | Comprobante de entrega: firma quien entrega y quien recibe. |
 | `constancia-firma` | archivo (key de `/api/files`) | vendedor · compras · admin | Sella un PDF que ya existe (cotización generada, OC, contrato) y emite la constancia con su huella. |
 
@@ -60,6 +60,14 @@ Agregar una plantilla = tipo de datos + `case` en `buildBlocks` + entrada en
   documento nuevo, porque el anterior es evidencia.
 - El trazo es **opcional**; la identidad no. Sin trazo la firma queda asentada con
   la cuenta autenticada y el nombre mecanografiado.
+- **Acuse automático (`autoAcuse`)**: para la solicitud de costeo no hay ceremonia
+  de firma — "no es necesario firmar, es solo el hecho de que se hizo" (Efraín,
+  2026-07-26). El documento se asienta al generarse con la misma evidencia que una
+  firma (identidad de Access, fecha, IP, huella) pero con `ATTEST_INTENT` y sin
+  trazo. Esas plantillas llevan `sign: []`, así que la UI no ofrece firmar y la
+  ruta HTTP las rechaza: el acuse solo lo pone el server (`attestDocument`).
+  Regenerar reescribe el acuse; solo una firma **manual** vuelve inmutable al
+  documento.
 
 ## Endpoints
 
@@ -78,10 +86,19 @@ remisión exige acceso al board `inventario`. `/api/files` quedó limitado al pr
 `oportunidades/` a propósito: los PDF de `documentos/…` solo se sirven por su ruta,
 que sí revisa la fuente.
 
+## Qué NO genera el portal
+
+Las **cotizaciones al cliente siguen saliendo de Eledo** (decisión de Efraín,
+2026-07-26). Lo que el portal genera para saltarse Eledo es la **solicitud de
+costeo** y —pendiente— la **OC a proveedor**. Diseño: formato propio del portal,
+fondo blanco, sin imágenes de producto (el motor solo embebe JPEG y el catálogo
+las tiene en PNG; SKU + marca identifican la partida).
+
 ## Dónde se usa en la UI
 
-- **Oportunidad → Documentación**: sección "Documentos del portal" (resumen) y, bajo
-  cada cotización generada, "Firma electrónica de …" (constancia).
+- **Oportunidad → Documentación**: sección "Documentos del portal" (solicitud de
+  costeo) y, bajo cada solicitud/cotización de Monday, "Firma electrónica de …"
+  (constancia).
 - **Inventario → Movimientos**: columna *Remisión* → "Generar / firmar" despliega el
   panel de la remisión de ese movimiento.
 

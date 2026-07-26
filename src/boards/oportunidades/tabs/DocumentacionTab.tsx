@@ -3,11 +3,14 @@
 // firmado por el cliente sí vive en el Proyecto ligado (file_mm0hayh4) y ya
 // tiene upload real — único caso habilitado por ahora (Efraín, 2026-07-17).
 //
-// 2026-07-25: aquí también vive la firma electrónica. Dos caminos distintos:
-//  · un PDF que YA existe (cotización generada por cmp-tallas) se sella y se le
-//    emite una constancia de firma — el original no se puede modificar;
-//  · el resumen de oportunidad lo genera el portal y se firma dentro del propio
-//    PDF (ver shared/documents.ts).
+// 2026-07-25/26: aquí vive la capa de documentos del portal. Dos caminos:
+//  · un PDF que YA existe (cotización de Eledo/cmp-tallas) se sella y se le emite
+//    una constancia de firma — el original no se puede modificar;
+//  · la SOLICITUD DE COSTEO la genera el portal (líneas sin precios) y sale
+//    acusada sola por quien la generó, sin pedir firma — también se dispara
+//    automáticamente al dar "Mandar a costeo" (ver shared/documents.ts).
+// Las cotizaciones al cliente NO las genera el portal: siguen saliendo de Eledo
+// (Efraín, 2026-07-26).
 import { useState, type ChangeEvent } from 'react';
 import type { ItemDetailDTO } from '../../../lib/api';
 import { uploadProyectoDocumento } from '../../../lib/api';
@@ -66,12 +69,13 @@ export function DocumentacionTab({ item, proyecto }: { item: ItemDetailDTO; proy
       <div>
         <SectionTitle>Documentos del portal</SectionTitle>
         <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)', marginTop: 2, marginBottom: 8 }}>
-          Documentos que genera el portal a partir de los datos de esta oportunidad. Se firman dentro del propio PDF.
+          La solicitud de costeo la genera el portal con las líneas de esta oportunidad, sin precios. Se acusa
+          sola con la cuenta de quien la genera — también sale automáticamente al dar "Mandar a costeo".
         </div>
         <DocumentsPanel
           sourceKind="oportunidad"
           sourceId={item.id}
-          templates={['resumen-oportunidad']}
+          templates={['solicitud-costeo']}
           filter={PORTAL_DOCS_ONLY}
         />
       </div>

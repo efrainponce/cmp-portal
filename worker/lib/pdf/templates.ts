@@ -4,19 +4,25 @@
 // + su entrada en shared/documents.ts.
 import type { Block, DocumentMeta } from './layout';
 import { renderDocument } from './layout';
-import { DOC_TEMPLATES, SIGN_INTENT, type DocTemplateId } from '../../../shared/documents';
+import { DOC_TEMPLATES, SIGN_INTENT, ATTEST_INTENT, type DocTemplateId } from '../../../shared/documents';
 
+/** Línea de producto tal como la lee compras para costear. SIN precios a
+ * propósito: eso es justo lo que la solicitud pide que llenen. */
 export interface DocLine {
   producto: string;
   sku?: string;
+  marca?: string;
   color?: string;
+  tallas?: string;
+  unidad?: string;
   cantidad: number;
-  precioUnitario?: number;
+  descripcion?: string;
   embellecimiento?: boolean;
+  descripcionEmbellecimiento?: string;
 }
 
-export interface ResumenOportunidadData {
-  kind: 'resumen-oportunidad';
+export interface SolicitudCosteoData {
+  kind: 'solicitud-costeo';
   nombre: string;
   folio?: string;
   etapa?: string;
@@ -25,8 +31,6 @@ export interface ResumenOportunidadData {
   institucion?: string;
   zona?: string;
   fechaLimite?: string;
-  fechaCotizacion?: string;
-  vigencia?: string;
   tiempoEntrega?: string;
   comentarios?: string;
   lineas: DocLine[];
@@ -56,7 +60,7 @@ export interface ConstanciaFirmaData {
   contexto?: string;
 }
 
-export type DocData = ResumenOportunidadData | RemisionInventarioData | ConstanciaFirmaData;
+export type DocData = SolicitudCosteoData | RemisionInventarioData | ConstanciaFirmaData;
 
 /** Firma ya asentada, tal como la pinta el PDF regenerado. */
 export interface RenderedSignature {
@@ -80,14 +84,6 @@ export interface RenderInput {
 }
 
 // ── Formato ───────────────────────────────────────────────────────────────────
-const MXN = (n: number): string => {
-  try {
-    return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n);
-  } catch {
-    return `$${n.toFixed(2)}`;
-  }
-};
-
 const NUM = (n: number): string => {
   try { return new Intl.NumberFormat('es-MX').format(n); } catch { return String(n); }
 };
@@ -104,9 +100,53 @@ export function fechaLarga(iso: string): string {
   }
 }
 
+/** Las Tallas del catálogo llegan como un bloque JSON (a veces envuelto en
+ * fences de markdown): {"hombre":["CH","M"],"mujer":[],"unitalla":false,…}.
+ * En papel eso es ilegible, así que se aplana a "Hombre: CH, M" omitiendo lo
+ * vacío. Si no se puede parsear se devuelve el texto tal cual, nunca se pierde. */
+export function formatTallas(raw?: string): string | undefined {
+  const text = (raw ?? '').trim();
+  if (!text) return undefined;
+  const json = text.replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(json);
+  } catch {
+    return text.replace(/\s+/g, ' ');
+  }
+  if (!parsed || typeof parsed !== 'object') return text.replace(/\s+/g, ' ');
+
+  const partes: string[] = [];
+  for (const [clave, valor] of Object.entries(parsed as Record<string, unknown>)) {
+    const etiqueta = clave.charAt(0).toUpperCase() + clave.slice(1);
+    if (Array.isArray(valor)) {
+      const items = valor.map(v => String(v).trim()).filter(Boolean);
+      if (items.length) partes.push(`${etiqueta}: ${items.join(', ')}`);
+    } else if (valor === true) {
+      partes.push(etiqueta);
+    } else if (typeof valor === 'string' && valor.trim()) {
+      partes.push(`${etiqueta}: ${valor.trim()}`);
+    }
+    // false / null / arrays vacíos: no se imprimen.
+  }
+  return partes.length ? partes.join(' · ') : undefined;
+}
+
+/** Los long_text de Monday llegan con ",," entre renglones y con campos vacíos
+ * que terminan en ":" (plantilla de embellecimiento sin llenar). Se parte en
+ * líneas de verdad y se tiran los renglones que no dicen nada. */
+export function formatMultiline(raw?: string): string | undefined {
+  const text = (raw ?? '').trim();
+  if (!text) return undefined;
+  const lineas = text
+    .split(/,{2,}|\r?\n/)
+    .map(l => l.trim().replace(/^,+|,+$/g, '').trim())
+    .filter(l => l.length > 0 && !/:$/.test(l));
+  return lineas.length ? lineas.join('\n') : undefined;
+}
+
 // ── Bloques por plantilla ─────────────────────────────────────────────────────
-function resumenBlocks(d: ResumenOportunidadData): Block[] {
-  const total = d.lineas.reduce((s, l) => s + (l.precioUnitario ?? 0) * l.cantidad, 0);
+function solicitudBlocks(d: SolicitudCosteoData): Block[] {
   const piezas = d.lineas.reduce((s, l) => s + l.cantidad, 0);
 
   const blocks: Block[] = [
@@ -121,43 +161,70 @@ function resumenBlocks(d: ResumenOportunidadData): Block[] {
         ['Vendedor', d.vendedor ?? ''],
         ['Zona', d.zona ?? ''],
         ['Fecha límite', d.fechaLimite ?? ''],
-        ['Fecha de cotización', d.fechaCotizacion ?? ''],
-        ['Vigencia', d.vigencia ?? ''],
         ['Tiempo de entrega', d.tiempoEntrega ?? ''],
       ],
     },
-    { kind: 'heading', text: 'Líneas de producto' },
+    { kind: 'heading', text: 'Productos por costear' },
   ];
 
   if (d.lineas.length === 0) {
     blocks.push({ kind: 'text', text: 'La oportunidad no tiene líneas de producto capturadas.', color: '#5b6472' });
-  } else {
-    blocks.push({
-      kind: 'table',
-      columns: [
-        { header: 'Producto', width: 0.34 },
-        { header: 'SKU', width: 0.13 },
-        { header: 'Color', width: 0.13 },
-        { header: 'Emb.', width: 0.07, align: 'center' },
-        { header: 'Cant.', width: 0.09, align: 'right' },
-        { header: 'P. unitario', width: 0.12, align: 'right' },
-        { header: 'Importe', width: 0.12, align: 'right' },
-      ],
-      rows: d.lineas.map(l => [
-        l.producto,
-        l.sku ?? '',
-        l.color ?? '',
-        l.embellecimiento ? 'Sí' : '—',
-        NUM(l.cantidad),
-        l.precioUnitario ? MXN(l.precioUnitario) : 'Pend.',
-        l.precioUnitario ? MXN(l.precioUnitario * l.cantidad) : '—',
-      ]),
-      footer: ['Total', '', '', '', NUM(piezas), '', MXN(total)],
-    });
+    return blocks;
+  }
+
+  // Sin columna de precio ni de importe: la solicitud PIDE los precios, no los
+  // trae (Efraín, 2026-07-26). Tampoco imágenes: el motor solo embebe JPEG y el
+  // catálogo las tiene en PNG; SKU + marca alcanzan para identificar el producto.
+  blocks.push({
+    kind: 'table',
+    // La unidad va pegada a la cantidad ("30 Pieza") en vez de en su propia
+    // columna: casi siempre dice "Pieza" y ese ancho le hace falta a marca y
+    // color, que se recortaban con elipsis (visto en la solicitud de OPP-0717).
+    columns: [
+      { header: '#', width: 0.04, align: 'right' },
+      { header: 'Producto', width: 0.33 },
+      { header: 'SKU', width: 0.15 },
+      { header: 'Marca', width: 0.16 },
+      { header: 'Color', width: 0.18 },
+      { header: 'Cantidad', width: 0.14, align: 'right' },
+    ],
+    rows: d.lineas.map((l, i) => [
+      String(i + 1),
+      l.producto,
+      l.sku ?? '',
+      l.marca ?? '',
+      l.color ?? '',
+      `${NUM(l.cantidad)} ${l.unidad || 'Pieza'}`,
+    ]),
+    footer: ['', `${d.lineas.length} partida(s)`, '', '', '', NUM(piezas)],
+  });
+
+  // El detalle largo (descripción del catálogo, tallas, embellecimiento) va como
+  // texto por partida: en la tabla se recortaría con elipsis y es justo lo que
+  // compras necesita leer completo para cotizarle al proveedor.
+  const conDetalle = d.lineas.filter(l => l.descripcion || l.tallas || l.embellecimiento);
+  if (conDetalle.length > 0) {
+    blocks.push({ kind: 'heading', text: 'Detalle por partida' });
+    for (const l of d.lineas) {
+      if (!l.descripcion && !l.tallas && !l.embellecimiento) continue;
+      const n = d.lineas.indexOf(l) + 1;
+      blocks.push({ kind: 'text', text: `${n}. ${l.producto}`, bold: true, size: 9.5 });
+      if (l.descripcion) blocks.push({ kind: 'text', text: l.descripcion, size: 9 });
+      if (l.tallas) blocks.push({ kind: 'text', text: `Tallas: ${l.tallas}`, size: 9, color: '#5b6472' });
+      if (l.embellecimiento) {
+        blocks.push({
+          kind: 'text',
+          text: `Embellecimiento: ${l.descripcionEmbellecimiento || 'sí (ver especificación con el vendedor)'}`,
+          size: 9,
+          color: '#5b6472',
+        });
+      }
+      blocks.push({ kind: 'spacer', height: 4 });
+    }
   }
 
   if (d.comentarios) {
-    blocks.push({ kind: 'heading', text: 'Comentarios' }, { kind: 'text', text: d.comentarios });
+    blocks.push({ kind: 'heading', text: 'Comentarios del vendedor' }, { kind: 'text', text: d.comentarios });
   }
   return blocks;
 }
@@ -220,10 +287,15 @@ function constanciaBlocks(d: ConstanciaFirmaData, baseSha256?: string): Block[] 
 // ── Firmas ────────────────────────────────────────────────────────────────────
 function signatureBlocks(input: RenderInput): Block[] {
   const template = DOC_TEMPLATES[templateIdOf(input.data)];
-  const blocks: Block[] = [{ kind: 'heading', text: 'Firmas' }];
+  const acuse = template.autoAcuse === true;
+  const blocks: Block[] = [{ kind: 'heading', text: acuse ? 'Acuse' : 'Firmas' }];
 
   if (input.signatures.length === 0) {
-    blocks.push({ kind: 'text', text: 'Documento sin firmar.', color: '#5b6472' });
+    blocks.push({
+      kind: 'text',
+      text: acuse ? 'Sin acuse registrado.' : 'Documento sin firmar.',
+      color: '#5b6472',
+    });
     return blocks;
   }
 
@@ -243,7 +315,7 @@ function signatureBlocks(input: RenderInput): Block[] {
     });
   }
 
-  const pendientes = template.maxSignatures - input.signatures.length;
+  const pendientes = acuse ? 0 : template.maxSignatures - input.signatures.length;
   if (pendientes > 0) {
     blocks.push({
       kind: 'text',
@@ -254,7 +326,10 @@ function signatureBlocks(input: RenderInput): Block[] {
       color: '#5b6472',
     });
   }
-  blocks.push({ kind: 'note', text: `Consentimiento aceptado por cada firmante: «${SIGN_INTENT}»` });
+  blocks.push({
+    kind: 'note',
+    text: acuse ? ATTEST_INTENT : `Consentimiento aceptado por cada firmante: «${SIGN_INTENT}»`,
+  });
   return blocks;
 }
 
@@ -265,7 +340,7 @@ export function templateIdOf(data: DocData): DocTemplateId {
 /** Título del documento (encabezado del PDF y columna `title` en D1). */
 export function titleOf(data: DocData): string {
   switch (data.kind) {
-    case 'resumen-oportunidad': return `Resumen de oportunidad`;
+    case 'solicitud-costeo': return `Solicitud de costeo`;
     case 'remision-inventario': return `Remisión de inventario`;
     case 'constancia-firma': return `Constancia de firma electrónica`;
   }
@@ -273,7 +348,7 @@ export function titleOf(data: DocData): string {
 
 function subtitleOf(data: DocData): string | undefined {
   switch (data.kind) {
-    case 'resumen-oportunidad': return data.nombre;
+    case 'solicitud-costeo': return data.nombre;
     case 'remision-inventario': return `${data.tipo} · ${data.producto}`;
     case 'constancia-firma': return data.archivo;
   }
@@ -281,14 +356,14 @@ function subtitleOf(data: DocData): string | undefined {
 
 function folioOf(data: DocData): string | undefined {
   switch (data.kind) {
-    case 'resumen-oportunidad': return data.folio;
+    case 'solicitud-costeo': return data.folio;
     case 'remision-inventario': return data.folio ?? `MOV-${data.movimientoId}`;
     case 'constancia-firma': return undefined;
   }
 }
 
 export function buildBlocks(input: RenderInput): Block[] {
-  const body = input.data.kind === 'resumen-oportunidad' ? resumenBlocks(input.data)
+  const body = input.data.kind === 'solicitud-costeo' ? solicitudBlocks(input.data)
     : input.data.kind === 'remision-inventario' ? remisionBlocks(input.data)
     : constanciaBlocks(input.data, input.baseSha256);
   return [...body, { kind: 'spacer', height: 10 }, ...signatureBlocks(input)];

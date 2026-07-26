@@ -2,7 +2,7 @@
 // cotización, líneas de producto, imágenes de embellecimiento, PDFs de
 // cotización y Proyecto/acciones de cmp-tallas. Movido tal cual desde
 // worker/index.ts (2026-07-16) — sin cambios de comportamiento.
-import type { Hono } from 'hono';
+import type { Context, Hono } from 'hono';
 import type { Env } from '../env';
 import type { Identity } from '../../shared/types';
 import { BOARDS } from '../../shared/boards';
@@ -26,6 +26,7 @@ import { refetchItem, refetchItemTree, upsertItem } from '../sync';
 import { jsonStatus } from '../lib/http';
 import { canWrite } from '../../shared/visibility';
 import { emitNotification } from '../lib/notify';
+import { createDocument } from '../lib/documents';
 import { md5 } from '../lib/canon';
 
 // Acciones de cmp-tallas sobre el Proyecto. Cada una exige que el viewer pueda
@@ -86,6 +87,24 @@ async function notifyCosteoIncompleto(env: Env, viewer: Identity, itemId: number
   } catch { /* best-effort — no bloquea la respuesta 422 */ }
 }
 
+/** Genera (o regenera) la solicitud de costeo del portal y la deja acusada por
+ * quien apretó el botón. Best-effort a propósito: si algo falla aquí, "Mandar a
+ * costeo" ya se ejecutó en cmp-tallas y no se puede deshacer — el documento se
+ * puede volver a generar a mano desde la pestaña Documentación. */
+async function generarSolicitudCosteo(
+  c: Context<{ Bindings: Env }>, itemId: number, viewer: Identity,
+): Promise<void> {
+  try {
+    await createDocument(c.env, viewer, {
+      templateId: 'solicitud-costeo',
+      sourceId: String(itemId),
+      acuse: { ip: c.req.header('CF-Connecting-IP') ?? null, userAgent: c.req.header('User-Agent') ?? null },
+    });
+  } catch (err) {
+    console.log('[solicitud-costeo] ' + String(err));
+  }
+}
+
 export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
   // Pre-chequeo de solo lectura: la UI deshabilita "Mandar a costeo" y lista lo
   // que falta ANTES de que alguien pueda dar click. Sin ningún efecto.
@@ -129,6 +148,10 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       // El stage, el PDF y los snapshots de subitems los escribió cmp-tallas
       // directo en Monday — refresca el árbol completo en el mirror.
       if (result.ok) await refetchItemTree(c.env, BOARDS.oportunidades.id, itemId);
+      // Solicitud de costeo del portal: el click ya viene autenticado, así que
+      // vale como acuse — se genera y se asienta sola, sin pedirle firma a nadie
+      // (Efraín, 2026-07-26). Best-effort: nunca tumba el "Mandar a costeo".
+      if (result.ok) await generarSolicitudCosteo(c, itemId, viewer);
       if (!result.ok) await notifyCosteoIncompleto(c.env, viewer, itemId, result.errors ?? []);
       return result.ok ? c.json(result) : jsonStatus(result, 422);
     } catch (err) {

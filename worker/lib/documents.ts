@@ -16,10 +16,10 @@ import type { Env } from '../env';
 import type { Identity } from '../../shared/types';
 import type { RawCol } from './serialize';
 import {
-  DOC_TEMPLATES, SIGN_INTENT, documentFilename,
+  DOC_TEMPLATES, SIGN_INTENT, ATTEST_INTENT, documentFilename,
   type DocTemplateId, type DocumentDTO, type SignatureDTO,
 } from '../../shared/documents';
-import { renderTemplate, type DocData, type RenderedSignature } from './pdf/templates';
+import { renderTemplate, formatTallas, formatMultiline, type DocData, type RenderedSignature } from './pdf/templates';
 import { jpegInfo } from './pdf/writer';
 import { getItem, childrenOf } from './dal';
 import { canRead } from '../../shared/visibility';
@@ -119,7 +119,7 @@ const signatureKey = (docId: string, n: number): string => `documentos/${docId}/
 export function signatureLabels(templateId: DocTemplateId): string[] {
   switch (templateId) {
     case 'remision-inventario': return ['Entrega', 'Recibe'];
-    case 'resumen-oportunidad': return ['Elaboró', 'Autorizó'];
+    case 'solicitud-costeo': return ['Solicitó'];
     case 'constancia-firma': return ['Firma electrónica', 'Segunda firma'];
   }
 }
@@ -147,47 +147,71 @@ const OPP_CONTACTO = 'deal_contact';
 const OPP_INSTITUCION = 'lookup_mm1bs976';
 const OPP_ZONA = 'dropdown_mm03g067';
 const OPP_FECHA_LIMITE = 'deal_expected_close_date';
-const OPP_FECHA_COTIZACION = 'date_mm09mv5b';
-const OPP_VIGENCIA = 'text_mm0gje0';
 const OPP_ENTREGA = 'text_mm0gjrrd';
 const OPP_COMENTARIOS = 'long_text_mm1m416j';
-// Subitems (líneas) — mismos ids que worker/lib/quoteVersions.ts.
+// Subitems (líneas) — docs/monday-column-map.md. La solicitud de costeo NO lee
+// ninguna columna de precio/costo: pide los precios, no los trae.
 const SUB_PRODUCTO_NOMBRE = 'lookup_mm0x4kda';
 const SUB_PRODUCTO_TXT = 'text_mm0bkm1j';
 const SUB_SKU = 'lookup_mkzn7x9a';
+const SUB_SKU_TXT = 'text_mm0bxy39';
+const SUB_MARCA = 'lookup_mm0xn98d';
 const SUB_COLOR = 'text_mm07s2mg';
+const SUB_TALLAS = 'lookup_mm19c0b6';
+const SUB_UNIDAD = 'lookup_mm0w4f4v';
+const SUB_DESCRIPCION = 'lookup_mm0xw8p7';   // Descripción Cotización (mirror del catálogo)
 const SUB_CANTIDAD = 'numeric_mkzm6399';
-const SUB_PRECIO = 'numeric_mkzneg3d';
 const SUB_EMB_STATUS = 'color_mm1b34bg';
+const SUB_EMB_DESC = 'long_text_mm1bj4pt';
+const SUB_COMENTARIOS = 'long_text_mm1hyszv';
 
 const num = (text?: string | null): number => Number((text ?? '').replace(/,/g, '')) || 0;
 
-async function resumenData(env: Env, oppId: number, viewer: Identity): Promise<DocData> {
+async function solicitudCosteoData(env: Env, oppId: number, viewer: Identity): Promise<DocData> {
   const row = await getItem(env, 'oportunidades', oppId, viewer);
   if (!row) throw new DocumentError(404, 'oportunidad no encontrada');
 
   // Se lee el mirror CRUDO (dal), no el DTO ya filtrado por el serializer, así
   // que la whitelist se aplica aquí a mano: un documento nunca debe imprimir
-  // una columna que el firmante no podría ver en pantalla.
+  // una columna que su destinatario no podría ver en pantalla.
   const cols = colMap(row.columns);
   const text = (id: string): string | undefined =>
     canRead('oportunidades', id, viewer.role) ? cols.get(id)?.text?.trim() || undefined : undefined;
-  const verPrecio = canRead('oportunidades_sub', SUB_PRECIO, viewer.role);
+  const subText = (c: Map<string, RawCol>, id: string): string | undefined =>
+    canRead('oportunidades_sub', id, viewer.role) ? c.get(id)?.text?.trim() || undefined : undefined;
 
-  const lineas = (await childrenOf(env, 'oportunidades', oppId, viewer)).map(child => {
+  const hijos = await childrenOf(env, 'oportunidades', oppId, viewer);
+  const lineas = hijos.map(child => {
     const c = colMap(child.columns);
     return {
       producto: (c.get(SUB_PRODUCTO_NOMBRE)?.text || c.get(SUB_PRODUCTO_TXT)?.text || child.name).trim(),
-      sku: c.get(SUB_SKU)?.text?.trim() || undefined,
-      color: c.get(SUB_COLOR)?.text?.trim() || undefined,
+      sku: subText(c, SUB_SKU) ?? subText(c, SUB_SKU_TXT),
+      marca: subText(c, SUB_MARCA),
+      color: subText(c, SUB_COLOR),
+      tallas: formatTallas(subText(c, SUB_TALLAS)),
+      unidad: subText(c, SUB_UNIDAD),
       cantidad: num(c.get(SUB_CANTIDAD)?.text),
-      precioUnitario: verPrecio ? num(c.get(SUB_PRECIO)?.text) || undefined : undefined,
+      descripcion: formatMultiline(subText(c, SUB_DESCRIPCION)),
       embellecimiento: (c.get(SUB_EMB_STATUS)?.text ?? '').trim() === 'Con Embellecimiento',
+      descripcionEmbellecimiento: formatMultiline(subText(c, SUB_EMB_DESC)),
     };
   });
 
+  // Comentarios: los de la cotización a nivel oportunidad + los de ventas por
+  // línea, que es donde el vendedor suele dejar el contexto para compras.
+  const comentariosLinea = hijos
+    .map(child => {
+      const c = colMap(child.columns);
+      const nota = subText(c, SUB_COMENTARIOS);
+      if (!nota) return null;
+      const nombre = (c.get(SUB_PRODUCTO_NOMBRE)?.text || child.name).trim();
+      return `${nombre}: ${nota}`;
+    })
+    .filter((x): x is string => !!x);
+  const comentarios = [text(OPP_COMENTARIOS), ...comentariosLinea].filter(Boolean).join('\n');
+
   return {
-    kind: 'resumen-oportunidad',
+    kind: 'solicitud-costeo',
     nombre: row.name,
     folio: text(OPP_FOLIO) ?? String(oppId),
     etapa: text(OPP_ETAPA),
@@ -196,10 +220,8 @@ async function resumenData(env: Env, oppId: number, viewer: Identity): Promise<D
     institucion: text(OPP_INSTITUCION),
     zona: text(OPP_ZONA),
     fechaLimite: text(OPP_FECHA_LIMITE),
-    fechaCotizacion: text(OPP_FECHA_COTIZACION),
-    vigencia: text(OPP_VIGENCIA),
     tiempoEntrega: text(OPP_ENTREGA),
-    comentarios: text(OPP_COMENTARIOS),
+    comentarios: comentarios || undefined,
     lineas,
   };
 }
@@ -244,6 +266,8 @@ export interface CreateInput {
   templateId: DocTemplateId;
   sourceId: string;
   sourceLabel?: string;
+  /** Evidencia del acuse automático (la IP la pone Cloudflare, no el cliente). */
+  acuse?: { ip?: string | null; userAgent?: string | null };
 }
 
 export async function createDocument(env: Env, viewer: Identity, input: CreateInput): Promise<DocumentDTO> {
@@ -258,17 +282,22 @@ export async function createDocument(env: Env, viewer: Identity, input: CreateIn
   const sourceId = template.source === 'archivo' ? normalizeFileKey(input.sourceId) : input.sourceId;
 
   // Volver a generar la misma plantilla sobre la misma fuente REEMPLAZA el
-  // documento que aún no tiene firmas, en vez de acumular copias (el caso normal
-  // es "lo generé, corregí un dato, lo vuelvo a generar"). En cuanto tiene una
-  // firma ya no se toca: ahí nace un documento nuevo, porque el anterior es
-  // evidencia de algo que alguien firmó. El id se decide ANTES de renderizar
-  // porque va impreso en el pie del PDF y es lo que sella el hash.
+  // documento que nadie ha FIRMADO a mano, en vez de acumular copias (el caso
+  // normal es "lo generé, corregí un dato, lo vuelvo a generar"). El acuse
+  // automático no cuenta como firma para esto: se reescribe junto con el
+  // documento, así que la solicitud de costeo siempre queda una sola por
+  // oportunidad, acusada por quien la generó al final. En cambio, en cuanto
+  // alguien firmó a mano ya no se toca: ese documento es evidencia. El id se
+  // decide ANTES de renderizar porque va impreso en el pie y lo sella el hash.
   const reusable = await env.DB.prepare(
     `SELECT d.id FROM documents d
       WHERE d.template_id = ? AND d.source_kind = ? AND d.source_id = ?
-        AND NOT EXISTS (SELECT 1 FROM document_signatures s WHERE s.document_id = d.id)
+        AND NOT EXISTS (
+          SELECT 1 FROM document_signatures s
+           WHERE s.document_id = d.id AND s.intent <> ?
+        )
       ORDER BY d.created_at LIMIT 1`,
-  ).bind(template.id, template.source, sourceId).first<{ id: string }>();
+  ).bind(template.id, template.source, sourceId, ATTEST_INTENT).first<{ id: string }>();
   const docId = reusable?.id ?? crypto.randomUUID();
 
   let data: DocData;
@@ -278,7 +307,7 @@ export async function createDocument(env: Env, viewer: Identity, input: CreateIn
   if (template.source === 'oportunidad') {
     const oppId = Number(input.sourceId);
     if (!Number.isFinite(oppId)) throw new DocumentError(400, 'sourceId inválido');
-    data = await resumenData(env, oppId, viewer);
+    data = await solicitudCosteoData(env, oppId, viewer);
     boardKey = 'oportunidades';
     baseBytes = renderTemplate({ docId, data, generatedAt: createdAt, signatures: [] });
   } else if (template.source === 'movimiento') {
@@ -311,11 +340,13 @@ export async function createDocument(env: Env, viewer: Identity, input: CreateIn
   // El PDF firmado que hubiera quedado en caché ya no corresponde a este base.
   if (reusable) await env.FILES.delete(signedKey(docId));
 
-  const folio = data.kind === 'resumen-oportunidad' ? data.folio ?? null
+  const folio = data.kind === 'solicitud-costeo' ? data.folio ?? null
     : data.kind === 'remision-inventario' ? data.folio ?? `MOV-${data.movimientoId}`
     : null;
 
   if (reusable) {
+    await env.DB.prepare('DELETE FROM document_signatures WHERE document_id = ? AND intent = ?')
+      .bind(docId, ATTEST_INTENT).run();
     await env.DB.prepare(
       `UPDATE documents SET data = ?, sha256 = ?, bytes = ?, folio = ?, created_by = ?, created_at = ? WHERE id = ?`,
     ).bind(JSON.stringify(data), sha256, baseBytes.length, folio, viewer.email, createdAt, docId).run();
@@ -329,9 +360,37 @@ export async function createDocument(env: Env, viewer: Identity, input: CreateIn
     ).run();
   }
 
+  // Plantillas con autoAcuse: no hay ceremonia de firma, lo que consta es que la
+  // acción se hizo desde una sesión autenticada (Efraín, 2026-07-26).
+  if (template.autoAcuse) await attestDocument(env, docId, viewer, input.acuse);
+
   const doc = await loadDocument(env, docId, viewer);
   if (!doc) throw new DocumentError(500, 'no se pudo leer el documento recién generado');
   return doc;
+}
+
+/** Asienta el acuse automático: misma evidencia que una firma (identidad, fecha,
+ * IP, huella) pero sin trazo ni consentimiento que aceptar, y sin pasar por el
+ * gate de `sign` — por eso vive aquí y NO se expone en la ruta HTTP, que sigue
+ * exigiendo SIGN_INTENT. Idempotente por el UNIQUE de (documento, firmante). */
+export async function attestDocument(
+  env: Env, docId: string, viewer: Identity, meta?: { ip?: string | null; userAgent?: string | null },
+): Promise<void> {
+  const row = await env.DB.prepare('SELECT template_id, sha256 FROM documents WHERE id = ?')
+    .bind(docId).first<{ template_id: string; sha256: string }>();
+  if (!row) return;
+  const label = signatureLabels(row.template_id as DocTemplateId)[0] ?? 'Generó';
+  await env.DB.prepare(
+    `INSERT OR IGNORE INTO document_signatures
+       (document_id, signer_email, signer_name, signer_role, label, intent, sha256, image_key, ip, user_agent, signed_at)
+     VALUES (?,?,?,?,?,?,?,NULL,?,?,?)`,
+  ).bind(
+    docId, viewer.email, (viewer.nombre || viewer.email).slice(0, 120), viewer.role, label,
+    ATTEST_INTENT, row.sha256, meta?.ip ?? null, (meta?.userAgent ?? '').slice(0, 300) || null,
+    new Date().toISOString(),
+  ).run();
+  // El PDF firmado en caché ya no refleja el acuse recién asentado.
+  await env.FILES.delete(signedKey(docId));
 }
 
 // ── Lectura ───────────────────────────────────────────────────────────────────
