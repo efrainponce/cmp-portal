@@ -218,13 +218,74 @@ export function linkedProductoId(row: ItemDTO): number | null {
   return first ?? null;
 }
 
+// Índice del catálogo por id y por nombre normalizado. Los call sites hacían
+// `catalog.find(...)` por FILA y por render (grid de cotización, warnings, panel
+// de detalle, fila móvil) — O(filas × catálogo) en cada tecla. El WeakMap va
+// sobre la referencia del array, así que el índice se arma una sola vez y se
+// tira solo cuando `catalog` de verdad cambia; ninguna firma cambia.
+// Se conserva la semántica exacta de find(): gana el PRIMER match, y los ids no
+// finitos se omiten (Number('x') === NaN nunca hacía match con find()).
+interface CatalogIndex {
+  byId: Map<number, ItemDTO>;
+  byName: Map<string, ItemDTO>;
+}
+const catalogIndexCache = new WeakMap<ItemDTO[], CatalogIndex>();
+
+export function catalogIndex(catalog: ItemDTO[]): CatalogIndex {
+  let idx = catalogIndexCache.get(catalog);
+  if (!idx) {
+    const byId = new Map<number, ItemDTO>();
+    const byName = new Map<string, ItemDTO>();
+    for (const c of catalog) {
+      const id = Number(c.id);
+      if (Number.isFinite(id) && !byId.has(id)) byId.set(id, c);
+      const name = c.name.trim().toLowerCase();
+      if (!byName.has(name)) byName.set(name, c);
+    }
+    idx = { byId, byName };
+    catalogIndexCache.set(catalog, idx);
+  }
+  return idx;
+}
+
+// Opciones del selector de Color de una línea. Vivía duplicada en la fila
+// desktop (CotizacionTab) y en MobileQuoteRow, y las dos copias se habían
+// desincronizado: la móvil solo hacía match por NOMBRE, así que no tenía el fix
+// del stress test 2026-07-21 y mostraba "Sin colores configurados" cuando el
+// mirror llega abreviado ("Camisa Zero" vs "1104 - Camisa Zero" del catálogo).
+// Ahora las dos usan esta única fuente, con el match por relación primero.
+//
+// Fuente primaria: el Color del producto en el catálogo (ya en memoria,
+// instantáneo). Fallback: el mirror del subitem (lookup_mkznm0h3), que solo se
+// puebla después de que Monday recompute la relación.
+export function colorOptions(
+  product: ItemDTO,
+  preview: Record<string, ColVal>,
+  catalog: ItemDTO[],
+): { productoElegido: boolean; disponibles: string[] } {
+  const productoNombre = displayProducto(product, preview);
+  const linkedId = linkedProductoId(product);
+  const idx = catalogIndex(catalog);
+  const productoMatch = linkedId != null
+    ? idx.byId.get(linkedId)
+    : idx.byName.get(productoNombre.trim().toLowerCase());
+  const catalogColores = (productoMatch?.cols[PRODUCTO_COLOR_DROPDOWN_COL]?.text ?? '')
+    .split(',').map((s) => s.trim()).filter(Boolean);
+  const mirrorColores = (product.cols[COLORES_DISP_COL]?.text ?? '')
+    .split(',').map((s) => s.trim()).filter(Boolean);
+  return {
+    productoElegido: productoNombre.trim() !== '',
+    disponibles: catalogColores.length > 0 ? catalogColores : mirrorColores,
+  };
+}
+
 // true solo si el producto de catálogo ligado ya tiene el checkbox de Compras
 // marcado — usado para el badge "Sin confirmar" en la fila colapsada (Efraín,
 // 2026-07-18: la confirmación no se veía sin expandir cada línea).
 export function productoConfirmado(row: ItemDTO, catalog: ItemDTO[]): boolean {
   const id = linkedProductoId(row);
   if (id == null) return false;
-  const catalogItem = catalog.find((c) => Number(c.id) === id);
+  const catalogItem = catalogIndex(catalog).byId.get(id);
   return !!catalogItem?.cols[PRODUCTO_CONFIRM_COL]?.text;
 }
 

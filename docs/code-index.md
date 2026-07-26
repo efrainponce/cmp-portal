@@ -4,19 +4,24 @@ Mapa curado de archivos fuente (`.ts`, `.tsx`) para orientarse rápido sin explo
 
 Formato: `- [ruta](ruta) — Propósito (1 frase). Exports: Export1, Export2, Export3.`
 
+Los `*.test.ts` (vitest, `npm test`) no se listan aquí: viven junto al archivo que
+prueban. Hoy cubren `worker/lib/canon.ts`, `worker/lib/columnEncode.ts`,
+`shared/visibility.ts`, `catalogIndex` de `gridMeta.tsx`, el escritor de PDF
+(`worker/lib/pdf/writer.ts` + layout/plantillas) y `worker/lib/portalFiles.ts`.
+
 ## shared/
 
 - [shared/boardAccess.ts](shared/boardAccess.ts) — Per-equipo (Role) whitelist de boards del sidebar. Exports: BOARD_KEYS, ConfigurableBoardKey, isConfigurableBoardKey, TEAM_ROLES, DEFAULT_BOARD_ACCESS.
 - [shared/boards.ts](shared/boards.ts) — Registro de boards con IDs introspectionados (API 2024-10). Never fabricate. Exports: BoardSlug, BoardDef, BOARDS, boardById.
 - [shared/column-meta.gen.ts](shared/column-meta.gen.ts) — GENERADO por scripts/introspect-boards.mjs; no leer completo, grepear el id. Exports: COLUMN_META.
-- [shared/createFields.ts](shared/createFields.ts) — Whitelist para CREACIÓN de items (por board, campos obligatorios). Exports: CreateField, CREATE_FIELDS, CREATE_DEFAULTS, CREATABLE_SLUGS, isCreatable.
+- [shared/createFields.ts](shared/createFields.ts) — Whitelist para CREACIÓN de items (por board, campos obligatorios). Exports: CreateField, CREATE_FIELDS, CREATE_DEFAULTS, isCreatable.
 - [shared/dealStages.ts](shared/dealStages.ts) — Etapas canon (labels/order) compartidas por frontend y worker (herramientas agente). Exports: DEAL_STAGE_LABELS, DEAL_STAGE_ORDER, CLOSED_STAGES, stageAtOrAfter, stageKeyForLabel.
 - [shared/dto.ts](shared/dto.ts) — DTOs genéricos scoped por rol (único productor: serialize.ts). Exports: ColVal, ItemDTO, ItemDetailDTO, ListResponse, MeDTO.
 - [shared/embellecimiento.ts](shared/embellecimiento.ts) — Compartido con worker: parse/serialize embellecimiento por zona. Exports: EMBELL_TEMPLATE_KEYS, EmbellZoneKey, EMB_STATUS_COL, EMB_LABEL_CON, EMB_LABEL_SIN.
 - [shared/inventory.ts](shared/inventory.ts) — DTOs Inventario + reglas negocio (feature D1 nativa). Exports: MovementType, WarehouseType, MOVEMENT_TYPES, WarehouseDTO, MovementDTO.
 - [shared/documents.ts](shared/documents.ts) — Contrato de documentos del portal + firma electrónica: registro de plantillas, roles que generan/firman, consentimiento (ver docs/documentos-firma.md). Exports: DOC_TEMPLATES, SIGN_INTENT, DocumentDTO, SignatureDTO, documentFilename.
 - [shared/notifications.ts](shared/notifications.ts) — Ruteo del centro de notificaciones (decisión de whitelist de Efraín). Exports: RecipientSelector, STAGE_NOTIFY.
-- [shared/types.ts](shared/types.ts) — Tipos base compartidos: Role, Identity, MirrorItem, EmbellecimientoSpec. Exports: Role, Identity, MirrorItem, EmbellecimientoSpec.
+- [shared/types.ts](shared/types.ts) — Tipos base compartidos: Role, Identity, MirrorItem. Exports: Role, Identity, MirrorItem.
 - [shared/visibility.ts](shared/visibility.ts) — La whitelist como data: reglas de lectura/escritura por columna y rol (fail-closed). Exports: ColRule, VISIBILITY, canRead, canWrite, readableCols.
 
 ## worker/
@@ -54,7 +59,7 @@ Formato: `- [ruta](ruta) — Propósito (1 frase). Exports: Export1, Export2, Ex
 - [worker/lib/pdf/layout.ts](worker/lib/pdf/layout.ts) — Bloques → páginas: encabezado/pie, tablas paginadas, cajas de firma. Exports: renderDocument, wrapText, Block, DocumentMeta.
 - [worker/lib/pdf/templates.ts](worker/lib/pdf/templates.ts) — Las 3 plantillas (resumen de oportunidad, remisión, constancia de firma) como funciones puras. Exports: renderTemplate, buildBlocks, titleOf, DocData, RenderedSignature.
 - [worker/lib/portalFiles.ts](worker/lib/portalFiles.ts) — Resuelve un key de /api/files → assetId/bytes (R2 con fallback a Monday), mapa key→columna. Exports: readPortalFile, resolveMondayAsset, normalizeFileKey, OPP_FILE_COLS.
-- [worker/lib/r2.ts](worker/lib/r2.ts) — Helpers mínimos sobre binding FILES (bucket R2 para documentos). Exports: oportunidadFileKey, putFile, getFile.
+- [worker/lib/r2.ts](worker/lib/r2.ts) — Helpers mínimos sobre binding FILES (bucket R2 para documentos). Exports: oportunidadFileKey, putFile.
 - [worker/lib/rosterCache.ts](worker/lib/rosterCache.ts) — Cache D1 del roster de usuarios de Monday con TTL configurable. Exports: cachedFetchUsers.
 - [worker/lib/serialize.ts](worker/lib/serialize.ts) — Mirror row → role-scoped DTOs: único productor de ItemDTO/ColMeta filtradas. Exports: RawCol, toItemDTO, toColMeta.
 
@@ -141,13 +146,11 @@ Formato: `- [ruta](ruta) — Propósito (1 frase). Exports: Export1, Export2, Ex
 - [src/components/notifications/NotificationCenter.tsx](src/components/notifications/NotificationCenter.tsx) — Panel de 2 bandejas (Importantes/Actualizaciones), deep-link al drawer. Exports: NotificationCenter.
 - [src/components/board/BoardStatus.tsx](src/components/board/BoardStatus.tsx) — Loading/denied/offline states compartidos. Exports: BoardStatus.
 - [src/components/board/BoardTable.tsx](src/components/board/BoardTable.tsx) — Tabla genérica estilo Monday. Exports: BoardTable.
-- [src/components/board/EditableField.tsx](src/components/board/EditableField.tsx) — Campo editable: label + input/textarea + save. Exports: EditableField.
-- [src/components/board/InfoGrid.tsx](src/components/board/InfoGrid.tsx) — Grid key/value read-only para headers. Exports: InfoGrid.
 - [src/components/board/PaymentRequestButton.tsx](src/components/board/PaymentRequestButton.tsx) — Botón POST solicitud pago a Monday item. Exports: PaymentRequestButton.
 - [src/components/board/SyncIndicator.tsx](src/components/board/SyncIndicator.tsx) — Indicador "sincronizado hace X min". Exports: SyncIndicator.
 - [src/components/board/cellHelpers.ts](src/components/board/cellHelpers.ts) — Helpers plain para rendering de celdas. Exports: cellAlign, renderCellText, chipFor.
 - [src/components/board/cells.tsx](src/components/board/cells.tsx) — Renderizado genérico de celdas (ColMeta + ColVal). Exports: CellContent.
-- [src/components/core/Badges.tsx](src/components/core/Badges.tsx) — Badges: status y count. Exports: StatusBadge, CountBadge.
+- [src/components/core/Badges.tsx](src/components/core/Badges.tsx) — Badge de status. Exports: StatusBadge.
 - [src/components/core/Button.tsx](src/components/core/Button.tsx) — Botón con variantes. Exports: Button.
 - [src/components/core/ConfirmButton.tsx](src/components/core/ConfirmButton.tsx) — Botón confirmación 2-paso. Exports: ConfirmButton.
 - [src/components/core/Modal.tsx](src/components/core/Modal.tsx) — Diálogo centrado (no fullscreen como OpportunityDrawer). Exports: Modal.
@@ -157,7 +160,6 @@ Formato: `- [ruta](ruta) — Propósito (1 frase). Exports: Export1, Export2, Ex
 - [src/components/documents/SignDocumentModal.tsx](src/components/documents/SignDocumentModal.tsx) — Modal de firma: previsualiza el PDF, captura el trazo, consentimiento + huella. Exports: SignDocumentModal.
 - [src/components/documents/SignaturePad.tsx](src/components/documents/SignaturePad.tsx) — Captura del trazo con pointer events; exporta JPEG (el writer solo embebe DCTDecode). Exports: SignaturePad, SignaturePadHandle.
 - [src/components/forms/ChipSelect.tsx](src/components/forms/ChipSelect.tsx) — Picker de pills one-click para opciones pequeñas. Exports: ChipSelect.
-- [src/components/forms/DocUploadList.tsx](src/components/forms/DocUploadList.tsx) — Lista de upload de documentos. Exports: DocUploadList.
 - [src/components/forms/FilterBar.tsx](src/components/forms/FilterBar.tsx) — Fila de selects "Todos"-first para filtrar. Exports: FilterBar.
 - [src/components/forms/FormField.tsx](src/components/forms/FormField.tsx) — Campo editable genérico para create forms. Exports: FormField.
 - [src/components/forms/PickerRow.tsx](src/components/forms/PickerRow.tsx) — Componente picker row para forms. Exports: PickerRow.
@@ -172,7 +174,6 @@ Formato: `- [ruta](ruta) — Propósito (1 frase). Exports: Export1, Export2, Ex
 
 ### src/boards/
 
-- [src/boards/BoardPlaceholder.tsx](src/boards/BoardPlaceholder.tsx) — Placeholder para vistas vacías o sin datos. Exports: BoardPlaceholder.
 
 ### src/boards/generic/
 

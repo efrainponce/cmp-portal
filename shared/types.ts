@@ -22,14 +22,3 @@ export interface MirrorItem {
   content_hash: string;        // canonical hash (echo suppression + reconcile skip)
   columns: string;             // raw column_values JSON [{id,type,text,value}]
 }
-
-// Target structure for embellishments (module 3 writes through this — never free text).
-export interface EmbellecimientoSpec {
-  zona: 'espalda' | 'frente_derecho' | 'frente_izquierdo' | 'manga_derecha'
-      | 'manga_izquierda' | 'etiqueta_fabricante' | 'etiqueta_propiedad' | 'otros';
-  aplicacion: 'bordado' | 'serigrafia' | 'parche' | 'sublimado' | 'otro';
-  contenido: string;
-  colores?: string[];
-  dimensiones?: string;
-  referenciaImagen?: string;
-}

@@ -3,6 +3,7 @@
 // apilada en vez de en columnas fijas: en <768px la grid de 9-16 columnas
 // obliga a scroll horizontal y celdas ilegibles (Efraín, 2026-07-18: "en
 // mobil esta horrible la ventana de cotizacion... quizas en lista").
+import { memo } from 'react';
 import type { ItemDTO } from '../../../../lib/api';
 import { fmtMoney } from '../../../../lib/format';
 import { MonoTag, StatusBadge } from '../../../../components/core/Badges';
@@ -12,9 +13,9 @@ import {
   type GridCol, type RowEditState, marginColor, suggestedPrecio23, numFrom, displayProducto, cellValue,
   inputStyle, valueChipStyle, ETAPA_COSTEO_COLORS, getLineWarnings,
   ETAPA_COSTEO_COL, SUGERIDO_COL, MARGEN_COL,
-  PRODUCTO_COL, PRODUCTO_TXT_COL, PRODUCTO_REL_COL, COLOR_COL, COLORES_DISP_COL,
-  PRODUCTO_COLOR_DROPDOWN_COL, EMB_STATUS_COL, EMB_LABEL_CON, EMB_LABEL_SIN,
-  chevronButtonStyle,
+  PRODUCTO_COL, PRODUCTO_TXT_COL, PRODUCTO_REL_COL, COLOR_COL,
+  EMB_STATUS_COL, EMB_LABEL_CON, EMB_LABEL_SIN,
+  chevronButtonStyle, colorOptions,
 } from './gridMeta';
 
 const labelStyle: React.CSSProperties = {
@@ -22,7 +23,7 @@ const labelStyle: React.CSSProperties = {
   textTransform: 'uppercase', letterSpacing: '.3px', marginBottom: 4,
 };
 
-export function MobileQuoteRow({
+function MobileQuoteRowInner({
   product: p, partida, state, visibleCols, variant, precioOnly = false, editable, editableCols, writableIds, catalog, catalogLoading,
   onEdit, onBlur, onTextEdit, onColorChange, onEmbellecimientoChange, onEtapaCosteoChange, onProductoBlur,
   expanded, onToggleExpand, canConfirm, confirmSaving, confirmError, onToggleConfirm,
@@ -47,7 +48,7 @@ export function MobileQuoteRow({
   onProductoBlur: (product: ItemDTO) => void;
   /** Chevron de detalle (Descripción/Tallas + confirmación de Compras en Costeo). */
   expanded: boolean;
-  onToggleExpand: () => void;
+  onToggleExpand: (productId: string) => void;
   canConfirm: boolean;
   confirmSaving: boolean;
   confirmError?: string;
@@ -70,16 +71,7 @@ export function MobileQuoteRow({
 
     if (writable && c.id === COLOR_COL) {
       const raw = state.editing[COLOR_COL] ?? (p.cols[COLOR_COL]?.text ?? '');
-      const productoNombre = displayProducto(p, state.preview);
-      const productoElegido = productoNombre.trim() !== '';
-      const productoMatch = catalog.find(
-        (c2) => c2.name.trim().toLowerCase() === productoNombre.trim().toLowerCase(),
-      );
-      const catalogColores = (productoMatch?.cols[PRODUCTO_COLOR_DROPDOWN_COL]?.text ?? '')
-        .split(',').map((s) => s.trim()).filter(Boolean);
-      const mirrorColores = (p.cols[COLORES_DISP_COL]?.text ?? '')
-        .split(',').map((s) => s.trim()).filter(Boolean);
-      const disponibles = catalogColores.length > 0 ? catalogColores : mirrorColores;
+      const { productoElegido, disponibles } = colorOptions(p, state.preview, catalog);
 
       if (disponibles.length === 0) {
         return (
@@ -221,7 +213,7 @@ export function MobileQuoteRow({
         </span>
         <button
           type="button"
-          onClick={onToggleExpand}
+          onClick={() => onToggleExpand(p.id)}
           title={expanded ? 'Ocultar detalle' : 'Ver descripción y tallas'}
           style={{ ...chevronButtonStyle(expanded), marginTop: 1, flexShrink: 0 }}
         >
@@ -288,3 +280,5 @@ export function MobileQuoteRow({
     </div>
   );
 }
+
+export const MobileQuoteRow = memo(MobileQuoteRowInner);

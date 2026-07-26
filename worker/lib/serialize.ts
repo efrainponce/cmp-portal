@@ -29,8 +29,24 @@ function buildColVal(col: RawCol): ColVal {
   return out;
 }
 
+// VISIBILITY es una const estática, así que (slug, role) -> columnas legibles es
+// invariante durante toda la vida del isolate. toItemDTO corre una vez POR FILA
+// (hasta 4000 en una lista, cada 5 s por usuario) y antes reconstruía el Set en
+// cada llamada: readableCols recorre las ~40-100 columnas del board y arma un
+// array nuevo. Memoizar deja ese trabajo en una sola vez por (board, rol).
+const readableSetCache = new Map<string, Set<string>>();
+function readableSet(slug: BoardSlug, role: Role): Set<string> {
+  const key = `${slug}:${role}`;
+  let set = readableSetCache.get(key);
+  if (!set) {
+    set = new Set(readableCols(slug, role));
+    readableSetCache.set(key, set);
+  }
+  return set;
+}
+
 export function toItemDTO(row: MirrorItem, slug: BoardSlug, role: Role, pendingWrite = false): ItemDTO {
-  const allowed = new Set(readableCols(slug, role));
+  const allowed = readableSet(slug, role);
   let rawCols: RawCol[] = [];
   try {
     rawCols = JSON.parse(row.columns || '[]');

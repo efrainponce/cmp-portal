@@ -19,6 +19,11 @@ jobs:
 
       - run: npx tsc --noEmit
 
+      # Corre ANTES del deploy: un push a main sale a producción, y los tests
+      # cubren el write path a Monday (canon/echo + shapes de columna) y la
+      # whitelist de visibilidad — cosas que el typecheck no puede atrapar.
+      - run: npm test
+
       - run: npm run build
 
       - uses: cloudflare/wrangler-action@v3

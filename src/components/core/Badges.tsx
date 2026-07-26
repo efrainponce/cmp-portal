@@ -21,24 +21,6 @@ export function StatusBadge({ label, color, tint, style }: StatusBadgeProps) {
   );
 }
 
-interface CountBadgeProps {
-  count: number | string;
-  color: string;
-  style?: CSSProperties;
-}
-
-/** Solid pill with white text — used for item counts on group headers. */
-export function CountBadge({ count, color, style }: CountBadgeProps) {
-  return (
-    <div style={{
-      font: 'var(--text-chip)', color: '#fff', background: color,
-      padding: '1px 7px', borderRadius: 'var(--radius-pill)', ...style,
-    }}>
-      {count}
-    </div>
-  );
-}
-
 interface MonoTagProps {
   children: ReactNode;
   style?: CSSProperties;

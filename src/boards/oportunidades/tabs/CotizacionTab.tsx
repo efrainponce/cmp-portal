@@ -13,11 +13,9 @@
 // formulas) for an instant preview, then PATCHes only the raw input on blur —
 // formula columns are never written back, Monday recomputes those itself and
 // the mirror catches up on refetch.
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ColMeta, ColVal, ItemDetailDTO, ItemDTO, QuoteVersionDTO } from '../../../lib/api';
 import { patchItem, apiFetch, listItems } from '../../../lib/apiClient';
-import { fmtMoney } from '../../../lib/format';
-import { MonoTag, StatusBadge } from '../../../components/core/Badges';
 import { Button } from '../../../components/core/Button';
 import { previewRow, COL } from '../../../lib/costeoCalc';
 import { useIsMobile } from '../../../lib/useIsMobile';
@@ -28,16 +26,16 @@ import { SnapshotTable } from './cotizacion/SnapshotTable';
 import { TotalsRow } from './cotizacion/TotalsRow';
 import { CotizacionPdfRow } from './cotizacion/CotizacionPdfRow';
 import { MobileQuoteRow } from './cotizacion/MobileQuoteRow';
-import { LineDetailPanel } from './cotizacion/LineDetailPanel';
+import { QuoteRow } from './cotizacion/QuoteRow';
 import { ColumnVisibilityPicker } from './cotizacion/ColumnVisibilityPicker';
 import {
-  type RowEditState, EMPTY_ROW, numFrom, marginColor, suggestedPrecio23, inlineEditableCols,
-  ETAPA_COSTEO_COLORS, GRID_COLS_COSTEO, GRID_COLS_VENTA, colsTemplate, displayProducto, cellValue,
-  inputStyle, valueChipStyle, getLineWarnings, loadHiddenCols, saveHiddenCols, gridWrapStyle,
-  ETAPA_COSTEO_COL, SUGERIDO_COL, MARGEN_COL,
-  PRODUCTO_COL, PRODUCTO_TXT_COL, PRODUCTO_REL_COL, COLOR_COL, COLORES_DISP_COL,
-  PRODUCTO_COLOR_DROPDOWN_COL, EMB_STATUS_COL, EMB_LABEL_CON, EMB_LABEL_SIN,
-  PRODUCTO_CONFIRM_COL, linkedProductoId, chevronButtonStyle, MONEY_COLS,
+  type RowEditState, EMPTY_ROW, inlineEditableCols,
+  GRID_COLS_COSTEO, GRID_COLS_VENTA, colsTemplate, displayProducto,
+  loadHiddenCols, saveHiddenCols, gridWrapStyle,
+  ETAPA_COSTEO_COL,
+  PRODUCTO_COL, PRODUCTO_TXT_COL, PRODUCTO_REL_COL, COLOR_COL,
+  EMB_STATUS_COL, EMB_LABEL_CON, EMB_LABEL_SIN,
+  PRODUCTO_CONFIRM_COL, linkedProductoId, MONEY_COLS, catalogIndex,
 } from './cotizacion/gridMeta';
 
 export function CotizacionTab({
@@ -95,15 +93,24 @@ export function CotizacionTab({
       return next;
     });
   };
-  const visibleCols = gridCols.filter((gc) =>
+  // Memoizadas porque son props de QuoteRow/MobileQuoteRow, que están
+  // memoizados: un array o Set nuevo por render rompería el memo de todas las
+  // líneas aunque nada haya cambiado.
+  const visibleCols = useMemo(() => gridCols.filter((gc) =>
     subCols.some((c) => c.id === gc.id) && !(hideMoneyCols && MONEY_COLS.has(gc.id))
-    && (gc.id === gridCols[0].id || !hiddenCols.has(gc.id)));
-  const writableIds = new Set(subCols.filter((c) => c.w).map((c) => c.id));
+    && (gc.id === gridCols[0].id || !hiddenCols.has(gc.id))), [gridCols, subCols, hideMoneyCols, hiddenCols]);
+  const writableIds = useMemo(
+    () => new Set(subCols.filter((c) => c.w).map((c) => c.id)),
+    [subCols],
+  );
   // Crear/editar líneas inline: Nueva oportunidad o un borrador de versión
   // (vigente sin costear), y nunca desde los boards de Costeo/Validación
   // (eso es trabajo de Ventas en Oportunidades).
   const lineEdits = (stage === '4' || draft) && !readOnly && !precioOnly;
-  const editableCols = precioOnly ? new Set<string>([COL.precio]) : inlineEditableCols(lineEdits);
+  const editableCols = useMemo(
+    () => (precioOnly ? new Set<string>([COL.precio]) : inlineEditableCols(lineEdits)),
+    [precioOnly, lineEdits],
+  );
   const canAddLines = lineEdits && editable;
 
   const [rows, setRows] = useState<Record<string, RowEditState>>({});
@@ -206,44 +213,6 @@ export function CotizacionTab({
       setDeletingId(null);
     }
   };
-
-  // Chevron + botón de eliminar — se renderizaban solo en la celda de
-  // Producto de solo-lectura, pero en Nueva oportunidad (justo donde
-  // canAddLines es true) Producto siempre se muestra como <input> editable,
-  // así que este bloque nunca llegaba a pintarse ahí — el botón de eliminar
-  // quedaba invisible en el único caso donde hace falta (Efraín, 2026-07-20).
-  // Se extrae para poder mostrarlo también junto al input editable.
-  const lineControls = (p: ItemDTO) => (
-    <div style={{ display: 'inline-flex', gap: 4, marginRight: 4 }}>
-      <button
-        type="button"
-        onClick={() => toggleExpanded(p.id)}
-        title={expanded.has(p.id) ? 'Ocultar detalle' : 'Ver descripción y tallas'}
-        style={chevronButtonStyle(expanded.has(p.id))}
-      >
-        ▸
-      </button>
-      {canAddLines && (
-        <button
-          type="button"
-          onClick={() => onDeleteLine(p.id)}
-          disabled={deletingId === p.id}
-          title="Eliminar línea"
-          style={{
-            background: 'none',
-            border: 'none',
-            cursor: deletingId === p.id ? 'wait' : 'pointer',
-            font: 'inherit',
-            padding: 0,
-            color: 'var(--status-perdida)',
-            opacity: deletingId === p.id ? 0.6 : 1,
-          }}
-        >
-          ✕
-        </button>
-      )}
-    </div>
-  );
 
   /** PATCH de `writes` a la línea marcando `marker` como saving; al éxito
    * limpia editing[marker] (si `clearEditing`), aplica el `preview` local
@@ -371,7 +340,7 @@ export function CotizacionTab({
       patchRow(product.id, { editing });
       return;
     }
-    const match = catalog.find((c) => c.name.trim().toLowerCase() === raw.trim().toLowerCase());
+    const match = catalogIndex(catalog).byName.get(raw.trim().toLowerCase());
     // El write real va a board_relation_mkzmafgp o text_mm0bkm1j — el mirror
     // que se MUESTRA (lookup_mm0x4kda) lo puebla Monday de forma asíncrona
     // (el outbox manda el mutation en waitUntil, después de responder). Sin
@@ -392,6 +361,35 @@ export function CotizacionTab({
       },
     );
   };
+
+  // QuoteRow/MobileQuoteRow están memoizados, así que necesitan callbacks con
+  // identidad estable — si se recrean cada render, el memo no memoiza nada.
+  // En vez de reescribir los handlers de arriba con useCallback (sus cuerpos
+  // leen `rows`/`catalog` del render y tienen la lógica fina de concurrencia
+  // documentada en `patchRow`/`saveCols`), se deja un ref apuntando siempre a
+  // la versión más fresca y se exponen wrappers que nunca cambian. El
+  // comportamiento es idéntico al de antes: la fila ya recibía en cada render
+  // el handler más nuevo, porque se re-renderizaba siempre.
+  const latest = useRef({
+    onEdit, onBlur, onTextEdit, onColorChange,
+    onEmbellecimientoChange, onEtapaCosteoChange, onProductoBlur,
+    onToggleConfirm, onDeleteLine, toggleExpanded,
+  });
+  latest.current = {
+    onEdit, onBlur, onTextEdit, onColorChange,
+    onEmbellecimientoChange, onEtapaCosteoChange, onProductoBlur,
+    onToggleConfirm, onDeleteLine, toggleExpanded,
+  };
+  const sEdit = useCallback((pr: ItemDTO, c: string, r: string) => latest.current.onEdit(pr, c, r), []);
+  const sBlur = useCallback((pr: ItemDTO, c: string) => latest.current.onBlur(pr, c), []);
+  const sTextEdit = useCallback((pr: ItemDTO, c: string, r: string) => latest.current.onTextEdit(pr, c, r), []);
+  const sColorChange = useCallback((pr: ItemDTO, r: string) => latest.current.onColorChange(pr, r), []);
+  const sEmbChange = useCallback((pr: ItemDTO, con: boolean) => latest.current.onEmbellecimientoChange(pr, con), []);
+  const sEtapaChange = useCallback((pr: ItemDTO, l: string) => latest.current.onEtapaCosteoChange(pr, l), []);
+  const sProductoBlur = useCallback((pr: ItemDTO) => latest.current.onProductoBlur(pr), []);
+  const sToggleConfirm = useCallback((id: number, next: boolean) => latest.current.onToggleConfirm(id, next), []);
+  const sDeleteLine = useCallback((id: string) => latest.current.onDeleteLine(id), []);
+  const sToggleExpand = useCallback((id: string) => latest.current.toggleExpanded(id), []);
 
   if (selectedVersion) {
     return (
@@ -477,22 +475,22 @@ export function CotizacionTab({
               writableIds={writableIds}
               catalog={catalog}
               catalogLoading={catalogLoading}
-              onEdit={onEdit}
-              onBlur={onBlur}
-              onTextEdit={onTextEdit}
-              onColorChange={onColorChange}
-              onEmbellecimientoChange={onEmbellecimientoChange}
-              onEtapaCosteoChange={onEtapaCosteoChange}
-              onProductoBlur={onProductoBlur}
+              onEdit={sEdit}
+              onBlur={sBlur}
+              onTextEdit={sTextEdit}
+              onColorChange={sColorChange}
+              onEmbellecimientoChange={sEmbChange}
+              onEtapaCosteoChange={sEtapaChange}
+              onProductoBlur={sProductoBlur}
               expanded={expanded.has(p.id)}
-              onToggleExpand={() => toggleExpanded(p.id)}
+              onToggleExpand={sToggleExpand}
               canConfirm={canConfirm}
               confirmSaving={!!confirmSaving[String(linkedProductoId(p))]}
               confirmError={confirmError[String(linkedProductoId(p))]}
-              onToggleConfirm={onToggleConfirm}
+              onToggleConfirm={sToggleConfirm}
               canDelete={canAddLines}
               deleting={deletingId === p.id}
-              onDeleteLine={onDeleteLine}
+              onDeleteLine={sDeleteLine}
             />
           ))}
           {addingLineRow}
@@ -524,258 +522,38 @@ export function CotizacionTab({
             ))}
             <div style={{ textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Avisos</div>
           </div>
-          {products.map((p, lineIdx) => {
-            const state = rowState(p.id);
-            const lineWarnings = getLineWarnings(p, state, variant, catalog, precioOnly);
-            return (
-              <div key={p.id} style={{ ...gridWrapStyle, background: lineWarnings.length > 0 ? '#fdf1f2' : '#fff' }}>
-                <div style={{
-                  ...gridWrapStyle,
-                  display: 'grid', gridTemplateColumns: `28px ${colsTemplate(visibleCols)}`,
-                  gap: 6, alignItems: 'center', padding: '8px 10px',
-                }}>
-                  <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)', fontWeight: 700 }}>{lineIdx + 1}</div>
-                  {visibleCols.map((c, idx) => {
-                    // lookup_mm0x4kda es un mirror — Monday nunca lo deja escribir
-                    // directo, así que no está en writableIds. Lo real editable son
-                    // sus dos posibles destinos de escritura (texto libre o relación).
-                    const writable = c.id === PRODUCTO_COL
-                      ? editable && editableCols.has(c.id) && (writableIds.has(PRODUCTO_TXT_COL) || writableIds.has(PRODUCTO_REL_COL))
-                      : editable && writableIds.has(c.id) && editableCols.has(c.id);
-                    const displayVal = state.preview[c.id] ?? p.cols[c.id];
-
-                    if (writable && c.id === PRODUCTO_COL) {
-                      const raw = state.editing[PRODUCTO_COL] ?? displayProducto(p, state.preview);
-                      return (
-                        <div key={c.id} style={{ textAlign: c.align, display: 'flex', alignItems: 'center' }}>
-                          {lineControls(p)}
-                          <input
-                            list="productos-catalogo-cotizacion"
-                            value={raw}
-                            disabled={!!state.saving[PRODUCTO_COL]}
-                            onChange={(e) => onTextEdit(p, PRODUCTO_COL, e.target.value)}
-                            onBlur={() => onProductoBlur(p)}
-                            placeholder="Elegir producto…"
-                            style={{ ...inputStyle, textAlign: 'left', flex: 1, minWidth: 0 }}
-                          />
-                        </div>
-                      );
-                    }
-                    if (writable && c.id === COLOR_COL) {
-                      const raw = state.editing[COLOR_COL] ?? (p.cols[COLOR_COL]?.text ?? '');
-                      // Fuente primaria: el Color del producto en el catálogo (ya cargado en
-                      // memoria, instantáneo). Fallback: el mirror del subitem (lookup_mkznm0h3),
-                      // que solo se puebla después de que Monday recompute la relación.
-                      const productoNombre = displayProducto(p, state.preview);
-                      const productoElegido = productoNombre.trim() !== '';
-                      // Match por relación real (board_relation_mkzmafgp), no por nombre: el
-                      // mirror que se MUESTRA (lookup_mm0x4kda) puede llegar abreviado
-                      // ("Camisa Zero" vs "1104 - Camisa Zero" del catálogo) y entonces el
-                      // match por texto fallaba en silencio — se veía "Sin colores
-                      // configurados" en una línea ya costeada con color guardado
-                      // correctamente (Efraín, stress test 2026-07-21). Solo cae a texto
-                      // libre cuando el producto no está ligado a catálogo (linea sin match).
-                      const linkedId = linkedProductoId(p);
-                      const productoMatch = linkedId != null
-                        ? catalog.find((c2) => Number(c2.id) === linkedId)
-                        : catalog.find((c2) => c2.name.trim().toLowerCase() === productoNombre.trim().toLowerCase());
-                      const catalogColores = (productoMatch?.cols[PRODUCTO_COLOR_DROPDOWN_COL]?.text ?? '')
-                        .split(',').map((s) => s.trim()).filter(Boolean);
-                      const mirrorColores = (p.cols[COLORES_DISP_COL]?.text ?? '')
-                        .split(',').map((s) => s.trim()).filter(Boolean);
-                      const disponibles = catalogColores.length > 0 ? catalogColores : mirrorColores;
-
-                      // Sin lista de colores para este producto (no configurada en el
-                      // catálogo) — se deja en blanco, deshabilitado. Nada de texto libre:
-                      // el vendedor no debe "inventar" un color que el catálogo no define
-                      // (Efraín, 2026-07-16). Mientras el catálogo todavía no llega
-                      // (catalogLoading), se distingue de "sin colores configurados" —
-                      // antes se veían idénticos y parecía que el selector estaba roto.
-                      if (disponibles.length === 0) {
-                        return (
-                          <div key={c.id} style={{ textAlign: c.align }}>
-                            <input
-                              value=""
-                              disabled
-                              placeholder={catalogLoading ? 'Cargando colores…' : (productoElegido ? 'Sin colores configurados' : 'Elige un producto primero')}
-                              style={{ ...inputStyle, textAlign: 'left' }}
-                            />
-                          </div>
-                        );
-                      }
-                      return (
-                        <div key={c.id} style={{ textAlign: c.align }}>
-                          <select
-                            value={raw}
-                            disabled={!!state.saving[COLOR_COL]}
-                            onChange={(e) => onColorChange(p, e.target.value)}
-                            style={{ ...inputStyle, textAlign: 'left' }}
-                          >
-                            <option value="">Elegir color…</option>
-                            {disponibles.map((d) => <option key={d} value={d}>{d}</option>)}
-                            {/* si el color guardado ya no está en la lista (cambiaron de producto), no lo escondas en silencio */}
-                            {raw && !disponibles.includes(raw) && <option value={raw}>{raw}</option>}
-                          </select>
-                        </div>
-                      );
-                    }
-                    if (writable && c.id === COL.cantidad) {
-                      const raw = state.editing[c.id] ?? (p.cols[c.id]?.text ?? '');
-                      return (
-                        <div key={c.id} style={{ textAlign: c.align }}>
-                          <input
-                            type="number"
-                            className="cmp-grid-num-input"
-                            value={raw}
-                            disabled={!!state.saving[c.id]}
-                            onChange={(e) => onEdit(p, c.id, e.target.value)}
-                            onBlur={() => onBlur(p, c.id)}
-                            style={inputStyle}
-                          />
-                        </div>
-                      );
-                    }
-                    if (writable && c.id === EMB_STATUS_COL) {
-                      const label = state.preview[EMB_STATUS_COL]?.text ?? p.cols[EMB_STATUS_COL]?.text ?? '';
-                      const checked = label === EMB_LABEL_CON;
-                      return (
-                        <div key={c.id} style={{ textAlign: c.align }}>
-                          <select
-                            value={checked ? EMB_LABEL_CON : EMB_LABEL_SIN}
-                            disabled={!!state.saving[EMB_STATUS_COL]}
-                            onChange={(e) => onEmbellecimientoChange(p, e.target.value === EMB_LABEL_CON)}
-                            style={{ ...inputStyle, textAlign: 'left' }}
-                          >
-                            <option value={EMB_LABEL_SIN}>{EMB_LABEL_SIN}</option>
-                            <option value={EMB_LABEL_CON}>{EMB_LABEL_CON}</option>
-                          </select>
-                        </div>
-                      );
-                    }
-                    if (writable && c.id === ETAPA_COSTEO_COL) {
-                      const raw = state.preview[ETAPA_COSTEO_COL]?.text ?? p.cols[ETAPA_COSTEO_COL]?.text ?? '';
-                      return (
-                        <div key={c.id} style={{ textAlign: c.align }}>
-                          <select
-                            value={raw}
-                            disabled={!!state.saving[ETAPA_COSTEO_COL]}
-                            onChange={(e) => onEtapaCosteoChange(p, e.target.value)}
-                            style={{ ...inputStyle, textAlign: 'left' }}
-                          >
-                            <option value="">Elegir etapa…</option>
-                            {Object.keys(ETAPA_COSTEO_COLORS).map((k) => <option key={k} value={k}>{k}</option>)}
-                          </select>
-                        </div>
-                      );
-                    }
-                    if (writable) {
-                      const raw = state.editing[c.id] ?? (p.cols[c.id]?.text ?? '');
-                      return (
-                        <div key={c.id} style={{ textAlign: c.align }}>
-                          <input
-                            type="number"
-                            className="cmp-grid-num-input"
-                            value={raw}
-                            disabled={!!state.saving[c.id]}
-                            onChange={(e) => onEdit(p, c.id, e.target.value)}
-                            onBlur={() => onBlur(p, c.id)}
-                            style={inputStyle}
-                          />
-                        </div>
-                      );
-                    }
-                    // Chip gris (misma pill que los inputs editables) en toda celda de
-                    // solo lectura salvo Producto (idx 0), SKU y las columnas de status
-                    // (ya son su propio badge/chip) — imita la referencia de diseño
-                    // simple que pidió Efraín (2026-07-20): valores "flotando" en una
-                    // pastilla gris en vez de texto plano contra bordes de fila.
-                    const isChip = idx > 0 && c.id !== 'lookup_mkzn7x9a'
-                      && c.id !== ETAPA_COSTEO_COL && c.id !== EMB_STATUS_COL;
-                    return (
-                      <div key={c.id} style={{
-                        textAlign: c.align,
-                        font: idx === 0 ? 'var(--text-body-strong)' : 'var(--text-label)',
-                        color: idx === 0 ? 'var(--ink)' : 'var(--ink-secondary)',
-                        ...(idx === 0 ? { display: 'flex', alignItems: 'center', minWidth: 0 } : undefined),
-                        ...(isChip ? valueChipStyle : undefined),
-                      }}>
-                        {idx === 0 && lineControls(p)}
-                        {idx === 0 && p.pendingWrite && <span title="guardado, sincronizando…" style={{ marginRight: 6, color: 'var(--accent)', flex: 'none' }}>⏳</span>}
-                        {c.id === PRODUCTO_COL && (
-                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
-                            {displayProducto(p, state.preview) || '—'}
-                          </span>
-                        )}
-                        {c.id === 'lookup_mkzn7x9a' && (
-                          <MonoTag style={{ display: 'inline-block' }}>{cellValue(c, displayVal)}</MonoTag>
-                        )}
-                        {c.id === ETAPA_COSTEO_COL && (() => {
-                          const label = cellValue(c, displayVal);
-                          const colors = ETAPA_COSTEO_COLORS[label] ?? ETAPA_COSTEO_COLORS['No iniciado'];
-                          return label === '—'
-                            ? '—'
-                            : <StatusBadge label={label} color={colors.color} tint={colors.tint} />;
-                        })()}
-                        {c.id === EMB_STATUS_COL && (() => {
-                          const label = state.preview[EMB_STATUS_COL]?.text ?? p.cols[EMB_STATUS_COL]?.text;
-                          const con = label === EMB_LABEL_CON;
-                          return (
-                            <StatusBadge
-                              label={con ? EMB_LABEL_CON : EMB_LABEL_SIN}
-                              color={con ? '#00b461' : '#68737d'}
-                              tint={con ? '#d6f5e6' : '#e6e9eb'}
-                            />
-                          );
-                        })()}
-                        {c.id === MARGEN_COL && (() => {
-                          const label = cellValue(c, displayVal);
-                          if (label === '—') return '—';
-                          const n = Number(displayVal?.value ?? displayVal?.text);
-                          return <span style={{ color: Number.isFinite(n) ? marginColor(n) : undefined, fontWeight: 600 }}>{label}</span>;
-                        })()}
-                        {c.id === SUGERIDO_COL && (() => {
-                          const label = cellValue(c, displayVal);
-                          if (label !== '—') return label;
-                          const costoTotalUnit = numFrom(state, p, COL.costoTotalUnit);
-                          const margenGobPctVal = Number(state.editing[COL.margenGobPct] ?? p.cols[COL.margenGobPct]?.text ?? 0) || 0;
-                          const suggested = suggestedPrecio23(costoTotalUnit, margenGobPctVal);
-                          if (suggested === undefined) return '—';
-                          return (
-                            <span style={{ fontStyle: 'italic', color: 'var(--ink-tertiary)' }} title="Calculado para 23% de margen — sin precio auto de Monday">
-                              {fmtMoney(suggested)}
-                            </span>
-                          );
-                        })()}
-                        {c.id !== PRODUCTO_COL && c.id !== 'lookup_mkzn7x9a' && c.id !== ETAPA_COSTEO_COL && c.id !== EMB_STATUS_COL
-                          && c.id !== MARGEN_COL && c.id !== SUGERIDO_COL && cellValue(c, displayVal)}
-                      </div>
-                    );
-                  })}
-                  <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                    {lineWarnings.length > 0 && (
-                      <StatusBadge label={`⚠ ${lineWarnings.join(' • ')}`} color="#ce3048" tint="#fbdbdf" />
-                    )}
-                  </div>
-                </div>
-                {state.error && (
-                  <div style={{ padding: '0 14px 8px', font: 'var(--text-caption)', color: 'var(--status-perdida)' }}>
-                    {state.error}
-                  </div>
-                )}
-                {expanded.has(p.id) && (
-                  <LineDetailPanel
-                    product={p}
-                    catalog={catalog}
-                    variant={variant}
-                    canConfirm={canConfirm}
-                    saving={!!confirmSaving[String(linkedProductoId(p))]}
-                    error={confirmError[String(linkedProductoId(p))]}
-                    onToggleConfirm={onToggleConfirm}
-                  />
-                )}
-              </div>
-            );
-          })}
+          {products.map((p, lineIdx) => (
+            <QuoteRow
+              key={p.id}
+              product={p}
+              partida={lineIdx + 1}
+              state={rowState(p.id)}
+              visibleCols={visibleCols}
+              variant={variant}
+              precioOnly={precioOnly}
+              editable={editable}
+              editableCols={editableCols}
+              writableIds={writableIds}
+              catalog={catalog}
+              catalogLoading={catalogLoading}
+              onEdit={sEdit}
+              onBlur={sBlur}
+              onTextEdit={sTextEdit}
+              onColorChange={sColorChange}
+              onEmbellecimientoChange={sEmbChange}
+              onEtapaCosteoChange={sEtapaChange}
+              onProductoBlur={sProductoBlur}
+              expanded={expanded.has(p.id)}
+              onToggleExpand={sToggleExpand}
+              canConfirm={canConfirm}
+              confirmSaving={!!confirmSaving[String(linkedProductoId(p))]}
+              confirmError={confirmError[String(linkedProductoId(p))]}
+              onToggleConfirm={sToggleConfirm}
+              canDelete={canAddLines}
+              deleting={deletingId === p.id}
+              onDeleteLine={sDeleteLine}
+            />
+          ))}
           {addingLineRow}
           <TotalsRow variant={variant} visibleCols={visibleCols} products={products} rows={rows} />
         </div>

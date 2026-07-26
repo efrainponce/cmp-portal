@@ -13,13 +13,18 @@ con el Worker (`/api/*`). Bot de WhatsApp + chat del portal comparten agente Cla
   el `.env` del repo trae un token de CF que secuestra a wrangler si no.
 - `npx tsc --noEmit` — typecheck (3 tsconfigs: app/worker/node). `npm run build` = tsc -b + vite.
 - `npm run lint` — oxlint.
+- `npm test` — vitest sobre lógica pura (`{src,worker,shared}/**/*.test.ts`): canon/echo
+  del write path a Monday, shapes de `columnEncode`, whitelist de `visibility`. Corre en
+  CI **antes** del deploy. Si tocas esas áreas, corre esto — el typecheck no las cubre
+  (todo son strings).
 - Screenshots de verificación: Playwright + Chromium ya instalados
   (`node_modules/playwright`, import por ruta absoluta en scripts sueltos).
 
 ## Reglas duras
 
 - **NUNCA inventes IDs de columnas de Monday** — vienen de `docs/monday-column-map.md`
-  o de `shared/column-meta.gen.ts` (generado; NO lo leas completo, grepea el id).
+  o de `shared/column-meta.gen.ts` (generado; grepea el id — el archivo trae una
+  columna por línea, así que el grep ya te devuelve title/type/labels completos).
   Ante duda, re-introspecciona con `scripts/introspect-boards.mjs`.
 - Columnas de status se escriben como `{label: "..."}` — el formato `{labels:[...]}`
   hace que Monday asigne una etiqueta arbitraria en silencio.
@@ -68,7 +73,9 @@ con el Worker (`/api/*`). Bot de WhatsApp + chat del portal comparten agente Cla
   (`worker/lib/automations.ts`) — el portal los dispara y refetchea el mirror; nunca
   cambia el stage por su cuenta (excepción: enviar-validacion 15→7, sin endpoint).
 - Ediciones de líneas: inline solo en stage 4; en otras etapas vía "Nueva versión"
-  (`worker/lib/quoteVersions.ts`). Precio NUNCA editable por vendedor.
+  (`worker/lib/quoteVersions.ts`). **Precio de Venta C/U (`numeric_mkzneg3d`): solo
+  admin lo escribe** (`w: WA`); vendedor y compras lo VEN pero no lo editan (Efraín,
+  2026-07-24). Anclado en `shared/visibility.test.ts`.
 - Writes: front → `PATCH /api/boards/:slug/items/:id` → outbox D1 → Monday → echo/refetch.
   El mirror tarda: usa previews locales en la UI (patrón ya en CotizacionTab).
 - Documentos del portal + firma electrónica (`docs/documentos-firma.md`): el PDF se

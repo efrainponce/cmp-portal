@@ -162,7 +162,7 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
     try {
       await deleteItem(c.env, itemId);
       return c.json({ ok: true });
-    } catch (err) {
+    } catch {
       return jsonStatus({ ok: false, error: 'No se pudo eliminar' }, 500);
     }
   });

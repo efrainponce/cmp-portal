@@ -19,7 +19,7 @@ import { StatusBadge } from '../../../../components/core/Badges';
 import { EMB_STATUS_COL, EMB_LABEL_CON, explodeEmbellecimiento } from '../../../../lib/embellecimiento';
 import {
   DESCRIPCION_COL, TALLAS_COL, PRODUCTO_CONFIRM_COL, CATALOGO_DESCRIPCION_COL, CATALOGO_TALLAS_COL,
-  linkedProductoId,
+  linkedProductoId, catalogIndex,
 } from './gridMeta';
 
 const EMB_DESC_COL = 'long_text_mm1bj4pt';
@@ -85,7 +85,7 @@ export function LineDetailPanel({
   onToggleConfirm: (productoId: number, next: boolean) => void;
 }) {
   const productoId = linkedProductoId(product);
-  const catalogItem = productoId != null ? catalog.find((c) => Number(c.id) === productoId) : undefined;
+  const catalogItem = productoId != null ? catalogIndex(catalog).byId.get(productoId) : undefined;
   const descripcion = product.cols[DESCRIPCION_COL]?.text || catalogItem?.cols[CATALOGO_DESCRIPCION_COL]?.text || '';
   const tallas = product.cols[TALLAS_COL]?.text || catalogItem?.cols[CATALOGO_TALLAS_COL]?.text || '';
   const confirmed = !!catalogItem?.cols[PRODUCTO_CONFIRM_COL]?.text;

@@ -51,8 +51,6 @@ export const CREATE_DEFAULTS: Partial<Record<keyof typeof CREATE_FIELDS, Record<
   oportunidades: { deal_stage: 'Nueva oportunidad' },
 };
 
-export const CREATABLE_SLUGS = Object.keys(CREATE_FIELDS) as (keyof typeof CREATE_FIELDS)[];
-
 export function isCreatable(slug: string): slug is keyof typeof CREATE_FIELDS {
   return Object.prototype.hasOwnProperty.call(CREATE_FIELDS, slug);
 }

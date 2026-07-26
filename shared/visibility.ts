@@ -14,6 +14,7 @@ const V: Role[] = ['vendedor', 'compras', 'admin'];   // seller-visible
 const AC: Role[] = ['compras', 'admin'];              // internal: costs, proveedor, ops
 const WV: Role[] = ['vendedor', 'admin'];             // PROPOSED writable set
 const WAC: Role[] = ['compras', 'admin'];             // writable: costeo capture (compras/admin)
+const WA: Role[] = ['admin'];                         // writable: solo admin (precio de venta)
 
 const vis = (ids: string[], r: Role[]): Record<string, ColRule> =>
   Object.fromEntries(ids.map(id => [id, { vis: r }]));
@@ -58,8 +59,13 @@ export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
       'lookup_mm0w4f4v', 'lookup_mm0xw8p7',
       'long_text_mm1hyszv',
       'formula_mkznmjh6', 'formula_mm0rtdqp', 'formula_mm00xy0n'], V),
-    // Precio de Venta C/U — writable by vendedor/admin (Validación Costeo, stage 7).
-    numeric_mkzneg3d: { vis: V, w: WV },
+    // Precio de Venta C/U — el vendedor lo VE (cotiza al cliente, necesita el
+    // precio y los totales) pero solo admin lo cambia (Efraín, 2026-07-24).
+    // Antes era `w: WV`, lo que dejaba al server aceptar un PATCH del vendedor
+    // aunque la UI no pintara el campo editable; el resto del código ya asumía
+    // esta regla — quoteVersions.ts restaura el precio con `trusted: true`
+    // precisamente porque "no es escribible por vendedor".
+    numeric_mkzneg3d: { vis: V, w: WA },
     // Etapa Costeo — dropdown editable por compras/admin en la vista Costeo
     // (Efraín, 2026-07-16). submitVersion también la escribe directo (fuera de
     // este gate) para resetearla a "No iniciado" cuando el vendedor edita una

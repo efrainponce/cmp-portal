@@ -10,8 +10,8 @@
   "theme_color": "#FFA500",
   "icons": [
     {
-      "src": "/src/assets/logo.webp",
-      "sizes": "any",
+      "src": "/logo.webp",
+      "sizes": "256x256",
       "type": "image/webp",
       "purpose": "any"
     }

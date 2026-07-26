@@ -10,7 +10,3 @@ export function oportunidadFileKey(oppId: number, categoria: string, filename: s
 export async function putFile(env: Env, key: string, file: Blob, contentType?: string): Promise<void> {
   await env.FILES.put(key, file, { httpMetadata: { contentType: contentType || file.type || 'application/octet-stream' } });
 }
-
-export async function getFile(env: Env, key: string): Promise<R2ObjectBody | null> {
-  return env.FILES.get(key);
-}

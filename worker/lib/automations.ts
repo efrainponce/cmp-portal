@@ -19,9 +19,6 @@ export interface AutomationResult {
   [key: string]: unknown;
 }
 
-// Kept as an alias — worker/index.ts and older call sites import this name.
-export type CotizacionResult = AutomationResult;
-
 // Eledo render + Monday upload + DocuSeal can take a while; Vercel caps at 300s.
 const TIMEOUT_MS = 120_000;
 
