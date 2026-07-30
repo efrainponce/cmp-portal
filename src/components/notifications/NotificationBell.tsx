@@ -2,6 +2,7 @@
 // (desktop) y en la barra superior móvil. Popover anclado en desktop,
 // hoja de pantalla completa en móvil (mismo patrón que ChatBubble/menú móvil).
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useIsMobile } from '../../lib/useIsMobile';
 import { useNotifications } from '../../lib/notificationsApi';
 import { NotificationCenter } from './NotificationCenter';
@@ -20,21 +21,42 @@ function IconBell() {
   );
 }
 
+const PANEL_WIDTH = 360;
+
 export function NotificationBell({ onNavigate }: NotificationBellProps) {
   const isMobile = useIsMobile();
   const [open, setOpen] = useState(false);
+  // El popover se renderiza en un portal: la campana vive dentro del contenedor
+  // con scroll del sidebar (overflow hidden), que recortaba un panel absoluto.
+  const [rect, setRect] = useState<{ top: number; left: number; maxHeight: number } | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const { notifications, unread, markRead, markAllRead } = useNotifications();
 
   useEffect(() => {
     if (!open || isMobile) return;
+    const updateRect = () => {
+      const el = rootRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      const top = r.bottom + 6;
+      const left = Math.max(8, Math.min(r.left, window.innerWidth - PANEL_WIDTH - 8));
+      setRect({ top, left, maxHeight: Math.max(200, window.innerHeight - top - 12) });
+    };
+    updateRect();
     const onClick = (e: MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      if (rootRef.current?.contains(target) || panelRef.current?.contains(target)) return;
+      setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    window.addEventListener('scroll', updateRect, true);
+    window.addEventListener('resize', updateRect);
     document.addEventListener('mousedown', onClick);
     document.addEventListener('keydown', onKey);
     return () => {
+      window.removeEventListener('scroll', updateRect, true);
+      window.removeEventListener('resize', updateRect);
       document.removeEventListener('mousedown', onClick);
       document.removeEventListener('keydown', onKey);
     };
@@ -87,12 +109,13 @@ export function NotificationBell({ onNavigate }: NotificationBellProps) {
         )}
       </button>
 
-      {open && !isMobile && (
-        <div style={{
+      {open && !isMobile && rect && createPortal(
+        <div ref={panelRef} style={{
           // La campana vive en el sidebar angosto (220px); anclar a la derecha
           // empujaba el panel fuera del borde izquierdo. Abre hacia la derecha,
           // hacia el área de contenido.
-          position: 'absolute', top: 38, left: 0, width: 360, maxHeight: '70vh',
+          position: 'fixed', top: rect.top, left: rect.left, width: PANEL_WIDTH,
+          maxHeight: Math.min(rect.maxHeight, window.innerHeight * 0.7),
           background: 'var(--bg-raised)', border: '1px solid var(--border)', borderRadius: 'var(--radius-2xl)',
           boxShadow: 'var(--shadow-modal)', display: 'flex', flexDirection: 'column', overflow: 'hidden', zIndex: 1000,
         }}>
@@ -104,7 +127,8 @@ export function NotificationBell({ onNavigate }: NotificationBellProps) {
             markRead={markRead}
             markAllRead={markAllRead}
           />
-        </div>
+        </div>,
+        document.body,
       )}
 
       {open && isMobile && (
