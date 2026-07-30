@@ -4,7 +4,7 @@
 // "Board Tabs" component. Acciones por etapa = los mismos flujos de cmp-tallas
 // que los botones de Monday (docs/cmp-tallas-endpoint-map.md): los botones se
 // deshabilitan hasta que todo está listo y los rechazos se muestran legibles.
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/core/Button';
 import { ConfirmButton } from '../../components/core/ConfirmButton';
 import { IconBack, IconEdit, IconLink } from '../../components/icons';
@@ -93,6 +93,12 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
   const [item, setItem] = useState<ItemDetailDTO | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  // Relectura contra Monday en curso (ver loadFresh). El ref evita que una
+  // respuesta lenta de la oportunidad anterior pise la que se está viendo:
+  // el drawer no se remonta al navegar entre oportunidades, solo cambia `id`.
+  const [syncing, setSyncing] = useState(false);
+  const currentIdRef = useRef(id);
+  currentIdRef.current = id;
   const [tab, setTab] = useState<DrawerTabKey>(defaultTab as DrawerTabKey);
   const [notice, setNotice] = useState<Notice | null>(null);
   // Pre-chequeo de costeo (todas las etapas): null = cargando; deshabilita el botón.
@@ -117,6 +123,24 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
       .then(({ item: it }) => { detailCache.set(id, it); setItem(it); })
       .catch(() => setError('No se pudo cargar el detalle. Verifica tu acceso o que el servidor esté disponible.'));
   };
+  // Parity con Monday al abrir (Efraín, 2026-07-30 — OPP-0795 salía con costos
+  // en 0): `fresh` hace que el worker relea la oportunidad Y SUS LÍNEAS de
+  // Monday antes de responder, en vez de servir el mirror D1 (que solo se
+  // actualiza por webhook —con debounce que tira ráfagas— o cada 6h).
+  // Va aparte de load() porque el round-trip a Monday tarda segundos: el drawer
+  // se pinta ya con el mirror y estos datos lo reemplazan al llegar, con el
+  // indicador "Verificando con Monday…" arriba mientras tanto.
+  const loadFresh = () => {
+    const reqId = id;
+    setSyncing(true);
+    return getItemDetail('oportunidades', reqId, { fresh: true })
+      .then(({ item: it }) => {
+        detailCache.set(reqId, it);
+        if (currentIdRef.current === reqId) setItem(it);
+      })
+      .catch(() => { /* el mirror ya está pintado; no rompas la vista */ })
+      .finally(() => { if (currentIdRef.current === reqId) setSyncing(false); });
+  };
   const loadVersions = () => {
     getVersiones(id)
       .then((v) => { versionsCache.set(id, v); setVersions(v); })
@@ -129,6 +153,9 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
     setItem(detailCache.get(id) ?? null);
     setVersions(versionsCache.get(id) ?? []);
     load();
+    // Toda apertura reconcilia contra Monday, sin importar qué tan fresco crea
+    // estar el mirror (Efraín, 2026-07-30).
+    loadFresh();
     loadVersions();
     // El drawer no se remonta al navegar de la oportunidad original a su
     // duplicado (mismo componente, solo cambia `id`) — sin esto "Duplicar"
@@ -191,8 +218,11 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
 
   const onRefresh = async () => {
     setRefreshing(true);
+    // refreshItem ya baja item + líneas de Monday; loadFresh vuelve a leer el
+    // mirror recién escrito (el worker se salta el segundo round-trip si acaba
+    // de sincronizar) y deja el drawer con el estado exacto de Monday.
     try { await refreshItem('oportunidades', id); } catch { /* offline demo: ignore */ }
-    load();
+    await loadFresh();
     proyecto.reload();
     setRefreshing(false);
   };
@@ -466,7 +496,11 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
             {canEditCliente && <ChangeIconButton label="Cambiar cliente" onClick={() => setShowEditCliente(true)} />}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginTop: 4, font: 'var(--text-caption)', color: 'var(--ink-faint)' }}>
-            <SyncIndicator syncedAt={item.syncedAt} pending={item.pendingWrite ? 1 : 0} />
+            {/* Mientras corre la relectura contra Monday el "sincronizado hace X"
+                mentiría — se muestra el estado real de la verificación. */}
+            {syncing
+              ? <span style={{ color: 'var(--accent)' }}>⟳ verificando con Monday…</span>
+              : <SyncIndicator syncedAt={item.syncedAt} pending={item.pendingWrite ? 1 : 0} />}
             <span>·</span>
             <span>
               Vendedor: <span style={{ color: 'var(--ink-tertiary)' }}>{item.cols[VENDEDOR_COL]?.text || '—'}</span>

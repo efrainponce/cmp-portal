@@ -113,8 +113,11 @@ export async function listItems(slug: BoardSlug, q?: string): Promise<ItemDTO[]>
   return body.items;
 }
 
-export async function getItem(slug: BoardSlug, id: string): Promise<ItemDetailDTO> {
-  const res = await apiFetch(`/boards/${slug}/items/${id}`);
+/** `fresh` fuerza al worker a releer el item y sus líneas de Monday antes de
+ * responder — lo que se abre tiene que ser idéntico a Monday (Efraín 2026-07-30).
+ * Cuesta un round-trip a Monday, así que solo lo piden aperturas/refrescos. */
+export async function getItem(slug: BoardSlug, id: string, opts?: { fresh?: boolean }): Promise<ItemDetailDTO> {
+  const res = await apiFetch(`/boards/${slug}/items/${id}${opts?.fresh ? '?fresh=1' : ''}`);
   if (!res.ok) throw new Error('GET item failed: ' + res.status);
   return res.json();
 }
@@ -326,9 +329,13 @@ export async function refreshItem(slug: BoardSlug, id: string): Promise<{ ok: bo
   return res.json();
 }
 
-export async function getItemDetail(slug: BoardSlug, id: string): Promise<{ item: ItemDetailDTO; offlineMock: boolean }> {
+export async function getItemDetail(
+  slug: BoardSlug,
+  id: string,
+  opts?: { fresh?: boolean },
+): Promise<{ item: ItemDetailDTO; offlineMock: boolean }> {
   try {
-    const item = await getItem(slug, id);
+    const item = await getItem(slug, id, opts);
     return { item, offlineMock: false };
   } catch (e) {
     if (e instanceof AccessError) throw e;

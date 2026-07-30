@@ -18,12 +18,29 @@ import { submitCreate, CreateError } from '../lib/createRecord';
 import { fetchUpdates, createUpdate, addFileToUpdate, fetchAssetPublicUrls, deleteItem } from '../lib/monday';
 import { cachedFetchUsers } from '../lib/rosterCache';
 import { getBoardAccess } from '../lib/boardAccess';
-import { refetchItem } from '../sync';
+import { refetchItem, refetchItemTree } from '../sync';
 import { jsonStatus } from '../lib/http';
 import { emitNotification } from '../lib/notify';
 
 function isBoardSlug(s: string): s is BoardSlug {
   return Object.prototype.hasOwnProperty.call(BOARDS, s);
+}
+
+// Ventana en la que un refetch recién hecho se considera "ya fresco" — evita
+// pegarle a Monday dos veces cuando el drawer recarga en ráfaga (abrir + write
+// + relectura). Corta, porque la garantía que pide el negocio es que al ABRIR
+// una oportunidad se vea exactamente lo que Monday tiene (Efraín, 2026-07-30).
+const FRESH_WINDOW_MS = 3_000;
+
+/** Trae el item (y sus líneas, si el board tiene subitems) directo de Monday
+ * antes de responder. Nunca lanza: si Monday falla o va lento, se sirve el
+ * mirror — mejor un dato de hace un rato que un drawer roto. */
+async function pullFromMonday(env: Env, slug: BoardSlug, itemId: number, syncedAt?: string): Promise<void> {
+  if (syncedAt && Date.now() - Date.parse(syncedAt) < FRESH_WINDOW_MS) return;
+  try {
+    if (childSlugOf(slug)) await refetchItemTree(env, BOARDS[slug].id, itemId);
+    else await refetchItem(env, BOARDS[slug].id, itemId);
+  } catch { /* Monday caído/rate-limited — seguimos con el mirror */ }
 }
 
 // Deep-link boardKey (src/lib/routing.ts) para la notificación de mención —
@@ -118,6 +135,17 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
     if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
     const viewer = c.get('viewer');
 
+    // `?fresh=1` (lo manda el drawer al abrir y al refrescar): relee item +
+    // líneas de Monday ANTES de responder. El mirror se enteraba de los cambios
+    // solo por webhook (con debounce de 10s que tira las ráfagas) o por el
+    // reconcile cada 6h — abrir una oportunidad recién costeada mostraba costos
+    // viejos o en 0 (OPP-0795, Efraín 2026-07-30). El scoping por viewer se
+    // aplica ANTES: nadie dispara refetches de items que no puede ver.
+    if (c.req.query('fresh')) {
+      const known = await getItem(c.env, slug, itemId, viewer);
+      if (known) await pullFromMonday(c.env, slug, itemId, known.synced_at);
+    }
+
     const childSlug = childSlugOf(slug);
     const [row, pending, children, childPending] = await Promise.all([
       getItem(c.env, slug, itemId, viewer),
@@ -177,10 +205,11 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
     const row = await getItem(c.env, slug, itemId, viewer);
     if (!row) return c.json({ error: 'not found' }, 404);
 
-    const ageMs = Date.now() - new Date(row.synced_at).getTime();
-    if (ageMs < 30_000) return c.json({ ok: true, skipped: true });
-
-    await refetchItem(c.env, BOARDS[slug].id, itemId);
+    // Antes solo releía el padre y con un guard de 30s: el botón "Refrescar"
+    // no arreglaba costos/cantidades viejos de las LÍNEAS, que es justo lo que
+    // el usuario está mirando (Efraín, 2026-07-30). Ahora baja el árbol
+    // completo y el guard es la ventana corta compartida con `?fresh=1`.
+    await pullFromMonday(c.env, slug, itemId, row.synced_at);
     return c.json({ ok: true, skipped: false });
   });
 
