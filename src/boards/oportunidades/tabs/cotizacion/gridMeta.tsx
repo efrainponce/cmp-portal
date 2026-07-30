@@ -68,6 +68,11 @@ export function suggestedPrecio23(costoTotalUnit: number, margenGobPct: number):
 export function inlineEditableCols(lineEdits: boolean): Set<string> {
   const base = new Set<string>([
     COL.costoDistr, COL.descuentoPct, COL.conversion, COL.gastosPct, COL.margenGobPct, ETAPA_COSTEO_COL,
+    // Costo embell. C/U — lo captura Compras en Costeo junto con el resto de los
+    // costos (Efraín, 2026-07-30). Ya era escribible por compras/admin en el
+    // server (`w: WAC` en shared/visibility.ts) pero la grid nunca lo pintaba
+    // como input, así que era el único costo de la fila de solo lectura.
+    COL.embellecimiento,
   ]);
   if (lineEdits) {
     base.add(PRODUCTO_COL);
