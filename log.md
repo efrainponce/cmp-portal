@@ -1,5 +1,16 @@
 # Log de commits
 
+## 2026-07-30
+
+- **`0238e80`** — Abrir una oportunidad ahora relee item y líneas de Monday
+  - Efraín reportó, en corto y molesto: *"CHECA la validacion de costeo oportunidad 0795 sale la bota con costo 0 y tiene COSTO!"*, y enseguida la regla que importa: *"NECESITO QUE SE REVISE siempre que se ABRA una oportunidad que este 100% igual que monday si no no van a usar la plataforma"*.
+  - **Causa.** El detalle del drawer salía 100% del mirror D1 y **nada en la ruta de lectura consultaba Monday**. El mirror solo se entera de un cambio por (a) webhook, que en `worker/sync/webhook.ts` **descarta** —no reprograma— cualquier evento que llegue dentro de 10s del último sync, así que de una ráfaga de compras llenando costos solo sobrevive el primer cambio; o (b) el reconcile del cron, que corre **cada 6 horas**. OPP-0795 se costeó a las 17:54–17:59 del 30/07 y se abrió minutos después: Monday ya tenía Costo Total Unitario 2892.75 / 1627.29 / 695.1 / 638.4 y el portal pintaba los valores viejos. Verificado contra la API de Monday antes de tocar código.
+  - Agravante: el botón "Actualizar" del drawer llamaba `refetchItem` (**solo el padre**) con guard de 30s, así que ni refrescando a mano se arreglaban las líneas — que es justo donde viven costos y cantidades.
+  - **Fix.** `GET /api/boards/:slug/items/:id?fresh=1` hace `refetchItemTree` (item + subitems) contra Monday **antes** de responder; el scoping por viewer se aplica antes del refetch (nadie dispara pulls de items que no puede ver), hay ventana de 3s para no pegarle dos veces en ráfagas y **fallback silencioso al mirror** si Monday falla o va lento. `POST .../refresh` usa el mismo camino, así que ahora sí baja las líneas.
+  - El round-trip a Monday tarda **3–13s** medido en local (la query con `display_value` es cara), así que bloquear la apertura no era opción: el drawer pinta el mirror al instante y **reconcilia enseguida**, con `⟳ verificando con Monday…` en el encabezado en lugar del "sincronizado hace X" (que mentiría mientras corre) y un ref que descarta la respuesta si el usuario ya se movió a otra oportunidad.
+  - Verificado con la OPP-0795 real: sin `fresh` el endpoint devolvía **0 líneas**; con `fresh`, las 4 botas con sus costos exactos de Monday (total $2,048,739). Screenshot del drawer y del indicador en Playwright. 66 tests, `tsc` en los 3 tsconfigs, `oxlint` y `build` en verde.
+  - **Sin deploy** (tree con `worker/lib/costeo.ts` de la sesión concurrente). Queda como deuda la otra mitad de la causa: el debounce de 10s del webhook **tira** los eventos en vez de reprogramarlos, así que las LISTAS siguen pudiendo mostrar datos viejos hasta el reconcile — cambiarlo toca el presupuesto de rate limit de Monday y es decisión de Efraín.
+
 ## 2026-07-26
 
 - **`92cf4df`** — Solicitud de costeo generada por el portal, con acuse automático
