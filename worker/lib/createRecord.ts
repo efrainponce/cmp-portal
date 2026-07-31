@@ -70,7 +70,10 @@ export async function submitCreate(
   const board = BOARDS[slug];
   let item;
   try {
-    item = await createItem(env, board.id, name.trim(), columnValues);
+    // maxRetries:1 (no el default 4) — el front espera este round-trip para
+    // navegar al item nuevo con su id real de Monday (ver comentario en
+    // createItem, worker/lib/monday.ts).
+    item = await createItem(env, board.id, name.trim(), columnValues, { maxRetries: 1 });
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
     throw new CreateError(502, `monday create failed: ${detail}`);

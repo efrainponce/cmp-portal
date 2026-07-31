@@ -111,15 +111,21 @@ export async function fetchItems(env: Env, boardId: number, cursor?: string | nu
 }
 
 /** Create a new item on a board. Returns the full item shape (same fields as
- * fetchItem) in one round-trip, ready for upsertItem(). */
+ * fetchItem) in one round-trip, ready for upsertItem(). `opts.maxRetries`
+ * defaults to gql()'s 4 — pass a lower cap for synchronous, user-waited
+ * callers (createRecord.ts, duplicateOportunidad.ts) so a rate-limit hit
+ * doesn't stack up to 4 exponential-backoff retries on top of the user
+ * staring at a spinner; same reasoning as createSubitem below
+ * (Efraín, 2026-07-30 — "crear oportunidad se tarda mucho"). */
 export async function createItem(
   env: Env,
   boardId: number,
   itemName: string,
   columnValues: Record<string, unknown>,
+  opts?: { maxRetries?: number },
 ): Promise<MondayItem> {
   const query = `mutation($b:ID!,$n:String!,$cv:JSON){ create_item(board_id:$b,item_name:$n,column_values:$cv,create_labels_if_missing:true){ ${ITEM_FIELDS} } }`;
-  const data = await gql(env, query, { b: String(boardId), n: itemName, cv: JSON.stringify(columnValues) });
+  const data = await gql(env, query, { b: String(boardId), n: itemName, cv: JSON.stringify(columnValues) }, opts);
   const raw = data?.create_item;
   return { ...raw, column_values: normalizeCols(raw.column_values ?? []) };
 }

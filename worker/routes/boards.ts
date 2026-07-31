@@ -11,7 +11,7 @@ import type {
 } from '../../shared/dto';
 import {
   listItems, getItem, childrenOf, childSlugOf, etagFor, pendingItemIds, listVendedores,
-  ownsItem, leadsOthers,
+  ownsItem, leadsOthers, hasPendingWrites,
 } from '../lib/dal';
 import { toItemDTO, toColMeta } from '../lib/serialize';
 import { canReadBoard } from '../../shared/visibility';
@@ -53,8 +53,15 @@ const FRESH_WINDOW_MS = 3_000;
  * mirror — mejor un dato de hace un rato que un drawer roto. */
 async function pullFromMonday(env: Env, slug: BoardSlug, itemId: number, syncedAt?: string): Promise<void> {
   if (syncedAt && Date.now() - Date.parse(syncedAt) < FRESH_WINDOW_MS) return;
+  const childSlug = childSlugOf(slug);
+  // Si el outbox todavía tiene writes en vuelo para este item (o sus líneas),
+  // el mirror YA refleja la edición del usuario y Monday puede no haberla
+  // recibido todavía — leer "fresh" ahora arriesga pisarla con el valor viejo.
+  // Deja que el outbox confirme por su cuenta (ver hasPendingWrites).
+  const pending = await hasPendingWrites(env, BOARDS[slug].id, itemId, childSlug ? BOARDS[childSlug].id : undefined);
+  if (pending) return;
   try {
-    if (childSlugOf(slug)) await refetchItemTree(env, BOARDS[slug].id, itemId);
+    if (childSlug) await refetchItemTree(env, BOARDS[slug].id, itemId);
     else await refetchItem(env, BOARDS[slug].id, itemId);
   } catch { /* Monday caído/rate-limited — seguimos con el mirror */ }
 }

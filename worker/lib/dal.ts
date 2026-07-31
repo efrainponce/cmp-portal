@@ -251,3 +251,29 @@ export async function pendingItemIds(env: Env, boardId: number): Promise<Set<num
     .all<{ item_id: number }>();
   return new Set((res.results ?? []).map(r => r.item_id));
 }
+
+/** ¿Hay algún write local todavía en vuelo (outbox 'pending'/'sent') para este
+ * item, o para alguna de sus líneas (childBoardId)? submitWrite ya aplicó el
+ * cambio al mirror D1 de forma sincrónica antes de encolarlo — si un pull
+ * "fresh" a Monday corre mientras el outbox sigue reintentando, puede leer el
+ * valor VIEJO de Monday y pisar la edición reciente en el mirror (reporte de
+ * Efraín, 2026-07-30: "guardo un cambio y se regresa"). Este check deja que
+ * pullFromMonday se salte el pull hasta que el outbox confirme por su cuenta. */
+export async function hasPendingWrites(
+  env: Env, boardId: number, itemId: number, childBoardId?: number,
+): Promise<boolean> {
+  const own = await env.DB
+    .prepare(`SELECT 1 FROM outbox WHERE board_id = ? AND item_id = ? AND status IN ('pending','sent') LIMIT 1`)
+    .bind(boardId, itemId)
+    .first();
+  if (own) return true;
+  if (!childBoardId) return false;
+  const child = await env.DB
+    .prepare(
+      `SELECT 1 FROM outbox WHERE board_id = ? AND status IN ('pending','sent')
+       AND item_id IN (SELECT item_id FROM items WHERE board_id = ? AND parent_item_id = ?) LIMIT 1`,
+    )
+    .bind(childBoardId, childBoardId, itemId)
+    .first();
+  return !!child;
+}

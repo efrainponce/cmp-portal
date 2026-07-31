@@ -129,7 +129,9 @@ export async function duplicateOportunidad(
 
   let newItem;
   try {
-    newItem = await createItem(env, BOARDS.oportunidades.id, `${source.name} (copia)`, newCols);
+    // maxRetries:1 — mismo razonamiento que createRecord.ts: "Duplicar" espera
+    // este round-trip para navegar al duplicado.
+    newItem = await createItem(env, BOARDS.oportunidades.id, `${source.name} (copia)`, newCols, { maxRetries: 1 });
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
     throw new DuplicateOportunidadError(502, `monday create failed: ${detail}`);
