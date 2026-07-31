@@ -2,6 +2,11 @@
 
 ## 2026-07-31
 
+- Cotización: aviso "Falta detalle de embellecimiento" cuando la línea está marcada "Con Embellecimiento" sin posiciones capturadas
+  - Efraín reportó (con captura de la tab Cotizaciones) que marcar "Con Embellecimiento" en una línea sin tener ninguna posición capturada en la tab Embellecimientos no se avisaba en la grid — el server ya rechaza "Mandar a costeo" en ese caso (`validateLinea`, `worker/lib/costeo.ts`), pero el vendedor solo se enteraba hasta intentar el envío.
+  - `getLineWarnings` (`gridMeta.tsx`) ahora replica el mismo check (`explodeEmbellecimiento` sobre `long_text_mm1bj4pt`) para que el aviso ⚠ viva en la línea, mismo patrón que "Falta descripción"/"Falta color". Solo aplica en variant `venta` (mismo alcance que el server).
+  - Verificado con casos de vitest (con posiciones / sin posiciones / marcado "Sin Embellecimiento") y `tsc --noEmit` + 107 tests limpios. No se pudo verificar visualmente contra la oportunidad de la captura (OPP-0810) — el buscador del portal solo indexa cliente/vendedor/comprador, no folio.
+  - Nota de concurrencia: el working tree traía cambios sueltos de otra sesión activa (`shared/dto.ts`, `CotizacionTab.tsx`, `MobileQuoteRow.tsx`, `QuoteRow.tsx`, `VersionChips.tsx`, `apiClient.ts`, `worker/lib/quoteVersions.ts`, `worker/routes/oportunidades.ts`, `worker/schema.sql`, más `AjustarLineaModal.tsx`/`worker/lib/lineaAjustes.ts` sin trackear) — se dejaron sin commitear, solo se stageó `gridMeta.tsx`.
 - Login: los admins ya no quedan encerrados por el gate de teléfono
   - Incidente real minutos después del deploy anterior: `salinasefrain@mexicanadeproteccion.com` (admin) entró a producción, el gate le pidió teléfono, escribió uno que YA estaba guardado en otra cuenta (`identity.phone` es `UNIQUE`) y el 409 lo dejó atorado — sin poder llegar a Configuración, que es la ÚNICA pantalla que puede resolver ese choque. El gate se había diseñado sin salida para ese caso.
   - Fix: `App.tsx` ahora también salta el gate cuando `me.role === 'admin'` (además del caso ya existente de impersonación) — un admin sin teléfono sigue entrando normal y puede capturarlo cuando quiera desde Configuración, donde además ya puede ver qué cuenta tiene cada número. Vendedor/compras/almacén siguen bloqueados hasta capturarlo, que es el objetivo original de Efraín.

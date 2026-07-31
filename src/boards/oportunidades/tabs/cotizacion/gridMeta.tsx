@@ -6,8 +6,12 @@
 import type { ColVal, ItemDTO } from '../../../../lib/api';
 import { fmtMoney } from '../../../../lib/format';
 import { COL } from '../../../../lib/costeoCalc';
-import { EMB_STATUS_COL } from '../../../../../shared/embellecimiento';
+import { EMB_STATUS_COL, EMB_LABEL_CON, explodeEmbellecimiento } from '../../../../../shared/embellecimiento';
 export { EMB_STATUS_COL, EMB_LABEL_CON, EMB_LABEL_SIN } from '../../../../../shared/embellecimiento';
+
+// Descripción Embellecimientos (oportunidades_sub) — mismo id que
+// worker/lib/costeo.ts SUB_EMB_DESC y src/boards/oportunidades/tabs/cotizacion/LineDetailPanel.tsx.
+const EMB_DESC_COL = 'long_text_mm1bj4pt';
 
 export const COSTO_DISTR_COL = 'numeric_mm0bph99';
 export const ETAPA_COSTEO_COL = 'color_mm084gvf';
@@ -447,6 +451,17 @@ export function getLineWarnings(
   // el aviso viva en la línea y no solo en el pre-chequeo del botón.
   if (variant === 'venta' && displayProd?.trim() && !(product.cols[DESCRIPCION_COL]?.text ?? '').trim()) {
     warnings.push('Falta descripción');
+  }
+
+  // En venta: marcada "Con Embellecimiento" pero sin ninguna posición
+  // capturada (tab Embellecimientos) — mismo check que validateLinea en el
+  // server (worker/lib/costeo.ts), reflejado aquí para que el aviso viva en
+  // la línea y no solo en el pre-chequeo de "Mandar a costeo".
+  if (variant === 'venta') {
+    const embLabel = state.preview[EMB_STATUS_COL]?.text ?? product.cols[EMB_STATUS_COL]?.text;
+    if (embLabel === EMB_LABEL_CON && explodeEmbellecimiento(product.cols[EMB_DESC_COL]?.text, true).length === 0) {
+      warnings.push('Falta detalle de embellecimiento');
+    }
   }
 
   // Siempre requerido: cantidad
