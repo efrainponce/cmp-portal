@@ -41,7 +41,7 @@ import type { ProductoChoice } from '../../../components/forms/ProductPicker';
 
 export function CotizacionTab({
   subCols, oppCols = [], products, variant = 'venta', onSaved, versions = [], onNuevaVersion, onRestoreVersion, editable = true, stage, oppId, item,
-  readOnly = false, precioOnly = false, draft = false,
+  readOnly = false, precioOnly = false, draft = false, showCondiciones = false,
 }: {
   subCols: ColMeta[];
   /** ColMeta del board `oportunidades` — las condiciones de la cotización
@@ -71,6 +71,10 @@ export function CotizacionTab({
    * de Venta; costos, Etapa Costeo y todo lo demás quedan de solo lectura
    * (Efraín, 2026-07-16). Tiene prioridad sobre `readOnly`. */
   precioOnly?: boolean;
+  /** true solo en el board Costeo para rol compras/admin — Compras llena las
+   * condiciones comerciales/entrega/vigencia ahí; no aplica en Oportunidades
+   * ni en el resto de los boards de pipeline (Efraín, 2026-07-30). */
+  showCondiciones?: boolean;
 }) {
   const isMobile = useIsMobile();
   const tabPadding = isMobile ? '14px 14px 24px' : '24px 32px 40px';
@@ -432,7 +436,6 @@ export function CotizacionTab({
       <div style={{ padding: tabPadding, width: '100%', boxSizing: 'border-box' }}>
         <VersionChips versions={versions} selected={selectedVersionId} onSelect={setSelectedVersionId} onNuevaVersion={onNuevaVersion} />
         <CotizacionPdfRow oppId={oppId} hasSolicitud={hasSolicitud} hasSinFirmar={hasSinFirmar} hasFirmada={hasFirmada} />
-        <CondicionesCotizacion oppId={oppId} oppCols={oppCols} item={item} onSaved={onSaved} locked={!editable} />
         <div style={{ font: 'var(--text-label)', color: 'var(--ink-quiet)', marginBottom: 16 }}>
           Sin líneas de producto registradas.
         </div>
@@ -445,6 +448,9 @@ export function CotizacionTab({
           >
             {creatingLine ? 'Agregando línea…' : '+ Agregar línea'}
           </Button>
+        )}
+        {showCondiciones && (
+          <CondicionesCotizacion oppId={oppId} oppCols={oppCols} item={item} onSaved={onSaved} locked={!editable} />
         )}
       </div>
     );
@@ -459,7 +465,6 @@ export function CotizacionTab({
         )}
       </div>
       <CotizacionPdfRow oppId={oppId} hasSolicitud={hasSolicitud} hasSinFirmar={hasSinFirmar} hasFirmada={hasFirmada} />
-      <CondicionesCotizacion oppId={oppId} oppCols={oppCols} item={item} onSaved={onSaved} locked={!editable} />
       {isMobile ? (
         <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-xl)', overflow: 'hidden' }}>
           {products.map((p, lineIdx) => (
@@ -568,6 +573,9 @@ export function CotizacionTab({
           </div>
         )}
       </div>
+      )}
+      {showCondiciones && (
+        <CondicionesCotizacion oppId={oppId} oppCols={oppCols} item={item} onSaved={onSaved} locked={!editable} />
       )}
     </div>
   );

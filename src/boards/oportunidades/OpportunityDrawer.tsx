@@ -439,6 +439,10 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
   // costos + Etapa Costeo y avanza a Validación (Efraín, 2026-07-16).
   const readOnlyCosteo = boardKey === 'costeo';
   const isValidacion = boardKey === 'validacion';
+  // Condiciones de la cotización (comerciales/entrega/vigencia): las llena
+  // Compras en el board Costeo — no aplica en Oportunidades ni en el resto
+  // de los boards de pipeline (Efraín, 2026-07-30).
+  const showCondiciones = readOnlyCosteo && (me?.role === 'compras' || me?.role === 'admin');
   // Board Validación Costeo = lo ÚNICO editable es Precio de Venta; todo lo
   // demás (líneas, embellecimientos, nuevos productos, costos) es solo lectura
   // (Efraín, 2026-07-16).
@@ -645,6 +649,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
           item={item}
           readOnly={readOnlyCosteo || ajena}
           precioOnly={isValidacion}
+          showCondiciones={showCondiciones}
         />
       )}
       {activeTab === 'embellecimientos' && (
