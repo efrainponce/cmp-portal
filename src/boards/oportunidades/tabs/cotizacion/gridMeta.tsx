@@ -60,11 +60,14 @@ export function marginColor(pct: number): string {
   return '#00b461';
 }
 
-// Cuando cmp-tallas todavía no generó el Precio de Venta sugerido (columna
-// vacía), se ofrece un fallback calculado con la misma fórmula de Utilidad %
-// que ya usa el resto del tab: Utilidad% = 1 − MargenGob% − CostoTotalC/U/Precio.
-// Se despeja Precio para Utilidad% = 23 — un ancla útil mientras compras decide
-// el precio real (Efraín, 2026-07-16).
+// La columna de Monday (SUGERIDO_COL) es un número interno de cmp-tallas que
+// en la práctica se queda en 0 — el portal calcula el sugerido siempre por su
+// cuenta, con la misma fórmula de Utilidad % que ya usa el resto del tab:
+// Utilidad% = 1 − MargenGob% − CostoTotalC/U/Precio. Margen Gob SÍ cuenta como
+// costo (sale del precio antes de llegar a utilidad, no es parte del 23% que
+// se reparte) — se despeja Precio para Utilidad% = 23 (Efraín, 2026-07-30:
+// "no es independiente de margen gob, tienes que tomarlo en cuenta como un
+// costo").
 export function suggestedPrecio23(costoTotalUnit: number, margenGobPct: number): number | undefined {
   const denom = 1 - 0.23 - margenGobPct / 100;
   if (denom <= 0 || costoTotalUnit <= 0) return undefined;

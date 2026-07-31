@@ -201,14 +201,12 @@ function MobileQuoteRowInner({
       return <div style={{ ...valueChipStyle, font: 'var(--text-label)', color: Number.isFinite(n) ? marginColor(n) : undefined, fontWeight: 600 }}>{label}</div>;
     }
     if (c.id === SUGERIDO_COL) {
-      const label = cellValue(c, displayVal);
-      if (label !== '—') return <div style={{ ...valueChipStyle, font: 'var(--text-label)', color: 'var(--ink-secondary)' }}>{label}</div>;
       const costoTotalUnit = numFrom(state, p, COL.costoTotalUnit);
       const margenGobPctVal = Number(state.editing[COL.margenGobPct] ?? p.cols[COL.margenGobPct]?.text ?? 0) || 0;
       const suggested = suggestedPrecio23(costoTotalUnit, margenGobPctVal);
       if (suggested === undefined) return <div style={{ ...valueChipStyle, font: 'var(--text-label)', color: 'var(--ink-secondary)' }}>—</div>;
       return (
-        <div style={{ ...valueChipStyle, fontStyle: 'italic', font: 'var(--text-label)', color: 'var(--ink-tertiary)' }} title="Calculado para 23% de margen — sin precio auto de Monday">
+        <div style={{ ...valueChipStyle, fontStyle: 'italic', font: 'var(--text-label)', color: 'var(--ink-tertiary)' }} title="Calculado para 23% de utilidad (Margen Gob ya tomado como costo)">
           {fmtMoney(suggested)}
         </div>
       );

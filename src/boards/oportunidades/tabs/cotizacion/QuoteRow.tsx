@@ -317,14 +317,12 @@ function QuoteRowInner({
                 return <span style={{ color: Number.isFinite(n) ? marginColor(n) : undefined, fontWeight: 600 }}>{label}</span>;
               })()}
               {c.id === SUGERIDO_COL && (() => {
-                const label = cellValue(c, displayVal);
-                if (label !== '—') return label;
                 const costoTotalUnit = numFrom(state, p, COL.costoTotalUnit);
                 const margenGobPctVal = Number(state.editing[COL.margenGobPct] ?? p.cols[COL.margenGobPct]?.text ?? 0) || 0;
                 const suggested = suggestedPrecio23(costoTotalUnit, margenGobPctVal);
                 if (suggested === undefined) return '—';
                 return (
-                  <span style={{ fontStyle: 'italic', color: 'var(--ink-tertiary)' }} title="Calculado para 23% de margen — sin precio auto de Monday">
+                  <span style={{ fontStyle: 'italic', color: 'var(--ink-tertiary)' }} title="Calculado para 23% de utilidad (Margen Gob ya tomado como costo)">
                     {fmtMoney(suggested)}
                   </span>
                 );

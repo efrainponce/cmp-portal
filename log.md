@@ -2,6 +2,12 @@
 
 ## 2026-07-30
 
+- P. venta sugerido (Costeo/Validación): calcularlo siempre en el portal, nunca fiarse de la columna de Monday
+  - Efraín, con screenshot: la columna "P. venta sugeri..." salía en `$0` en todas las líneas.
+  - Causa: `numeric_mm2qzzbe` es un número interno de cmp-tallas que en la práctica se queda guardado en `0` (no vacío), y el fallback ya existente en el portal (`suggestedPrecio23`) solo se activaba cuando la celda venía **vacía** (`cellValue` devuelve `'—'`) — un `0` guardado nunca disparaba el cálculo propio.
+  - Fix: `QuoteRow.tsx`/`MobileQuoteRow.tsx` ya no miran el valor crudo de Monday para esta columna — siempre calculan localmente con `suggestedPrecio23` (`gridMeta.tsx`).
+  - La fórmula en sí no cambió: Utilidad% = 1 − MargenGob% − CostoTotalC/U/Precio, despejada para Utilidad% = 23. Se intentó primero simplificarla a "23% de margen total repartido entre utilidad y margen gob" (independiente de Margen Gob), pero Efraín corrigió: Margen Gob cuenta como costo, no se resta del 23% — se revirtió a la fórmula original con `margenGobPct` como input.
+  - `tsc --noEmit` y 107 tests de vitest limpios.
 - **`04d5765`** — Nuevos productos: persistir propuestas de Ventas y avisar al comprador
   - Efraín reportó (con screenshot) que el tab "Nuevos productos" del drawer de Oportunidad no guardaba nada: al cambiar de tab o refrescar, la lista de propuestas volvía a estar vacía. Causa real: el componente era puro placeholder de UI (`useState` local, comentario propio del archivo lo admitía) — nunca existió tabla, endpoint ni fetch detrás del botón "Agregar producto".
   - Nuevo módulo nativo en D1 (`worker/lib/productosPropuestos.ts`, tabla `producto_propuesto` lazy-create): no hay board de Monday detrás porque nombre+descripción+imagen no encajan en ninguna columna existente, así que no se sincroniza al mirror ni al outbox (mismo patrón que `documents.ts`/Inventario). `GET`/`POST /api/oportunidades/:id/productos-propuestos`, imagen subida a R2. El `POST` exige `scope: 'own'` como cualquier endpoint que muta.
