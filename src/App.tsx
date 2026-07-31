@@ -3,10 +3,12 @@ import { Sidebar, type BoardKey } from './app/Sidebar';
 import { MobileTopBar } from './app/MobileTopBar';
 import { ImpersonationBanner } from './app/ImpersonationBanner';
 import { SessionExpiredScreen } from './app/SessionExpiredScreen';
+import { PhoneGateScreen } from './app/PhoneGateScreen';
 import { ChatBubble } from './components/assistant/ChatBubble';
 import { useRoute } from './lib/routing';
 import { useIsMobile } from './lib/useIsMobile';
 import { useSessionExpired } from './lib/sessionState';
+import { useMe } from './lib/useMe';
 
 // Cada vista es su propio chunk — el bundle inicial solo trae Sidebar + la vista
 // activa; las demás se cargan al navegar (misma UI, solo carga diferida).
@@ -23,11 +25,15 @@ const SettingsPage = lazy(() => import('./app/SettingsPage').then((m) => ({ defa
 
 function App() {
   const sessionExpired = useSessionExpired();
+  const me = useMe();
   const { board: activeBoard, itemId, navigate } = useRoute();
   const [collapsed, setCollapsed] = useState(false);
   const isMobile = useIsMobile();
 
   if (sessionExpired) return <SessionExpiredScreen />;
+  // impersonatedBy presente = un admin viendo "como" otra cuenta — ahí solo
+  // está mirando, no tiene por qué llenar el teléfono de alguien más.
+  if (me && !me.phone && !me.impersonatedBy) return <PhoneGateScreen />;
 
   const onOpenChange = (id: string | null) => navigate(activeBoard, id);
   // Duplicar una oportunidad la crea en etapa "Nueva oportunidad" — la nueva

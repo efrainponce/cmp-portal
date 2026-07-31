@@ -6,6 +6,10 @@ import { getMe, type MeDTO } from './api';
 
 let cached: MeDTO | null = null;
 let inflight: Promise<MeDTO> | null = null;
+// Cada useMe() montado se suscribe aquí para poder empujarle el /me fresco
+// tras refreshMe() (ej. PhoneGateScreen guardando el teléfono) sin que cada
+// consumidor tenga que refetchear por su cuenta.
+const listeners = new Set<(me: MeDTO) => void>();
 
 function loadMe(): Promise<MeDTO> {
   if (cached) return Promise.resolve(cached);
@@ -22,13 +26,21 @@ export function invalidateMeCache() {
   inflight = null;
 }
 
+/** Refetch forzado de /me que además notifica a todo useMe() montado — usar tras
+ * un cambio que el propio usuario hace sobre sí mismo (ver PhoneGateScreen). */
+export async function refreshMe(): Promise<MeDTO> {
+  invalidateMeCache();
+  const me = await loadMe();
+  listeners.forEach((fn) => fn(me));
+  return me;
+}
+
 export function useMe(): MeDTO | null {
   const [me, setMe] = useState<MeDTO | null>(cached);
   useEffect(() => {
-    if (cached) return;
-    let cancelled = false;
-    loadMe().then((m) => { if (!cancelled) setMe(m); }).catch(() => {});
-    return () => { cancelled = true; };
+    listeners.add(setMe);
+    if (!cached) loadMe().then(setMe).catch(() => {});
+    return () => { listeners.delete(setMe); };
   }, []);
   return me;
 }

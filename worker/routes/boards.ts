@@ -11,7 +11,7 @@ import type {
 } from '../../shared/dto';
 import {
   listItems, getItem, childrenOf, childSlugOf, etagFor, pendingItemIds, listVendedores,
-  ownsItem, leadsOthers, hasPendingWrites,
+  ownsItem, leadsOthers, hasPendingWrites, upsertIdentity,
 } from '../lib/dal';
 import { toItemDTO, toColMeta } from '../lib/serialize';
 import { canReadBoard } from '../../shared/visibility';
@@ -80,10 +80,36 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
     const admin = c.get('impersonatedBy');
     const dto: MeDTO = {
       email: viewer.email, nombre: viewer.nombre ?? '', role: viewer.role, mondayUserId: viewer.monday_user_id,
+      phone: viewer.phone ?? null,
       impersonatedBy: admin ? { email: admin.email, nombre: admin.nombre ?? admin.email } : null,
       boardAccess: await getBoardAccess(c.env, viewer.role),
     };
     return c.json(dto);
+  });
+
+  // Autoregistro del propio teléfono — el portal lo exige tras el login (ver
+  // PhoneGateScreen) porque es lo único que liga esta cuenta al bot de WhatsApp
+  // (worker/wa/store.ts identityByPhone). Solo toca `phone`: no deja que el
+  // propio usuario cambie su rol ni se reactive. Bajo impersonación el viewer
+  // ya es el suplantado (worker/mw/identity.ts), así que esto guardaría el
+  // teléfono de ESA cuenta — el frontend evita llegar aquí durante "ver como".
+  app.put('/api/me/phone', async c => {
+    const viewer = c.get('viewer');
+    const body = await c.req.json<{ phone?: string }>();
+    const phone = (body.phone ?? '').trim();
+    if (phone.replace(/\D/g, '').length < 10) {
+      return c.json({ error: 'Captura un teléfono válido (10 dígitos).' }, 400);
+    }
+    try {
+      await upsertIdentity(c.env, {
+        email: viewer.email, phone, nombre: viewer.nombre ?? null,
+        monday_user_id: viewer.monday_user_id, role: viewer.role, active: 1,
+      });
+    } catch {
+      // UNIQUE constraint en identity.phone: ya está ligado a otra cuenta.
+      return c.json({ error: 'Ese teléfono ya está registrado con otra cuenta del portal.' }, 409);
+    }
+    return c.json({ ok: true, phone });
   });
 
   app.get('/api/boards', c => {

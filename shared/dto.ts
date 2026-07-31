@@ -37,6 +37,10 @@ export interface ListResponse {
 
 export interface MeDTO {
   email: string; nombre: string; role: Role; mondayUserId: number;
+  // null = todavía no lo captura (worker/routes/boards.ts gatea el portal con esto
+  // hasta que lo llena — ver src/app/PhoneGateScreen.tsx). Es el mismo campo que usa
+  // el bot de WhatsApp para identificar al remitente (worker/wa/store.ts).
+  phone: string | null;
   // Presente cuando un admin está viendo el portal como este usuario — nombre/email
   // del admin real, para el banner "Salir de impersonación".
   impersonatedBy?: { email: string; nombre: string } | null;

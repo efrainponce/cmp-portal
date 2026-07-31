@@ -99,6 +99,17 @@ export async function getMe(): Promise<MeDTO> {
   return res.json();
 }
 
+/** Autoregistro del propio teléfono (ver PhoneGateScreen) — 409 = ese número ya
+ * está ligado a otra cuenta del portal. */
+export async function putMyPhone(phone: string): Promise<{ ok: boolean; error?: string }> {
+  const res = await apiFetch('/me/phone', {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) return { ok: false, error: body.error ?? 'No se pudo guardar el teléfono.' };
+  return { ok: true };
+}
+
 export async function getBoards(): Promise<BoardMeta[]> {
   const res = await apiFetch('/boards');
   if (!res.ok) throw new Error('GET /boards failed: ' + res.status);
