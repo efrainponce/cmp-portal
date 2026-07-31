@@ -8,7 +8,7 @@
 import type { ExecutionContext } from 'hono';
 import type { Env } from '../env';
 import type { Identity, MirrorItem } from '../../shared/types';
-import { getItem, childrenOf, linkedItemId } from './dal';
+import { getItem, childrenOf, linkedItemId, ownsItem } from './dal';
 import { validarCosteo } from './automations';
 import { submitWrite } from './outbox';
 import type { RawCol } from './serialize';
@@ -178,6 +178,11 @@ export async function enviarACosteo(
   itemId: number,
   viewer: Identity,
 ): Promise<EnviarCosteoResult> {
+  // Mandar a costeo MUTA (stage, snapshots, PDF): exige que la oportunidad sea del
+  // viewer mismo, no de su zona. checkCosteo de abajo corre con scope de lectura,
+  // así que sin este guard un líder podría disparar el flujo sobre lo de su equipo.
+  if (!(await ownsItem(env, 'oportunidades', itemId, viewer))) throw new CosteoError(404, 'not found');
+
   // Pre-chequeo local: respuesta instantánea y sin tocar Monday cuando falta algo.
   const pre = await checkCosteo(env, itemId, viewer);
   if (!pre.ok) return pre;
@@ -242,7 +247,8 @@ export async function enviarAValidacion(
   itemId: number,
   viewer: Identity,
 ): Promise<EnviarCosteoResult> {
-  const item = await getItem(env, 'oportunidades', itemId, viewer);
+  // scope 'own': muta el stage (ver worker/lib/zonas.ts).
+  const item = await getItem(env, 'oportunidades', itemId, viewer, 'own');
   if (!item) throw new CosteoError(404, 'not found');
 
   const cols = colsOf(item);

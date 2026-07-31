@@ -168,7 +168,9 @@ const SUB_COMENTARIOS = 'long_text_mm1hyszv';
 const num = (text?: string | null): number => Number((text ?? '').replace(/,/g, '')) || 0;
 
 async function solicitudCosteoData(env: Env, oppId: number, viewer: Identity): Promise<DocData> {
-  const row = await getItem(env, 'oportunidades', oppId, viewer);
+  // scope 'own': genera un documento nuevo sobre la oportunidad, así que exige ser
+  // su dueño. Verla ya generada NO lo exige — ver assertSourceVisible (worker/lib/zonas.ts).
+  const row = await getItem(env, 'oportunidades', oppId, viewer, 'own');
   if (!row) throw new DocumentError(404, 'oportunidad no encontrada');
 
   // Se lee el mirror CRUDO (dal), no el DTO ya filtrado por el serializer, así

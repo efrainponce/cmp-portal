@@ -6,7 +6,8 @@ import { useEffect, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import {
   getIdentities, putIdentity, getMondayUsers, getBoardAccess, putBoardAccess,
-  type IdentityDTO, type MondayUserDTO, type BoardAccessDTO,
+  getZonas, createZona, putZona, deleteZona,
+  type IdentityDTO, type MondayUserDTO, type BoardAccessDTO, type ZonaDTO,
 } from '../lib/api';
 import { Button } from '../components/core/Button';
 import { SearchInput } from '../components/forms/SearchInput';
@@ -93,6 +94,13 @@ export function SettingsPage() {
         <BoardAccessSection
           onSaved={(role) => showToast('success', `Accesos de ${ROLE_LABELS[role]} actualizados.`)}
           onError={() => showToast('error', 'No se pudieron guardar los accesos.')}
+        />
+
+        <div style={{ height: 24 }} />
+
+        <ZonasSection
+          identities={identities}
+          onToast={showToast}
         />
 
         <div style={{ height: 24 }} />
@@ -320,6 +328,183 @@ function BoardAccessRow({ role, boardKeys, onSaved, onError }: {
         )}
       </td>
     </tr>
+  );
+}
+
+// Zonas de ventas (worker/lib/zonas.ts): el líder VE las oportunidades de sus
+// miembros; editarlas sigue siendo solo del dueño. A diferencia de "Accesos por
+// equipo" (declutter de nav), esto sí cambia qué datos ve cada quien.
+function ZonasSection({ identities, onToast }: {
+  identities: IdentityDTO[] | null;
+  onToast: (kind: Toast['kind'], message: string) => void;
+}) {
+  const [zonas, setZonas] = useState<ZonaDTO[] | null>(null);
+  const [loadError, setLoadError] = useState(false);
+  const [nueva, setNueva] = useState('');
+  const [creating, setCreating] = useState(false);
+
+  useEffect(() => {
+    getZonas().then(setZonas).catch(() => setLoadError(true));
+  }, []);
+
+  async function crear() {
+    const nombre = nueva.trim();
+    if (!nombre) return;
+    setCreating(true);
+    try {
+      const zona = await createZona(nombre);
+      setZonas((prev) => [...(prev ?? []), zona].sort((a, b) => a.nombre.localeCompare(b.nombre)));
+      setNueva('');
+      onToast('success', `Zona "${zona.nombre}" creada.`);
+    } catch (err) {
+      onToast('error', err instanceof Error ? err.message : 'No se pudo crear la zona.');
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  async function borrar(zona: ZonaDTO) {
+    if (!window.confirm(`¿Eliminar la zona "${zona.nombre}"? Su líder dejará de ver las oportunidades del equipo.`)) return;
+    try {
+      await deleteZona(zona.id);
+      setZonas((prev) => (prev ?? []).filter((z) => z.id !== zona.id));
+      onToast('success', `Zona "${zona.nombre}" eliminada.`);
+    } catch {
+      onToast('error', 'No se pudo eliminar la zona.');
+    }
+  }
+
+  // Solo gente activa: una identidad dada de baja no debe poder quedar de líder
+  // ni sumar oportunidades a la zona (el server además filtra por active = 1).
+  const activos = (identities ?? []).filter((i) => i.active);
+
+  return (
+    <GroupCard
+      label="Zonas de ventas"
+      color="var(--accent-purple, var(--accent-blue))"
+      tint="var(--status-seguimiento-tint)"
+      count={zonas?.length ?? '…'}
+    >
+      <div style={{ padding: '12px 18px', background: 'var(--bg-raised)', font: 'var(--text-label)', color: 'var(--ink-tertiary)' }}>
+        El líder de una zona ve las oportunidades de sus miembros además de las suyas, en
+        modo lectura: editarlas, mandarlas a costeo o generar documentos sigue siendo
+        solo del vendedor dueño.
+      </div>
+
+      {loadError ? (
+        <RowMessage>No se pudieron cargar las zonas.</RowMessage>
+      ) : !zonas ? (
+        <RowMessage>Cargando…</RowMessage>
+      ) : (
+        <>
+          {zonas.length === 0 && <RowMessage>Todavía no hay zonas. Sin zonas, cada quien ve solo lo suyo.</RowMessage>}
+          {zonas.map((zona) => (
+            <ZonaRow
+              key={zona.id}
+              zona={zona}
+              identities={activos}
+              onSaved={(next) => {
+                setZonas((prev) => (prev ?? []).map((z) => (z.id === next.id ? next : z)));
+                onToast('success', `Zona "${next.nombre}" actualizada.`);
+              }}
+              onError={(msg) => onToast('error', msg)}
+              onDelete={() => borrar(zona)}
+            />
+          ))}
+        </>
+      )}
+
+      <div style={{
+        display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center',
+        padding: '12px 18px', background: 'var(--bg-raised)', borderTop: '1px solid var(--border-subtle)',
+      }}>
+        <input
+          value={nueva}
+          onChange={(e) => setNueva(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') crear(); }}
+          placeholder="Nombre de la zona (ej. Zona Norte)"
+          style={{ ...inputStyle, maxWidth: 280 }}
+        />
+        <Button variant={nueva.trim() && !creating ? 'primary' : 'disabled'} onClick={crear} style={{ padding: '6px 12px' }}>
+          {creating ? 'Creando…' : 'Crear zona'}
+        </Button>
+      </div>
+    </GroupCard>
+  );
+}
+
+function ZonaRow({ zona, identities, onSaved, onError, onDelete }: {
+  zona: ZonaDTO;
+  identities: IdentityDTO[];
+  onSaved: (next: ZonaDTO) => void;
+  onError: (message: string) => void;
+  onDelete: () => void;
+}) {
+  const [nombre, setNombre] = useState(zona.nombre);
+  const [lider, setLider] = useState(zona.liderEmail ?? '');
+  const [miembros, setMiembros] = useState(new Set(zona.miembros));
+  const [saving, setSaving] = useState(false);
+
+  const dirty = nombre !== zona.nombre
+    || lider !== (zona.liderEmail ?? '')
+    || miembros.size !== zona.miembros.length
+    || zona.miembros.some((m) => !miembros.has(m));
+
+  function toggle(email: string) {
+    setMiembros((prev) => {
+      const next = new Set(prev);
+      if (next.has(email)) next.delete(email); else next.add(email);
+      return next;
+    });
+  }
+
+  async function save() {
+    setSaving(true);
+    try {
+      // El líder nunca se guarda como miembro de su propia zona: su scope ya lo
+      // incluye por definición (worker/lib/zonas.ts readableUserIds).
+      const clean = [...miembros].filter((m) => m !== lider);
+      await putZona(zona.id, { nombre: nombre.trim(), liderEmail: lider || null, miembros: clean });
+      onSaved({ ...zona, nombre: nombre.trim(), liderEmail: lider || null, miembros: clean });
+      setMiembros(new Set(clean));
+    } catch (err) {
+      onError(err instanceof Error ? err.message : 'No se pudo guardar la zona.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const liderOptions = [
+    { value: '', label: 'Sin líder' },
+    ...identities.map((i) => ({ value: i.email, label: i.nombre || i.email })),
+  ];
+
+  return (
+    <div style={{ padding: '14px 18px', background: 'var(--bg-raised)', borderTop: '1px solid var(--border-subtle)' }}>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        <input value={nombre} onChange={(e) => setNombre(e.target.value)} style={{ ...inputStyle, maxWidth: 220 }} />
+        <div style={{ minWidth: 200 }}>
+          <Select value={lider} onChange={setLider} options={liderOptions} />
+        </div>
+        <div style={{ flex: 1 }} />
+        <Button variant={dirty && !saving ? 'primary' : 'disabled'} onClick={save} style={{ padding: '6px 12px' }}>
+          {saving ? 'Guardando…' : 'Guardar'}
+        </Button>
+        <Button variant="secondary" onClick={onDelete} style={{ padding: '6px 12px' }}>Eliminar</Button>
+      </div>
+
+      <div style={{ font: 'var(--text-micro)', color: 'var(--ink-quiet)', textTransform: 'uppercase', letterSpacing: '.4px', margin: '14px 0 8px' }}>
+        Miembros
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 18px' }}>
+        {identities.filter((i) => i.email !== lider).map((i) => (
+          <label key={i.email} style={{ display: 'flex', alignItems: 'center', gap: 6, font: 'var(--text-label)', color: 'var(--ink-secondary)', cursor: 'pointer' }}>
+            <input type="checkbox" checked={miembros.has(i.email)} onChange={() => toggle(i.email)} style={{ cursor: 'pointer' }} />
+            {i.nombre || i.email}
+          </label>
+        ))}
+      </div>
+    </div>
   );
 }
 

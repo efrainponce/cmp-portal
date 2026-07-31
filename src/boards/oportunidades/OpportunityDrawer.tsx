@@ -442,7 +442,11 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
   // Board Validación Costeo = lo ÚNICO editable es Precio de Venta; todo lo
   // demás (líneas, embellecimientos, nuevos productos, costos) es solo lectura
   // (Efraín, 2026-07-16).
-  const noLineEdits = readOnlyCosteo || isValidacion;
+  // Solo la ve porque lidera la zona de su dueño (ItemDetailDTO.ownedByViewer,
+  // worker/lib/zonas.ts): se apaga TODO lo que escribe. No es cosmético — el
+  // server responde 404 a cualquier write sobre una oportunidad ajena.
+  const ajena = item.ownedByViewer === false;
+  const noLineEdits = readOnlyCosteo || isValidacion || ajena;
 
   // Borrador de versión: la vigente aún no se costea (todas las líneas con Etapa
   // Costeo vacía/"No iniciado" — recién duplicada con "+ Nueva versión" o líneas
@@ -464,7 +468,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
         <div onClick={onBack} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, cursor: 'pointer', color: 'var(--ink-secondary)', font: 'var(--text-label-strong)' }}>
           <IconBack /> {backLabel}
         </div>
-        {canDuplicate && (
+        {canDuplicate && !ajena && (
           <div
             onClick={duplicating ? undefined : onDuplicate}
             title="Crea una oportunidad nueva en 'Nueva oportunidad' con los mismos productos vigentes y embellecimientos (sin cotizaciones ni documentos)"
@@ -493,7 +497,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
             <span>
               Cliente: <span style={{ color: 'var(--ink-secondary)' }}>{item.cols[CONTACTO_COL]?.text || '—'}</span>
             </span>
-            {canEditCliente && <ChangeIconButton label="Cambiar cliente" onClick={() => setShowEditCliente(true)} />}
+            {canEditCliente && !ajena && <ChangeIconButton label="Cambiar cliente" onClick={() => setShowEditCliente(true)} />}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginTop: 4, font: 'var(--text-caption)', color: 'var(--ink-faint)' }}>
             {/* Mientras corre la relectura contra Monday el "sincronizado hace X"
@@ -505,12 +509,12 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
             <span>
               Vendedor: <span style={{ color: 'var(--ink-tertiary)' }}>{item.cols[VENDEDOR_COL]?.text || '—'}</span>
             </span>
-            {canEditVendedor && <ChangeIconButton label="Cambiar vendedor" onClick={() => setShowEditVendedor(true)} />}
+            {canEditVendedor && !ajena && <ChangeIconButton label="Cambiar vendedor" onClick={() => setShowEditVendedor(true)} />}
             <span>·</span>
             <span>
               Comprador: <span style={{ color: 'var(--ink-tertiary)' }}>{item.cols[COMPRAS_COL]?.text || '—'}</span>
             </span>
-            {canEditComprador && <ChangeIconButton label="Cambiar comprador" onClick={() => setShowEditComprador(true)} />}
+            {canEditComprador && !ajena && <ChangeIconButton label="Cambiar comprador" onClick={() => setShowEditComprador(true)} />}
           </div>
         </div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
@@ -518,7 +522,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
               mucho — en cualquier etapa el vendedor puede crear una nueva versión
               y regresarla a costeo con este botón. Deshabilitado cuando la vigente
               ya se costeó o la etapa lo bloquea (Efraín, 2026-07-17). */}
-          {!readOnlyCosteo && !isValidacion && (
+          {!readOnlyCosteo && !isValidacion && !ajena && (
             <ConfirmButton
               label="Mandar a costeo"
               confirmLabel="¿Enviar solicitud de costeo?"
@@ -530,7 +534,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
               onConfirm={onEnviarCosteo}
             />
           )}
-          {stage === '15' && readOnlyCosteo && (
+          {stage === '15' && readOnlyCosteo && !ajena && (
             <ConfirmButton
               label="Mandar a Validación de costeo"
               confirmLabel="¿Mandar a validación de costeo?"
@@ -542,7 +546,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
               onConfirm={onEnviarValidacion}
             />
           )}
-          {stage === '7' && (
+          {stage === '7' && !ajena && (
             <ConfirmButton
               label="Generar cotización"
               confirmLabel="¿Generar y mandar a firma?"
@@ -552,7 +556,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
               onConfirm={onGenerarCotizacion}
             />
           )}
-          {stage && !['1', '2', '5'].includes(stage) && (
+          {stage && !['1', '2', '5'].includes(stage) && !ajena && (
             <>
               {stage !== '4' && (
                 <ConfirmButton
@@ -603,6 +607,20 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
         </div>
       )}
 
+      {/* Sin este aviso, una oportunidad de la zona se ve idéntica a una propia
+          pero sin botones — parecería que el portal se rompió. */}
+      {ajena && (
+        <div style={{
+          margin: isMobile ? '12px 14px 0' : '14px 32px 0', padding: '10px 14px',
+          borderRadius: 'var(--radius-lg)', background: 'var(--bg-sunken)',
+          border: '1px solid var(--border)', font: 'var(--text-label)', color: 'var(--ink-secondary)',
+        }}>
+          Solo lectura — esta oportunidad es de{' '}
+          <span style={{ color: 'var(--ink)' }}>{item.cols[VENDEDOR_COL]?.text || 'otro vendedor'}</span>
+          {' '}y la ves porque lideras su zona.
+        </div>
+      )}
+
       <BoardTabsBar active={activeTab} onChange={setTab} showPostventa={showPostventa} showProyectos={showProyectos} />
 
       {/* Una vez existe el Proyecto (Ganada), la conversación post-venta vive
@@ -618,21 +636,21 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
           // resetea la selección interna de chips y regresa la vista a la vigente.
           key={`cot-${versions.length}`}
           subCols={subCols} oppCols={oppCols} products={products} variant={cotizacionVariant} onSaved={load} versions={versions}
-          editable={stage !== '1' && stage !== '2'}
+          editable={stage !== '1' && stage !== '2' && !ajena}
           onNuevaVersion={stage !== '1' && stage !== '2' && stage !== '4' && !noLineEdits && !draftVigente ? () => setShowNuevaVersion(true) : undefined}
           onRestoreVersion={stage !== '1' && stage !== '2' && !noLineEdits ? (v) => setRestoreTarget(v) : undefined}
           stage={stage}
           draft={draftVigente}
           oppId={id}
           item={item}
-          readOnly={readOnlyCosteo}
+          readOnly={readOnlyCosteo || ajena}
           precioOnly={isValidacion}
         />
       )}
       {activeTab === 'embellecimientos' && (
         <EmbellecimientosTab
           subCols={subCols} products={products} versions={versions} onSaved={load}
-          editable={stage !== '1' && stage !== '2'}
+          editable={stage !== '1' && stage !== '2' && !ajena}
           onNuevaVersion={stage !== '1' && stage !== '2' && stage !== '4' && !noLineEdits && !draftVigente ? () => setShowNuevaVersion(true) : undefined}
           readOnly={noLineEdits}
         />

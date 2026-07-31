@@ -191,6 +191,30 @@ INSERT OR IGNORE INTO role_board_access (role, board_key) VALUES
   ('compras', 'proveedores'), ('compras', 'inventario'),
   ('almacen', 'inventario');
 
+-- Zonas de ventas (2026-07-30, worker/lib/zonas.ts). Ensanchan el scope de LECTURA del
+-- líder: ve sus oportunidades y las de los miembros de su zona. La ESCRITURA no se
+-- ensancha — el write path pide scope 'own' (worker/lib/dal.ts getItem opts.scope), así
+-- que sobre una oportunidad ajena el líder recibe 404, igual que cualquier otro viewer.
+-- Un vendedor sin zona (o que no la lidera) mantiene exactamente el scope de antes.
+--
+-- La membresía se guarda por email y NO por monday_user_id porque una misma persona
+-- puede tener dos filas de identity (login de trabajo + gmail personal) con el mismo
+-- monday_user_id; al leer se resuelve a ids de Monday, así ambos logins caen en la zona.
+CREATE TABLE IF NOT EXISTS zonas (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  nombre      TEXT NOT NULL UNIQUE,
+  lider_email TEXT REFERENCES identity(email) ON DELETE SET NULL
+);
+
+-- Sin miembros = zona vacía: el líder solo se ve a sí mismo (comportamiento de hoy).
+-- El líder no necesita fila aquí; su propio monday_user_id siempre entra al scope.
+CREATE TABLE IF NOT EXISTS zona_miembros (
+  zona_id INTEGER NOT NULL REFERENCES zonas(id) ON DELETE CASCADE,
+  email   TEXT NOT NULL REFERENCES identity(email) ON DELETE CASCADE,
+  PRIMARY KEY (zona_id, email)
+);
+CREATE INDEX IF NOT EXISTS idx_zona_miembros_email ON zona_miembros(email);
+
 -- Centro de notificaciones del portal (2026-07-22, worker/lib/notify.ts). Dos bandejas
 -- por `severity`: 'importante' (te mencionaron, costeo incompleto) y 'actualizacion'
 -- (la oportunidad cambió de etapa). Cada fila es personal: `recipient_email` apunta a

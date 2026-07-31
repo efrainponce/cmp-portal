@@ -44,7 +44,9 @@ export async function submitWrite(
     }
   }
 
-  const row = await getItem(env, slug, itemId, viewer);
+  // scope 'own', no 'read': un líder de zona VE las oportunidades de su equipo pero
+  // no las escribe (worker/lib/zonas.ts). 404 y no 403 — la propiedad no se filtra.
+  const row = await getItem(env, slug, itemId, viewer, 'own');
   if (!row) throw new OutboxError(404, 'not found');
 
   const board = BOARDS[slug];

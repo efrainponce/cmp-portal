@@ -1,7 +1,7 @@
 // Rutas genéricas de boards espejados de Monday (list/detail/patch/create/
 // refresh/updates) + identidad del viewer y rosters. Movido tal cual desde
 // worker/index.ts (2026-07-16) — sin cambios de comportamiento.
-import type { Hono } from 'hono';
+import type { Context, Hono } from 'hono';
 import type { Env } from '../env';
 import { BOARDS } from '../../shared/boards';
 import type { BoardSlug } from '../../shared/boards';
@@ -11,8 +11,10 @@ import type {
 } from '../../shared/dto';
 import {
   listItems, getItem, childrenOf, childSlugOf, etagFor, pendingItemIds, listVendedores,
+  ownsItem, leadsOthers,
 } from '../lib/dal';
 import { toItemDTO, toColMeta } from '../lib/serialize';
+import { canReadBoard } from '../../shared/visibility';
 import { submitWrite, OutboxError } from '../lib/outbox';
 import { submitCreate, CreateError } from '../lib/createRecord';
 import { fetchUpdates, createUpdate, addFileToUpdate, fetchAssetPublicUrls, deleteItem } from '../lib/monday';
@@ -24,6 +26,20 @@ import { emitNotification } from '../lib/notify';
 
 function isBoardSlug(s: string): s is BoardSlug {
   return Object.prototype.hasOwnProperty.call(BOARDS, s);
+}
+
+/** El `:slug` de la ruta, solo si además es un board que el viewer puede ver.
+ * El filtrado por columnas de serialize.ts NO alcanza como única defensa: el
+ * `name` del item va siempre en el DTO, así que un board 100% interno para el
+ * rol (`proveedores` para vendedor/almacén) seguía listando sus 98 nombres —
+ * y su detalle, sus updates y sus adjuntos — con `cols: {}` (Efraín,
+ * 2026-07-30: "ventas no puede ver nada de costeo ni proveedores"). Null = la
+ * ruta responde 404, el mismo "no existe" que un slug inventado: para ese rol
+ * el board efectivamente no existe. */
+function boardFor(c: Context<{ Bindings: Env }>): BoardSlug | null {
+  const slug = c.req.param('slug');
+  if (!isBoardSlug(slug)) return null;
+  return canReadBoard(slug, c.get('viewer').role) ? slug : null;
 }
 
 // Ventana en la que un refetch recién hecho se considera "ya fresco" — evita
@@ -94,7 +110,8 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
   });
 
   app.post('/api/boards/:slug/items', async c => {
-    const slug = c.req.param('slug');
+    const slug = boardFor(c);
+    if (!slug) return c.json({ error: 'not found' }, 404);
     const viewer = c.get('viewer');
     const body = await c.req.json<CreateRequest>();
 
@@ -110,8 +127,8 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
   });
 
   app.get('/api/boards/:slug/items', async c => {
-    const slug = c.req.param('slug');
-    if (!isBoardSlug(slug)) return c.json({ error: 'not found' }, 404);
+    const slug = boardFor(c);
+    if (!slug) return c.json({ error: 'not found' }, 404);
     const viewer = c.get('viewer');
     const q = c.req.query('q');
 
@@ -129,8 +146,8 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
   });
 
   app.get('/api/boards/:slug/items/:id', async c => {
-    const slug = c.req.param('slug');
-    if (!isBoardSlug(slug)) return c.json({ error: 'not found' }, 404);
+    const slug = boardFor(c);
+    if (!slug) return c.json({ error: 'not found' }, 404);
     const itemId = Number(c.req.param('id'));
     if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
     const viewer = c.get('viewer');
@@ -159,12 +176,16 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
     if (childSlug) {
       dto.children = children.map(r => toItemDTO(r, childSlug, viewer.role, childPending.has(r.item_id)));
     }
+    // ¿La ve por ser suya, o porque lidera la zona de su dueño? Reusa el MISMO
+    // predicado que el write path (scope 'own'), así la UI nunca ofrece editar
+    // algo que el server va a rechazar. La consulta extra solo la paga un líder.
+    dto.ownedByViewer = leadsOthers(viewer) ? await ownsItem(c.env, slug, itemId, viewer) : true;
     return c.json(dto);
   });
 
   app.patch('/api/boards/:slug/items/:id', async c => {
-    const slug = c.req.param('slug');
-    if (!isBoardSlug(slug)) return c.json({ error: 'not found' }, 404);
+    const slug = boardFor(c);
+    if (!slug) return c.json({ error: 'not found' }, 404);
     const itemId = Number(c.req.param('id'));
     if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
     const viewer = c.get('viewer');
@@ -182,10 +203,18 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
   });
 
   app.delete('/api/boards/:slug/items/:id', async c => {
-    const slug = c.req.param('slug');
-    if (!isBoardSlug(slug)) return c.json({ error: 'not found' }, 404);
+    const slug = boardFor(c);
+    if (!slug) return c.json({ error: 'not found' }, 404);
     const itemId = Number(c.req.param('id'));
     if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
+
+    // El borrado era la única ruta de /api/boards que no miraba al viewer:
+    // cualquier autenticado podía borrar CUALQUIER item de Monday sabiendo su
+    // id. Mismo guard de scoping que refresh/updates (dal.getItem), con scope
+    // 'own': borrar es escribir, y un líder de zona solo LEE lo de su equipo.
+    const viewer = c.get('viewer');
+    const row = await getItem(c.env, slug, itemId, viewer, 'own');
+    if (!row) return c.json({ error: 'not found' }, 404);
 
     try {
       await deleteItem(c.env, itemId);
@@ -196,8 +225,8 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
   });
 
   app.post('/api/boards/:slug/items/:id/refresh', async c => {
-    const slug = c.req.param('slug');
-    if (!isBoardSlug(slug)) return c.json({ error: 'not found' }, 404);
+    const slug = boardFor(c);
+    if (!slug) return c.json({ error: 'not found' }, 404);
     const itemId = Number(c.req.param('id'));
     if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
     const viewer = c.get('viewer');
@@ -217,8 +246,8 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
   // call. Reuses getItem's viewer scoping so a vendedor can't read/post on an
   // opportunity that isn't theirs just by knowing its id.
   app.get('/api/boards/:slug/items/:id/updates', async c => {
-    const slug = c.req.param('slug');
-    if (!isBoardSlug(slug)) return c.json({ error: 'not found' }, 404);
+    const slug = boardFor(c);
+    if (!slug) return c.json({ error: 'not found' }, 404);
     const itemId = Number(c.req.param('id'));
     if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
     const viewer = c.get('viewer');
@@ -238,8 +267,8 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
   // buttons (anticipo/saldo) — posting straight to the Monday item's updates
   // feed is exactly where the team already looks for status, per Efraín's brief.
   app.post('/api/boards/:slug/items/:id/updates', async c => {
-    const slug = c.req.param('slug');
-    if (!isBoardSlug(slug)) return c.json({ error: 'not found' }, 404);
+    const slug = boardFor(c);
+    if (!slug) return c.json({ error: 'not found' }, 404);
     const itemId = Number(c.req.param('id'));
     if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
     const viewer = c.get('viewer');
@@ -292,8 +321,8 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
   // real Monday asset on the update, not a link in the text, so it doesn't
   // expire like the presigned S3 links automations post.
   app.post('/api/boards/:slug/items/:id/updates/:updateId/attachment', async c => {
-    const slug = c.req.param('slug');
-    if (!isBoardSlug(slug)) return c.json({ error: 'not found' }, 404);
+    const slug = boardFor(c);
+    if (!slug) return c.json({ error: 'not found' }, 404);
     const itemId = Number(c.req.param('id'));
     const updateId = c.req.param('updateId');
     if (!Number.isFinite(itemId) || !/^\d+$/.test(updateId)) return c.json({ error: 'not found' }, 404);
@@ -322,8 +351,8 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
   // straight to the browser, so we resolve it fresh per request and stream
   // the bytes back with our own headers.
   app.get('/api/boards/:slug/items/:id/updates/attachments/:assetId', async c => {
-    const slug = c.req.param('slug');
-    if (!isBoardSlug(slug)) return c.json({ error: 'not found' }, 404);
+    const slug = boardFor(c);
+    if (!slug) return c.json({ error: 'not found' }, 404);
     const itemId = Number(c.req.param('id'));
     const assetId = c.req.param('assetId');
     if (!Number.isFinite(itemId) || !/^\d+$/.test(assetId)) return c.json({ error: 'not found' }, 404);

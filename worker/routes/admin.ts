@@ -4,11 +4,12 @@
 import type { Hono } from 'hono';
 import type { Env } from '../env';
 import type { Role } from '../../shared/types';
-import type { IdentityDTO, MondayUserDTO, BoardAccessDTO } from '../../shared/dto';
+import type { IdentityDTO, MondayUserDTO, BoardAccessDTO, ZonaDTO } from '../../shared/dto';
 import { TEAM_ROLES } from '../../shared/boardAccess';
 import { listIdentities, upsertIdentity } from '../lib/dal';
 import { cachedFetchUsers } from '../lib/rosterCache';
 import { listAllBoardAccess, setBoardAccess, BoardAccessError } from '../lib/boardAccess';
+import { listZonas, createZona, updateZona, deleteZona, ZonaError } from '../lib/zonas';
 
 export function adminRoutes(app: Hono<{ Bindings: Env }>) {
   app.get('/api/admin/identities', async c => {
@@ -77,5 +78,52 @@ export function adminRoutes(app: Hono<{ Bindings: Env }>) {
       if (err instanceof BoardAccessError) return c.json({ error: err.message }, 400);
       throw err;
     }
+  });
+
+  // Zonas de ventas (worker/lib/zonas.ts): el líder LEE lo de sus miembros. A
+  // diferencia de board-access, esto sí es protección de datos — por eso el DAL
+  // valida contra el roster y el write path nunca mira la zona.
+  app.get('/api/admin/zonas', async c => {
+    if (c.get('viewer').role !== 'admin') return c.json({ error: 'forbidden' }, 403);
+    const dto: ZonaDTO[] = await listZonas(c.env);
+    return c.json(dto);
+  });
+
+  app.post('/api/admin/zonas', async c => {
+    if (c.get('viewer').role !== 'admin') return c.json({ error: 'forbidden' }, 403);
+    const body = await c.req.json<{ nombre?: string }>();
+    try {
+      return c.json(await createZona(c.env, body.nombre ?? ''));
+    } catch (err) {
+      if (err instanceof ZonaError) return c.json({ error: err.message }, err.status as 400);
+      throw err;
+    }
+  });
+
+  // Reemplaza el estado completo de la zona (mismo criterio que board-access:
+  // el cliente manda el conjunto final, no un diff).
+  app.put('/api/admin/zonas/:id', async c => {
+    if (c.get('viewer').role !== 'admin') return c.json({ error: 'forbidden' }, 403);
+    const id = Number(c.req.param('id'));
+    if (!Number.isFinite(id)) return c.json({ error: 'not found' }, 404);
+    const body = await c.req.json<Partial<Pick<ZonaDTO, 'nombre' | 'liderEmail' | 'miembros'>>>();
+    if (body.miembros !== undefined && !Array.isArray(body.miembros)) {
+      return c.json({ error: 'miembros debe ser una lista' }, 400);
+    }
+    try {
+      await updateZona(c.env, id, body);
+      return c.json({ ok: true });
+    } catch (err) {
+      if (err instanceof ZonaError) return c.json({ error: err.message }, err.status as 400);
+      throw err;
+    }
+  });
+
+  app.delete('/api/admin/zonas/:id', async c => {
+    if (c.get('viewer').role !== 'admin') return c.json({ error: 'forbidden' }, 403);
+    const id = Number(c.req.param('id'));
+    if (!Number.isFinite(id)) return c.json({ error: 'not found' }, 404);
+    await deleteZona(c.env, id);
+    return c.json({ ok: true });
   });
 }

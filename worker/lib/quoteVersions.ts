@@ -182,7 +182,8 @@ export function esDraftVigente(lineas: MirrorItem[]): boolean {
 export async function duplicateVersion(
   env: Env, ctx: ExecutionContext, itemId: number, viewer: Identity,
 ): Promise<void> {
-  const opp = await getItem(env, 'oportunidades', itemId, viewer);
+  // scope 'own': reescribe las líneas de la oportunidad (ver worker/lib/zonas.ts).
+  const opp = await getItem(env, 'oportunidades', itemId, viewer, 'own');
   if (!opp) throw new QuoteVersionError(404, 'not found');
 
   const cols = colsOf(opp);
@@ -237,7 +238,8 @@ function norm(s: string): string {
 export async function restoreVersion(
   env: Env, ctx: ExecutionContext, itemId: number, versionNum: number, viewer: Identity,
 ): Promise<void> {
-  const opp = await getItem(env, 'oportunidades', itemId, viewer);
+  // scope 'own': reescribe las líneas de la oportunidad (ver worker/lib/zonas.ts).
+  const opp = await getItem(env, 'oportunidades', itemId, viewer, 'own');
   if (!opp) throw new QuoteVersionError(404, 'not found');
 
   const cols = colsOf(opp);

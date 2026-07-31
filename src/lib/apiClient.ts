@@ -5,7 +5,7 @@ import type {
   BoardAccessDTO, ColMeta, ColVal, CreateResponse, DuplicarOportunidadResponse, DuplicarVersionResponse, EnviarCosteoResponse, IdentityDTO, ItemDTO, ItemDetailDTO,
   ListResponse, MeDTO, MentionUserDTO, MondayUserDTO, ProyectoActionResponse, ProyectoResponse,
   QuoteLineSnapshot, QuoteVersionDTO, QuoteVersionsResponse,
-  UpdateAttachmentDTO, UpdateDTO, VendedorDTO, WriteResponse,
+  UpdateAttachmentDTO, UpdateDTO, VendedorDTO, WriteResponse, ZonaDTO,
 } from '../../shared/dto';
 import { mockBoardMeta, mockItemDetail, mockPatch } from './mockFallback';
 import { getImpersonateTarget } from './impersonation';
@@ -13,7 +13,7 @@ import { markSessionExpired } from './sessionState';
 
 export type {
   BoardAccessDTO, BoardSlug, ColMeta, ColVal, IdentityDTO, ItemDTO, ItemDetailDTO, ListResponse, MeDTO, MentionUserDTO,
-  MondayUserDTO, QuoteLineSnapshot, QuoteVersionDTO, UpdateAttachmentDTO, UpdateDTO, VendedorDTO,
+  MondayUserDTO, QuoteLineSnapshot, QuoteVersionDTO, UpdateAttachmentDTO, UpdateDTO, VendedorDTO, ZonaDTO,
 };
 
 export interface BoardMeta { slug: BoardSlug; title: string; cols: ColMeta[] }
@@ -426,6 +426,45 @@ export async function putBoardAccess(role: string, boardKeys: string[]): Promise
     method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ boardKeys }),
   });
   if (!res.ok) throw new Error('PUT board-access failed: ' + res.status);
+}
+
+// Zonas de ventas: el líder ve (solo lectura) las oportunidades de sus miembros.
+export async function getZonas(): Promise<ZonaDTO[]> {
+  const res = await apiFetch('/admin/zonas');
+  if (!res.ok) throw new Error('GET zonas failed: ' + res.status);
+  return res.json();
+}
+
+export async function createZona(nombre: string): Promise<ZonaDTO> {
+  const res = await apiFetch('/admin/zonas', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nombre }),
+  });
+  if (!res.ok) throw new Error(await errorText(res, 'POST zona failed'));
+  return res.json();
+}
+
+export async function putZona(
+  id: number, patch: Partial<Pick<ZonaDTO, 'nombre' | 'liderEmail' | 'miembros'>>,
+): Promise<void> {
+  const res = await apiFetch(`/admin/zonas/${id}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch),
+  });
+  if (!res.ok) throw new Error(await errorText(res, 'PUT zona failed'));
+}
+
+export async function deleteZona(id: number): Promise<void> {
+  const res = await apiFetch(`/admin/zonas/${id}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('DELETE zona failed: ' + res.status);
+}
+
+// El worker manda {error} legible en 400/409 (nombre repetido, email fuera del
+// roster) — sin esto la UI mostraría "PUT zona failed: 409" y no el motivo.
+async function errorText(res: Response, fallback: string): Promise<string> {
+  try {
+    const body = await res.json() as { error?: string };
+    if (body?.error) return body.error;
+  } catch { /* respuesta sin JSON */ }
+  return `${fallback}: ${res.status}`;
 }
 
 // Portal chat bubble — same Claude agent/tools as the WhatsApp bot, a second channel.

@@ -86,7 +86,8 @@ export async function uploadZoneImage(
   if (!isZoneKey(zone)) throw new EmbellImageError(400, 'zona inválida');
   if (!canWrite('oportunidades_sub', COL, viewer.role)) throw new EmbellImageError(403, 'forbidden');
 
-  const row = await getItem(env, 'oportunidades_sub', itemId, viewer);
+  // scope 'own': sube un archivo a la línea (ver worker/lib/zonas.ts).
+  const row = await getItem(env, 'oportunidades_sub', itemId, viewer, 'own');
   if (!row) throw new EmbellImageError(404, 'not found');
 
   const asset = await addFileToColumn(env, itemId, COL, file, `${zone}${SEP}${filename}`);

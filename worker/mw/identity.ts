@@ -6,6 +6,7 @@
 import type { MiddlewareHandler } from 'hono';
 import type { Env } from '../env';
 import type { Identity } from '../../shared/types';
+import { readableUserIds } from '../lib/zonas';
 
 declare module 'hono' {
   interface ContextVariableMap {
@@ -22,17 +23,26 @@ export const identity: MiddlewareHandler<{ Bindings: Env }> = async (c, next) =>
   const row = await fetchIdentity(email);
   if (!row) return c.json({ error: 'pide acceso', email }, 403);
 
+  // Zona: se resuelve UNA vez por request y viaja en el viewer, para que el DAL no
+  // le pegue a D1 en cada getItem. Ver worker/lib/zonas.ts — solo ensancha lectura.
+  const withScope = async (identity: Identity): Promise<Identity> => ({
+    ...identity,
+    scope_user_ids: await readableUserIds(c.env, identity),
+  });
+
   const impersonateEmail = c.req.header('X-Impersonate-Email');
   if (impersonateEmail && row.role === 'admin' && impersonateEmail !== email) {
     const target = await fetchIdentity(impersonateEmail);
     if (!target) return c.json({ error: 'usuario a impersonar no encontrado o inactivo' }, 400);
     console.log(`[impersonate] ${row.email} -> ${target.email} ${c.req.method} ${c.req.path}`);
-    c.set('viewer', target);
+    // El scope se calcula sobre el SUPLANTADO: "ver como" debe mostrar la zona que
+    // ese usuario ve, no la del admin.
+    c.set('viewer', await withScope(target));
     c.set('impersonatedBy', row);
     return next();
   }
 
-  c.set('viewer', row);
+  c.set('viewer', await withScope(row));
   c.set('impersonatedBy', null);
   return next();
 };

@@ -22,6 +22,10 @@ export interface ItemDTO {
 
 export interface ItemDetailDTO extends ItemDTO {
   children?: ItemDTO[];         // subitems, same whitelist rules
+  /** false = el viewer la ve solo porque lidera la zona de su dueño
+   * (worker/lib/zonas.ts): el drawer se abre en solo lectura y el server
+   * responde 404 a cualquier escritura. Ausente = true (dueño). */
+  ownedByViewer?: boolean;
 }
 
 export interface ListResponse {
@@ -144,6 +148,15 @@ export interface MondayUserDTO { id: number; nombre: string; email: string; phon
 // el admin en Settings. Las llaves son Role; 'admin' siempre trae todos los boardKeys
 // y no es editable (ver worker/lib/boardAccess.ts).
 export type BoardAccessDTO = Record<Role, string[]>;
+
+// Zonas de ventas (worker/lib/zonas.ts): el líder ve, además de lo suyo, las
+// oportunidades de sus miembros — solo lectura. Se administra en Configuración.
+export interface ZonaDTO {
+  id: number;
+  nombre: string;
+  liderEmail: string | null;
+  miembros: string[];           // emails de identity
+}
 
 // Column metadata the UI needs to render board-like tables (titles, types,
 // status label colors from Monday settings). Generated — see shared/column-meta.ts.

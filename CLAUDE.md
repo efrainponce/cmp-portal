@@ -30,6 +30,9 @@ con el Worker (`/api/*`). Bot de WhatsApp + chat del portal comparten agente Cla
   hace que Monday asigne una etiqueta arbitraria en silencio.
 - Permisos por columna/rol viven en `shared/visibility.ts` (server las filtra; la UI
   solo refleja `ColMeta.w`). Decisiones de whitelist son de Efraín — no las cambies solo.
+- Permisos por RENGLÓN: `worker/lib/dal.ts`. Leer = lo propio + la zona que el viewer
+  lidera (`worker/lib/zonas.ts`); escribir = SOLO lo propio (`getItem(..., 'own')`).
+  Todo endpoint que muta pide scope `'own'` — si agregas uno, hazlo también.
 - Cada commit se registra en `log.md` (entrada con hash + bullets) y luego un commit
   "Registrar hash de X en log.md". Mensajes de commit en español.
 - Puede haber otra sesión de Claude concurrente: commits selectivos, no hagas deploy

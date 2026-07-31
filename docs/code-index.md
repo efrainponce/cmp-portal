@@ -7,7 +7,8 @@ Formato: `- [ruta](ruta) — Propósito (1 frase). Exports: Export1, Export2, Ex
 Los `*.test.ts` (vitest, `npm test`) no se listan aquí: viven junto al archivo que
 prueban. Hoy cubren `worker/lib/canon.ts`, `worker/lib/columnEncode.ts`,
 `shared/visibility.ts`, `catalogIndex` de `gridMeta.tsx`, el escritor de PDF
-(`worker/lib/pdf/writer.ts` + layout/plantillas) y `worker/lib/portalFiles.ts`.
+(`worker/lib/pdf/writer.ts` + layout/plantillas), `worker/lib/portalFiles.ts` y el
+scoping de renglones de `worker/lib/dal.ts`.
 
 ## shared/
 
@@ -45,7 +46,7 @@ prueban. Hoy cubren `worker/lib/canon.ts`, `worker/lib/columnEncode.ts`,
 - [worker/lib/cotizacionPdfs.ts](worker/lib/cotizacionPdfs.ts) — Resuelve PDFs de cotización (solicitud, sin firmar, firmada) de columnas Oportunidades. Exports: CotizacionPdfError, PdfKind, resolveCotizacionPdfUrl.
 - [worker/lib/createOportunidad.ts](worker/lib/createOportunidad.ts) — Crear Oportunidad + subitems de línea de producto. Exports: OportunidadError, LineaInput, OportunidadInput, OportunidadResult.
 - [worker/lib/createRecord.ts](worker/lib/createRecord.ts) — Creación síncrona de item genérico (no outbox, sin echo necesario). Exports: CreateError, submitCreate.
-- [worker/lib/dal.ts](worker/lib/dal.ts) — All reads scoped by viewer; handlers no pueden bypassear estos predicados. Exports: childSlugOf, listItems, getItem, childrenOf.
+- [worker/lib/dal.ts](worker/lib/dal.ts) — All reads scoped by viewer; handlers no pueden bypassear estos predicados. El scope de LECTURA incluye la zona que el viewer lidera; el de escritura ('own') nunca. Exports: ScopeMode, ownerIdsFor, leadsOthers, scopeFor, childSlugOf, listItems, getItem, ownsItem, childrenOf.
 - [worker/lib/duplicateOportunidad.ts](worker/lib/duplicateOportunidad.ts) — "Duplicar" en drawer: clona Oportunidad + líneas en nueva vigente sin costearse. Exports: DuplicateOportunidadError, duplicateOportunidad.
 - [worker/lib/embellecimientoImagenes.ts](worker/lib/embellecimientoImagenes.ts) — Imágenes de referencia per-zona (upload validation, almacenamiento en R2). Exports: EmbellImageError, embellImageKey, parseFiles, splitZone.
 - [worker/lib/http.ts](worker/lib/http.ts) — Helper mínimo compartido por rutas (statusCode responses). Exports: jsonStatus.
@@ -62,11 +63,12 @@ prueban. Hoy cubren `worker/lib/canon.ts`, `worker/lib/columnEncode.ts`,
 - [worker/lib/r2.ts](worker/lib/r2.ts) — Helpers mínimos sobre binding FILES (bucket R2 para documentos). Exports: oportunidadFileKey, putFile.
 - [worker/lib/rosterCache.ts](worker/lib/rosterCache.ts) — Cache D1 del roster de usuarios de Monday con TTL configurable. Exports: cachedFetchUsers.
 - [worker/lib/serialize.ts](worker/lib/serialize.ts) — Mirror row → role-scoped DTOs: único productor de ItemDTO/ColMeta filtradas. Exports: RawCol, toItemDTO, toColMeta.
+- [worker/lib/zonas.ts](worker/lib/zonas.ts) — Zonas de ventas: el líder LEE las oportunidades de sus miembros (solo lectura; el write path pide scope 'own'). Exports: Zona, ZonaError, ensureZonaTables, readableUserIds, listZonas, createZona, updateZona, deleteZona.
 
 ### worker/mw/
 
 - [worker/mw/access.ts](worker/mw/access.ts) — Verifica identidad del caller en c.get('email') vía Cloudflare Access. Exports: access.
-- [worker/mw/identity.ts](worker/mw/identity.ts) — Email (de mw/access) → fila D1 → c.get('viewer') con Role + metadata. Exports: identity.
+- [worker/mw/identity.ts](worker/mw/identity.ts) — Email (de mw/access) → fila D1 → c.get('viewer') con Role + metadata + scope de zona (resuelto una vez por request). Exports: identity.
 
 ### worker/routes/
 

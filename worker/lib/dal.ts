@@ -9,30 +9,54 @@ interface Scope {
   binds: unknown[];
 }
 
+/** 'read': lo propio + lo de la zona que el viewer lidera (worker/lib/zonas.ts).
+ * 'own': estrictamente lo propio, ignorando la zona — lo que exige TODO camino de
+ * escritura, para que un líder pueda ver el trabajo de su equipo sin poder pisarlo. */
+export type ScopeMode = 'read' | 'own';
+
+/** Los ids que cuentan como "dueño" para este viewer bajo este modo. Puro: la
+ * resolución de la zona ya ocurrió en worker/mw/identity.ts (viewer.scope_user_ids). */
+export function ownerIdsFor(viewer: Identity, mode: ScopeMode): number[] {
+  if (mode === 'own') return [viewer.monday_user_id];
+  return [...new Set([viewer.monday_user_id, ...(viewer.scope_user_ids ?? [])])];
+}
+
 // admin/compras: everything. vendedor/almacen (and any other non-privileged role): rows
 // whose owning board's authzCols include the viewer; subitem boards check the PARENT's
 // owners. Boards without authzCols (productos/instituciones) are open to all
 // (the serializer still strips columns per-role — shared/visibility.ts).
-function scopeFor(slug: BoardSlug, viewer: Identity): Scope {
+export function scopeFor(slug: BoardSlug, viewer: Identity, mode: ScopeMode = 'read'): Scope {
   if (viewer.role === 'admin' || viewer.role === 'compras') return { where: '1=1', binds: [] };
 
   const board = BOARDS[slug];
   const owningBoard = board.parent ? BOARDS[board.parent] : board;
   if (!owningBoard.authzCols || owningBoard.authzCols.length === 0) return { where: '1=1', binds: [] };
 
+  // IN (…) con un placeholder por id: casi siempre es uno solo (nadie lidera zona)
+  // y un líder trae un puñado, así que no cambia el plan de la consulta.
+  const ids = ownerIdsFor(viewer, mode);
+  const placeholders = ids.map(() => '?').join(',');
+
   if (board.parent) {
     return {
       where: `EXISTS (
         SELECT 1 FROM items p, json_each(p.vendedor_ids) je
-        WHERE p.board_id = ? AND p.item_id = items.parent_item_id AND je.value = ?
+        WHERE p.board_id = ? AND p.item_id = items.parent_item_id AND je.value IN (${placeholders})
       )`,
-      binds: [owningBoard.id, viewer.monday_user_id],
+      binds: [owningBoard.id, ...ids],
     };
   }
   return {
-    where: `EXISTS (SELECT 1 FROM json_each(items.vendedor_ids) je WHERE je.value = ?)`,
-    binds: [viewer.monday_user_id],
+    where: `EXISTS (SELECT 1 FROM json_each(items.vendedor_ids) je WHERE je.value IN (${placeholders}))`,
+    binds: [...ids],
   };
+}
+
+/** ¿El viewer ve filas de alguien más que él? Solo cierto para un líder con zona
+ * poblada. Sirve para no pagar la consulta extra de propiedad (ownsItem) en el
+ * 99% de los requests, donde "lo veo" y "es mío" son lo mismo. */
+export function leadsOthers(viewer: Identity): boolean {
+  return ownerIdsFor(viewer, 'read').length > 1;
 }
 
 export function childSlugOf(slug: BoardSlug): BoardSlug | undefined {
@@ -88,12 +112,24 @@ export async function listItems(env: Env, slug: BoardSlug, viewer: Identity, q?:
 
 // Returns null (never throws) when the item doesn't exist OR isn't owned by viewer —
 // callers must answer 404, not 403, so ownership never leaks.
-export async function getItem(env: Env, slug: BoardSlug, itemId: number, viewer: Identity): Promise<MirrorItem | null> {
+//
+// mode 'own' (todo camino de ESCRITURA) ignora la zona del viewer: un líder ve la
+// oportunidad de su vendedor pero al escribirla recibe el mismo 404 que un extraño.
+export async function getItem(
+  env: Env, slug: BoardSlug, itemId: number, viewer: Identity, mode: ScopeMode = 'read',
+): Promise<MirrorItem | null> {
   const board = BOARDS[slug];
-  const scope = scopeFor(slug, viewer);
+  const scope = scopeFor(slug, viewer, mode);
   const sql = `SELECT * FROM items WHERE board_id = ? AND item_id = ? AND (${scope.where})`;
   const row = await env.DB.prepare(sql).bind(board.id, itemId, ...scope.binds).first<MirrorItem>();
   return row ?? null;
+}
+
+/** Guard de los endpoints que MUTAN pero no necesitan la fila (o la leen por otro
+ * lado): false cuando el item no existe o no es del viewer mismo — el llamador
+ * responde 404, nunca 403. Un líder de zona da false sobre lo de su equipo. */
+export async function ownsItem(env: Env, slug: BoardSlug, itemId: number, viewer: Identity): Promise<boolean> {
+  return (await getItem(env, slug, itemId, viewer, 'own')) !== null;
 }
 
 export async function childrenOf(env: Env, parentSlug: BoardSlug, itemId: number, viewer: Identity): Promise<MirrorItem[]> {
@@ -163,7 +199,12 @@ export async function etagFor(env: Env, slug: BoardSlug, viewer: Identity): Prom
     .prepare('SELECT COUNT(*) as c, MAX(synced_at) as m FROM items WHERE board_id = ?')
     .bind(board.id)
     .first<{ c: number; m: string | null }>();
-  const scopeKey = viewer.role === 'admin' || viewer.role === 'compras' ? 'all' : `u${viewer.monday_user_id}`;
+  // La llave lleva el CONJUNTO de ids visibles, no solo el propio: si lleva nada
+  // más el del viewer, mover a alguien de zona no invalida el ETag y el líder se
+  // queda con la lista vieja (304) hasta que el board cambie por otra razón.
+  const scopeKey = viewer.role === 'admin' || viewer.role === 'compras'
+    ? 'all'
+    : `u${ownerIdsFor(viewer, 'read').sort((a, b) => a - b).join('.')}`;
   return `"${slug}:${scopeKey}:${row?.c ?? 0}:${row?.m ?? ''}"`;
 }
 

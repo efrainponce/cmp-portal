@@ -112,7 +112,8 @@ export async function duplicateOportunidad(
 ): Promise<{ id: number }> {
   if (!DUPLICATE_ROLES.includes(viewer.role)) throw new DuplicateOportunidadError(403, 'cannot duplicate');
 
-  const source = await getItem(env, 'oportunidades', itemId, viewer);
+  // scope 'own': crea items en Monday a partir de esta (ver worker/lib/zonas.ts).
+  const source = await getItem(env, 'oportunidades', itemId, viewer, 'own');
   if (!source) throw new DuplicateOportunidadError(404, 'not found');
   const srcCols = colsOf(source);
 

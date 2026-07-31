@@ -207,7 +207,9 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
     const viewer = c.get('viewer');
 
-    const row = await getItem(c.env, 'oportunidades', itemId, viewer);
+    // scope 'own' aquí y en todo lo que muta: un líder de zona ve las oportunidades
+    // de su equipo pero no dispara automatizaciones sobre ellas (worker/lib/zonas.ts).
+    const row = await getItem(c.env, 'oportunidades', itemId, viewer, 'own');
     if (!row) return c.json({ error: 'not found' }, 404);
 
     try {
@@ -296,7 +298,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     const body = await c.req.json<{ cantidad?: number }>();
 
     try {
-      const item = await getItem(c.env, 'oportunidades', itemId, viewer);
+      const item = await getItem(c.env, 'oportunidades', itemId, viewer, 'own');
       if (!item) return c.json({ error: 'not found' }, 404);
 
       // MirrorItem.columns is raw [{id,type,text,value}] JSON — same shape/parsing
@@ -528,7 +530,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     const producto = body.producto?.trim();
     if (!producto) return c.json({ error: 'producto is required' }, 400);
 
-    const row = await getItem(c.env, 'proyectos', itemId, viewer);
+    const row = await getItem(c.env, 'proyectos', itemId, viewer, 'own');
     if (!row) return c.json({ error: 'not found' }, 404);
 
     const subitemCols: Record<string, unknown> = { text_mm0hs17x: producto };
@@ -558,7 +560,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     const viewer = c.get('viewer');
     if (!canWrite('proyectos', PROYECTO_DOCUMENTO_COL, viewer.role)) return c.json({ error: 'forbidden' }, 403);
 
-    const row = await getItem(c.env, 'proyectos', itemId, viewer);
+    const row = await getItem(c.env, 'proyectos', itemId, viewer, 'own');
     if (!row) return c.json({ error: 'not found' }, 404);
 
     const form = await c.req.formData();
@@ -588,7 +590,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     const viewer = c.get('viewer');
 
     if (!action.roles.includes(viewer.role)) return c.json({ error: 'forbidden' }, 403);
-    const row = await getItem(c.env, 'proyectos', itemId, viewer);
+    const row = await getItem(c.env, 'proyectos', itemId, viewer, 'own');
     if (!row) return c.json({ error: 'not found' }, 404);
 
     // Body opcional — solo 'generar-oc' lo usa (onlyProveedor); las otras 3 acciones
