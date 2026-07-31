@@ -46,7 +46,18 @@ export function childSlugOf(slug: BoardSlug): BoardSlug | undefined {
 const SEARCHABLE_COLS = [
   'deal_owner', 'multiple_person_mm03qyw9',        // Vendedor / Compras
   'lookup_mm1bs976', 'pulse_id_mm0qcq0m', 'deal_contact', // Institución / Folio / Contacto
+  // Productos: SKU / Nombre Producto / Marca — el catálogo se busca por SKU
+  // tanto como por nombre (Efraín, 2026-07-30).
+  'product_and_service_sku', 'text_mm0wvga2', 'product_and_service_description',
 ];
+
+/** Palabras del query. Todas deben aparecer (AND) pero cada una puede caer en
+ * un campo distinto y en cualquier orden — "5.11 bota" o "bota 5.11" llegan al
+ * mismo producto, cosa que un solo LIKE del query completo nunca lograba. Tope
+ * de 6 palabras: cada una agrega un EXISTS al query. */
+export function searchTokens(q: string): string[] {
+  return q.trim().split(/\s+/).filter(Boolean).slice(0, 6);
+}
 
 export async function listItems(env: Env, slug: BoardSlug, viewer: Identity, q?: string): Promise<MirrorItem[]> {
   const board = BOARDS[slug];
@@ -55,15 +66,20 @@ export async function listItems(env: Env, slug: BoardSlug, viewer: Identity, q?:
   let sql = `SELECT * FROM items WHERE board_id = ? AND (${scope.where})`;
   if (q) {
     const placeholders = SEARCHABLE_COLS.map(() => '?').join(',');
-    sql += ` AND (
-      name LIKE ? COLLATE NOCASE
-      OR EXISTS (
-        SELECT 1 FROM json_each(items.columns) je
-        WHERE json_extract(je.value, '$.id') IN (${placeholders})
-          AND json_extract(je.value, '$.text') LIKE ? COLLATE NOCASE
-      )
-    )`;
-    binds.push(`%${q}%`, ...SEARCHABLE_COLS, `%${q}%`);
+    // Una cláusula por palabra (AND entre ellas, OR entre campos dentro de
+    // cada una): antes el query entero iba en un solo LIKE, así que "5.11
+    // bota" no encontraba nada aunque las dos palabras estuvieran en el item.
+    for (const token of searchTokens(q)) {
+      sql += ` AND (
+        name LIKE ? COLLATE NOCASE
+        OR EXISTS (
+          SELECT 1 FROM json_each(items.columns) je
+          WHERE json_extract(je.value, '$.id') IN (${placeholders})
+            AND json_extract(je.value, '$.text') LIKE ? COLLATE NOCASE
+        )
+      )`;
+      binds.push(`%${token}%`, ...SEARCHABLE_COLS, `%${token}%`);
+    }
   }
   sql += ' ORDER BY monday_updated_at DESC LIMIT 4000';
   const res = await env.DB.prepare(sql).bind(...binds).all<MirrorItem>();

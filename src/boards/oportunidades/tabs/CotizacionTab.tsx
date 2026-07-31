@@ -35,8 +35,9 @@ import {
   ETAPA_COSTEO_COL,
   PRODUCTO_COL, PRODUCTO_TXT_COL, PRODUCTO_REL_COL, COLOR_COL,
   EMB_STATUS_COL, EMB_LABEL_CON, EMB_LABEL_SIN,
-  PRODUCTO_CONFIRM_COL, linkedProductoId, MONEY_COLS, catalogIndex,
+  PRODUCTO_CONFIRM_COL, linkedProductoId, MONEY_COLS,
 } from './cotizacion/gridMeta';
+import type { ProductoChoice } from '../../../components/forms/ProductPicker';
 
 export function CotizacionTab({
   subCols, products, variant = 'venta', onSaved, versions = [], onNuevaVersion, onRestoreVersion, editable = true, stage, oppId, item,
@@ -133,8 +134,8 @@ export function CotizacionTab({
     setRows((r) => ({ ...r, [id]: { ...(r[id] ?? EMPTY_ROW), ...patch } }));
 
   // Catálogo de Productos — necesario cuando el producto es editable inline
-  // (Nueva oportunidad o borrador de versión: datalist + resolver el nombre
-  // tecleado a un item_id real) Y en el board Costeo (chevron de detalle:
+  // (Nueva oportunidad o borrador de versión: el ProductPicker busca sobre él
+  // y de ahí sale el item_id real) Y en el board Costeo (chevron de detalle:
   // Descripción/Tallas/confirmación viven en el catálogo por SKU).
   useEffect(() => {
     if (canAddLines || variant === 'costeo') {
@@ -288,12 +289,6 @@ export function CotizacionTab({
     void saveCols(product.id, colId, { [colId]: raw }, { clearEditing: true });
   };
 
-  // Producto/Color son texto libre, no numérico — sin preview de fórmulas.
-  const onTextEdit = (product: ItemDTO, colId: string, raw: string) => {
-    const state = rowState(product.id);
-    patchRow(product.id, { editing: { ...state.editing, [colId]: raw }, error: undefined });
-  };
-
   // Color es un <select> — se guarda al elegir (onChange), no al perder foco:
   // un <select> no tiene un "blur para confirmar" natural como un input de texto.
   const onColorChange = (product: ItemDTO, raw: string) => {
@@ -325,27 +320,26 @@ export function CotizacionTab({
     });
   };
 
-  // Al elegir un producto del catálogo escribe la relación real
-  // (board_relation_mkzmafgp) — Monday puebla el mirror (lookup_mm0x4kda,
-  // SKU, Marca…) solo. Sin match en catálogo, cae a texto libre
-  // (text_mm0bkm1j) — mismo criterio que worker/lib/createOportunidad.ts.
-  const onProductoBlur = (product: ItemDTO) => {
-    const state = rowState(product.id);
-    const raw = state.editing[PRODUCTO_COL];
-    if (raw === undefined) return;
-    const current = displayProducto(product, state.preview);
-    if (raw.trim() === '' || raw === current) {
-      const editing = { ...state.editing };
-      delete editing[PRODUCTO_COL];
-      patchRow(product.id, { editing });
-      return;
-    }
-    const match = catalogIndex(catalog).byName.get(raw.trim().toLowerCase());
-    // El write real va a board_relation_mkzmafgp o text_mm0bkm1j — el mirror
-    // que se MUESTRA (lookup_mm0x4kda) lo puebla Monday de forma asíncrona
-    // (el outbox manda el mutation en waitUntil, después de responder). Sin
-    // este preview local, el refetch inmediato de onSaved() todavía trae el
-    // mirror viejo/vacío y parece que la edición no se guardó.
+  // Producto elegido en el picker (src/components/forms/ProductPicker.tsx —
+  // busca por nombre, SKU o pedazos de ambos). Del catálogo se escribe la
+  // relación real (board_relation_mkzmafgp) y Monday puebla los mirrors
+  // (lookup_mm0x4kda, SKU, Descripción…) solo; el texto libre
+  // (text_mm0bkm1j) queda para un producto que todavía no existe en el
+  // catálogo — mismo criterio que worker/lib/createOportunidad.ts.
+  //
+  // Antes esto vivía en el blur de un <input list=datalist>: lo tecleado solo
+  // ligaba si era IDÉNTICO al nombre completo del catálogo, así que teclear un
+  // SKU se guardaba como texto libre y la línea quedaba sin SKU, sin
+  // descripción y sin colores (Efraín, 2026-07-30). Ahora la elección es
+  // explícita y el texto libre solo pasa si el usuario lo escoge.
+  const onProductoPick = (product: ItemDTO, choice: ProductoChoice) => {
+    const nombre = 'item' in choice ? choice.item.name : choice.freeText.trim();
+    if (!nombre) return;
+    if (nombre === displayProducto(product, rowState(product.id).preview)) return;
+    // El mirror que se MUESTRA (lookup_mm0x4kda) lo puebla Monday de forma
+    // asíncrona (el outbox manda el mutation en waitUntil, después de
+    // responder). Sin este preview local, el refetch inmediato de onSaved()
+    // todavía trae el mirror viejo/vacío y parece que no se guardó.
     //
     // También se limpia el color: la lista de colores disponibles depende del
     // producto, así que un color elegido para el producto anterior puede ya
@@ -353,11 +347,13 @@ export function CotizacionTab({
     // (Efraín, 2026-07-20).
     void saveCols(
       product.id, PRODUCTO_COL,
-      match ? { [PRODUCTO_REL_COL]: match.id, [COLOR_COL]: '' } : { [PRODUCTO_TXT_COL]: raw, [COLOR_COL]: '' },
+      'item' in choice
+        ? { [PRODUCTO_REL_COL]: choice.item.id, [COLOR_COL]: '' }
+        : { [PRODUCTO_TXT_COL]: nombre, [COLOR_COL]: '' },
       {
         clearEditing: true,
         alsoClear: [COLOR_COL],
-        preview: { [PRODUCTO_COL]: { text: match ? match.name : raw, type: 'text' }, [COLOR_COL]: { text: '', type: 'text' } },
+        preview: { [PRODUCTO_COL]: { text: nombre, type: 'text' }, [COLOR_COL]: { text: '', type: 'text' } },
       },
     );
   };
@@ -371,22 +367,21 @@ export function CotizacionTab({
   // comportamiento es idéntico al de antes: la fila ya recibía en cada render
   // el handler más nuevo, porque se re-renderizaba siempre.
   const latest = useRef({
-    onEdit, onBlur, onTextEdit, onColorChange,
-    onEmbellecimientoChange, onEtapaCosteoChange, onProductoBlur,
+    onEdit, onBlur, onColorChange,
+    onEmbellecimientoChange, onEtapaCosteoChange, onProductoPick,
     onToggleConfirm, onDeleteLine, toggleExpanded,
   });
   latest.current = {
-    onEdit, onBlur, onTextEdit, onColorChange,
-    onEmbellecimientoChange, onEtapaCosteoChange, onProductoBlur,
+    onEdit, onBlur, onColorChange,
+    onEmbellecimientoChange, onEtapaCosteoChange, onProductoPick,
     onToggleConfirm, onDeleteLine, toggleExpanded,
   };
   const sEdit = useCallback((pr: ItemDTO, c: string, r: string) => latest.current.onEdit(pr, c, r), []);
   const sBlur = useCallback((pr: ItemDTO, c: string) => latest.current.onBlur(pr, c), []);
-  const sTextEdit = useCallback((pr: ItemDTO, c: string, r: string) => latest.current.onTextEdit(pr, c, r), []);
   const sColorChange = useCallback((pr: ItemDTO, r: string) => latest.current.onColorChange(pr, r), []);
   const sEmbChange = useCallback((pr: ItemDTO, con: boolean) => latest.current.onEmbellecimientoChange(pr, con), []);
   const sEtapaChange = useCallback((pr: ItemDTO, l: string) => latest.current.onEtapaCosteoChange(pr, l), []);
-  const sProductoBlur = useCallback((pr: ItemDTO) => latest.current.onProductoBlur(pr), []);
+  const sProductoPick = useCallback((pr: ItemDTO, ch: ProductoChoice) => latest.current.onProductoPick(pr, ch), []);
   const sToggleConfirm = useCallback((id: number, next: boolean) => latest.current.onToggleConfirm(id, next), []);
   const sDeleteLine = useCallback((id: string) => latest.current.onDeleteLine(id), []);
   const sToggleExpand = useCallback((id: string) => latest.current.toggleExpanded(id), []);
@@ -456,9 +451,6 @@ export function CotizacionTab({
         )}
       </div>
       <CotizacionPdfRow oppId={oppId} hasSolicitud={hasSolicitud} hasSinFirmar={hasSinFirmar} hasFirmada={hasFirmada} />
-      <datalist id="productos-catalogo-cotizacion">
-        {catalog.map((p) => <option key={p.id} value={p.name} />)}
-      </datalist>
       {isMobile ? (
         <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-xl)', overflow: 'hidden' }}>
           {products.map((p, lineIdx) => (
@@ -477,11 +469,10 @@ export function CotizacionTab({
               catalogLoading={catalogLoading}
               onEdit={sEdit}
               onBlur={sBlur}
-              onTextEdit={sTextEdit}
               onColorChange={sColorChange}
               onEmbellecimientoChange={sEmbChange}
               onEtapaCosteoChange={sEtapaChange}
-              onProductoBlur={sProductoBlur}
+              onProductoPick={sProductoPick}
               expanded={expanded.has(p.id)}
               onToggleExpand={sToggleExpand}
               canConfirm={canConfirm}
@@ -538,11 +529,10 @@ export function CotizacionTab({
               catalogLoading={catalogLoading}
               onEdit={sEdit}
               onBlur={sBlur}
-              onTextEdit={sTextEdit}
               onColorChange={sColorChange}
               onEmbellecimientoChange={sEmbChange}
               onEtapaCosteoChange={sEtapaChange}
-              onProductoBlur={sProductoBlur}
+              onProductoPick={sProductoPick}
               expanded={expanded.has(p.id)}
               onToggleExpand={sToggleExpand}
               canConfirm={canConfirm}

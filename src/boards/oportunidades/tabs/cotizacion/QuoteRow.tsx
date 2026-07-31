@@ -16,6 +16,7 @@ import { fmtMoney } from '../../../../lib/format';
 import { MonoTag, StatusBadge } from '../../../../components/core/Badges';
 import { COL } from '../../../../lib/costeoCalc';
 import { LineDetailPanel } from './LineDetailPanel';
+import { ProductPicker, type ProductoChoice } from '../../../../components/forms/ProductPicker';
 import {
   type GridCol, type RowEditState, marginColor, suggestedPrecio23, numFrom, displayProducto, cellValue,
   inputStyle, valueChipStyle, ETAPA_COSTEO_COLORS, getLineWarnings, gridWrapStyle, colsTemplate,
@@ -42,11 +43,11 @@ export interface QuoteRowProps {
   catalogLoading: boolean;
   onEdit: (product: ItemDTO, colId: string, raw: string) => void;
   onBlur: (product: ItemDTO, colId: string) => void;
-  onTextEdit: (product: ItemDTO, colId: string, raw: string) => void;
   onColorChange: (product: ItemDTO, raw: string) => void;
   onEmbellecimientoChange: (product: ItemDTO, con: boolean) => void;
   onEtapaCosteoChange: (product: ItemDTO, label: string) => void;
-  onProductoBlur: (product: ItemDTO) => void;
+  /** Producto elegido en el picker — del catálogo (relación) o texto libre. */
+  onProductoPick: (product: ItemDTO, choice: ProductoChoice) => void;
   expanded: boolean;
   onToggleExpand: (productId: string) => void;
   canConfirm: boolean;
@@ -62,7 +63,7 @@ export interface QuoteRowProps {
 function QuoteRowInner({
   product: p, partida, state, visibleCols, variant, precioOnly = false, editable,
   editableCols, writableIds, catalog, catalogLoading,
-  onEdit, onBlur, onTextEdit, onColorChange, onEmbellecimientoChange, onEtapaCosteoChange, onProductoBlur,
+  onEdit, onBlur, onColorChange, onEmbellecimientoChange, onEtapaCosteoChange, onProductoPick,
   expanded, onToggleExpand, canConfirm, confirmSaving, confirmError, onToggleConfirm,
   canDelete, deleting, onDeleteLine,
 }: QuoteRowProps) {
@@ -122,18 +123,16 @@ function QuoteRowInner({
           const displayVal = state.preview[c.id] ?? p.cols[c.id];
 
           if (writable && c.id === PRODUCTO_COL) {
-            const raw = state.editing[PRODUCTO_COL] ?? displayProducto(p, state.preview);
             return (
               <div key={c.id} style={{ textAlign: c.align, display: 'flex', alignItems: 'center' }}>
                 {lineControls}
-                <input
-                  list="productos-catalogo-cotizacion"
-                  value={raw}
-                  disabled={!!state.saving[PRODUCTO_COL]}
-                  onChange={(e) => onTextEdit(p, PRODUCTO_COL, e.target.value)}
-                  onBlur={() => onProductoBlur(p)}
-                  placeholder="Elegir producto…"
-                  style={{ ...inputStyle, textAlign: 'left', flex: 1, minWidth: 0 }}
+                <ProductPicker
+                  value={displayProducto(p, state.preview)}
+                  catalog={catalog}
+                  catalogLoading={catalogLoading}
+                  saving={!!state.saving[PRODUCTO_COL]}
+                  onPick={(choice) => onProductoPick(p, choice)}
+                  style={{ ...inputStyle, textAlign: 'left', width: '100%' }}
                 />
               </div>
             );
