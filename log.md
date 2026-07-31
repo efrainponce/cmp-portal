@@ -2,6 +2,12 @@
 
 ## 2026-07-30
 
+- **`9013833`** — Condiciones de cotización: solo Compras en Costeo, movida bajo los productos
+  - Efraín, con screenshot del bloque "Condiciones de la cotización" (condiciones comerciales, tiempo de entrega, vigencia): moverlo debajo de las líneas de producto, y que solo esté activo para Compras en el board Costeo — no se ve en Oportunidades.
+  - Se preguntó lo que el mensaje no aclaraba: si admin también debía verlo (sí, mismo patrón `compras || admin` ya usado para `canConfirm` en `CotizacionTab`) y qué pasaba en el resto de boards de pipeline como Validación (queda oculto ahí también — solo Costeo).
+  - `CondicionesCotizacion` vivía fijo antes de la grid en las dos ramas de `CotizacionTab` (con/sin líneas) y sin ningún gate de board o rol. Se movió al final de ambas ramas (tras el grid/mensaje vacío, mobile y desktop) y se agregó el prop `showCondiciones`, calculado en `OpportunityDrawer.tsx` como `readOnlyCosteo && (role compras || admin)` — reusa `readOnlyCosteo` que ya distingue Costeo de Validación (`COSTEO_VARIANT_BOARDS` los trata igual para la grid, pero no para este bloque).
+  - `tsc --noEmit` y `oxlint` limpios (solo warnings preexistentes de fast-refresh sin relación).
+
 - **`f817e4a`** — Cerrar el gate de board: ventas no lista Proveedores
   - Efraín, en corto: *"OJO los vendedores. NO PUEDEN NUNCA ver nada de costos. Por ejemplo en el board productos ven todas las columnas es un error grave. Corrigelo cuanto antes. VENTAS NO PUEDE VER NADA de costeo ni proveedores"*.
   - **El board Productos NO estaba filtrando mal.** Verificado en vivo contra el worker local con `X-Dev-Email` de un vendedor real: `GET /api/boards/productos/items` devuelve 11 columnas (SKU, Marca, Color, Unidad, descripciones, Grupo, Tallas JSON) y **nunca** Costo Distribuidor, Moneda, Gastos de envío/importación, Descuento Distribuidor, Historial de precios, Proveedor, Proveedor ID ni Razón Social Proveedor. Lo que se ve "con todas las columnas" es la sesión local: `.dev.vars` trae `DEV_EMAIL=salinasefrain@…`, que es **admin**. Los 14 vendedores en el D1 remoto tienen rol `vendedor` correcto (se consultó).
