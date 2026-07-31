@@ -7,13 +7,14 @@ import type {
   QuoteLineSnapshot, QuoteVersionDTO, QuoteVersionsResponse,
   UpdateAttachmentDTO, UpdateDTO, VendedorDTO, WriteResponse, ZonaDTO,
 } from '../../shared/dto';
+import type { AddProposedProductResponse, ProposedProductDTO, ProposedProductsResponse } from '../../shared/productosPropuestos';
 import { mockBoardMeta, mockItemDetail, mockPatch } from './mockFallback';
 import { getImpersonateTarget } from './impersonation';
 import { markSessionExpired } from './sessionState';
 
 export type {
   BoardAccessDTO, BoardSlug, ColMeta, ColVal, IdentityDTO, ItemDTO, ItemDetailDTO, ListResponse, MeDTO, MentionUserDTO,
-  MondayUserDTO, QuoteLineSnapshot, QuoteVersionDTO, UpdateAttachmentDTO, UpdateDTO, VendedorDTO, ZonaDTO,
+  MondayUserDTO, ProposedProductDTO, QuoteLineSnapshot, QuoteVersionDTO, UpdateAttachmentDTO, UpdateDTO, VendedorDTO, ZonaDTO,
 };
 
 export interface BoardMeta { slug: BoardSlug; title: string; cols: ColMeta[] }
@@ -253,6 +254,28 @@ export async function uploadZoneImage(
   const body = await res.json();
   if (!res.ok) return { ok: false, error: body.error ?? 'No se pudo subir la imagen.' };
   return body;
+}
+
+/** Productos propuestos por Ventas para una oportunidad (tab "Nuevos productos"). */
+export async function getProposedProducts(oppId: string): Promise<ProposedProductDTO[]> {
+  const res = await apiFetch(`/oportunidades/${oppId}/productos-propuestos`);
+  if (!res.ok) throw new Error('GET productos-propuestos failed: ' + res.status);
+  const body: ProposedProductsResponse = await res.json();
+  return body.productos;
+}
+
+/** Propone un producto nuevo — avisa a Compras (update de Monday + notificación). */
+export async function addProposedProduct(
+  oppId: string, nombre: string, descripcion: string, file?: File,
+): Promise<{ ok: boolean; producto?: ProposedProductDTO; error?: string }> {
+  const form = new FormData();
+  form.append('nombre', nombre);
+  form.append('descripcion', descripcion);
+  if (file) form.append('file', file);
+  const res = await apiFetch(`/oportunidades/${oppId}/productos-propuestos`, { method: 'POST', body: form });
+  const body = await res.json();
+  if (!res.ok) return { ok: false, error: body.error ?? 'No se pudo guardar el producto.' };
+  return body as AddProposedProductResponse;
 }
 
 /** El Proyecto ligado a la oportunidad (con sus subitems de tallas); null si no existe. */

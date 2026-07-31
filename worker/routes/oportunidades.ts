@@ -7,6 +7,7 @@ import type { Env } from '../env';
 import type { Identity } from '../../shared/types';
 import { BOARDS } from '../../shared/boards';
 import type { DuplicarOportunidadResponse, DuplicarVersionResponse, ItemDetailDTO, QuoteVersionsResponse } from '../../shared/dto';
+import type { ProposedProductsResponse, AddProposedProductResponse } from '../../shared/productosPropuestos';
 import { getItem, childrenOf, pendingItemIds, proyectoForOportunidad, linkedItemId, PROYECTO_OPP_REL } from '../lib/dal';
 import { toItemDTO } from '../lib/serialize';
 import { OutboxError } from '../lib/outbox';
@@ -19,6 +20,7 @@ import { listVersions, duplicateVersion, restoreVersion, esDraftVigente, recordF
 import { duplicateOportunidad, DuplicateOportunidadError } from '../lib/duplicateOportunidad';
 import { createSubitem, addFileToColumn, fetchAssetPublicUrls, gql } from '../lib/monday';
 import { listZoneImages, uploadZoneImage, EmbellImageError } from '../lib/embellecimientoImagenes';
+import { listProposedProducts, addProposedProduct, ProposedProductError } from '../lib/productosPropuestos';
 import { resolveMondayAsset, PROYECTO_DOCUMENTO_COL } from '../lib/portalFiles';
 import { putFile, oportunidadFileKey } from '../lib/r2';
 import { resolveCotizacionPdfUrl, CotizacionPdfError, type PdfKind } from '../lib/cotizacionPdfs';
@@ -448,6 +450,43 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       return c.json({ ok: true, ...result });
     } catch (err) {
       if (err instanceof EmbellImageError) return jsonStatus({ error: err.message }, err.status);
+      return c.json({ error: 'internal error' }, 500);
+    }
+  });
+
+  // Tab "Nuevos productos" (worker/lib/productosPropuestos.ts): nativo en D1, sin
+  // board de Monday detrás. El POST también avisa a Compras (update @mención +
+  // notificación del portal) — así saben que Ventas está esperando seguimiento
+  // (Efraín, 2026-07-30).
+  app.get('/api/oportunidades/:id/productos-propuestos', async c => {
+    const itemId = Number(c.req.param('id'));
+    if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
+    const viewer = c.get('viewer');
+
+    try {
+      const productos = await listProposedProducts(c.env, itemId, viewer);
+      return c.json({ productos } satisfies ProposedProductsResponse);
+    } catch (err) {
+      if (err instanceof ProposedProductError) return jsonStatus({ error: err.message }, err.status);
+      return c.json({ error: 'internal error' }, 500);
+    }
+  });
+
+  app.post('/api/oportunidades/:id/productos-propuestos', async c => {
+    const itemId = Number(c.req.param('id'));
+    if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
+    const viewer = c.get('viewer');
+
+    const form = await c.req.formData();
+    const nombre = String(form.get('nombre') ?? '');
+    const descripcion = String(form.get('descripcion') ?? '');
+    const file = form.get('file');
+
+    try {
+      const producto = await addProposedProduct(c.env, itemId, viewer, nombre, descripcion, file instanceof File ? file : undefined);
+      return c.json({ ok: true, producto } satisfies AddProposedProductResponse);
+    } catch (err) {
+      if (err instanceof ProposedProductError) return jsonStatus({ error: err.message }, err.status);
       return c.json({ error: 'internal error' }, 500);
     }
   });

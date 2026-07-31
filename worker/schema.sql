@@ -281,3 +281,19 @@ CREATE TABLE IF NOT EXISTS document_signatures (
   signed_at    TEXT NOT NULL
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_docsig_once ON document_signatures(document_id, signer_email);
+
+-- Productos nuevos propuestos por Ventas (2026-07-30, worker/lib/productosPropuestos.ts,
+-- tab "Nuevos productos" del drawer de Oportunidad). Nativo en D1: nombre+descripción+
+-- imagen no encajan en ninguna columna existente de Monday y CLAUDE.md prohíbe inventar
+-- ids de columna, así que no se sincroniza al mirror ni al outbox. Se crea LAZY en
+-- runtime (mismo patrón que documents/api_cache) — está aquí solo como documentación.
+CREATE TABLE IF NOT EXISTS producto_propuesto (
+  id             TEXT PRIMARY KEY,   -- uuid
+  oportunidad_id INTEGER NOT NULL,
+  nombre         TEXT NOT NULL,
+  descripcion    TEXT NOT NULL DEFAULT '',
+  image_key      TEXT,               -- R2 key bajo oportunidades/{id}/productos-propuestos/
+  created_by     TEXT NOT NULL,      -- identity.email de quien propuso
+  created_at     TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_producto_propuesto_opp ON producto_propuesto(oportunidad_id);

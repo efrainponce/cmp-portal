@@ -660,7 +660,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
           readOnly={noLineEdits}
         />
       )}
-      {activeTab === 'nuevosproductos' && <NuevosProductosTab readOnly={noLineEdits} />}
+      {activeTab === 'nuevosproductos' && <NuevosProductosTab oppId={id} readOnly={noLineEdits} />}
       {activeTab === 'documentacion' && <DocumentacionTab item={item} proyecto={showPostventa ? proyecto : undefined} />}
       {activeTab === 'tallas' && <TallasTab subCols={subCols} products={products} proyecto={showPostventa ? proyecto : undefined} />}
       {activeTab === 'ordenes' && (

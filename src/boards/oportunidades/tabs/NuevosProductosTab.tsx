@@ -1,16 +1,11 @@
-// Proponer nuevo producto: no "productos propuestos por ventas" data source
-// exists on the board yet, so this is a client-side-only placeholder — entries
-// live in local state and are lost on refresh until a real endpoint exists.
-import { useState } from 'react';
+// Proponer nuevo producto (2026-07-30): persiste en D1 vía worker/lib/
+// productosPropuestos.ts — no hay board de Monday detrás (nombre+descripción+
+// imagen no encajan en ninguna columna existente). El POST también avisa a
+// Compras (update de Monday con @mención + notificación del portal).
+import { useEffect, useState } from 'react';
 import type { ChangeEvent } from 'react';
+import { addProposedProduct, getProposedProducts, type ProposedProductDTO } from '../../../lib/apiClient';
 import { Button } from '../../../components/core/Button';
-
-interface ProposedProduct {
-  id: string;
-  nombre: string;
-  descripcion: string;
-  imageUrl?: string;
-}
 
 const fieldStyle: React.CSSProperties = {
   width: '100%', font: 'var(--text-body)', color: 'var(--ink)', border: '1px solid var(--border)',
@@ -25,27 +20,51 @@ const ImageIcon = ({ size = 16, color = '#918b7c' }: { size?: number; color?: st
   </svg>
 );
 
-export function NuevosProductosTab({ readOnly = false }: { readOnly?: boolean }) {
+export function NuevosProductosTab({ oppId, readOnly = false }: { oppId: string; readOnly?: boolean }) {
   const [nombre, setNombre] = useState('');
   const [descripcion, setDescripcion] = useState('');
-  const [imageUrl, setImageUrl] = useState<string | undefined>();
-  const [products, setProducts] = useState<ProposedProduct[]>([]);
+  const [imageFile, setImageFile] = useState<File | undefined>();
+  const [imagePreview, setImagePreview] = useState<string | undefined>();
+  const [products, setProducts] = useState<ProposedProductDTO[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | undefined>();
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    getProposedProducts(oppId)
+      .then((ps) => { if (!cancelled) setProducts(ps); })
+      .catch(() => { if (!cancelled) setError('No se pudieron cargar los productos propuestos.'); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [oppId]);
 
   const onImageChange = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => setImageUrl(typeof reader.result === 'string' ? reader.result : undefined);
-    reader.readAsDataURL(file);
     e.target.value = '';
+    if (!file) return;
+    setImageFile(file);
+    const reader = new FileReader();
+    reader.onload = () => setImagePreview(typeof reader.result === 'string' ? reader.result : undefined);
+    reader.readAsDataURL(file);
   };
 
-  const addProduct = () => {
-    if (!nombre.trim()) return;
-    setProducts((ps) => [...ps, { id: `${Date.now()}`, nombre: nombre.trim(), descripcion: descripcion.trim(), imageUrl }]);
+  const addProduct = async () => {
+    if (!nombre.trim() || saving) return;
+    setSaving(true);
+    setError(undefined);
+    const result = await addProposedProduct(oppId, nombre.trim(), descripcion.trim(), imageFile);
+    setSaving(false);
+    if (!result.ok || !result.producto) {
+      setError(result.error ?? 'No se pudo guardar el producto.');
+      return;
+    }
+    setProducts((ps) => [...ps, result.producto!]);
     setNombre('');
     setDescripcion('');
-    setImageUrl(undefined);
+    setImageFile(undefined);
+    setImagePreview(undefined);
   };
 
   return (
@@ -56,7 +75,7 @@ export function NuevosProductosTab({ readOnly = false }: { readOnly?: boolean })
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <Field label="Producto">
-              <input value={nombre} onChange={(e) => setNombre(e.target.value)} style={fieldStyle} placeholder="Nombre del producto" />
+              <input value={nombre} onChange={(e) => setNombre(e.target.value)} style={fieldStyle} placeholder="Nombre del producto" disabled={saving} />
             </Field>
 
             <Field label="Descripción de nuevo producto">
@@ -66,25 +85,32 @@ export function NuevosProductosTab({ readOnly = false }: { readOnly?: boolean })
                 rows={4}
                 style={{ ...fieldStyle, resize: 'vertical' }}
                 placeholder="Describe el producto, características y por qué lo propones…"
+                disabled={saving}
               />
             </Field>
 
             <Field label="Imagen">
               <label style={{
                 display: 'flex', alignItems: 'center', gap: 10, border: '1px dashed var(--ink-faint)', borderRadius: 'var(--radius-lg)',
-                padding: '10px 12px', cursor: 'pointer', background: 'var(--bg)',
+                padding: '10px 12px', cursor: saving ? 'default' : 'pointer', background: 'var(--bg)', opacity: saving ? 0.6 : 1,
               }}>
                 <ImageIcon />
-                <span style={{ font: 'var(--text-label)', color: 'var(--ink-secondary)' }}>{imageUrl ? 'Imagen seleccionada — cambiar' : 'Subir imagen'}</span>
-                <input type="file" accept="image/*" onChange={onImageChange} style={{ display: 'none' }} />
+                <span style={{ font: 'var(--text-label)', color: 'var(--ink-secondary)' }}>{imagePreview ? 'Imagen seleccionada — cambiar' : 'Subir imagen'}</span>
+                <input type="file" accept="image/*" onChange={onImageChange} style={{ display: 'none' }} disabled={saving} />
               </label>
-              {imageUrl && (
-                <img src={imageUrl} alt="" style={{ marginTop: 10, maxHeight: 120, borderRadius: 'var(--radius-lg)', border: '1px solid var(--border)' }} />
+              {imagePreview && (
+                <img src={imagePreview} alt="" style={{ marginTop: 10, maxHeight: 120, borderRadius: 'var(--radius-lg)', border: '1px solid var(--border)' }} />
               )}
             </Field>
 
+            {error && (
+              <div style={{ font: 'var(--text-label)', color: 'var(--status-perdida)' }}>{error}</div>
+            )}
+
             <div>
-              <Button variant="primary" onClick={addProduct}>Agregar producto</Button>
+              <Button variant={saving || !nombre.trim() ? 'disabled' : 'primary'} onClick={addProduct}>
+                {saving ? 'Guardando…' : 'Agregar producto'}
+              </Button>
             </div>
           </div>
         </div>
@@ -98,7 +124,9 @@ export function NuevosProductosTab({ readOnly = false }: { readOnly?: boolean })
           Productos propuestos
         </div>
 
-        {products.length > 0 ? (
+        {loading ? (
+          <div style={{ font: 'var(--text-label)', color: 'var(--ink-tertiary)', padding: '14px 16px' }}>Cargando…</div>
+        ) : products.length > 0 ? (
           <div style={{ border: '1px solid var(--border)', borderTop: 'none', borderRadius: '0 0 var(--radius-xl) var(--radius-xl)', overflow: 'hidden' }}>
             {products.map((p, i) => (
               <div key={p.id} style={{
