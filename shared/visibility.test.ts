@@ -3,7 +3,8 @@
 // readableCols(). Un cambio accidental aquí no lo atrapa el typecheck (todo son
 // strings), así que estos tests anclan las reglas que importan.
 import { describe, it, expect } from 'vitest';
-import { VISIBILITY, canRead, canWrite, readableCols } from './visibility';
+import { VISIBILITY, canRead, canReadBoard, canWrite, readableCols } from './visibility';
+import { COLUMN_META } from './column-meta.gen';
 import type { BoardSlug } from './boards';
 import type { Role } from './types';
 
@@ -49,6 +50,61 @@ describe('costos internos', () => {
     const cols = readableCols('oportunidades_sub', 'vendedor');
     expect(cols).not.toContain('numeric_mm0bph99');
     expect(cols.length).toBeGreaterThan(0);
+  });
+
+  it('ventas no ve NADA de costeo ni de proveedores (Efraín, 2026-07-30)', () => {
+    // Barrido por título, no por id: si mañana se agrega una columna de costo o
+    // de proveedor al grupo del vendedor, esto truena aunque el id sea nuevo.
+    // (Las de venta —precio/subtotal/IVA/total/utilidad del CLIENTE— no cuentan:
+    // el vendedor cotiza con ellas. Por eso el match es sobre costo/proveedor.)
+    const PROHIBIDO = /(costo|proveedor|distribuidor|margen gob|utilidad|historial precios)/i;
+    for (const slug of Object.keys(VISIBILITY) as BoardSlug[]) {
+      for (const col of readableCols(slug, 'vendedor')) {
+        const title = COLUMN_META[slug]?.[col]?.title ?? col;
+        // "Etapa Costeo" / las fechas de solicitud de costeo son estados del
+        // flujo, no importes: el vendedor necesita saber si ya se costeó.
+        if (/^(etapa costeo|fecha (solicitud|validación) costeo|fecha solicitud validación costeo|cotizaciones sin precio)$/i.test(title)) continue;
+        // Fechas de entrega del proveedor en proyectos_sub (estimada/prometida/
+        // OC enviada): son CUÁNDO llega la mercancía, no quién la surte ni a
+        // cuánto — el vendedor las necesita para darle fecha al cliente. Si
+        // Efraín las quiere fuera también, se quitan de la whitelist y este
+        // `continue` se borra.
+        if (/^fecha .*proveedor/i.test(title)) continue;
+        expect(PROHIBIDO.test(title), `${slug}.${col} ("${title}") es visible para vendedor`).toBe(false);
+      }
+    }
+  });
+});
+
+describe('boards internos — el gate es de board, no solo de columnas', () => {
+  // El `name` del item viaja SIEMPRE en el ItemDTO (worker/lib/serialize.ts), así
+  // que filtrar columnas no basta: sin canReadBoard, un GET a
+  // /api/boards/proveedores/items le devolvía al vendedor los 98 nombres de
+  // proveedores con `cols: {}`. worker/routes/boards.ts responde 404 cuando esto
+  // es false — para ese rol el board no existe.
+  it('proveedores es invisible para ventas y almacén', () => {
+    expect(canReadBoard('proveedores', 'compras')).toBe(true);
+    expect(canReadBoard('proveedores', 'admin')).toBe(true);
+    expect(canReadBoard('proveedores', 'vendedor')).toBe(false);
+    expect(canReadBoard('proveedores', 'almacen')).toBe(false);
+  });
+
+  it('almacén solo alcanza el catálogo de Productos, ningún board de venta', () => {
+    // El picker de "Nuevo movimiento" busca productos por nombre/SKU.
+    expect(canReadBoard('productos', 'almacen')).toBe(true);
+    expect(readableCols('productos', 'almacen').sort())
+      .toEqual(['name', 'product_and_service_sku', 'text_mm0wvga2']);
+    for (const slug of ['oportunidades', 'oportunidades_sub', 'proyectos', 'proyectos_sub',
+      'instituciones', 'contactos', 'proveedores'] as BoardSlug[]) {
+      expect(canReadBoard(slug, 'almacen'), slug).toBe(false);
+    }
+  });
+
+  it('el vendedor sí alcanza todos los boards que usa el portal', () => {
+    for (const slug of ['oportunidades', 'oportunidades_sub', 'proyectos', 'proyectos_sub',
+      'productos', 'instituciones', 'contactos'] as BoardSlug[]) {
+      expect(canReadBoard(slug, 'vendedor'), slug).toBe(true);
+    }
   });
 });
 

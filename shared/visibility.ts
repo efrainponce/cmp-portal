@@ -15,6 +15,10 @@ const AC: Role[] = ['compras', 'admin'];              // internal: costs, provee
 const WV: Role[] = ['vendedor', 'admin'];             // PROPOSED writable set
 const WAC: Role[] = ['compras', 'admin'];             // writable: costeo capture (compras/admin)
 const WA: Role[] = ['admin'];                         // writable: solo admin (precio de venta)
+// Catálogo de Productos, columnas de pura identificación (nombre/SKU): las ve
+// TODO rol, almacén incluido — es lo que el formulario de movimientos de
+// inventario usa para elegir el producto. Nunca lleva costos ni proveedor.
+const CAT: Role[] = ['vendedor', 'compras', 'admin', 'almacen'];
 
 const vis = (ids: string[], r: Role[]): Record<string, ColRule> =>
   Object.fromEntries(ids.map(id => [id, { vis: r }]));
@@ -152,9 +156,13 @@ export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
   },
 
   productos: {
-    ...vis(['name', 'product_and_service_sku', 'product_and_service_description',
+    // Identificación del producto — también para almacén (picker de "Nuevo
+    // movimiento" de inventario, que solo usa el nombre). El resto del catálogo
+    // sigue siendo ventas/compras/admin.
+    ...vis(['name', 'product_and_service_sku', 'text_mm0wvga2'], CAT),
+    ...vis(['product_and_service_description',
       'dropdown_mkztty4b', 'text_mkzp9428', 'text_mkzpbhb5', 'long_text_mm0xse7v',
-      'dropdown_mm07pjsv', 'text_mm0wvga2', 'long_text_mm174q0j'], V),
+      'dropdown_mm07pjsv', 'long_text_mm174q0j'], V),
     ...vis(['numeric_mkzpx7eb', 'text_mkzp59zf', 'numeric_mm0bnkch',
       'numeric_mm0bgd2f', 'long_text_mm1tcga0', 'board_relation_mm1cwqky',
       'lookup_mm1cyy7f', 'lookup_mm1dv3jy', 'text_mkzmgvc7'], AC),
@@ -193,6 +201,14 @@ export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
 
 export const canRead = (b: BoardSlug, col: string, r: Role) =>
   !!VISIBILITY[b][col]?.vis.includes(r);
+/** ¿El rol puede ver ALGO de este board? Un board sin una sola columna legible
+ * es interno para ese rol y sus rutas se niegan enteras (worker/routes/boards.ts),
+ * no solo sus columnas: `cols` sale vacío pero `name` viaja SIEMPRE en el
+ * ItemDTO, así que sin este gate un vendedor listaba los 98 nombres de
+ * `proveedores` con un solo GET (Efraín, 2026-07-30: "ventas no puede ver nada
+ * de costeo ni proveedores"). */
+export const canReadBoard = (b: BoardSlug, r: Role) =>
+  Object.values(VISIBILITY[b]).some(c => c.vis.includes(r));
 export const canWrite = (b: BoardSlug, col: string, r: Role) =>
   !!VISIBILITY[b][col]?.w?.includes(r);
 export const readableCols = (b: BoardSlug, r: Role): string[] =>
