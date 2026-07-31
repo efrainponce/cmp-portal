@@ -6,7 +6,13 @@ import type { QuoteVersionDTO } from '../../../../lib/api';
  * la actual, la copia queda editable inline como en Nueva oportunidad) — nada
  * de draft editor; regresarla a costeo es el botón "Mandar a costeo" del
  * drawer, que se reactiva justo porque la copia está sin costear (Efraín,
- * 2026-07-17). El chip se oculta cuando la vigente ya es un borrador. */
+ * 2026-07-17). El chip se oculta cuando la vigente ya es un borrador.
+ *
+ * Los ajustes de "Ajustar línea" (Efraín, 2026-07-31) sobre la vigente se
+ * muestran como chips chicos ".1 .2…" al lado — NO son versiones reales (no
+ * pasan por costeo), solo trazabilidad de que hubo retoques; por eso van más
+ * discretos y sin acción de click (el ajuste es de una línea, no de toda la
+ * cotización — el tooltip basta). */
 export function VersionChips({
   versions, selected, onSelect, onNuevaVersion,
 }: {
@@ -14,6 +20,7 @@ export function VersionChips({
   onNuevaVersion?: () => void;
 }) {
   if (versions.length === 0) return null;
+  const vigente = versions.find((v) => v.status === 'vigente');
   return (
     <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
       {versions.map((v) => {
@@ -34,6 +41,19 @@ export function VersionChips({
           </div>
         );
       })}
+      {vigente?.ajustes?.map((a) => (
+        <div
+          key={a.subversion}
+          title={`${a.resumen} — ${a.viewerEmail}, ${a.createdAt}`}
+          style={{
+            font: 'var(--text-caption)', padding: '3px 8px',
+            borderRadius: 'var(--radius-pill)', background: 'transparent',
+            color: 'var(--ink-tertiary)', border: '1px dashed var(--border)',
+          }}
+        >
+          .{a.subversion}
+        </div>
+      ))}
       {onNuevaVersion && (
         <div
           onClick={onNuevaVersion}

@@ -144,6 +144,28 @@ CREATE TABLE IF NOT EXISTS cotizacion_versions (
 );
 CREATE INDEX IF NOT EXISTS idx_cotversions_item ON cotizacion_versions(item_id);
 
+-- Ajustes de línea sin versión (2026-07-31, worker/lib/lineaAjustes.ts): "Ajustar
+-- línea" (cambiar producto/color/embellecimiento/cantidad en el sitio, o dividir
+-- una línea en dos) para retoques que NO cambian el precio — no pasa por costeo,
+-- no toca deal_stage, funciona incluso con la Oportunidad Ganada. No es una
+-- versión real: solo trazabilidad, rotulada V{version}.{subversion} en la UI.
+-- Se crea lazy en runtime, mismo patrón que producto_propuesto — está aquí solo
+-- como documentación.
+CREATE TABLE IF NOT EXISTS cotizacion_ajustes (
+  id               INTEGER PRIMARY KEY AUTOINCREMENT,
+  item_id          INTEGER NOT NULL,   -- Oportunidad
+  version          INTEGER NOT NULL,   -- versión mayor vigente al momento del ajuste
+  subversion       INTEGER NOT NULL,   -- 1, 2, 3… por (item_id, version)
+  linea_id         INTEGER NOT NULL,   -- subitem que quedó con el cambio
+  linea_origen_id  INTEGER,            -- si fue "dividir", el subitem del que se partió
+  resumen          TEXT NOT NULL,
+  campos_antes     TEXT NOT NULL,
+  campos_despues   TEXT NOT NULL,
+  viewer_email     TEXT NOT NULL,
+  created_at       TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_cotajustes_item_version ON cotizacion_ajustes(item_id, version);
+
 -- Seed: sales team members who carry samples, as "person" warehouses (confirmed against
 -- active identity rows 2026-07-15: Nicolas Rosas Gonzalez, Ray Rodriguez, RUBEN ZEUS
 -- CORDERO NUÑEZ, César Emilio Díaz Trujillo, Livia A. Val Rguez). Idempotent re-run guard

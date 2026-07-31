@@ -29,7 +29,7 @@ function MobileQuoteRowInner({
   product: p, partida, state, visibleCols, variant, precioOnly = false, editable, editableCols, writableIds, catalog, catalogLoading,
   onEdit, onBlur, onColorChange, onEmbellecimientoChange, onStatusChange, onProductoPick,
   expanded, onToggleExpand, canConfirm, confirmSaving, confirmError, onToggleConfirm,
-  canDelete, deleting, onDeleteLine,
+  canDelete, deleting, onDeleteLine, canAjustar, onAjustarLinea,
 }: {
   product: ItemDTO;
   /** Número 1-based de la línea en la grid — mismo orden que usan los mensajes
@@ -60,6 +60,9 @@ function MobileQuoteRowInner({
   canDelete: boolean;
   deleting: boolean;
   onDeleteLine: (productId: string) => void;
+  /** "Ajustar línea" (Efraín, 2026-07-31) — ver QuoteRow.tsx. */
+  canAjustar: boolean;
+  onAjustarLinea: (product: ItemDTO) => void;
 }) {
   const titleCol = visibleCols[0];
   const restCols = visibleCols.slice(1);
@@ -238,6 +241,16 @@ function MobileQuoteRowInner({
         >
           ▸
         </button>
+        {canAjustar && (
+          <button
+            type="button"
+            onClick={() => onAjustarLinea(p)}
+            title="Cambiar producto, color, embellecimiento o cantidad sin versión ni costeo"
+            style={{ background: 'none', border: 'none', cursor: 'pointer', font: 'inherit', padding: 0, marginTop: 3, flexShrink: 0, color: 'var(--accent)' }}
+          >
+            ✎
+          </button>
+        )}
         {canDelete && (
           <button
             type="button"

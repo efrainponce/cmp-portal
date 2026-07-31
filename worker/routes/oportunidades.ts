@@ -6,7 +6,7 @@ import type { Context, Hono } from 'hono';
 import type { Env } from '../env';
 import type { Identity } from '../../shared/types';
 import { BOARDS } from '../../shared/boards';
-import type { DuplicarOportunidadResponse, DuplicarVersionResponse, ItemDetailDTO, QuoteVersionsResponse } from '../../shared/dto';
+import type { AjustarLineaRequest, AjustarLineaResponse, DuplicarOportunidadResponse, DuplicarVersionResponse, ItemDetailDTO, QuoteVersionsResponse } from '../../shared/dto';
 import type { ProposedProductsResponse, AddProposedProductResponse } from '../../shared/productosPropuestos';
 import { getItem, childrenOf, pendingItemIds, proyectoForOportunidad, linkedItemId, PROYECTO_OPP_REL } from '../lib/dal';
 import { toItemDTO } from '../lib/serialize';
@@ -17,6 +17,7 @@ import {
 } from '../lib/automations';
 import { enviarACosteo, enviarAValidacion, checkCosteo, checkValidacion, CosteoError } from '../lib/costeo';
 import { listVersions, duplicateVersion, restoreVersion, esDraftVigente, recordFirstVersion, QuoteVersionError } from '../lib/quoteVersions';
+import { ajustarLinea, AjusteLineaError } from '../lib/lineaAjustes';
 import { duplicateOportunidad, DuplicateOportunidadError } from '../lib/duplicateOportunidad';
 import { createSubitem, addFileToColumn, fetchAssetPublicUrls, gql } from '../lib/monday';
 import { listZoneImages, uploadZoneImage, EmbellImageError } from '../lib/embellecimientoImagenes';
@@ -337,6 +338,28 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       const detail = err instanceof Error ? err.message : String(err);
       console.error('Error creando producto:', detail);
       return c.json({ error: 'No se pudo crear la línea: ' + detail }, 500);
+    }
+  });
+
+  // "Ajustar línea" (Efraín, 2026-07-31): cambiar producto (género)/color/
+  // embellecimiento/cantidad de una línea sin versión ni costeo, incluso con
+  // la Oportunidad Ganada — ver worker/lib/lineaAjustes.ts. :id es la línea
+  // (subitem), no la oportunidad, mismo patrón que embellecimiento-imagenes
+  // más abajo.
+  app.post('/api/oportunidades/lineas/:id/ajustar', async c => {
+    const lineaId = Number(c.req.param('id'));
+    if (!Number.isFinite(lineaId)) return c.json({ error: 'not found' }, 404);
+    const viewer = c.get('viewer');
+    const body = await c.req.json<AjustarLineaRequest>();
+    if (body.modo !== 'editar' && body.modo !== 'dividir') return c.json({ error: 'modo inválido' }, 400);
+
+    try {
+      const result = await ajustarLinea(c.env, c.executionCtx, lineaId, viewer, body);
+      await refetchItemTree(c.env, BOARDS.oportunidades.id, result.itemId);
+      return c.json({ ok: true, lineaId: result.lineaId, nuevaLineaId: result.nuevaLineaId } satisfies AjustarLineaResponse);
+    } catch (err) {
+      if (err instanceof AjusteLineaError) return jsonStatus({ ok: false, error: err.message } satisfies AjustarLineaResponse, err.status);
+      return jsonStatus({ ok: false, error: 'internal error' } satisfies AjustarLineaResponse, 500);
     }
   });
 

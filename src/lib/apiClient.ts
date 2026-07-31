@@ -1,6 +1,7 @@
 // Plain (non-hook) typed client for the worker API — see docs/dev-contracts.md.
 import type { BoardSlug } from '../../shared/boards';
 import type {
+  AjustarLineaRequest, AjustarLineaResponse,
   AssistantChatRequest, AssistantChatResponse, AssistantHistoryResponse, AssistantMessage,
   BoardAccessDTO, ColMeta, ColVal, CreateResponse, DuplicarOportunidadResponse, DuplicarVersionResponse, EnviarCosteoResponse, IdentityDTO, ItemDTO, ItemDetailDTO,
   ListResponse, MeDTO, MentionUserDTO, MondayUserDTO, ProyectoActionResponse, ProyectoResponse,
@@ -244,6 +245,20 @@ export async function restaurarVersion(id: string, version: number): Promise<Dup
   const res = await apiFetch(`/oportunidades/${id}/version/${version}/restaurar`, { method: 'POST' });
   const body: DuplicarVersionResponse = await res.json();
   if (!res.ok && !body.error) throw new Error('restaurar versión failed: ' + res.status);
+  return body;
+}
+
+/** "Ajustar línea" (Efraín, 2026-07-31): cambiar producto (género)/color/
+ * embellecimiento/cantidad de una línea sin versión ni costeo, incluso con la
+ * Oportunidad Ganada — worker/lib/lineaAjustes.ts. `lineaId` es el subitem. */
+export async function ajustarLinea(lineaId: string, input: AjustarLineaRequest): Promise<AjustarLineaResponse> {
+  const res = await apiFetch(`/oportunidades/lineas/${lineaId}/ajustar`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  const body: AjustarLineaResponse = await res.json();
+  if (!res.ok && !body.error) throw new Error('ajustar línea failed: ' + res.status);
   return body;
 }
 

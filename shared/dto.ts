@@ -94,6 +94,17 @@ export interface QuoteLineSnapshot {
   etapaCosteo?: string;
 }
 
+// "Ajustar línea" (worker/lib/lineaAjustes.ts, Efraín 2026-07-31): retoques a
+// una línea (producto/color/embellecimiento/cantidad) que no cambian el precio
+// y no pasan por costeo — no son una versión real, solo trazabilidad rotulada
+// V{version}.{subversion} sobre la vigente en VersionChips.
+export interface AjusteDTO {
+  subversion: number;
+  resumen: string;
+  viewerEmail: string;
+  createdAt: string;
+}
+
 export interface QuoteVersionDTO {
   id: number;
   label: string;
@@ -102,9 +113,31 @@ export interface QuoteVersionDTO {
   folio?: string;
   total: number;
   products: QuoteLineSnapshot[];
+  /** Solo en la vigente: ajustes registrados sobre la versión mayor actual. */
+  ajustes?: AjusteDTO[];
 }
 
 export interface QuoteVersionsResponse { versions: QuoteVersionDTO[] }
+
+// POST /api/oportunidades/lineas/:id/ajustar — ver worker/lib/lineaAjustes.ts.
+// `productoNombre` es solo para el resumen legible del historial (el mirror
+// real lo puebla Monday de forma asíncrona). `cantidad` en modo 'dividir' es
+// cuánto se mueve a la línea nueva, no el total de la línea origen.
+export interface AjustarLineaRequest {
+  modo: 'editar' | 'dividir';
+  cantidad?: number;
+  productoId?: number;
+  productoNombre?: string;
+  color?: string;
+  embellecimiento?: { estado?: 'con' | 'sin'; descripcion?: string };
+}
+
+export interface AjustarLineaResponse {
+  ok: boolean;
+  error?: string;
+  lineaId?: number;
+  nuevaLineaId?: number;
+}
 
 // POST /api/oportunidades/:id/version/duplicar — "+ Nueva versión" es un duplicado
 // literal de la vigente (Efraín, 2026-07-17): la archiva en D1 y deja el mirror

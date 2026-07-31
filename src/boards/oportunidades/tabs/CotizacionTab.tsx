@@ -28,6 +28,7 @@ import { CotizacionPdfRow } from './cotizacion/CotizacionPdfRow';
 import { CondicionesCotizacion } from './cotizacion/CondicionesCotizacion';
 import { MobileQuoteRow } from './cotizacion/MobileQuoteRow';
 import { QuoteRow } from './cotizacion/QuoteRow';
+import { AjustarLineaModal } from './cotizacion/AjustarLineaModal';
 import { ColumnVisibilityPicker } from './cotizacion/ColumnVisibilityPicker';
 import {
   type RowEditState, EMPTY_ROW, inlineEditableCols,
@@ -122,6 +123,19 @@ export function CotizacionTab({
   );
   const canAddLines = lineEdits && editable;
 
+  // "Ajustar línea" (Efraín, 2026-07-31): el complemento exacto de
+  // `canAddLines` (edición inline libre) — es decir, siempre que la línea NO
+  // esté ya en modo edición libre, incluida la Oportunidad Ganada. OJO: no
+  // basta con `!lineEdits` — `lineEdits` por sí solo da falso positivo cuando
+  // una línea nunca pasó por costeo (Etapa Costeo vacía = `esDraftVigente`)
+  // aunque `editable` ya esté en false por Ganada/Perdida (bug real,
+  // encontrado probando en vivo con una oportunidad recién creada y marcada
+  // Ganada sin costear: `!lineEdits` daba false aunque la fila ya se pintaba
+  // de solo lectura). `canAddLines` ya combina ambos factores correctamente.
+  const me = useMe();
+  const canAjustar = !canAddLines && (me?.role === 'vendedor' || me?.role === 'compras' || me?.role === 'admin');
+  const [ajustarLineaTarget, setAjustarLineaTarget] = useState<ItemDTO | null>(null);
+
   const [rows, setRows] = useState<Record<string, RowEditState>>({});
   const [creatingLine, setCreatingLine] = useState(false);
   const [catalog, setCatalog] = useState<ItemDTO[]>([]);
@@ -146,14 +160,14 @@ export function CotizacionTab({
   // y de ahí sale el item_id real) Y en el board Costeo (chevron de detalle:
   // Descripción/Tallas/confirmación viven en el catálogo por SKU).
   useEffect(() => {
-    if (canAddLines || variant === 'costeo') {
+    if (canAddLines || variant === 'costeo' || canAjustar) {
       listItems('productos')
         .then((c) => { setCatalog(c); setCatalogLoading(false); })
         .catch(() => setCatalogLoading(false));
     } else {
       setCatalogLoading(false);
     }
-  }, [canAddLines, variant]);
+  }, [canAddLines, variant, canAjustar]);
 
   // Chevron de detalle por línea — Descripción/Tallas completas + (en Costeo)
   // el checkbox de Compras que bloquea "Mandar a Validación de costeo".
@@ -165,7 +179,6 @@ export function CotizacionTab({
       return next;
     });
 
-  const me = useMe();
   const canConfirm = me?.role === 'compras' || me?.role === 'admin';
   const [confirmSaving, setConfirmSaving] = useState<Record<string, boolean>>({});
   const [confirmError, setConfirmError] = useState<Record<string, string | undefined>>({});
@@ -409,11 +422,13 @@ export function CotizacionTab({
     onEdit, onBlur, onColorChange,
     onEmbellecimientoChange, onStatusChange, onProductoPick,
     onToggleConfirm, onDeleteLine, toggleExpanded,
+    onAjustarLinea: setAjustarLineaTarget,
   });
   latest.current = {
     onEdit, onBlur, onColorChange,
     onEmbellecimientoChange, onStatusChange, onProductoPick,
     onToggleConfirm, onDeleteLine, toggleExpanded,
+    onAjustarLinea: setAjustarLineaTarget,
   };
   const sEdit = useCallback((pr: ItemDTO, c: string, r: string) => latest.current.onEdit(pr, c, r), []);
   const sBlur = useCallback((pr: ItemDTO, c: string) => latest.current.onBlur(pr, c), []);
@@ -424,6 +439,7 @@ export function CotizacionTab({
   const sToggleConfirm = useCallback((id: number, next: boolean) => latest.current.onToggleConfirm(id, next), []);
   const sDeleteLine = useCallback((id: string) => latest.current.onDeleteLine(id), []);
   const sToggleExpand = useCallback((id: string) => latest.current.toggleExpanded(id), []);
+  const sAjustarLinea = useCallback((pr: ItemDTO) => latest.current.onAjustarLinea(pr), []);
 
   if (selectedVersion) {
     return (
@@ -524,6 +540,8 @@ export function CotizacionTab({
               canDelete={canAddLines}
               deleting={deletingId === p.id}
               onDeleteLine={sDeleteLine}
+              canAjustar={canAjustar}
+              onAjustarLinea={sAjustarLinea}
             />
           ))}
           {addingLineRow}
@@ -584,6 +602,8 @@ export function CotizacionTab({
               canDelete={canAddLines}
               deleting={deletingId === p.id}
               onDeleteLine={sDeleteLine}
+              canAjustar={canAjustar}
+              onAjustarLinea={sAjustarLinea}
             />
           ))}
           {addingLineRow}
@@ -604,6 +624,15 @@ export function CotizacionTab({
       )}
       {showCondiciones && (
         <CondicionesCotizacion oppId={oppId} oppCols={oppCols} item={item} onSaved={onSaved} locked={!editable} />
+      )}
+      {ajustarLineaTarget && (
+        <AjustarLineaModal
+          linea={ajustarLineaTarget}
+          catalog={catalog}
+          catalogLoading={catalogLoading}
+          onClose={() => setAjustarLineaTarget(null)}
+          onSaved={() => onSaved?.()}
+        />
       )}
     </div>
   );

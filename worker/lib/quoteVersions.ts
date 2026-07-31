@@ -18,6 +18,7 @@ import { submitWrite, flushOutbox } from './outbox';
 import { createSubitem, deleteItem } from './monday';
 import { upsertItem } from '../sync';
 import type { RawCol } from './serialize';
+import { listAjustes } from './lineaAjustes';
 
 export class QuoteVersionError extends Error {
   status: number;
@@ -135,13 +136,15 @@ export async function listVersions(env: Env, itemId: number, viewer: Identity): 
   const lineas = await childrenOf(env, 'oportunidades', itemId, viewer);
   if (lineas.length === 0) return archived;
   const vigenteProducts = lineas.map(snapshotLine);
+  const vigenteId = archived.length ? Math.max(...archived.map(v => v.id)) + 1 : 1;
   const vigente: QuoteVersionDTO = {
-    id: archived.length ? Math.max(...archived.map(v => v.id)) + 1 : 1,
+    id: vigenteId,
     label: `V${archived.length + 1}`,
     createdAt: lineas[0]?.synced_at ?? new Date().toISOString(),
     status: 'vigente',
     total: totalOf(vigenteProducts),
     products: vigenteProducts,
+    ajustes: await listAjustes(env, itemId, vigenteId),
   };
   return [...archived, vigente];
 }
