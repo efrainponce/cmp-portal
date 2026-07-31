@@ -617,7 +617,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
           // Remount cuando cambia el número de versiones (duplicar/restaurar):
           // resetea la selección interna de chips y regresa la vista a la vigente.
           key={`cot-${versions.length}`}
-          subCols={subCols} products={products} variant={cotizacionVariant} onSaved={load} versions={versions}
+          subCols={subCols} oppCols={oppCols} products={products} variant={cotizacionVariant} onSaved={load} versions={versions}
           editable={stage !== '1' && stage !== '2'}
           onNuevaVersion={stage !== '1' && stage !== '2' && stage !== '4' && !noLineEdits && !draftVigente ? () => setShowNuevaVersion(true) : undefined}
           onRestoreVersion={stage !== '1' && stage !== '2' && !noLineEdits ? (v) => setRestoreTarget(v) : undefined}

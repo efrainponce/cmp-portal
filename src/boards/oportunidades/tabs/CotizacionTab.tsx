@@ -25,6 +25,7 @@ import { VersionChips } from './cotizacion/VersionChips';
 import { SnapshotTable } from './cotizacion/SnapshotTable';
 import { TotalsRow } from './cotizacion/TotalsRow';
 import { CotizacionPdfRow } from './cotizacion/CotizacionPdfRow';
+import { CondicionesCotizacion } from './cotizacion/CondicionesCotizacion';
 import { MobileQuoteRow } from './cotizacion/MobileQuoteRow';
 import { QuoteRow } from './cotizacion/QuoteRow';
 import { ColumnVisibilityPicker } from './cotizacion/ColumnVisibilityPicker';
@@ -40,10 +41,14 @@ import {
 import type { ProductoChoice } from '../../../components/forms/ProductPicker';
 
 export function CotizacionTab({
-  subCols, products, variant = 'venta', onSaved, versions = [], onNuevaVersion, onRestoreVersion, editable = true, stage, oppId, item,
+  subCols, oppCols = [], products, variant = 'venta', onSaved, versions = [], onNuevaVersion, onRestoreVersion, editable = true, stage, oppId, item,
   readOnly = false, precioOnly = false, draft = false,
 }: {
-  subCols: ColMeta[]; products: ItemDTO[]; variant?: 'venta' | 'costeo'; onSaved?: () => void;
+  subCols: ColMeta[];
+  /** ColMeta del board `oportunidades` — las condiciones de la cotización
+   * (comerciales/entrega/vigencia) son del item, no de las líneas. */
+  oppCols?: ColMeta[];
+  products: ItemDTO[]; variant?: 'venta' | 'costeo'; onSaved?: () => void;
   versions?: QuoteVersionDTO[]; onNuevaVersion?: () => void;
   /** Al ver una versión superada, "Restaurar esta versión" — deja la cotización
    * igual a esa instantánea (la vigente se archiva y todo regresa a costeo). */
@@ -425,6 +430,7 @@ export function CotizacionTab({
       <div style={{ padding: tabPadding, width: '100%', boxSizing: 'border-box' }}>
         <VersionChips versions={versions} selected={selectedVersionId} onSelect={setSelectedVersionId} onNuevaVersion={onNuevaVersion} />
         <CotizacionPdfRow oppId={oppId} hasSolicitud={hasSolicitud} hasSinFirmar={hasSinFirmar} hasFirmada={hasFirmada} />
+        <CondicionesCotizacion oppId={oppId} oppCols={oppCols} item={item} onSaved={onSaved} locked={!editable} />
         <div style={{ font: 'var(--text-label)', color: 'var(--ink-quiet)', marginBottom: 16 }}>
           Sin líneas de producto registradas.
         </div>
@@ -451,6 +457,7 @@ export function CotizacionTab({
         )}
       </div>
       <CotizacionPdfRow oppId={oppId} hasSolicitud={hasSolicitud} hasSinFirmar={hasSinFirmar} hasFirmada={hasFirmada} />
+      <CondicionesCotizacion oppId={oppId} oppCols={oppCols} item={item} onSaved={onSaved} locked={!editable} />
       {isMobile ? (
         <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-xl)', overflow: 'hidden' }}>
           {products.map((p, lineIdx) => (

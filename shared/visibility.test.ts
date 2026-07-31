@@ -84,3 +84,28 @@ describe('precio de venta — solo admin escribe (Efraín, 2026-07-24)', () => {
     }
   });
 });
+
+describe('condiciones de la cotización — las escribe compras (Efraín, 2026-07-30)', () => {
+  // Condiciones comerciales / tiempo de entrega / vigencia: son de la cotización
+  // completa (shared/quoteTerms.ts), no de una línea. Estuvieron como `w: WV`
+  // (vendedor+admin) y sin UI; Efraín las pasó a compras+admin porque salen del
+  // costeo. El vendedor las sigue viendo: son lo que cotiza al cliente.
+  const COND = ['long_text_mm1m416j', 'text_mm0gjrrd', 'text_mm0gje0'];
+
+  it('compras y admin escriben; vendedor y almacén no', () => {
+    for (const col of COND) {
+      for (const role of ['compras', 'admin'] as Role[]) {
+        expect(canWrite('oportunidades', col, role)).toBe(true);
+      }
+      for (const role of ['vendedor', 'almacen'] as Role[]) {
+        expect(canWrite('oportunidades', col, role)).toBe(false);
+      }
+    }
+  });
+
+  it('el vendedor las sigue leyendo', () => {
+    for (const col of COND) {
+      expect(canRead('oportunidades', col, 'vendedor')).toBe(true);
+    }
+  });
+});

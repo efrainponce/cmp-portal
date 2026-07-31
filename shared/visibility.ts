@@ -36,10 +36,15 @@ export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
     // all, so canWrite() always failed. Bug-fixed per Efraín's go-ahead in that
     // session; same role set as deal_owner/comprador reassignment just below.
     deal_stage: { vis: V, w: V },
-    // PROPOSED writable (per write-path discussion; flip = one-line change):
-    text_mm0gje0:       { vis: V, w: WV },   // Vigencia de la cotización
-    text_mm0gjrrd:      { vis: V, w: WV },   // Tiempo de entrega
-    long_text_mm1m416j: { vis: V, w: WV },   // Comentarios cotización
+    // Condiciones de la cotización (bloque del tab Cotización, shared/quoteTerms.ts):
+    // condiciones comerciales, tiempo de entrega y vigencia. Son de la cotización
+    // completa, no de una línea. Estuvieron como `w: WV` (vendedor+admin) y nunca
+    // tuvieron UI; Efraín (2026-07-30) los pasó a **compras y admin**: el tiempo de
+    // entrega y las condiciones salen del costeo, no de ventas. El vendedor los
+    // sigue VIENDO (vis: V) porque son lo que cotiza al cliente.
+    text_mm0gje0:       { vis: V, w: WAC },   // Vigencia de la cotización
+    text_mm0gjrrd:      { vis: V, w: WAC },   // Tiempo de entrega
+    long_text_mm1m416j: { vis: V, w: WAC },   // Comentarios cotización (= condiciones comerciales)
     // Cliente (board_relation → Contactos) — mismo tipo de columna que
     // contact_account, ya verificado escribible en vivo (2026-07-14). El
     // vendedor lo relinkea para corregir Institución cuando quedó mal

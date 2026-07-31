@@ -11,10 +11,18 @@ change in `visibility.ts`:
 
 | Writable by vendedor | ID | Board |
 |---|---|---|
-| Vigencia de la cotización | `text_mm0gje0` | Oportunidades |
-| Tiempo de entrega | `text_mm0gjrrd` | Oportunidades |
-| Comentarios cotización | `long_text_mm1m416j` | Oportunidades |
 | Institución | `contact_account` | Contactos |
+
+**Condiciones de la cotización (2026-07-30, Efraín): las escribe COMPRAS, no ventas.**
+Son de la cotización completa, no de una línea; se editan en el bloque "Condiciones
+de la cotización" del tab Cotizaciones y sus textos por defecto viven en
+`shared/quoteTerms.ts` (único lugar a tocar para cambiarlos). El vendedor las VE.
+
+| Columna | ID | `vis` / `w` |
+|---|---|---|
+| Comentarios cotización (= condiciones comerciales) | `long_text_mm1m416j` | V / compras+admin |
+| Tiempo de entrega | `text_mm0gjrrd` | V / compras+admin |
+| Vigencia de la cotización | `text_mm0gje0` | V / compras+admin |
 
 Overnight-build additions (2026-07-14): Instituciones (18395657597) and Contactos
 (18395657595) mirrored as reference catalogs — all CRM fields ✅ for authenticated
