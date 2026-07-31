@@ -12,6 +12,7 @@ import { getItem, childrenOf, linkedItemId, ownsItem } from './dal';
 import { validarCosteo } from './automations';
 import { submitWrite } from './outbox';
 import type { RawCol } from './serialize';
+import { EMB_STATUS_COL, EMB_LABEL_CON, explodeEmbellecimiento } from '../../shared/embellecimiento';
 
 // Oportunidades subitems (18395657607) — ids de docs/monday-column-map.md.
 const SUB_CANTIDAD = 'numeric_mkzm6399';
@@ -21,6 +22,7 @@ const SUB_PRODUCTO_REL = 'board_relation_mkzmafgp';
 const SUB_PRODUCTO_TXT = 'text_mm0bkm1j';
 const SUB_FICHA = 'lookup_mm0xw8p7';              // ficha comercial (validar_costeo la exige)
 const SUB_ETAPA_COSTEO = 'color_mm084gvf';        // Etapa Costeo por línea
+const SUB_EMB_DESC = 'long_text_mm1bj4pt';        // descripción de posiciones de embellecimiento
 
 // Oportunidad
 const OPP_INSTITUCION = 'lookup_mm1bs976';        // validar_costeo rechaza sin institución
@@ -108,6 +110,11 @@ export function validateLinea(name: string, cols: Map<string, RawCol>, partida: 
 
   if (!(cols.get(SUB_FICHA)?.text ?? '').trim()) {
     errors.push(`${tag}: falta la ficha comercial (Compras debe subirla al catálogo).`);
+  }
+
+  const embStatus = (cols.get(EMB_STATUS_COL)?.text ?? '').trim();
+  if (embStatus === EMB_LABEL_CON && explodeEmbellecimiento(cols.get(SUB_EMB_DESC)?.text, true).length === 0) {
+    errors.push(`${tag}: está marcada "Con Embellecimiento" pero no tiene ninguna posición capturada (tab Embellecimientos).`);
   }
 
   return errors;
