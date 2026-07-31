@@ -117,11 +117,28 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
   const [showEditComprador, setShowEditComprador] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
 
+  // load() se llama sin esperar (onSaved tras cada write de la grid) — con
+  // varias líneas seguidas (producto, color, cantidad) puede haber 2-3 GETs
+  // en vuelo a la vez, y la red no garantiza que la respuesta MÁS VIEJA
+  // llegue primero: una que salió antes pero tardó más podía resolver
+  // DESPUÉS de una más nueva y pisar `item` con un snapshot anterior a la
+  // última edición — se veía como "guardo un cambio y se regresa" (Efraín,
+  // 2026-07-31). loadSeqRef descarta cualquier respuesta que no sea la del
+  // load() más reciente que se haya llamado.
+  const loadSeqRef = useRef(0);
   const load = () => {
     setError(null);
+    const seq = ++loadSeqRef.current;
     getItemDetail('oportunidades', id)
-      .then(({ item: it }) => { detailCache.set(id, it); setItem(it); })
-      .catch(() => setError('No se pudo cargar el detalle. Verifica tu acceso o que el servidor esté disponible.'));
+      .then(({ item: it }) => {
+        if (loadSeqRef.current !== seq) return;
+        detailCache.set(id, it);
+        setItem(it);
+      })
+      .catch(() => {
+        if (loadSeqRef.current !== seq) return;
+        setError('No se pudo cargar el detalle. Verifica tu acceso o que el servidor esté disponible.');
+      });
   };
   // Parity con Monday al abrir (Efraín, 2026-07-30 — OPP-0795 salía con costos
   // en 0): `fresh` hace que el worker relea la oportunidad Y SUS LÍNEAS de

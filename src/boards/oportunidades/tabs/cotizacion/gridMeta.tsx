@@ -385,6 +385,13 @@ export interface RowEditState {
   editing: Record<string, string>;   // colId -> in-progress raw text
   preview: Record<string, ColVal>;   // colId -> locally recomputed formula preview
   saving: Record<string, boolean>;   // colId -> PATCH in flight
+  // colId -> contador que sube cada vez que el usuario edita ese campo
+  // directamente. Deja que un `saveCols` que termina tarde (p.ej. producto,
+  // que también limpia color como efecto secundario) detecte si alguien ya
+  // editó ese OTRO campo mientras la llamada seguía en vuelo, y se abstenga de
+  // pisarlo — ver `alsoClearIfGen` en CotizacionTab's saveCols (Efraín,
+  // 2026-07-31: "elijo producto, color y cantidad, de repente se quita...").
+  fieldGen?: Record<string, number>;
   error?: string;
 }
 
