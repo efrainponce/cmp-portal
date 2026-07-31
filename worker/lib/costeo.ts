@@ -203,6 +203,11 @@ export async function enviarACosteo(
  * repetido en varias líneas solo dispara un `getItem` de Productos. */
 export async function checkValidacion(env: Env, itemId: number, viewer: Identity): Promise<EnviarCosteoResult> {
   const lineas = await childrenOf(env, 'oportunidades', itemId, viewer);
+  // Sin líneas el loop de abajo nunca corre y devolvía ok — una oportunidad
+  // vacía podía pasar a "Costeo en validación" (Efraín, 2026-07-24).
+  if (lineas.length === 0) {
+    return { ok: false, errors: ['La oportunidad no tiene líneas de producto.'] };
+  }
   const errors: string[] = [];
   const productoCache = new Map<number, boolean>(); // productoId -> confirmado
 
