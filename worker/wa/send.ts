@@ -34,6 +34,31 @@ export async function sendText(env: Env, to: string, body: string): Promise<void
   await graphPost(env, { to: normalizeMxTo(to), type: 'text', text: { body: body.slice(0, 4000) } });
 }
 
+// Approved in Meta Business Manager: body {{1}} = título, botón URL dinámica
+// base `https://portal.mexicanadeproteccion.com/` + {{1}} = "{boardKey}/{itemId}".
+const NOTIFY_TEMPLATE_NAME = 'portal_notificacion';
+const NOTIFY_TEMPLATE_LANG = 'es_MX';
+
+/** Notificación proactiva del portal (fuera de la ventana de 24h del bot) — requiere
+ * el template pre-aprobado por Meta. `urlSuffix` es el sufijo dinámico del botón
+ * ("{boardKey}/{itemId}"), mismo formato de ruta que src/lib/routing.ts. */
+export async function sendTemplate(
+  env: Env, to: string, args: { bodyText: string; urlSuffix: string },
+): Promise<void> {
+  await graphPost(env, {
+    to: normalizeMxTo(to),
+    type: 'template',
+    template: {
+      name: NOTIFY_TEMPLATE_NAME,
+      language: { code: NOTIFY_TEMPLATE_LANG },
+      components: [
+        { type: 'body', parameters: [{ type: 'text', text: args.bodyText.slice(0, 1024) }] },
+        { type: 'button', sub_type: 'url', index: '0', parameters: [{ type: 'text', text: args.urlSuffix }] },
+      ],
+    },
+  });
+}
+
 /** Mark an incoming message as read (blue ticks) — best-effort, never throws. */
 export async function markRead(env: Env, messageId: string): Promise<void> {
   try {

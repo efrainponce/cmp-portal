@@ -93,6 +93,30 @@ inventario por WhatsApp (o por la burbuja del portal — es el mismo agente):
 Alta de un usuario de almacén = una identidad con `role='almacen'` y `phone` (mismo
 mecanismo de whitelist de abajo).
 
+## Notificaciones "importantes" por WhatsApp — 2026-07-31
+
+El Centro de Notificaciones del portal (`worker/lib/notify.ts`, tabla `notifications`)
+también reenvía por WhatsApp las notificaciones de severidad **`importante`**
+(menciones, costeo incompleto, producto propuesto, documento firmado) — **no**
+`actualizacion`/cambios de etapa, por decisión de alcance de Efraín.
+
+- `emitNotification()` dispara `notifyPortalWa()` (`worker/wa/notify.ts`) solo cuando
+  el `INSERT OR IGNORE` insertó fila nueva (evita reenvíos en replays con el mismo
+  `dedupe_key`) y solo si el destinatario tiene `identity.phone`.
+- `worker/wa/send.ts::sendTemplate()` reusa los secrets `WHATSAPP_TOKEN` /
+  `WHATSAPP_PHONE_NUMBER_ID` ya dados de alta arriba — no hay secrets nuevos.
+- **Requiere un template pre-aprobado por Meta** (mensaje proactivo, fuera de la
+  ventana de servicio de 24h del bot). Template dado de alta en Meta Business Manager:
+  - Nombre: `portal_notificacion` · Categoría: Utility · Idioma: `es_MX`
+  - Body: `{{1}}` = título de la notificación (texto con contenido fijo antes/después,
+    Meta rechaza variables pegadas al inicio/fin del mensaje)
+  - Botón "Visit website" con URL dinámica: base `https://portal.mexicanadeproteccion.com/`
+    + `{{1}}` = `{boardKey}/{itemId}` (mismo formato de ruta que `src/lib/routing.ts`,
+    así que el link abre la oportunidad directo en la app).
+- Si el template no está aprobado (o Meta lo rechaza), el envío falla y se loguea a
+  `sync_log` — best-effort, no rompe la notificación del portal ni el flujo que la
+  disparó.
+
 ## Alta de vendedores (whitelist — decisión de Efraín)
 
 El bot solo atiende teléfonos que estén en `identity.phone` (se comparan los últimos

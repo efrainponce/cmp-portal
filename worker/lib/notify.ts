@@ -8,6 +8,7 @@ import type { RecipientSelector } from '../../shared/notifications';
 import { STAGE_NOTIFY } from '../../shared/notifications';
 import { DEAL_STAGE_LABELS } from '../../shared/dealStages';
 import { logSync } from '../sync/log';
+import { notifyPortalWa } from '../wa/notify';
 import type { RawCol } from './serialize';
 
 export type Severity = 'importante' | 'actualizacion';
@@ -29,7 +30,7 @@ export interface NotifyInput {
  * fallo se loguea a sync_log y se traga — nunca rompe al caller. */
 export async function emitNotification(env: Env, n: NotifyInput): Promise<void> {
   try {
-    await env.DB.prepare(
+    const result = await env.DB.prepare(
       `INSERT OR IGNORE INTO notifications
         (recipient_email, severity, kind, title, body, board_key, board_id, item_id, actor, dedupe_key, read_at, created_at)
        VALUES (?,?,?,?,?,?,?,?,?,?,NULL,?)`,
@@ -46,6 +47,11 @@ export async function emitNotification(env: Env, n: NotifyInput): Promise<void> 
       n.dedupeKey,
       new Date().toISOString(),
     ).run();
+
+    // Fila nueva (no un replay del mismo dedupe_key) + severidad importante → WhatsApp.
+    if (result.meta.changes > 0 && n.severity === 'importante') {
+      await notifyPortalWa(env, n);
+    }
   } catch (err) {
     await logSync(env, 'manual', n.boardId ?? null, n.itemId ?? null, false, 'notify: ' + err);
   }
