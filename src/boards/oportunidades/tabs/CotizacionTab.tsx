@@ -38,7 +38,6 @@ import {
   PRODUCTO_CONFIRM_COL, linkedProductoId, MONEY_COLS,
 } from './cotizacion/gridMeta';
 import type { ProductoChoice } from '../../../components/forms/ProductPicker';
-import { DraftLineRow, emptyDraftLine, isDraftComplete, type DraftLine } from './cotizacion/DraftLineRow';
 
 export function CotizacionTab({
   subCols, oppCols = [], products, variant = 'venta', onSaved, versions = [], onNuevaVersion, onRestoreVersion, editable = true, stage, oppId, item,
@@ -124,12 +123,7 @@ export function CotizacionTab({
   const canAddLines = lineEdits && editable;
 
   const [rows, setRows] = useState<Record<string, RowEditState>>({});
-  const [drafts, setDrafts] = useState<DraftLine[]>([]);
-  const draftKeyRef = useRef(0);
-  // Cambiar de oportunidad no remonta el tab (mismo componente, solo cambia
-  // `oppId`) — sin esto un borrador sin terminar de una oportunidad se
-  // quedaría pegado en la siguiente que se abra.
-  useEffect(() => { setDrafts([]); }, [oppId]);
+  const [creatingLine, setCreatingLine] = useState(false);
   const [catalog, setCatalog] = useState<ItemDTO[]>([]);
   // Distingue "todavía no llega el catálogo" de "este producto no tiene
   // colores configurados" — antes ambos casos se veían igual (input vacío
@@ -197,54 +191,23 @@ export function CotizacionTab({
     }
   };
 
-  // "+ Agregar línea" ya NO manda nada a Monday: agrega un borrador local
-  // (producto/color/cantidad viven solo en `drafts` hasta que la línea está
-  // completa). Ver DraftLineRow.tsx para el porqué.
-  const onAddLine = () => {
-    setDrafts((ds) => [...ds, emptyDraftLine(`draft-${++draftKeyRef.current}`)]);
-  };
-  const onDraftChange = (key: string, patch: Partial<DraftLine>) =>
-    setDrafts((ds) => ds.map((d) => (d.key === key ? { ...d, ...patch, error: undefined } : d)));
-  const onDraftCancel = (key: string) => setDrafts((ds) => ds.filter((d) => d.key !== key));
-  const onDraftRetry = (key: string) => setDrafts((ds) => ds.map((d) => (d.key === key ? { ...d, error: undefined } : d)));
-
-  const submitDraft = async (d: DraftLine) => {
+  const onAddLine = async () => {
     if (!oppId) return;
+    setCreatingLine(true);
     try {
-      const body: Record<string, unknown> = { cantidad: parseFloat(d.cantidad) };
-      if (d.choice && 'item' in d.choice) body.productoItemId = Number(d.choice.item.id);
-      else if (d.choice) body.productoTexto = d.choice.freeText.trim();
-      if (d.color) body.color = d.color;
       const res = await apiFetch(`/oportunidades/${oppId}/productos`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify({}),
       });
       if (!res.ok) throw new Error('No se pudo crear la línea');
-      setDrafts((ds) => ds.filter((x) => x.key !== d.key));
       onSaved?.();
     } catch (e) {
       console.error('Error creando línea:', e);
-      setDrafts((ds) => ds.map((x) => (x.key === d.key
-        ? { ...x, saving: false, error: e instanceof Error ? e.message : 'No se pudo guardar.' }
-        : x)));
+    } finally {
+      setCreatingLine(false);
     }
   };
-
-  // Dispara la creación real en cuanto un borrador queda completo (producto +
-  // color si aplica + cantidad > 0) — una sola llamada con los tres valores
-  // juntos, nunca antes de que la línea esté "verde" (Efraín, 2026-07-31).
-  // Solo uno a la vez: marcar `saving` de inmediato hace que este mismo efecto
-  // se re-evalúe y tome el siguiente borrador listo, si hay más de uno.
-  useEffect(() => {
-    const ready = drafts.find((d) => !d.saving && !d.error && isDraftComplete(d, catalog));
-    if (!ready) return;
-    setDrafts((ds) => ds.map((d) => (d.key === ready.key ? { ...d, saving: true } : d)));
-    void submitDraft(ready);
-    // submitDraft se recrea cada render (cierra sobre oppId/onSaved) a propósito;
-    // el efecto solo necesita re-evaluar cuando cambian los borradores/catálogo.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [drafts, catalog]);
 
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const onDeleteLine = async (productId: string) => {
@@ -482,22 +445,19 @@ export function CotizacionTab({
     );
   }
 
-  // Filas-borrador locales (ver DraftLineRow.tsx) — `stacked` cuando no hay
-  // header de grid contra el cual alinear columnas (mobile, o "sin líneas
-  // todavía") o cuando de plano no hay líneas reales todavía.
-  const draftRows = (stacked: boolean) => drafts.map((d) => (
-    <DraftLineRow
-      key={d.key}
-      draft={d}
-      visibleCols={visibleCols}
-      catalog={catalog}
-      catalogLoading={catalogLoading}
-      stacked={stacked}
-      onChange={(patch) => onDraftChange(d.key, patch)}
-      onCancel={() => onDraftCancel(d.key)}
-      onRetry={() => onDraftRetry(d.key)}
-    />
-  ));
+  // Fila-esqueleto visible de inmediato al hacer clic en "+ Agregar línea" —
+  // la creación real sigue tardando ~1-3s (round-trip a Monday), pero mostrar
+  // algo en el lugar de la nueva línea evita que el clic se sienta congelado
+  // (Efraín, 2026-07-20: reportó ~15s de espera "en blanco").
+  const addingLineRow = creatingLine ? (
+    <div style={{
+      borderTop: '1px solid var(--border-subtle)', padding: '14px 16px',
+      display: 'flex', alignItems: 'center', gap: 8, background: '#faf8f6',
+    }}>
+      <span style={{ color: 'var(--accent)' }}>⏳</span>
+      <span style={{ font: 'var(--text-label)', color: 'var(--ink-tertiary)' }}>Agregando línea…</span>
+    </div>
+  ) : null;
 
   if (products.length === 0) {
     return (
@@ -507,10 +467,14 @@ export function CotizacionTab({
         <div style={{ font: 'var(--text-label)', color: 'var(--ink-quiet)', marginBottom: 16 }}>
           Sin líneas de producto registradas.
         </div>
-        {draftRows(true)}
+        {addingLineRow}
         {canAddLines && (
-          <Button variant="primary" onClick={onAddLine} style={{ marginTop: drafts.length > 0 ? 12 : 0 }}>
-            + Agregar línea
+          <Button
+            variant="primary"
+            onClick={creatingLine ? undefined : onAddLine}
+            style={{ opacity: creatingLine ? 0.6 : 1 }}
+          >
+            {creatingLine ? 'Agregando línea…' : '+ Agregar línea'}
           </Button>
         )}
         {showCondiciones && (
@@ -562,11 +526,17 @@ export function CotizacionTab({
               onDeleteLine={sDeleteLine}
             />
           ))}
-          {draftRows(true)}
+          {addingLineRow}
           <TotalsRow variant={variant} visibleCols={visibleCols} products={products} rows={rows} isMobile />
           {canAddLines && (
             <div style={{ padding: '16px', borderTop: '1px solid var(--border)', display: 'flex', gap: 8 }}>
-              <Button variant="secondary" onClick={onAddLine}>+ Agregar línea</Button>
+              <Button
+                variant="secondary"
+                onClick={creatingLine ? undefined : onAddLine}
+                style={{ opacity: creatingLine ? 0.6 : 1 }}
+              >
+                {creatingLine ? 'Agregando línea…' : '+ Agregar línea'}
+              </Button>
             </div>
           )}
         </div>
@@ -616,12 +586,18 @@ export function CotizacionTab({
               onDeleteLine={sDeleteLine}
             />
           ))}
-          {draftRows(false)}
+          {addingLineRow}
           <TotalsRow variant={variant} visibleCols={visibleCols} products={products} rows={rows} />
         </div>
         {canAddLines && (
           <div style={{ padding: '16px', borderTop: '1px solid var(--border)', display: 'flex', gap: 8 }}>
-            <Button variant="secondary" onClick={onAddLine}>+ Agregar línea</Button>
+            <Button
+              variant="secondary"
+              onClick={creatingLine ? undefined : onAddLine}
+              style={{ opacity: creatingLine ? 0.6 : 1 }}
+            >
+              {creatingLine ? 'Agregando línea…' : '+ Agregar línea'}
+            </Button>
           </div>
         )}
       </div>

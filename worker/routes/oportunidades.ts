@@ -293,26 +293,11 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
   // Crear una línea de producto — sin versioning. Permitido en Nueva oportunidad
   // (stage 4) y sobre un borrador de versión (todas las líneas sin costear), donde
   // el grid se comporta igual que en Nueva oportunidad (Efraín, 2026-07-17).
-  //
-  // producto/color opcionales: el front (CotizacionTab) ahora arma la línea
-  // completa en estado local (sin pegarle a Monday por cada campo) y solo
-  // llega aquí una vez que producto+color+cantidad ya están completos — antes
-  // creaba el subitem vacío al primer clic y cada campo mandaba su propio PATCH
-  // por separado, lo que dejaba tres escrituras concurrentes por línea que
-  // podían pisarse entre sí en el estado local del front (Efraín, 2026-07-31:
-  // "elijo producto, color y cantidad, de repente se quita el producto y el
-  // color"). Mismos ids de columna que worker/lib/createOportunidad.ts usa
-  // para el mismo subitem board.
-  const SUB_PRODUCTO_REL = 'board_relation_mkzmafgp';
-  const SUB_PRODUCTO_TXT = 'text_mm0bkm1j';
-  const SUB_COLOR = 'text_mm07s2mg';
   app.post('/api/oportunidades/:id/productos', async c => {
     const itemId = Number(c.req.param('id'));
     if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
     const viewer = c.get('viewer');
-    const body = await c.req.json<{
-      cantidad?: number; productoItemId?: number; productoTexto?: string; color?: string;
-    }>();
+    const body = await c.req.json<{ cantidad?: number }>();
 
     try {
       const item = await getItem(c.env, 'oportunidades', itemId, viewer, 'own');
@@ -344,9 +329,6 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       const subitemCols: Record<string, unknown> = {
         numeric_mkzm6399: body.cantidad ?? 0, // cantidad
       };
-      if (body.productoItemId) subitemCols[SUB_PRODUCTO_REL] = { item_ids: [Number(body.productoItemId)] };
-      else if (body.productoTexto?.trim()) subitemCols[SUB_PRODUCTO_TXT] = body.productoTexto.trim();
-      if (body.color?.trim()) subitemCols[SUB_COLOR] = body.color.trim();
       const subitem = await createSubitem(c.env, itemId, subitemName, subitemCols);
 
       await upsertItem(c.env, 'oportunidades_sub', subitem);
