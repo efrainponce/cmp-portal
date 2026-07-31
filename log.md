@@ -2,6 +2,12 @@
 
 ## 2026-07-30
 
+- **`fd92095`** — Bloquear envío a validación de oportunidades sin líneas
+  - El cambio ya estaba en el tree sin commitear (sesión concurrente, fechado *"Efraín, 2026-07-24"* en el comentario); se commiteó y deployeó a petición de Efraín — *"eso necesita estar en prod por favor"*— junto con el cambio de sesión de Access.
+  - `checkValidacion` (`worker/lib/costeo.ts`) acumula errores **dentro del loop sobre las líneas**: con `lineas.length === 0` el loop no corre nunca, `errors` queda vacío y la función devolvía `ok: true`. O sea una oportunidad **sin una sola línea de producto** pasaba la validación y podía mandarse a "Costeo en validación". Guard de 3 líneas antes del loop: `{ ok: false, errors: ['La oportunidad no tiene líneas de producto.'] }`, que es el mismo shape `EnviarCosteoResult` que ya pinta la UI.
+  - 66 tests, `tsc --noEmit` en los 3 tsconfigs y `oxlint` limpios. **Deploy hecho desde un worktree limpio en HEAD**, no desde el tree de trabajo: la sesión concurrente tenía WIP grande sin commitear (`shared/quoteTerms.ts`, `CondicionesCotizacion.tsx`, `worker/lib/zonas.ts`, más `schema.sql` y `visibility.ts` modificados) y `wrangler.jsonc` sirve los assets del build, así que un deploy normal se lo habría llevado a prod a medias.
+  - Arrastra a prod también lo que la sesión concurrente commiteó y pusheó después del último deploy (16:52 CST): `bb7b3e1`, `6f45bab`, `9e8a144`.
+
 - **`6f45bab`** — Buscar productos por SKU, nombre o ambos al cotizar
   - Efraín, con screenshot de la cotización en móvil (línea #1 con "72002" tecleado, SKU en "—", "Falta color • Falta descripción • Falta cantidad"): *"hay un problema con el buscador de productos tenemos que poder buscar por SKU nombre o ambos se super flexible"*.
   - **Causa, doble.** El picker era un `<input list="productos-catalogo-cotizacion">` cuyo `<datalist>` solo tenía `name` como valor: (1) el filtrado lo hacía **el navegador**, y en Android prácticamente no filtra — por eso en la captura no ofrecía nada; y (2) `onProductoBlur` resolvía con `catalogIndex(catalog).byName.get(raw.trim().toLowerCase())`, o sea **match exacto contra el nombre completo**. El SKU vive en el nombre del catálogo ("72002 - TDU ® Long Sleeve Shirt"), así que teclear el SKU suelto nunca ligaba y caía al `else`: se guardaba como texto libre en `text_mm0bkm1j`, sin relación → sin SKU, sin descripción y sin colores. Los tres avisos del screenshot son consecuencia de eso, no fallas separadas.
