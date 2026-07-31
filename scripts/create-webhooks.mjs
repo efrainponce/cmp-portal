@@ -19,8 +19,14 @@ const env = { MONDAY_API_KEY };
 const callbackUrl = `${BASE_URL.replace(/\/$/, '')}/api/sync/webhook/${WEBHOOK_TOKEN}`;
 
 const TOP_LEVEL = ['oportunidades', 'proyectos', 'productos', 'instituciones', 'contactos'];
-const BASE_EVENTS = ['create_item', 'change_column_value', 'change_name', 'item_deleted'];
-const SUBITEM_EVENTS = ['create_subitem', 'change_subitem_column_value', 'subitem_deleted'];
+// 2026-07-31: change_column_value / change_subitem_column_value (cualquier
+// columna) se quitaron — consumían ~80% de la cuota de acciones de Monday con
+// webhooks que ni el propio portal necesita (cada mutación disparada por el
+// portal ya se refetchea sola vía refetchItem/refetchItemTree). Sin ellos, el
+// mirror depende de `?fresh=1` al abrir el drawer + reconcileAll (cron 6h)
+// para detectar ediciones hechas directo en Monday.
+const BASE_EVENTS = ['create_item', 'change_name', 'item_deleted'];
+const SUBITEM_EVENTS = ['create_subitem', 'subitem_deleted'];
 const hasSubitems = (slug) => Object.values(BOARDS).some(d => d.parent === slug);
 
 const MUTATION = `mutation($board:ID!,$url:String!,$event:WebhookEventType!){
