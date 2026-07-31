@@ -33,7 +33,6 @@ import {
   type RowEditState, EMPTY_ROW, inlineEditableCols,
   GRID_COLS_COSTEO, GRID_COLS_VENTA, colsTemplate, displayProducto,
   loadHiddenCols, saveHiddenCols, gridWrapStyle,
-  ETAPA_COSTEO_COL,
   PRODUCTO_COL, PRODUCTO_TXT_COL, PRODUCTO_REL_COL, COLOR_COL,
   EMB_STATUS_COL, EMB_LABEL_CON, EMB_LABEL_SIN,
   PRODUCTO_CONFIRM_COL, linkedProductoId, MONEY_COLS,
@@ -314,14 +313,17 @@ export function CotizacionTab({
     });
   };
 
-  // Etapa Costeo — dropdown que compras usa para marcar dónde va el costeo de
-  // esta línea (No iniciado/En curso/Listo/Detenido/Modificado).
-  const onEtapaCosteoChange = (product: ItemDTO, label: string) => {
+  // Dropdowns de status de la línea: Etapa Costeo (dónde va el costeo: No
+  // iniciado/En curso/Listo/Detenido/Modificado) y Moneda (línea) (MXN/USD/
+  // EUR/GBP — Efraín, 2026-07-30). Igual que Color, se guardan al elegir: un
+  // <select> no tiene "blur para confirmar". El preview local evita el parpadeo
+  // mientras el mirror de Monday alcanza.
+  const onStatusChange = (product: ItemDTO, colId: string, label: string) => {
     if (!label) return;
-    const current = product.cols[ETAPA_COSTEO_COL]?.text ?? '';
+    const current = product.cols[colId]?.text ?? '';
     if (label === current) return;
-    void saveCols(product.id, ETAPA_COSTEO_COL, { [ETAPA_COSTEO_COL]: label }, {
-      preview: { [ETAPA_COSTEO_COL]: { text: label, type: 'status' } },
+    void saveCols(product.id, colId, { [colId]: label }, {
+      preview: { [colId]: { text: label, type: 'status' } },
     });
   };
 
@@ -373,19 +375,19 @@ export function CotizacionTab({
   // el handler más nuevo, porque se re-renderizaba siempre.
   const latest = useRef({
     onEdit, onBlur, onColorChange,
-    onEmbellecimientoChange, onEtapaCosteoChange, onProductoPick,
+    onEmbellecimientoChange, onStatusChange, onProductoPick,
     onToggleConfirm, onDeleteLine, toggleExpanded,
   });
   latest.current = {
     onEdit, onBlur, onColorChange,
-    onEmbellecimientoChange, onEtapaCosteoChange, onProductoPick,
+    onEmbellecimientoChange, onStatusChange, onProductoPick,
     onToggleConfirm, onDeleteLine, toggleExpanded,
   };
   const sEdit = useCallback((pr: ItemDTO, c: string, r: string) => latest.current.onEdit(pr, c, r), []);
   const sBlur = useCallback((pr: ItemDTO, c: string) => latest.current.onBlur(pr, c), []);
   const sColorChange = useCallback((pr: ItemDTO, r: string) => latest.current.onColorChange(pr, r), []);
   const sEmbChange = useCallback((pr: ItemDTO, con: boolean) => latest.current.onEmbellecimientoChange(pr, con), []);
-  const sEtapaChange = useCallback((pr: ItemDTO, l: string) => latest.current.onEtapaCosteoChange(pr, l), []);
+  const sStatusChange = useCallback((pr: ItemDTO, c: string, l: string) => latest.current.onStatusChange(pr, c, l), []);
   const sProductoPick = useCallback((pr: ItemDTO, ch: ProductoChoice) => latest.current.onProductoPick(pr, ch), []);
   const sToggleConfirm = useCallback((id: number, next: boolean) => latest.current.onToggleConfirm(id, next), []);
   const sDeleteLine = useCallback((id: string) => latest.current.onDeleteLine(id), []);
@@ -478,7 +480,7 @@ export function CotizacionTab({
               onBlur={sBlur}
               onColorChange={sColorChange}
               onEmbellecimientoChange={sEmbChange}
-              onEtapaCosteoChange={sEtapaChange}
+              onStatusChange={sStatusChange}
               onProductoPick={sProductoPick}
               expanded={expanded.has(p.id)}
               onToggleExpand={sToggleExpand}
@@ -538,7 +540,7 @@ export function CotizacionTab({
               onBlur={sBlur}
               onColorChange={sColorChange}
               onEmbellecimientoChange={sEmbChange}
-              onEtapaCosteoChange={sEtapaChange}
+              onStatusChange={sStatusChange}
               onProductoPick={sProductoPick}
               expanded={expanded.has(p.id)}
               onToggleExpand={sToggleExpand}

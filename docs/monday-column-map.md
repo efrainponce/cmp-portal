@@ -134,8 +134,10 @@ disponibles" (`lookup_mkznm0h3`, mirror del catálogo) cuando la lista existe.
 | ✅ | Subtotal | `formula_mkznmjh6` | formula (`display_value`) |
 | ✅ | IVA | `formula_mm0rtdqp` | formula |
 | ✅ | Total Con IVA | `formula_mm00xy0n` | formula |
+| ✅ | IVA % (input de las 3 fórmulas de arriba) | `numeric_mm0cg0bm` | numbers (16) — escribe compras/admin desde Costeo (2026-07-30) |
 | ✅ | Etapa Costeo (línea) | `color_mm084gvf` | status — same ❓ as item-level; **recomiendo ✅** |
-| ❓ | Moneda | `lookup_mm11t8gj` | mirror — es la moneda del **costo** proveedor. **Recomiendo 🔒** |
+| 🔒 | Moneda (línea) | `color_mm5s709s` | status MXN/USD/EUR/GBP — **creada 2026-07-30**, la moneda del costo de ESTE costeo; la escribe compras/admin. Vacía = hereda la del catálogo |
+| 🔒 | Moneda (catálogo) | `lookup_mm11t8gj` | mirror de Productos `text_mkzp59zf` — **NO escribible** (Monday no deja escribir espejos). Solo fallback de lectura de `color_mm5s709s` |
 | 🔒 | Costo Distr. C/U | `numeric_mm0bph99` | numbers |
 | 🔒 | Descuento Distr. % / Descuento (auto) / Descuento | `numeric_mkzn2q51` / `lookup_mm0bdwb5` / `formula_mkznqx51` | — |
 | 🔒 | Costo Real C/U | `formula_mkzngnjm` | formula |

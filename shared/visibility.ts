@@ -104,6 +104,17 @@ export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
     // C/U, Diferencia, Utilidad y el % de "Margen"; editable en Costeo, solo
     // lectura en Validación (Efraín, 2026-07-16).
     numeric_mkznnm5s: { vis: AC, w: WAC },   // Margen Gob %
+    // Moneda (línea) — columna status creada en Monday el 2026-07-30. La
+    // Moneda que ya existía (lookup_mm11t8gj, arriba) es un MIRROR del catálogo
+    // y Monday no deja escribirlo: el mismo producto puede llegar costeado en
+    // dólares o en pesos según el proveedor, así que la moneda de ESTE costeo
+    // se captura por línea. Mismo grupo que el resto de los inputs de costeo.
+    color_mm5s709s: { vis: AC, w: WAC },     // Moneda (línea)
+    // IVA % de la línea (16) — es el input de las fórmulas Subtotal/IVA/Total
+    // c/IVA, que el vendedor ya VE. No estaba en la whitelist, así que el
+    // server lo borraba del DTO y ni la grid de Costeo ni el preview local
+    // podían mostrar el IVA (Efraín, 2026-07-30). Lo escribe Compras.
+    numeric_mm0cg0bm: { vis: V, w: WAC },    // IVA %
   },
 
   proyectos: {

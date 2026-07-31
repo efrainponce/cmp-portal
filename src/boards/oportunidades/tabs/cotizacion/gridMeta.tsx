@@ -11,6 +11,19 @@ export { EMB_STATUS_COL, EMB_LABEL_CON, EMB_LABEL_SIN } from '../../../../../sha
 
 export const COSTO_DISTR_COL = 'numeric_mm0bph99';
 export const ETAPA_COSTEO_COL = 'color_mm084gvf';
+// Moneda del costo de proveedor. `lookup_mm11t8gj` es un MIRROR de la Moneda
+// del producto en el catálogo (Productos text_mkzp59zf) — Monday no deja
+// escribir espejos, así que la celda nunca fue editable. Como el mismo producto
+// puede costearse en dólares una vez y en pesos otra (Efraín, 2026-07-30:
+// "cosas de bomberos nos pasan el costo en dólar"), la moneda REAL de la línea
+// vive en una columna status propia del subitem, creada ese día
+// (`color_mm5s709s`). Vacía = se hereda la del catálogo; el espejo se queda
+// como fallback de lectura para las miles de líneas viejas.
+export const MONEDA_MIRROR_COL = 'lookup_mm11t8gj';
+export const MONEDA_COL = 'color_mm5s709s';
+export const MONEDA_LABELS = ['MXN', 'USD', 'EUR', 'GBP'];
+export const MONEDA_BASE = 'MXN';   // la moneda en la que se cotiza: sin conversión
+export const IVA_PCT_COL = COL.ivaPct;   // numeric_mm0cg0bm — % de IVA por línea (16)
 export const SUGERIDO_COL = 'numeric_mm2qzzbe';       // P. venta sugerido (auto) — vacío en muchas líneas
 export const MARGEN_COL = 'formula_mkznpw5p';         // Utilidad % (utilidad/subtotal)
 export const SUBTOTAL_COL = 'formula_mkznmjh6';
@@ -73,6 +86,9 @@ export function inlineEditableCols(lineEdits: boolean): Set<string> {
     // server (`w: WAC` en shared/visibility.ts) pero la grid nunca lo pintaba
     // como input, así que era el único costo de la fila de solo lectura.
     COL.embellecimiento,
+    // Moneda de la línea e IVA % — los captura Compras junto con los costos
+    // (Efraín, 2026-07-30).
+    MONEDA_COL, IVA_PCT_COL,
   ]);
   if (lineEdits) {
     base.add(PRODUCTO_COL);
@@ -112,7 +128,7 @@ export const GRID_COLS_COSTEO: GridCol[] = [
   { id: 'lookup_mkzn7x9a', label: 'SKU', align: 'left', kind: 'text', width: 80 },
   { id: 'numeric_mkzm6399', label: 'Cant.', align: 'left', kind: 'text', width: 55 },
   { id: ETAPA_COSTEO_COL, label: 'Etapa costeo', align: 'left', kind: 'text', width: 100 },
-  { id: 'lookup_mm11t8gj', label: 'Moneda', align: 'left', kind: 'text', width: 55 },
+  { id: MONEDA_COL, label: 'Moneda', align: 'left', kind: 'text', width: 96 },
   { id: 'numeric_mm0bph99', label: 'Costo distr. C/U', align: 'right', kind: 'money', width: 88 },
   { id: 'numeric_mkzn2q51', label: 'Desc. %', align: 'right', kind: 'percent', width: 65 },
   { id: 'formula_mkzngnjm', label: 'Costo real C/U', align: 'right', kind: 'money', width: 88 },
@@ -122,6 +138,15 @@ export const GRID_COLS_COSTEO: GridCol[] = [
   { id: 'formula_mkznpfgg', label: 'Costo total C/U', align: 'right', kind: 'money', width: 88 },
   { id: 'numeric_mm2qzzbe', label: 'P. venta sugerido', align: 'right', kind: 'money', width: 92 },
   { id: 'numeric_mkzneg3d', label: 'P. venta', align: 'right', kind: 'money', width: 82 },
+  // Subtotal / IVA / Total c/IVA vivían solo en la vista de Venta: en Costeo no
+  // había forma de ver el IVA de una línea ni el total con IVA de la cotización
+  // (Efraín, 2026-07-30: "en costeo no trae el apartado del IVA"). El % de IVA
+  // (16 en todas las líneas) es el input real de las tres fórmulas, así que va
+  // junto a ellas y editable por Compras.
+  { id: IVA_PCT_COL, label: 'IVA %', align: 'right', kind: 'percent', width: 62 },
+  { id: SUBTOTAL_COL, label: 'Subtotal', align: 'right', kind: 'money', width: 100 },
+  { id: IVA_COL, label: 'IVA', align: 'right', kind: 'money', width: 90 },
+  { id: TOTAL_CON_IVA_COL, label: 'Total c/IVA', align: 'right', kind: 'money', width: 105 },
   { id: 'numeric_mkznnm5s', label: 'Margen Gob %', align: 'right', kind: 'percent', width: 82 },
   // Margen Gob Total (money, cantidad × margen gob C/U) — visible en subCols
   // para compras/admin (AC, shared/visibility.ts) pero nunca se pintaba como
@@ -294,6 +319,16 @@ export function productoConfirmado(row: ItemDTO, catalog: ItemDTO[]): boolean {
   return !!catalogItem?.cols[PRODUCTO_CONFIRM_COL]?.text;
 }
 
+// Moneda efectiva de una línea: la capturada en la línea gana; si está vacía se
+// hereda la del producto en el catálogo (el mirror). `heredada` distingue las
+// dos para pintar "MXN (catálogo)" en el selector — sin eso no se nota si la
+// moneda es una decisión de este costeo o un default del catálogo.
+export function monedaDe(row: ItemDTO, preview?: Record<string, ColVal>): { label: string; heredada: boolean } {
+  const propia = (preview?.[MONEDA_COL]?.text ?? row.cols[MONEDA_COL]?.text ?? '').trim();
+  if (propia) return { label: propia, heredada: false };
+  return { label: (row.cols[MONEDA_MIRROR_COL]?.text ?? '').trim(), heredada: true };
+}
+
 // Chevron de detalle — más prominente que un texto suelto (Efraín, 2026-07-18:
 // "no se ve mucho"): tamaño mayor, color de tinta plena y un target de click real.
 export function chevronButtonStyle(expanded: boolean): React.CSSProperties {
@@ -419,6 +454,17 @@ export function getLineWarnings(
   // En costeo: producto debe estar confirmado
   if (variant === 'costeo' && !productoConfirmado(product, catalog)) {
     warnings.push('Sin confirmar');
+  }
+
+  // En costeo: si el proveedor cotizó en otra moneda, el Valor de Conversión
+  // tiene que dejar de ser 1 — si no, el costo convertido queda en dólares
+  // disfrazados de pesos y toda la cadena (costo total, utilidad, precio) sale
+  // ~19x baja. El tipo de cambio se sigue capturando a mano (Efraín, 2026-07-30).
+  if (variant === 'costeo') {
+    const { label: moneda } = monedaDe(product, state.preview);
+    if (moneda && moneda !== MONEDA_BASE && numFrom(state, product, COL.conversion) <= 1) {
+      warnings.push('Falta conversión');
+    }
   }
 
   return warnings;

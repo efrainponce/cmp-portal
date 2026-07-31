@@ -16,6 +16,7 @@ import {
   ETAPA_COSTEO_COL, SUGERIDO_COL, MARGEN_COL,
   PRODUCTO_COL, PRODUCTO_TXT_COL, PRODUCTO_REL_COL, COLOR_COL,
   EMB_STATUS_COL, EMB_LABEL_CON, EMB_LABEL_SIN,
+  MONEDA_COL, MONEDA_LABELS, monedaDe,
   chevronButtonStyle, colorOptions,
 } from './gridMeta';
 
@@ -26,7 +27,7 @@ const labelStyle: React.CSSProperties = {
 
 function MobileQuoteRowInner({
   product: p, partida, state, visibleCols, variant, precioOnly = false, editable, editableCols, writableIds, catalog, catalogLoading,
-  onEdit, onBlur, onColorChange, onEmbellecimientoChange, onEtapaCosteoChange, onProductoPick,
+  onEdit, onBlur, onColorChange, onEmbellecimientoChange, onStatusChange, onProductoPick,
   expanded, onToggleExpand, canConfirm, confirmSaving, confirmError, onToggleConfirm,
   canDelete, deleting, onDeleteLine,
 }: {
@@ -44,7 +45,8 @@ function MobileQuoteRowInner({
   onBlur: (product: ItemDTO, colId: string) => void;
   onColorChange: (product: ItemDTO, raw: string) => void;
   onEmbellecimientoChange: (product: ItemDTO, con: boolean) => void;
-  onEtapaCosteoChange: (product: ItemDTO, label: string) => void;
+  /** Cualquier columna status de la línea: Etapa Costeo y Moneda (línea). */
+  onStatusChange: (product: ItemDTO, colId: string, label: string) => void;
   /** Producto elegido en el picker — del catálogo (relación) o texto libre. */
   onProductoPick: (product: ItemDTO, choice: ProductoChoice) => void;
   /** Chevron de detalle (Descripción/Tallas + confirmación de Compras en Costeo). */
@@ -68,7 +70,10 @@ function MobileQuoteRowInner({
     const writable = c.id === PRODUCTO_COL
       ? titleWritable
       : editable && writableIds.has(c.id) && editableCols.has(c.id);
-    const displayVal = state.preview[c.id] ?? p.cols[c.id];
+    // Igual que en desktop: sin moneda propia, se muestra la del catálogo.
+    const displayVal = c.id === MONEDA_COL
+      ? { text: monedaDe(p, state.preview).label, type: 'status' }
+      : state.preview[c.id] ?? p.cols[c.id];
 
     if (writable && c.id === COLOR_COL) {
       const raw = state.editing[COLOR_COL] ?? (p.cols[COLOR_COL]?.text ?? '');
@@ -132,11 +137,26 @@ function MobileQuoteRowInner({
         <select
           value={raw}
           disabled={!!state.saving[ETAPA_COSTEO_COL]}
-          onChange={(e) => onEtapaCosteoChange(p, e.target.value)}
+          onChange={(e) => onStatusChange(p, ETAPA_COSTEO_COL, e.target.value)}
           style={{ ...inputStyle, textAlign: 'left' }}
         >
           <option value="">Elegir etapa…</option>
           {Object.keys(ETAPA_COSTEO_COLORS).map((k) => <option key={k} value={k}>{k}</option>)}
+        </select>
+      );
+    }
+    if (writable && c.id === MONEDA_COL) {
+      const propia = state.preview[MONEDA_COL]?.text ?? p.cols[MONEDA_COL]?.text ?? '';
+      const heredada = monedaDe(p, state.preview);
+      return (
+        <select
+          value={propia}
+          disabled={!!state.saving[MONEDA_COL]}
+          onChange={(e) => onStatusChange(p, MONEDA_COL, e.target.value)}
+          style={{ ...inputStyle, textAlign: 'left' }}
+        >
+          <option value="">{heredada.label ? `${heredada.label} (cat.)` : 'Elegir moneda…'}</option>
+          {MONEDA_LABELS.map((m) => <option key={m} value={m}>{m}</option>)}
         </select>
       );
     }

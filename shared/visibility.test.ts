@@ -85,6 +85,32 @@ describe('precio de venta — solo admin escribe (Efraín, 2026-07-24)', () => {
   });
 });
 
+describe('moneda e IVA de la línea (Efraín, 2026-07-30)', () => {
+  it('la Moneda editable es la columna propia de la línea, no el espejo del catálogo', () => {
+    // color_mm5s709s = "Moneda (línea)", creada 2026-07-30. lookup_mm11t8gj es
+    // el MIRROR de la Moneda del producto en Productos: Monday no deja
+    // escribirlo, así que si alguien le pone `w` aquí el write se aceptaría en
+    // el portal y luego reventaría contra Monday.
+    for (const role of ['compras', 'admin'] as Role[]) {
+      expect(canWrite('oportunidades_sub', 'color_mm5s709s', role)).toBe(true);
+    }
+    for (const role of ['vendedor', 'almacen'] as Role[]) {
+      expect(canWrite('oportunidades_sub', 'color_mm5s709s', role)).toBe(false);
+    }
+    for (const role of ROLES) {
+      expect(canWrite('oportunidades_sub', 'lookup_mm11t8gj', role)).toBe(false);
+    }
+  });
+
+  it('el IVA % lo escribe compras y lo ve el vendedor', () => {
+    // numeric_mm0cg0bm alimenta Subtotal/IVA/Total c/IVA — el vendedor ya ve las
+    // tres fórmulas, así que ocultarle el % no protegía nada y rompía el preview.
+    expect(canRead('oportunidades_sub', 'numeric_mm0cg0bm', 'vendedor')).toBe(true);
+    expect(canWrite('oportunidades_sub', 'numeric_mm0cg0bm', 'compras')).toBe(true);
+    expect(canWrite('oportunidades_sub', 'numeric_mm0cg0bm', 'vendedor')).toBe(false);
+  });
+});
+
 describe('condiciones de la cotización — las escribe compras (Efraín, 2026-07-30)', () => {
   // Condiciones comerciales / tiempo de entrega / vigencia: son de la cotización
   // completa (shared/quoteTerms.ts), no de una línea. Estuvieron como `w: WV`

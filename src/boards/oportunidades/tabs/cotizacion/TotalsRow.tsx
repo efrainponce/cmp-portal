@@ -47,7 +47,16 @@ export function TotalsRow({ variant, visibleCols, products, rows, isMobile = fal
       : {
           [COL.cantidad]: { value: String(cantidad) },
           [COL.costoTotalUnit]: { value: fmtMoney(costoTotal) },
-          [COL.precio]: { value: fmtMoney(subtotal) },
+          // Subtotal/IVA/Total c/IVA también en Costeo (Efraín, 2026-07-30) —
+          // el mismo agregado que ya se calculaba arriba para la vista de
+          // Venta, que aquí se tiraba a la basura por no tener columnas donde
+          // caer. El total de venta colgaba de la columna "P. venta" (que es
+          // C/U) como sustituto del Subtotal que no existía; ahora vive bajo
+          // Subtotal, su columna real — si no, el mismo número salía dos veces
+          // en celdas contiguas.
+          [SUBTOTAL_COL]: { value: fmtMoney(subtotal) },
+          [IVA_COL]: { value: fmtMoney(iva) },
+          [TOTAL_CON_IVA_COL]: { value: fmtMoney(totalConIva) },
           [COL.margenGobPct]: { value: `${margenGobPct.toFixed(1)}%` },
           [COL.margenGobTotal]: { value: fmtMoney(margenGobTotal) },
           [UTILIDAD_TOTAL_COL]: { value: fmtMoney(utilidadTotal), color: marginColor(margenPct) },
