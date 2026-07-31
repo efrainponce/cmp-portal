@@ -11,7 +11,7 @@ interface Scope {
 
 // admin/compras: everything. vendedor/almacen (and any other non-privileged role): rows
 // whose owning board's authzCols include the viewer; subitem boards check the PARENT's
-// owners. Boards without authzCols (productos/instituciones/contactos) are open to all
+// owners. Boards without authzCols (productos/instituciones) are open to all
 // (the serializer still strips columns per-role — shared/visibility.ts).
 function scopeFor(slug: BoardSlug, viewer: Identity): Scope {
   if (viewer.role === 'admin' || viewer.role === 'compras') return { where: '1=1', binds: [] };

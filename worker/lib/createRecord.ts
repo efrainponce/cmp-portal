@@ -19,6 +19,7 @@ export class CreateError extends Error {
 }
 
 const CREATOR_ROLES: Identity['role'][] = ['vendedor', 'compras', 'admin'];
+const CONTACTO_VENDEDOR = 'multiple_person_mm03vqwx';   // Contactos → Vendedor
 
 export async function submitCreate(
   env: Env,
@@ -55,6 +56,15 @@ export async function submitCreate(
   // outside CREATE_FIELDS, so a client can neither set nor override them.
   for (const [id, raw] of Object.entries(CREATE_DEFAULTS[slug] ?? {})) {
     columnValues[id] = encodeColumnValue(boardMeta[id]?.type ?? 'text', raw);
+  }
+  // Contactos está scopeado por Vendedor (shared/boards.ts authzCols), así que un
+  // contacto sin vendedor sería invisible para el vendedor que lo acaba de crear
+  // (y para el bot de WhatsApp, que no manda la columna). Si el cliente no la
+  // mandó, se estampa al creador.
+  if (slug === 'contactos' && !cols?.[CONTACTO_VENDEDOR]?.trim() && viewer.monday_user_id) {
+    columnValues[CONTACTO_VENDEDOR] = encodeColumnValue(
+      boardMeta[CONTACTO_VENDEDOR]?.type ?? 'people', String(viewer.monday_user_id),
+    );
   }
 
   const board = BOARDS[slug];

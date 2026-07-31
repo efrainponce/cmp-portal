@@ -656,8 +656,10 @@ export async function runTool(
         return { content: fmtResults(rows, PRODUCTO_COLS), isError: false };
       }
       case 'buscar_contactos': {
-        const rows = await searchMirror(env, BOARDS.contactos.id, String(input.q ?? ''));
-        return { content: fmtResults(rows, CONTACTO_COLS), isError: false };
+        // Vía dal.listItems (no searchMirror) para respetar el scoping por Vendedor
+        // del board Contactos — el vendedor solo busca entre SUS contactos.
+        const rows = await listItems(env, 'contactos', viewer, String(input.q ?? ''));
+        return { content: fmtResults(rows.slice(0, 8), CONTACTO_COLS), isError: false };
       }
       case 'buscar_instituciones': {
         const rows = await searchMirror(env, BOARDS.instituciones.id, String(input.q ?? ''));

@@ -23,7 +23,12 @@ export const BOARDS: Record<BoardSlug, BoardDef> = {
                        parent: 'proyectos' },
   productos:         { id: 18395657591, slug: 'productos', title: 'Productos' },
   instituciones:     { id: 18395657597, slug: 'instituciones', title: 'Instituciones' },
-  contactos:         { id: 18395657595, slug: 'contactos', title: 'Contactos' },
+  // Scopeado por Vendedor (Efraín, 2026-07-30: "los vendedores solo pueden ver SUS
+  // contactos, ningún otro"). Misma regla que ya aplicaba el form de nueva oportunidad
+  // en el cliente (CreateOportunidadModal), ahora en el server para toda lectura.
+  // Un contacto sin Vendedor solo lo ven compras/admin.
+  contactos:         { id: 18395657595, slug: 'contactos', title: 'Contactos',
+                       authzCols: ['multiple_person_mm03vqwx'] },
   // Proveedores (id introspectado vía Monday MCP 2026-07-17) — solo lectura,
   // catálogo para el picker de "línea manual" en el Proyecto (OC independiente).
   proveedores:       { id: 18397474806, slug: 'proveedores', title: 'Proveedores' },

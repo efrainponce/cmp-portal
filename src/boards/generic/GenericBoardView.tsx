@@ -20,6 +20,13 @@ interface Props {
 
 const CREATE_LABEL: Record<string, string> = { instituciones: 'Nueva institución', contactos: 'Nuevo contacto' };
 
+// Columnas que existen y se pueden capturar, pero no se pintan en la tabla.
+// Correo y Teléfono de Contactos: escondidos por lo pronto (Efraín, 2026-07-30);
+// siguen en el form de "Nuevo contacto" (shared/createFields.ts).
+const HIDDEN_LIST_COLS: Partial<Record<BoardSlug, string[]>> = {
+  contactos: ['contact_email', 'contact_phone'],
+};
+
 export function GenericBoardView({ slug, title }: Props) {
   const isMobile = useIsMobile();
   const [q, setQ] = useState('');
@@ -35,6 +42,8 @@ export function GenericBoardView({ slug, title }: Props) {
   const createSlug = slug === 'instituciones' || slug === 'contactos' ? slug : null;
   const creatable = createSlug !== null;
   const canEditContacto = slug === 'contactos' && cols.some((c) => (c.id === 'contact_account' || c.id === 'multiple_person_mm03vqwx') && c.w);
+  const hidden = HIDDEN_LIST_COLS[slug];
+  const tableCols = hidden ? cols.filter((c) => !hidden.includes(c.id)) : cols;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -63,7 +72,7 @@ export function GenericBoardView({ slug, title }: Props) {
 
       <div style={{ overflow: 'auto', flex: 1 }}>
         <BoardStatus status={status}>
-          <BoardTable cols={cols} items={items} onRowClick={canEditContacto ? setEditingContact : undefined} />
+          <BoardTable cols={tableCols} items={items} onRowClick={canEditContacto ? setEditingContact : undefined} />
         </BoardStatus>
       </div>
 

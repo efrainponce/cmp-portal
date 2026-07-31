@@ -7,7 +7,10 @@ import { Button } from '../../components/core/Button';
 import { FormField } from '../../components/forms/FormField';
 import { IconBack } from '../../components/icons';
 import { useBoards, colForBoard, createItem, getVendedores, type BoardSlug, type VendedorDTO } from '../../lib/api';
+import { useMe } from '../../lib/useMe';
 import { CREATE_FIELDS } from '../../../shared/createFields';
+
+const CONTACTO_VENDEDOR = 'multiple_person_mm03vqwx';
 
 interface Props {
   slug: 'instituciones' | 'contactos';
@@ -17,6 +20,7 @@ interface Props {
 }
 
 export function CreateRecordModal({ slug, title, onClose, onCreated }: Props) {
+  const me = useMe();
   const { boards } = useBoards();
   const allCols = colForBoard(boards, slug as BoardSlug);
   const allFields = CREATE_FIELDS[slug].filter((f) => f.id !== 'name');
@@ -35,6 +39,16 @@ export function CreateRecordModal({ slug, title, onClose, onCreated }: Props) {
       getVendedores().then(setVendedores);
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Contactos se leen scopeados por Vendedor (shared/boards.ts): un contacto sin
+  // vendedor no lo vería ni quien lo creó. El server estampa al creador cuando el
+  // campo va vacío — aquí se prellena para que el form muestre lo que va a pasar.
+  useEffect(() => {
+    if (slug === 'contactos' && me?.mondayUserId && !cols[CONTACTO_VENDEDOR]
+        && vendedores.some((v) => v.id === me.mondayUserId)) {
+      setCols((c) => ({ ...c, [CONTACTO_VENDEDOR]: String(me.mondayUserId) }));
+    }
+  }, [me, vendedores]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const setCol = (id: string) => (value: string) => {
     setCols((c) => ({ ...c, [id]: value }));
