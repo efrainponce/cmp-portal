@@ -33,8 +33,14 @@ con el Worker (`/api/*`). Bot de WhatsApp + chat del portal comparten agente Cla
 - Permisos por RENGLÓN: `worker/lib/dal.ts`. Leer = lo propio + la zona que el viewer
   lidera (`worker/lib/zonas.ts`); escribir = SOLO lo propio (`getItem(..., 'own')`).
   Todo endpoint que muta pide scope `'own'` — si agregas uno, hazlo también.
-- Cada commit se registra en `log.md` (entrada con hash + bullets) y luego un commit
-  "Registrar hash de X en log.md". Mensajes de commit en español.
+- Antes de cada commit, agrega la entrada a `log.md` (fecha + bullets del cambio,
+  sin hash — todavía no existe) y súbela en el MISMO commit junto con el código.
+  Nunca un commit aparte solo para loggear (evitar doble commit). Mensajes de
+  commit en español.
+- Cada push a `main` dispara deploy automático (GitHub Actions `deploy.yml`:
+  typecheck + test + build + `wrangler deploy`) — un push a main sale a
+  producción. No pushear con un tree sucio ajeno ni sin correr `npm test` si
+  tocaste write path/visibility.
 - Puede haber otra sesión de Claude concurrente: commits selectivos, no hagas deploy
   con un tree sucio ajeno.
 
