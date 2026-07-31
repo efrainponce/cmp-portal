@@ -32,8 +32,12 @@ function App() {
 
   if (sessionExpired) return <SessionExpiredScreen />;
   // impersonatedBy presente = un admin viendo "como" otra cuenta — ahí solo
-  // está mirando, no tiene por qué llenar el teléfono de alguien más.
-  if (me && !me.phone && !me.impersonatedBy) return <PhoneGateScreen />;
+  // está mirando, no tiene por qué llenar el teléfono de alguien más. Los
+  // admins tampoco se bloquean: si su teléfono choca con otra cuenta (phone es
+  // UNIQUE), Configuración es la ÚNICA pantalla que puede resolverlo — un admin
+  // encerrado por el gate no tiene forma de llegar ahí a arreglarlo (incidente
+  // real, 2026-07-31). Vendedor/compras/almacén sí lo siguen exigiendo.
+  if (me && !me.phone && !me.impersonatedBy && me.role !== 'admin') return <PhoneGateScreen />;
 
   const onOpenChange = (id: string | null) => navigate(activeBoard, id);
   // Duplicar una oportunidad la crea en etapa "Nueva oportunidad" — la nueva

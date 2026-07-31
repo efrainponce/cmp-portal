@@ -2,6 +2,11 @@
 
 ## 2026-07-31
 
+- Login: los admins ya no quedan encerrados por el gate de teléfono
+  - Incidente real minutos después del deploy anterior: `salinasefrain@mexicanadeproteccion.com` (admin) entró a producción, el gate le pidió teléfono, escribió uno que YA estaba guardado en otra cuenta (`identity.phone` es `UNIQUE`) y el 409 lo dejó atorado — sin poder llegar a Configuración, que es la ÚNICA pantalla que puede resolver ese choque. El gate se había diseñado sin salida para ese caso.
+  - Fix: `App.tsx` ahora también salta el gate cuando `me.role === 'admin'` (además del caso ya existente de impersonación) — un admin sin teléfono sigue entrando normal y puede capturarlo cuando quiera desde Configuración, donde además ya puede ver qué cuenta tiene cada número. Vendedor/compras/almacén siguen bloqueados hasta capturarlo, que es el objetivo original de Efraín.
+  - Pendiente para Efraín, fuera de este fix: identificar y liberar la cuenta que ya tenía guardado `5554369433` (no se pudo consultar D1 de producción desde aquí — el token de Cloudflare del repo no tiene permiso de D1; usar Configuración → Usuarios del portal, ya accesible, para buscarlo).
+  - `tsc --noEmit` y 107 tests limpios.
 - Configuración: arreglado `PUT /api/admin/identities/:email` — guardar el teléfono de una fila ya existente siempre fallaba
   - Encontrado probando en producción el bug anterior de este mismo día: Efraín entró a Configuración → Usuarios del portal a capturar un teléfono en una fila ya importada y le salió el toast "No se pudo guardar el teléfono" — para CUALQUIER usuario, no solo ese, siempre.
   - Causa: `IdentityRow.save()` (SettingsPage.tsx) manda solo `{ phone }` al editar una fila existente — nunca mandó `mondayUserId`/`role`/`active` (eso lo llena `MondayUserRow` al importar por primera vez). El endpoint trataba el body como el registro completo y exigía `mondayUserId is required` (400) si faltaba, así que ese guardado nunca pudo funcionar. Bug preexistente, no de este commit.
