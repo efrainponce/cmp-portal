@@ -232,6 +232,12 @@ export async function listIdentities(env: Env): Promise<Identity[]> {
   return res.results ?? [];
 }
 
+// Admin-only (route guards): una fila puntual, para mergear un PUT parcial
+// (ej. solo `phone`) sobre lo que ya había en vez de exigir el registro completo.
+export async function getIdentityByEmail(env: Env, email: string): Promise<Identity | null> {
+  return env.DB.prepare('SELECT * FROM identity WHERE email = ?').bind(email).first<Identity>();
+}
+
 export async function upsertIdentity(
   env: Env,
   row: { email: string; phone: string | null; nombre: string | null; monday_user_id: number; role: string; active: number },

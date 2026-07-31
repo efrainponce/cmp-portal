@@ -6,7 +6,7 @@ import type { Env } from '../env';
 import type { Role } from '../../shared/types';
 import type { IdentityDTO, MondayUserDTO, BoardAccessDTO, ZonaDTO } from '../../shared/dto';
 import { TEAM_ROLES } from '../../shared/boardAccess';
-import { listIdentities, upsertIdentity } from '../lib/dal';
+import { listIdentities, getIdentityByEmail, upsertIdentity } from '../lib/dal';
 import { cachedFetchUsers } from '../lib/rosterCache';
 import { listAllBoardAccess, setBoardAccess, BoardAccessError } from '../lib/boardAccess';
 import { listZonas, createZona, updateZona, deleteZona, ZonaError } from '../lib/zonas';
@@ -22,23 +22,33 @@ export function adminRoutes(app: Hono<{ Bindings: Env }>) {
     return c.json(dto);
   });
 
+  // Merge parcial contra la fila existente: la tabla "Usuarios del portal" edita
+  // SOLO el teléfono de una fila ya importada (IdentityRow.save en SettingsPage)
+  // sin volver a mandar mondayUserId/role/active — si esto tratara el body como
+  // el registro completo, cada guardado de teléfono lo borraría todo o fallaba
+  // por "mondayUserId is required" (bug real, encontrado 2026-07-31). Solo la
+  // importación desde Monday (MondayUserRow) crea una fila nueva, y esa sí manda
+  // el patch completo.
   app.put('/api/admin/identities/:email', async c => {
     if (c.get('viewer').role !== 'admin') return c.json({ error: 'forbidden' }, 403);
     const email = decodeURIComponent(c.req.param('email'));
-    const body = await c.req.json<Partial<IdentityDTO>>();
     if (!email.trim()) return c.json({ error: 'email is required' }, 400);
-    const role = body.role ?? 'vendedor';
+    const body = await c.req.json<Partial<IdentityDTO>>();
+    const existing = await getIdentityByEmail(c.env, email);
+
+    const role = body.role ?? existing?.role ?? 'vendedor';
     const validRoles = ['vendedor', 'compras', 'admin', 'almacen'];
     if (!validRoles.includes(role)) return c.json({ error: 'invalid role' }, 400);
-    if (!Number.isFinite(body.mondayUserId)) return c.json({ error: 'mondayUserId is required' }, 400);
+    const mondayUserId = body.mondayUserId ?? existing?.monday_user_id;
+    if (!Number.isFinite(mondayUserId)) return c.json({ error: 'mondayUserId is required' }, 400);
 
     await upsertIdentity(c.env, {
       email,
-      phone: body.phone?.trim() || null,
-      nombre: body.nombre?.trim() || null,
-      monday_user_id: body.mondayUserId as number,
+      phone: body.phone !== undefined ? (body.phone?.trim() || null) : (existing?.phone ?? null),
+      nombre: body.nombre !== undefined ? (body.nombre?.trim() || null) : (existing?.nombre ?? null),
+      monday_user_id: mondayUserId as number,
       role,
-      active: body.active === false ? 0 : 1,
+      active: body.active !== undefined ? (body.active === false ? 0 : 1) : (existing?.active ?? 1),
     });
     return c.json({ ok: true });
   });

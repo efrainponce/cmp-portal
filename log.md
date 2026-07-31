@@ -2,6 +2,11 @@
 
 ## 2026-07-31
 
+- Configuración: arreglado `PUT /api/admin/identities/:email` — guardar el teléfono de una fila ya existente siempre fallaba
+  - Encontrado probando en producción el bug anterior de este mismo día: Efraín entró a Configuración → Usuarios del portal a capturar un teléfono en una fila ya importada y le salió el toast "No se pudo guardar el teléfono" — para CUALQUIER usuario, no solo ese, siempre.
+  - Causa: `IdentityRow.save()` (SettingsPage.tsx) manda solo `{ phone }` al editar una fila existente — nunca mandó `mondayUserId`/`role`/`active` (eso lo llena `MondayUserRow` al importar por primera vez). El endpoint trataba el body como el registro completo y exigía `mondayUserId is required` (400) si faltaba, así que ese guardado nunca pudo funcionar. Bug preexistente, no de este commit.
+  - Fix: `worker/routes/admin.ts` ahora hace un merge real contra la fila existente (`getIdentityByEmail`, nuevo en `dal.ts`) — cualquier campo ausente en el body conserva su valor en D1 en vez de exigirse o borrarse; solo cuando no hay fila previa (alta nueva) sigue exigiendo `mondayUserId`. De paso corrige que `active` se reactivaba solo por editar el teléfono, aunque el usuario estuviera dado de baja.
+  - Probado en vivo contra el worker local (ya corriendo): `PUT` solo con `phone` sobre una fila real conservó `mondayUserId`/`role`/`nombre` intactos; se revirtió el dato de prueba al terminar. `tsc --noEmit` y 107 tests limpios.
 - Login: obliga a capturar el teléfono de WhatsApp antes de usar el portal
   - Efraín: quiere que nadie quede logueado sin registrar el celular que usa en WhatsApp — hoy `identity.phone` es opcional y solo un admin lo llena a mano en Configuración, así que cualquiera podía entrar al portal sin quedar ligado al bot (`worker/wa/store.ts` responde 403 a números no registrados).
   - El login en sí es 100% Cloudflare Access (Google, dominio de la empresa) sin ningún formulario propio del portal donde meter un campo — así que el gate va DESPUÉS de Access: `App.tsx` revisa `me.phone` (nuevo campo en `MeDTO`) y, si es `null`, bloquea toda la UI con `PhoneGateScreen.tsx` (pantalla de pantalla completa, sin sidebar ni datos, solo el input) hasta guardarlo. Se salta durante impersonación (`me.impersonatedBy`) — un admin viendo "como" otra cuenta solo está mirando, no tiene por qué llenar el teléfono ajeno.
