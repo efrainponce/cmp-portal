@@ -1,5 +1,14 @@
 # Log de commits
 
+## 2026-08-02
+
+- Tallas: captura por boxes (vendedor) — subitems del Proyecto directo, sin pasar por cmp-tallas
+  - Efraín pidió una alternativa simple al Google Sheet de tallas: por cada producto de la cotización ganada, boxes horizontales de talla+cantidad ("10 XL, 2 S") que se guardan directo como subitems del Proyecto — el link al Sheet se queda arriba tal cual, sigue siendo la herramienta vigente, esto no la reemplaza.
+  - Evaluadas dos rutas: tocar el endpoint `import_tallas` de cmp-tallas (otro repo, motor de reconciliación con historial de bugs de datos duplicados/perdidos que justifican su complejidad) vs. generalizar el patrón ya en producción de `POST /api/proyectos/:id/lineas` (`createSubitem` directo, sin cmp-tallas) a un alta en lote. Efraín eligió la segunda opción tras verla comparada: 100% self-contained en cmp-portal.
+  - Nuevo `worker/lib/proyectoTallas.ts` (`capturarTallas`): resuelve la Oportunidad ligada, copia costo/moneda/descuento/unidad de la línea de cotización ganadora (leídos del mirror crudo — esos campos están redactados para el vendedor en `shared/visibility.ts`, así que el enriquecimiento vive en el Worker, nunca confía en lo que mande el cliente) y omite (no duplica ni actualiza) filas cuya identidad producto+sku+color+talla ya existe en el Proyecto. Proveedor se deja sin asignar, igual que ya hace `/lineas` hoy — Compras lo pone en Monday antes de la OC.
+  - `POST /api/proyectos/:id/tallas-capturar` (rol vendedor/admin, scope `'own'`) + UI nueva en `TallasTab.tsx`: una card por producto de la cotización con boxes XS–3XL más "+ talla" libre, contador en vivo (verde cuando cuadra con la cantidad vendida) y botón "Guardar tallas".
+  - Verificado en vivo contra Monday real con el item de pruebas `OPP-0703 - TEST PORTAL E2E — borrar` (Proyecto PRO-0090): guardé XL·8 + S·2, luego XXL·10 — las 3 líneas aparecieron correctas en el `TallasGrid` ya existente de Compras (`ProyectoTallasSection`, sin tocarlo). Reenviar la misma talla (XL·8) devolvió `created:0, omitted:1` — el guard antiduplicados funciona. `tsc -b`, 9 tests nuevos de `worker/lib/proyectoTallas.test.ts` (identityKey/filterWanted/buildTallaColumns, la parte pura) + 116 tests totales, y `npm run lint` limpios.
+
 ## 2026-07-31
 
 - Monday: borrados los webhooks agresivos que estaban agotando la cuota de acciones de la cuenta ("Tu cuenta alcanzó el límite máximo de acciones", 25,134/25,000)

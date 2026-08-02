@@ -6,7 +6,7 @@ import type { Context, Hono } from 'hono';
 import type { Env } from '../env';
 import type { Identity } from '../../shared/types';
 import { BOARDS } from '../../shared/boards';
-import type { AjustarLineaRequest, AjustarLineaResponse, DuplicarOportunidadResponse, DuplicarVersionResponse, ItemDetailDTO, QuoteVersionsResponse } from '../../shared/dto';
+import type { AjustarLineaRequest, AjustarLineaResponse, DuplicarOportunidadResponse, DuplicarVersionResponse, ItemDetailDTO, QuoteVersionsResponse, TallaBoxInput, CapturarTallasResponse } from '../../shared/dto';
 import type { ProposedProductsResponse, AddProposedProductResponse } from '../../shared/productosPropuestos';
 import { getItem, childrenOf, pendingItemIds, proyectoForOportunidad, linkedItemId, PROYECTO_OPP_REL } from '../lib/dal';
 import { toItemDTO } from '../lib/serialize';
@@ -18,6 +18,7 @@ import {
 import { enviarACosteo, enviarAValidacion, checkCosteo, checkValidacion, CosteoError } from '../lib/costeo';
 import { listVersions, duplicateVersion, restoreVersion, esDraftVigente, recordFirstVersion, QuoteVersionError } from '../lib/quoteVersions';
 import { ajustarLinea, AjusteLineaError } from '../lib/lineaAjustes';
+import { capturarTallas } from '../lib/proyectoTallas';
 import { duplicateOportunidad, DuplicateOportunidadError } from '../lib/duplicateOportunidad';
 import { createSubitem, addFileToColumn, fetchAssetPublicUrls, gql } from '../lib/monday';
 import { listZoneImages, uploadZoneImage, EmbellImageError } from '../lib/embellecimientoImagenes';
@@ -609,6 +610,32 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
       return c.json({ error: 'No se pudo crear la línea: ' + detail }, 500);
+    }
+  });
+
+  // Captura de tallas por boxes (vendedor) — crea subitems del Proyecto directo
+  // desde la UI de boxes de TallasTab, sin pasar por cmp-tallas (worker/lib/proyectoTallas.ts).
+  // El Sheet + "Importar tallas" (Compras) siguen intactos, es una alta alternativa
+  // más rápida, no un reemplazo. Registrada ANTES de /api/proyectos/:id/:action por
+  // el mismo motivo que /lineas y /documento arriba.
+  app.post('/api/proyectos/:id/tallas-capturar', async c => {
+    const itemId = Number(c.req.param('id'));
+    if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
+    const viewer = c.get('viewer');
+    if (viewer.role !== 'vendedor' && viewer.role !== 'admin') return c.json({ error: 'forbidden' }, 403);
+
+    const row = await getItem(c.env, 'proyectos', itemId, viewer, 'own');
+    if (!row) return c.json({ error: 'not found' }, 404);
+
+    const body = await c.req.json<{ rows?: TallaBoxInput[] }>();
+    const rows = Array.isArray(body.rows) ? body.rows : [];
+
+    try {
+      const result = await capturarTallas(c.env, viewer, itemId, rows);
+      return c.json(result satisfies CapturarTallasResponse);
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      return c.json({ error: 'No se pudieron guardar las tallas: ' + detail }, 500);
     }
   });
 

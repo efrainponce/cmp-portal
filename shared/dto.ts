@@ -156,6 +156,25 @@ export interface ProyectoActionResponse {
   [key: string]: unknown;
 }
 
+// POST /api/proyectos/:id/tallas-capturar — captura de tallas por boxes
+// (vendedor), worker/lib/proyectoTallas.ts. Crea subitems del Proyecto directo
+// (mismo camino que /lineas), sin pasar por cmp-tallas; el Sheet + "Importar
+// tallas" siguen intactos como flujo paralelo.
+export interface TallaBoxInput {
+  subitemId: number;
+  producto: string;
+  sku?: string;
+  color?: string;
+  talla: string;
+  cantidad: number;
+}
+
+export interface CapturarTallasResponse {
+  ok: true;
+  created: number;
+  omitted: number;
+}
+
 // Monday item updates (comments) — read/posted live, never mirrored to D1.
 // attachments carry no url: it's a presigned S3 link that expires in ~1h, so
 // the frontend resolves a fresh one on demand via the attachment proxy route

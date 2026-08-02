@@ -6,6 +6,7 @@ import type {
   BoardAccessDTO, ColMeta, ColVal, CreateResponse, DuplicarOportunidadResponse, DuplicarVersionResponse, EnviarCosteoResponse, IdentityDTO, ItemDTO, ItemDetailDTO,
   ListResponse, MeDTO, MentionUserDTO, MondayUserDTO, ProyectoActionResponse, ProyectoResponse,
   QuoteLineSnapshot, QuoteVersionDTO, QuoteVersionsResponse,
+  TallaBoxInput, CapturarTallasResponse,
   UpdateAttachmentDTO, UpdateDTO, VendedorDTO, WriteResponse, ZonaDTO,
 } from '../../shared/dto';
 import type { AddProposedProductResponse, ProposedProductDTO, ProposedProductsResponse } from '../../shared/productosPropuestos';
@@ -15,7 +16,8 @@ import { markSessionExpired } from './sessionState';
 
 export type {
   BoardAccessDTO, BoardSlug, ColMeta, ColVal, IdentityDTO, ItemDTO, ItemDetailDTO, ListResponse, MeDTO, MentionUserDTO,
-  MondayUserDTO, ProposedProductDTO, QuoteLineSnapshot, QuoteVersionDTO, UpdateAttachmentDTO, UpdateDTO, VendedorDTO, ZonaDTO,
+  MondayUserDTO, ProposedProductDTO, QuoteLineSnapshot, QuoteVersionDTO, TallaBoxInput, CapturarTallasResponse,
+  UpdateAttachmentDTO, UpdateDTO, VendedorDTO, ZonaDTO,
 };
 
 export interface BoardMeta { slug: BoardSlug; title: string; cols: ColMeta[] }
@@ -369,6 +371,22 @@ export async function addProyectoLinea(
   });
   const body = await res.json();
   if (!res.ok) return { ok: false, error: body.error ?? 'No se pudo crear la línea.' };
+  return body;
+}
+
+/** Captura de tallas por boxes (vendedor) — crea subitems del Proyecto directo,
+ * sin pasar por cmp-tallas (worker/lib/proyectoTallas.ts). El Sheet + "Importar
+ * tallas" de Compras siguen intactos, esto es una alta alternativa más rápida. */
+export async function capturarTallas(
+  proyectoId: string, rows: TallaBoxInput[],
+): Promise<{ ok: boolean; created?: number; omitted?: number; error?: string }> {
+  const res = await apiFetch(`/proyectos/${proyectoId}/tallas-capturar`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rows }),
+  });
+  const body = await res.json();
+  if (!res.ok) return { ok: false, error: body.error ?? 'No se pudieron guardar las tallas.' };
   return body;
 }
 
