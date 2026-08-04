@@ -1,5 +1,20 @@
 # Log de commits
 
+## 2026-08-04
+
+- Proyectos: fixes de la lista de pendientes de Efraín por WhatsApp (Compras)
+  - Notificaciones generales para Proyectos: extiende el centro de notificaciones (ya usado para `deal_stage` de Oportunidades) a `project_status` — reemplaza las notificaciones nativas de Monday por-elemento, que Compras reportó que no les llegan. `PROJECT_STATUS_NOTIFY`/`PROJECT_STATUS_LABELS`/`PROJECT_STATUS_BOARD_KEY` en `shared/notifications.ts`, `maybeEmitProjectStatusChange` en `worker/lib/notify.ts` (generalizado de `maybeEmitStageChange`), rama `isProyectos` en `worker/sync/upsert.ts`.
+  - Bug real encontrado verificando en vivo: el `dedupe_key` no incluía el destinatario, así que un cambio con VARIOS destinatarios (ej. `['owner', 'role:compras']`) solo notificaba al primero — el `INSERT OR IGNORE` (dedupe_key UNIQUE) descartaba al resto en silencio. Afectaba también las notificaciones de etapa de Oportunidades ya en producción, no solo lo nuevo. Corregido en `worker/lib/notify.ts` incluyendo `recipientEmail` en la llave.
+  - Botones que había que apretar varias veces ("Mandar a costeo"/"Generar cotización"/tallas/OC): `TIMEOUT_MS` en `worker/lib/automations.ts` de 120s a 280s — el Portal abortaba antes de que cmp-tallas terminara (el propio comentario del archivo ya documentaba el cap real de Vercel en 300s). Más aviso "puede tardar unos minutos" en los botones lentos.
+  - Órdenes de Compra por proveedor, del lado `cmp-tallas` (`~/Documents/dev/cmp-tallas/api/generate_oc.py`, repo separado, decisión de Efraín: parchar ahí en vez de reconstruir nativo en el Portal):
+    - Condiciones/Método de pago ahora aceptan override opcional por proveedor (antes: un solo valor a nivel Proyecto aplicado a todos) — inputs nuevos en la tarjeta de cada proveedor (`ProveedorCard`, `ProyectoSection.tsx`), enviados solo junto con `onlyProveedor`.
+    - El botón masivo "Generar todas las OC pendientes" ya no re-emite (ni re-manda a firma) proveedores con una OC vigente en el ledger de Sheets — antes regeneraba TODOS cada vez, aunque el nombre dijera "pendientes". Verificado con un caso real de producción con OC duplicada (PRO-0126/Intelico, OC-113 y OC-114 el mismo día).
+    - El nombre del Proyecto (`item.name`, ya existía, solo no llegaba al PDF) ahora viaja al payload de Eledo (`nombre_proyecto`) — confirmado visualmente en un PDF de prueba tras que Efraín agregara el campo a la plantilla de Eledo.
+    - Bug propio encontrado verificando: el filtro de "no regenerar ya emitidas" quedaba desactivado durante `dry_run`, así que el preview no reflejaba lo que pasaría de verdad. Corregido.
+  - Sync de costo de Productos (Airtable → Monday) no llegaba: causa encontrada inspeccionando Make vía API — dos automatizaciones activas al mismo tiempo (`4078999`, legacy, viviendo en "Archive" pero corriendo cada 5 min, y `5413086`, la vigente) escribían la misma columna, carrera last-writer-wins. Desactivado `4078999` (con OK de Efraín) vía Make MCP.
+  - Verificado en vivo contra datos reales de producción (todo lectura/`dry_run`, sin escrituras): navegador impersonando compras (campana + deep-link + inputs de la tarjeta de proveedor con payload interceptado), servidor HTTP local corriendo el `handler` real de `generate_oc.py`, y D1 local con notificaciones reales insertadas/verificadas.
+  - `npx tsc --noEmit`, `npm test` (115/115) y `npm run lint` limpios en cmp-portal; `python3 -m py_compile` limpio en cmp-tallas.
+
 ## 2026-08-03
 
 - Tallas: migración al campo simplificado de Productos (`text_mm5v6jhj`), en línea con el cambio ya desplegado en cmp-tallas (el archivo de tallas por Oportunidad dejó de separar por género y ahora usa una lista plana)

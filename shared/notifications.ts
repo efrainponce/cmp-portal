@@ -19,3 +19,36 @@ export const STAGE_NOTIFY: Record<string, RecipientSelector[]> = {
   'Esperando OC': ['owner'],
   'Ganada': ['owner', 'role:compras'],
 };
+
+// Labels de `project_status` (board Proyectos, post-venta) — copiados de
+// shared/column-meta.gen.ts (introspectado), no fabricados. El worker no
+// puede importar shared/column-meta.gen.ts como fuente de labels de negocio
+// (mismo patrón que DEAL_STAGE_LABELS en shared/dealStages.ts).
+export const PROJECT_STATUS_LABELS: Record<string, string> = {
+  '0': 'En confirmacion de tallas',
+  '1': 'Proyecto Terminado',
+  '2': 'Ordenes de compra listas',
+  '3': 'Ejecución',
+  '4': 'Tallas Confirmadas',
+  '5': 'Desglose de tallas',
+};
+
+// Cuando un Proyecto (post-venta) llega a un `project_status`, ¿a quién se le
+// notifica? Reemplaza las notificaciones nativas de Monday por-elemento, que
+// Compras reportó que no les llegan (WhatsApp 2026-08-04) — primer corte,
+// pendiente de que Efraín tune destinatarios.
+export const PROJECT_STATUS_NOTIFY: Record<string, RecipientSelector[]> = {
+  'Tallas Confirmadas': ['role:compras'],           // vendedor validó → Compras arma las OC
+  'Ordenes de compra listas': ['owner'],            // el vendedor puede avisar a su cliente
+  'Ejecución': ['owner'],
+  'Proyecto Terminado': ['owner', 'role:compras'],
+};
+
+// project_status → acceso del sidebar que lo lista (para el deep-link de la
+// notificación) — mismo agrupamiento que PROJECT_BOARDS en src/lib/projectStages.ts,
+// duplicado aquí porque el worker no puede importar de src/ (solo shared/).
+export const PROJECT_STATUS_BOARD_KEY: Record<string, string> = {
+  '5': 'doctallas', '0': 'doctallas', '4': 'doctallas',
+  '2': 'ordenescompra',
+  '3': 'logistica', '1': 'logistica',
+};

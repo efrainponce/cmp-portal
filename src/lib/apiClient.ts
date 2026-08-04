@@ -326,11 +326,15 @@ export async function getProyectoOportunidad(proyectoId: string): Promise<string
 export type ProyectoAction = 'tallas-regenerar' | 'tallas-confirmar' | 'tallas-importar' | 'generar-oc';
 
 /** Acciones de cmp-tallas sobre el Proyecto (tallas y órdenes de compra).
- * `onlyProveedor` (solo 'generar-oc'): genera la OC de un solo proveedor en vez de todos. */
+ * `onlyProveedor` (solo 'generar-oc'): genera la OC de un solo proveedor en vez
+ * de todos. `metodoPago`/`condPago` (solo junto con `onlyProveedor`): overrides
+ * de ese proveedor — sin ellos, cmp-tallas usa el default del Proyecto. */
 export async function proyectoAction(
-  proyectoId: string, action: ProyectoAction, opts?: { onlyProveedor?: string },
+  proyectoId: string, action: ProyectoAction,
+  opts?: { onlyProveedor?: string; metodoPago?: string; condPago?: string },
 ): Promise<ProyectoActionResponse> {
-  const res = await apiFetch(`/proyectos/${proyectoId}/${action}`, opts?.onlyProveedor
+  const hasBody = !!(opts?.onlyProveedor || opts?.metodoPago || opts?.condPago);
+  const res = await apiFetch(`/proyectos/${proyectoId}/${action}`, hasBody
     ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(opts) }
     : { method: 'POST' });
   const body: ProyectoActionResponse = await res.json();

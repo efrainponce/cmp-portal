@@ -5,7 +5,7 @@
 import type { Env } from '../env';
 import type { Role } from '../../shared/types';
 import type { RecipientSelector } from '../../shared/notifications';
-import { STAGE_NOTIFY } from '../../shared/notifications';
+import { STAGE_NOTIFY, PROJECT_STATUS_NOTIFY, PROJECT_STATUS_LABELS, PROJECT_STATUS_BOARD_KEY } from '../../shared/notifications';
 import { DEAL_STAGE_LABELS } from '../../shared/dealStages';
 import { logSync } from '../sync/log';
 import { notifyPortalWa } from '../wa/notify';
@@ -108,10 +108,10 @@ export async function resolveRecipients(
   }
 }
 
-function dealStageIndex(columnsJson: string): string | null {
+function statusIndex(columnsJson: string, colId: string): string | null {
   try {
     const cols: RawCol[] = JSON.parse(columnsJson || '[]');
-    const col = cols.find(c => c.id === 'deal_stage');
+    const col = cols.find(c => c.id === colId);
     if (!col?.value) return null;
     const parsed = JSON.parse(col.value) as { index?: number | string };
     if (parsed.index === undefined || parsed.index === null || parsed.index === '') return null;
@@ -121,13 +121,67 @@ function dealStageIndex(columnsJson: string): string | null {
   }
 }
 
-/** Diff de etapa para el chokepoint de sync (worker/sync/upsert.ts). Compara el
- * índice de deal_stage viejo vs nuevo; si cambió y la etapa nueva está en
- * STAGE_NOTIFY, emite una 'actualizacion' a los destinatarios role-based.
- * `prevColumnsJson` = el JSON de la columna `columns` de la fila anterior del
- * mirror (string) o null si no había fila (creación → no notifica). `item` trae
- * name + item_id + boardId; `vendedorIds` ya extraído por upsert. Best-effort. */
-export async function maybeEmitStageChange(env: Env, args: {
+/** Diff genérico de una columna status para el chokepoint de sync
+ * (worker/sync/upsert.ts). Compara el índice viejo vs nuevo de `colId`; si
+ * cambió y la etiqueta nueva está en `notifyMap`, emite una 'actualizacion' a
+ * los destinatarios role-based. `prevColumnsJson` = el JSON de la columna
+ * `columns` de la fila anterior del mirror (string) o null si no había fila
+ * (creación → no notifica). Best-effort. */
+async function maybeEmitStatusChange(env: Env, args: {
+  boardId: number;
+  itemId: number;
+  itemName: string;
+  prevColumnsJson: string | null;
+  newColumnsJson: string;
+  vendedorIds: number[];
+  colId: string;
+  labels: Record<string, string>;
+  notifyMap: Record<string, RecipientSelector[]>;
+  boardKey: string | ((newIndex: string) => string);
+  kind: string;
+  dedupePrefix: string;
+}): Promise<void> {
+  try {
+    if (args.prevColumnsJson === null) return;   // creación/hydrate — no notifica
+    const oldIndex = statusIndex(args.prevColumnsJson, args.colId);
+    if (oldIndex === null) return;
+    const newIndex = statusIndex(args.newColumnsJson, args.colId);
+    if (newIndex === null) return;
+    if (oldIndex === newIndex) return;
+
+    const label = args.labels[newIndex];
+    if (!label) return;
+    const selectors = args.notifyMap[label];
+    if (!selectors || selectors.length === 0) return;
+
+    const boardKey = typeof args.boardKey === 'function' ? args.boardKey(newIndex) : args.boardKey;
+    const recipients = await resolveRecipients(env, selectors, { vendedorIds: args.vendedorIds });
+    for (const recipientEmail of recipients) {
+      await emitNotification(env, {
+        recipientEmail,
+        severity: 'actualizacion',
+        kind: args.kind,
+        title: `${args.itemName} pasó a ${label}`,
+        boardKey,
+        boardId: args.boardId,
+        itemId: args.itemId,
+        // dedupe_key es UNIQUE en toda la tabla (worker/schema.sql) — sin el
+        // recipientEmail, dos destinatarios del mismo cambio de status pisan la
+        // misma llave y el INSERT OR IGNORE calla a todos menos al primero.
+        // Bug real preexistente (heredado de la versión original de
+        // maybeEmitStageChange, un solo dedupeKey para todo el for) encontrado
+        // verificando en vivo el 2026-08-04 con 'Proyecto Terminado': ['owner',
+        // 'role:compras'] — solo llegaba una notificación de las 6 esperadas.
+        dedupeKey: `${args.dedupePrefix}:${args.itemId}:${newIndex}:${recipientEmail}`,
+      });
+    }
+  } catch (err) {
+    await logSync(env, 'manual', args.boardId ?? null, args.itemId ?? null, false, 'notify: maybeEmitStatusChange ' + err);
+  }
+}
+
+/** Diff de etapa (deal_stage) de Oportunidades — ver maybeEmitStatusChange. */
+export function maybeEmitStageChange(env: Env, args: {
   boardId: number;
   itemId: number;
   itemName: string;
@@ -135,33 +189,36 @@ export async function maybeEmitStageChange(env: Env, args: {
   newColumnsJson: string;
   vendedorIds: number[];
 }): Promise<void> {
-  try {
-    if (args.prevColumnsJson === null) return;   // creación/hydrate — no notifica
-    const oldIndex = dealStageIndex(args.prevColumnsJson);
-    if (oldIndex === null) return;
-    const newIndex = dealStageIndex(args.newColumnsJson);
-    if (newIndex === null) return;
-    if (oldIndex === newIndex) return;
+  return maybeEmitStatusChange(env, {
+    ...args,
+    colId: 'deal_stage',
+    labels: DEAL_STAGE_LABELS,
+    notifyMap: STAGE_NOTIFY,
+    boardKey: 'oportunidades',
+    kind: 'stage_change',
+    dedupePrefix: 'stage',
+  });
+}
 
-    const label = DEAL_STAGE_LABELS[newIndex];
-    if (!label) return;
-    const selectors = STAGE_NOTIFY[label];
-    if (!selectors || selectors.length === 0) return;
-
-    const recipients = await resolveRecipients(env, selectors, { vendedorIds: args.vendedorIds });
-    for (const recipientEmail of recipients) {
-      await emitNotification(env, {
-        recipientEmail,
-        severity: 'actualizacion',
-        kind: 'stage_change',
-        title: `${args.itemName} pasó a ${label}`,
-        boardKey: 'oportunidades',
-        boardId: args.boardId,
-        itemId: args.itemId,
-        dedupeKey: `stage:${args.itemId}:${newIndex}`,
-      });
-    }
-  } catch (err) {
-    await logSync(env, 'manual', args.boardId ?? null, args.itemId ?? null, false, 'notify: maybeEmitStageChange ' + err);
-  }
+/** Diff de `project_status` de Proyectos (post-venta) — ver maybeEmitStatusChange.
+ * Reemplaza las notificaciones nativas de Monday por-elemento (no les llegan,
+ * Compras vía WhatsApp 2026-08-04) con el mismo mecanismo D1-only ya probado
+ * para Oportunidades. */
+export function maybeEmitProjectStatusChange(env: Env, args: {
+  boardId: number;
+  itemId: number;
+  itemName: string;
+  prevColumnsJson: string | null;
+  newColumnsJson: string;
+  vendedorIds: number[];
+}): Promise<void> {
+  return maybeEmitStatusChange(env, {
+    ...args,
+    colId: 'project_status',
+    labels: PROJECT_STATUS_LABELS,
+    notifyMap: PROJECT_STATUS_NOTIFY,
+    boardKey: (newIndex) => PROJECT_STATUS_BOARD_KEY[newIndex] ?? 'doctallas',
+    kind: 'project_status_change',
+    dedupePrefix: 'project_status',
+  });
 }

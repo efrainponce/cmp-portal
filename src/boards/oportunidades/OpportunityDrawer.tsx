@@ -547,7 +547,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
             <ConfirmButton
               label="Mandar a costeo"
               confirmLabel="¿Enviar solicitud de costeo?"
-              busyLabel="Validando y generando PDF…"
+              busyLabel="Validando y generando PDF… puede tardar unos minutos, no cierres esta pantalla"
               disabled={costeoReady === null || !costeoReady.ok}
               title={costeoReady === null ? 'Verificando requisitos…'
                 : !costeoReady.ok ? (stage === '4' ? 'Faltan requisitos — revisa los avisos ⚠ en cada línea' : (costeoReady.errors?.[0] ?? 'No disponible todavía'))
@@ -571,7 +571,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
             <ConfirmButton
               label="Generar cotización"
               confirmLabel="¿Generar y mandar a firma?"
-              busyLabel="Generando cotización…"
+              busyLabel="Generando cotización… puede tardar unos minutos, no cierres esta pantalla"
               disabled={!hasPrecio}
               title={hasPrecio ? 'PDFs con y sin precio + firma del vendedor (DocuSeal)' : 'Ningún producto tiene Precio de Venta — captúralo antes de cotizar'}
               onConfirm={onGenerarCotizacion}

@@ -38,14 +38,18 @@ import { md5 } from '../lib/canon';
 // Monday: confirmar=VENDEDOR, importar/oc=COMPRAS, regenerar=ambos.
 const PROYECTO_ACTIONS: Record<string, {
   roles: string[];
-  run: (env: Env, id: number, opts: { onlyProveedor?: string }) => Promise<{ ok: boolean; [k: string]: unknown }>;
+  run: (env: Env, id: number, opts: { onlyProveedor?: string; metodoPago?: string; condPago?: string }) => Promise<{ ok: boolean; [k: string]: unknown }>;
 }> = {
   'tallas-regenerar': { roles: ['vendedor', 'compras', 'admin'], run: (env, id) => generateSheet(env, id) },
   'tallas-confirmar': { roles: ['vendedor', 'admin'], run: (env, id) => confirmTallas(env, id) },
   'tallas-importar': { roles: ['compras', 'admin'], run: (env, id) => importTallas(env, id) },
   // onlyProveedor: id del item de `proveedores` — genera la OC de un solo proveedor
-  // en vez de todos (ProveedorGrid, botón por tarjeta).
-  'generar-oc': { roles: ['compras', 'admin'], run: (env, id, opts) => generateOC(env, id, { onlyProveedor: opts.onlyProveedor }) },
+  // en vez de todos (ProveedorGrid, botón por tarjeta). metodoPago/condPago:
+  // overrides de ese proveedor, solo tienen efecto junto con onlyProveedor.
+  'generar-oc': {
+    roles: ['compras', 'admin'],
+    run: (env, id, opts) => generateOC(env, id, { onlyProveedor: opts.onlyProveedor, metodoPago: opts.metodoPago, condPago: opts.condPago }),
+  },
 };
 
 /** Fallback de /api/files para assetIds aún no migrados a R2 — resuelve el
@@ -682,10 +686,14 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     const row = await getItem(c.env, 'proyectos', itemId, viewer, 'own');
     if (!row) return c.json({ error: 'not found' }, 404);
 
-    // Body opcional — solo 'generar-oc' lo usa (onlyProveedor); las otras 3 acciones
-    // siguen llamándose sin body, por eso el .catch cubre el JSON vacío.
+    // Body opcional — solo 'generar-oc' lo usa (onlyProveedor/metodoPago/condPago);
+    // las otras 3 acciones siguen llamándose sin body, por eso el .catch cubre el JSON vacío.
     const body = await c.req.json().catch(() => ({} as Record<string, unknown>));
-    const opts = { onlyProveedor: typeof body.onlyProveedor === 'string' ? body.onlyProveedor : undefined };
+    const opts = {
+      onlyProveedor: typeof body.onlyProveedor === 'string' ? body.onlyProveedor : undefined,
+      metodoPago: typeof body.metodoPago === 'string' ? body.metodoPago : undefined,
+      condPago: typeof body.condPago === 'string' ? body.condPago : undefined,
+    };
 
     try {
       const result = await action.run(c.env, itemId, opts);

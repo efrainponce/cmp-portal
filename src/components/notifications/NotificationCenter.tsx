@@ -39,6 +39,7 @@ function KindBadge({ kind }: { kind: string }) {
     mention: { letter: '@', color: 'var(--accent-blue)' },
     costeo_incompleto: { letter: '!', color: 'var(--status-esperando)' },
     stage_change: { letter: '→', color: 'var(--status-confirmado)' },
+    project_status_change: { letter: '→', color: 'var(--status-confirmado)' },
   };
   const { letter, color } = cfg[kind] ?? { letter: '•', color: 'var(--ink-quiet)' };
   return (

@@ -3,7 +3,7 @@ import type { Env } from '../env';
 import type { MondayItem } from '../lib/monday';
 import { rawHash, type RawColumn } from '../lib/canon';
 import { BOARDS, type BoardSlug } from '../../shared/boards';
-import { maybeEmitStageChange } from '../lib/notify';
+import { maybeEmitStageChange, maybeEmitProjectStatusChange } from '../lib/notify';
 
 // authzCols are people columns; value JSON carries personsAndTeams:[{id,kind}].
 function extractVendedorIds(item: MondayItem, authzCols: string[]): number[] {
@@ -49,14 +49,16 @@ export async function upsertItem(
   const vendedorIds = def.parent ? [] : extractVendedorIds(item, def.authzCols ?? []);
   const now = new Date().toISOString();
 
-  // Solo para el board padre de Oportunidades: captura el estado previo de
-  // `columns` ANTES del write para poder diffear deal_stage después (el centro
-  // de notificaciones — worker/lib/notify.ts). Se hace aquí, no antes del
-  // skipIfUnchanged, para no pagar una SELECT extra en el resto de boards ni
-  // cuando el contenido no cambió.
+  // Solo para los boards padre de Oportunidades/Proyectos: captura el estado
+  // previo de `columns` ANTES del write para poder diffear deal_stage /
+  // project_status después (el centro de notificaciones —
+  // worker/lib/notify.ts). Se hace aquí, no antes del skipIfUnchanged, para no
+  // pagar una SELECT extra en el resto de boards ni cuando el contenido no
+  // cambió.
   const isOportunidades = slug === 'oportunidades';
+  const isProyectos = slug === 'proyectos';
   let prevColumnsJson: string | null = null;
-  if (isOportunidades) {
+  if (isOportunidades || isProyectos) {
     const prevRow = await env.DB.prepare(
       `SELECT columns FROM items WHERE board_id = ? AND item_id = ?`,
     ).bind(def.id, itemId).first<{ columns: string }>();
@@ -79,6 +81,15 @@ export async function upsertItem(
 
   if (isOportunidades) {
     await maybeEmitStageChange(env, {
+      boardId: def.id,
+      itemId,
+      itemName: item.name,
+      prevColumnsJson,
+      newColumnsJson: JSON.stringify(columns),
+      vendedorIds,
+    });
+  } else if (isProyectos) {
+    await maybeEmitProjectStatusChange(env, {
       boardId: def.id,
       itemId,
       itemName: item.name,

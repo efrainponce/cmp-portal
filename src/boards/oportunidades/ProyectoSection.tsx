@@ -17,6 +17,8 @@ const P_DRIVE_LINK = 'link_mm462saa';     // Carpeta Drive (visible Compras)
 const P_TALLAS_PDF = 'file_mm0hcrtz';     // PDFs relación de tallas (visible Compras)
 const P_OC_PDF = 'file_mm0hj9pn';         // PDFs órdenes de compra (visible Compras)
 export const P_OC_CLIENTE = 'file_mm0hayh4'; // OC/cotización/contrato firmado por el cliente (vendedor sube)
+const P_METODO_PAGO = 'text_mm4cct6a';    // Método de pago (default del Proyecto, prellenado por tarjeta)
+const P_COND_PAGO = 'text_mm4cdyjb';      // Condiciones de pago (default del Proyecto, prellenado por tarjeta)
 
 // Subelementos de Proyectos (18395657609)
 const S_PRODUCTO = 'text_mm0hs17x';
@@ -167,7 +169,7 @@ function ProyectoActionBar({ proyecto, reload, actions }: {
           <ConfirmButton
             label="Validar tallas (vendedor)"
             confirmLabel="¿Validar y mandar a firma?"
-            busyLabel="Validando…"
+            busyLabel="Validando… puede tardar unos minutos, no cierres esta pantalla"
             disabled={!canVendedor || !sheetUrl}
             title={!canVendedor ? 'Solo el vendedor valida las tallas' : !sheetUrl ? 'Primero crea el archivo de tallas' : 'Valida el desglose y genera el PDF a firma'}
             onConfirm={run('tallas-confirmar')}
@@ -188,7 +190,7 @@ function ProyectoActionBar({ proyecto, reload, actions }: {
           <ConfirmButton
             label="Generar todas las OC pendientes"
             confirmLabel="¿Generar? Se manda a firmas"
-            busyLabel="Generando órdenes…"
+            busyLabel="Generando órdenes… puede tardar unos minutos, no cierres esta pantalla"
             variant="secondary"
             disabled={!canCompras}
             title={!canCompras ? 'Solo Compras genera órdenes de compra' : 'Una OC por proveedor + firmas Elaborado→Revisado→Autorizado'}
@@ -367,16 +369,30 @@ function ProveedorLineaRow({ l }: { l: ItemDTO }) {
   );
 }
 
+const CARD_INPUT_STYLE = {
+  font: 'var(--text-label)', padding: '5px 8px', borderRadius: 'var(--radius-md)',
+  border: '1px solid var(--border)', minWidth: 160,
+} as const;
+
 /** Tarjeta de un proveedor: sus líneas + botón "Generar OC" acotado a él
- * (only_proveedor) — resultado local con el mismo contrato que ProyectoActionBar. */
+ * (only_proveedor) — resultado local con el mismo contrato que ProyectoActionBar.
+ * Método/Condiciones de pago son overrides SOLO de esta OC (WhatsApp 2026-08-04:
+ * antes el default del Proyecto se aplicaba igual a todos los proveedores) —
+ * prellenados con el default, no se guardan de vuelta a Monday. */
 function ProveedorCard({ group, proyecto, reload }: { group: ProveedorGroup; proyecto: ItemDetailDTO; reload: () => void }) {
   const [outcome, setOutcome] = useState<ActionOutcome | null>(null);
+  const [metodoPago, setMetodoPago] = useState(proyecto.cols[P_METODO_PAGO]?.text ?? '');
+  const [condPago, setCondPago] = useState(proyecto.cols[P_COND_PAGO]?.text ?? '');
   const cantidadTotal = group.lineas.reduce((s, r) => s + (Number(r.cols[S_CANTIDAD]?.text?.replace(/,/g, '')) || 0), 0);
 
   const onGenerar = async () => {
     setOutcome(null);
     try {
-      const res = await proyectoAction(proyecto.id, 'generar-oc', { onlyProveedor: group.proveedorId! });
+      const res = await proyectoAction(proyecto.id, 'generar-oc', {
+        onlyProveedor: group.proveedorId!,
+        metodoPago: metodoPago.trim() || undefined,
+        condPago: condPago.trim() || undefined,
+      });
       setOutcome(describeResult('generar-oc', res));
       reload();
     } catch {
@@ -393,14 +409,26 @@ function ProveedorCard({ group, proyecto, reload }: { group: ProveedorGroup; pro
             {group.correo ? `${group.correo} · ` : ''}{group.lineas.length} línea{group.lineas.length === 1 ? '' : 's'} · {cantidadTotal} pzas
           </div>
         </div>
-        <ConfirmButton
-          label="Generar OC"
-          confirmLabel="¿Generar la OC de este proveedor? Se manda a firmas"
-          busyLabel="Generando…"
-          disabled={!group.proveedorId}
-          title={!group.proveedorId ? 'Asigna un proveedor a estas líneas primero' : 'Una OC de este proveedor + firmas Elaborado→Revisado→Autorizado'}
-          onConfirm={onGenerar}
-        />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <input
+            type="text" value={metodoPago} onChange={e => setMetodoPago(e.target.value)}
+            placeholder="Método de pago" title="Método de pago de esta OC (no cambia el default del Proyecto)"
+            style={CARD_INPUT_STYLE}
+          />
+          <input
+            type="text" value={condPago} onChange={e => setCondPago(e.target.value)}
+            placeholder="Condiciones de pago" title="Condiciones de pago de esta OC (no cambia el default del Proyecto)"
+            style={{ ...CARD_INPUT_STYLE, minWidth: 220 }}
+          />
+          <ConfirmButton
+            label="Generar OC"
+            confirmLabel="¿Generar la OC de este proveedor? Se manda a firmas"
+            busyLabel="Generando… puede tardar unos minutos, no cierres esta pantalla"
+            disabled={!group.proveedorId}
+            title={!group.proveedorId ? 'Asigna un proveedor a estas líneas primero' : 'Una OC de este proveedor + firmas Elaborado→Revisado→Autorizado'}
+            onConfirm={onGenerar}
+          />
+        </div>
       </div>
       <div style={{ overflowX: 'auto' }}>
         <div style={{ minWidth: 720 }}>

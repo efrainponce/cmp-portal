@@ -20,7 +20,11 @@ export interface AutomationResult {
 }
 
 // Eledo render + Monday upload + DocuSeal can take a while; Vercel caps at 300s.
-const TIMEOUT_MS = 120_000;
+// Portal used to abort at 120s, well under that cap — cmp-tallas kept working
+// server-side after the abort, so the user saw a false failure and had to
+// retry (WhatsApp 2026-08-04: "hay que apretarle varias veces"). Match the
+// budget cmp-tallas actually has, with a small margin.
+const TIMEOUT_MS = 280_000;
 
 async function callCmpTallas(env: Env, path: string, body: Record<string, unknown>): Promise<AutomationResult> {
   if (!env.CMP_TALLAS_BASE) throw new AutomationError(501, 'CMP_TALLAS_BASE not configured');
@@ -72,13 +76,20 @@ export function importTallas(env: Env, proyectoId: number, dryRun = false): Prom
 }
 
 /** Genera OC por proveedor (agrupa subitems), folio en Sheets, DocuSeal con 3
- * firmas (Elaborado→Pam→Elisa). ¡El run real manda correos de firma! */
+ * firmas (Elaborado→Pam→Elisa). ¡El run real manda correos de firma!
+ * `metodoPago`/`condPago`: overrides de un solo proveedor — solo tienen efecto
+ * junto con `onlyProveedor` (una corrección apunta a uno a la vez); sin ellos,
+ * cmp-tallas usa el default a nivel Proyecto (WhatsApp 2026-08-04: antes se
+ * aplicaba el mismo valor a todos los proveedores). Sin `onlyProveedor`, el
+ * botón masivo ahora salta proveedores con una OC ya vigente (mismo pedido). */
 export function generateOC(
   env: Env,
   proyectoId: number,
-  opts: { dryRun?: boolean; onlyProveedor?: string } = {},
+  opts: { dryRun?: boolean; onlyProveedor?: string; metodoPago?: string; condPago?: string } = {},
 ): Promise<AutomationResult> {
   const body: Record<string, unknown> = { item_id: String(proyectoId), dry_run: opts.dryRun ?? false };
   if (opts.onlyProveedor) body.only_proveedor = opts.onlyProveedor;
+  if (opts.metodoPago) body.metodo_pago = opts.metodoPago;
+  if (opts.condPago) body.cond_pago = opts.condPago;
   return callCmpTallas(env, '/api/generate_oc', body);
 }
