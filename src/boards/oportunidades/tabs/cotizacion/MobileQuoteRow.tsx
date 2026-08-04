@@ -12,7 +12,7 @@ import { LineDetailPanel } from './LineDetailPanel';
 import { ProductPicker, type ProductoChoice } from '../../../../components/forms/ProductPicker';
 import {
   type GridCol, type RowEditState, marginColor, suggestedPrecio23, numFrom, displayProducto, cellValue,
-  inputStyle, valueChipStyle, ETAPA_COSTEO_COLORS, getLineWarnings,
+  inputStyle, valueChipStyle, ETAPA_COSTEO_COLORS, getLineWarnings, needsConfirmarTallas,
   ETAPA_COSTEO_COL, SUGERIDO_COL, MARGEN_COL,
   PRODUCTO_COL, PRODUCTO_TXT_COL, PRODUCTO_REL_COL, COLOR_COL,
   EMB_STATUS_COL, EMB_LABEL_CON, EMB_LABEL_SIN,
@@ -223,12 +223,21 @@ function MobileQuoteRowInner({
   };
 
   const lineWarnings = getLineWarnings(p, state, variant, catalog, precioOnly);
+  // Aparte del resto: se pinta como texto explícito arriba del nombre del
+  // producto en vez de perderse mezclado en el badge genérico de warnings.
+  const needsTallas = !precioOnly && needsConfirmarTallas(p, variant, catalog);
+  const otherWarnings = lineWarnings.filter((w) => w !== 'Sin confirmar' && w !== 'Sin tallas');
 
   return (
     <div style={{ borderTop: '1px solid var(--border-subtle)', background: lineWarnings.length > 0 ? '#fdf1f2' : '#fff', padding: '14px' }}>
-      {lineWarnings.length > 0 && (
+      {needsTallas && (
+        <div style={{ font: '700 11px \'Inter\', sans-serif', color: '#ce3048', marginBottom: 6 }}>
+          ⚠ HAY QUE CONFIRMAR TALLAS
+        </div>
+      )}
+      {otherWarnings.length > 0 && (
         <div style={{ marginBottom: 10 }}>
-          <StatusBadge label={`⚠ ${lineWarnings.join(' • ')}`} color="#ce3048" tint="#fbdbdf" />
+          <StatusBadge label={`⚠ ${otherWarnings.join(' • ')}`} color="#ce3048" tint="#fbdbdf" />
         </div>
       )}
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>

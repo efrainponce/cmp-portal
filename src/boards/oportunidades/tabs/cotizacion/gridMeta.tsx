@@ -341,6 +341,16 @@ export function productoTallasOk(row: ItemDTO, catalog: ItemDTO[]): boolean {
   return tallas !== '' && tallas.toLowerCase() !== 'error';
 }
 
+// Ambos warnings de Costeo ("Sin confirmar" / "Sin tallas") son, para quien
+// vende, la misma pregunta: "¿por qué no puedo mandar a validación?". Un
+// helper aparte deja mostrar un aviso explícito y prominente encima del
+// nombre del producto en vez de que se pierda mezclado con el resto de
+// warnings al fondo de la fila (Efraín, 2026-08-04: "no dice porque no lo
+// puedes mandar a costeo").
+export function needsConfirmarTallas(row: ItemDTO, variant: 'venta' | 'costeo', catalog: ItemDTO[]): boolean {
+  return variant === 'costeo' && (!productoConfirmado(row, catalog) || !productoTallasOk(row, catalog));
+}
+
 // Moneda efectiva de una línea: la capturada en la línea gana; si está vacía se
 // hereda la del producto en el catálogo (el mirror). `heredada` distingue las
 // dos para pintar "MXN (catálogo)" en el selector — sin eso no se nota si la

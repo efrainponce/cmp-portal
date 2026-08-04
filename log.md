@@ -2,6 +2,11 @@
 
 ## 2026-08-04
 
+- Costeo: aviso explícito "HAY QUE CONFIRMAR TALLAS" arriba a la izquierda de cada línea sin confirmar
+  - El botón "Mandar a Validación de costeo" quedaba deshabilitado por falta de confirmación/tallas de Compras, pero el único indicio era un badge genérico ("Sin confirmar • Sin tallas") al fondo de la fila (desktop, fuera de la vista sin scroll horizontal) o mezclado con otros warnings (mobile) — Efraín: "no dice porque no lo puedes mandar a costeo".
+  - Nuevo `needsConfirmarTallas()` en `gridMeta.tsx` (variant costeo + falta `productoConfirmado` o `productoTallasOk`); `QuoteRow.tsx` y `MobileQuoteRow.tsx` pintan el texto en rojo justo encima del nombre del producto cuando aplica, y el badge de warnings restante ya no repite "Sin confirmar"/"Sin tallas".
+  - `npx tsc --noEmit` y `npm test` (moneda.test.ts, avisos de línea) limpios.
+
 - Proyectos: fixes de la lista de pendientes de Efraín por WhatsApp (Compras)
   - Notificaciones generales para Proyectos: extiende el centro de notificaciones (ya usado para `deal_stage` de Oportunidades) a `project_status` — reemplaza las notificaciones nativas de Monday por-elemento, que Compras reportó que no les llegan. `PROJECT_STATUS_NOTIFY`/`PROJECT_STATUS_LABELS`/`PROJECT_STATUS_BOARD_KEY` en `shared/notifications.ts`, `maybeEmitProjectStatusChange` en `worker/lib/notify.ts` (generalizado de `maybeEmitStageChange`), rama `isProyectos` en `worker/sync/upsert.ts`.
   - Bug real encontrado verificando en vivo: el `dedupe_key` no incluía el destinatario, así que un cambio con VARIOS destinatarios (ej. `['owner', 'role:compras']`) solo notificaba al primero — el `INSERT OR IGNORE` (dedupe_key UNIQUE) descartaba al resto en silencio. Afectaba también las notificaciones de etapa de Oportunidades ya en producción, no solo lo nuevo. Corregido en `worker/lib/notify.ts` incluyendo `recipientEmail` en la llave.
