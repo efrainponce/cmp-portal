@@ -29,6 +29,7 @@ function MobileQuoteRowInner({
   product: p, partida, state, visibleCols, variant, precioOnly = false, editable, editableCols, writableIds, catalog, catalogLoading,
   onEdit, onBlur, onColorChange, onEmbellecimientoChange, onStatusChange, onProductoPick,
   expanded, onToggleExpand, canConfirm, confirmSaving, confirmError, onToggleConfirm,
+  tallasSaving, tallasError, onEditTallas,
   canDelete, deleting, onDeleteLine, canAjustar, onAjustarLinea,
 }: {
   product: ItemDTO;
@@ -56,6 +57,9 @@ function MobileQuoteRowInner({
   confirmSaving: boolean;
   confirmError?: string;
   onToggleConfirm: (productoId: number, next: boolean) => void;
+  tallasSaving: boolean;
+  tallasError?: string;
+  onEditTallas: (productoId: number, next: string) => void;
   /** Mismo gate que el botón "✕" de desktop (canAddLines). */
   canDelete: boolean;
   deleting: boolean;
@@ -305,6 +309,9 @@ function MobileQuoteRowInner({
             saving={confirmSaving}
             error={confirmError}
             onToggleConfirm={onToggleConfirm}
+            tallasSaving={tallasSaving}
+            tallasError={tallasError}
+            onEditTallas={onEditTallas}
           />
         </div>
       )}

@@ -75,6 +75,7 @@ function EmbellecimientoDetail({ product }: { product: ItemDTO }) {
 
 export function LineDetailPanel({
   product, catalog, variant, canConfirm, saving, error, onToggleConfirm,
+  tallasSaving, tallasError, onEditTallas,
 }: {
   product: ItemDTO;
   catalog: ItemDTO[];
@@ -83,12 +84,20 @@ export function LineDetailPanel({
   saving: boolean;
   error?: string;
   onToggleConfirm: (productoId: number, next: boolean) => void;
+  tallasSaving: boolean;
+  tallasError?: string;
+  onEditTallas: (productoId: number, next: string) => void;
 }) {
   const productoId = linkedProductoId(product);
   const catalogItem = productoId != null ? catalogIndex(catalog).byId.get(productoId) : undefined;
   const descripcion = product.cols[DESCRIPCION_COL]?.text || catalogItem?.cols[CATALOGO_DESCRIPCION_COL]?.text || '';
   const tallas = product.cols[TALLAS_COL]?.text || catalogItem?.cols[CATALOGO_TALLAS_COL]?.text || '';
   const confirmed = !!catalogItem?.cols[PRODUCTO_CONFIRM_COL]?.text;
+  // Tallas se edita sobre el catálogo (mismo lugar que se guarda), no sobre el
+  // mirror de la línea — mismo patrón que PRODUCTO_CONFIRM_COL de abajo.
+  const canEditTallas = variant === 'costeo' && canConfirm && productoId != null;
+  const [tallasEdit, setTallasEdit] = useState<string | null>(null);
+  const tallasInputValue = tallasEdit ?? catalogItem?.cols[CATALOGO_TALLAS_COL]?.text ?? '';
 
   return (
     <div style={{
@@ -102,10 +111,35 @@ export function LineDetailPanel({
         </div>
       </div>
       <div>
-        <div style={fieldLabel}>Tallas</div>
-        <div style={{ font: 'var(--text-label)', color: 'var(--ink-secondary)', whiteSpace: 'pre-wrap' }}>
-          {tallas || '—'}
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
+          <div style={fieldLabel}>Tallas</div>
+          {tallasSaving && <span style={{ font: 'var(--text-caption)', color: 'var(--ink-faint)' }}>guardando…</span>}
         </div>
+        {canEditTallas && productoId != null ? (
+          <>
+            <input
+              value={tallasInputValue}
+              placeholder="S, M, XL o unitalla"
+              onChange={(e) => setTallasEdit(e.target.value)}
+              onBlur={(e) => {
+                const next = e.target.value.trim();
+                if (next !== (catalogItem?.cols[CATALOGO_TALLAS_COL]?.text ?? '').trim()) onEditTallas(productoId, next);
+              }}
+              style={{
+                width: '100%', font: 'var(--text-label)', color: 'var(--ink)',
+                border: '1px solid var(--border)', borderRadius: 'var(--radius-md)',
+                padding: '6px 8px', boxSizing: 'border-box', background: 'var(--bg)',
+              }}
+            />
+            {tallasError && (
+              <div style={{ font: 'var(--text-caption)', color: 'var(--status-perdida)', marginTop: 2 }}>{tallasError}</div>
+            )}
+          </>
+        ) : (
+          <div style={{ font: 'var(--text-label)', color: 'var(--ink-secondary)', whiteSpace: 'pre-wrap' }}>
+            {tallas || '—'}
+          </div>
+        )}
       </div>
       {variant === 'costeo' && <EmbellecimientoDetail product={product} />}
       {variant === 'costeo' && (

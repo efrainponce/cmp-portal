@@ -258,27 +258,21 @@ describe('renderTemplate', () => {
   });
 });
 
-// Los valores crudos de Monday que se veían mal en la primera solicitud real
-// (OPP-0717): las Tallas llegan como bloque JSON y los long_text con ",,".
+// Tallas — lista simple desde el 2026-08-03 (reemplazó el JSON por género de
+// OPP-0717); los long_text de embellecimiento siguen llegando con ",,".
 describe('formatTallas', () => {
-  it('aplana el JSON del catálogo y omite lo vacío', () => {
-    const raw = '```json\n{\n"hombre": ["CH", "M", "G"],\n"mujer": [],\n"unitalla": false,\n"otros": []\n}\n```';
-    expect(formatTallas(raw)).toBe('Hombre: CH, M, G');
+  it('limpia espacios alrededor de cada talla', () => {
+    expect(formatTallas('CH, M , G')).toBe('CH, M, G');
   });
 
-  it('conserva varios grupos y las banderas verdaderas', () => {
-    expect(formatTallas('{"hombre":["CH"],"mujer":["M","G"],"unitalla":true}'))
-      .toBe('Hombre: CH · Mujer: M, G · Unitalla');
+  it('capitaliza el literal unitalla', () => {
+    expect(formatTallas('unitalla')).toBe('Unitalla');
   });
 
-  it('devuelve el texto tal cual si no es JSON, y nada si está vacío', () => {
-    expect(formatTallas('CH, M, G')).toBe('CH, M, G');
+  it('no imprime nada cuando está vacío, "error", o solo espacios', () => {
+    expect(formatTallas('error')).toBeUndefined();
     expect(formatTallas('   ')).toBeUndefined();
     expect(formatTallas(undefined)).toBeUndefined();
-  });
-
-  it('no imprime nada cuando todos los grupos están vacíos', () => {
-    expect(formatTallas('{"hombre":[],"mujer":[],"unitalla":false}')).toBeUndefined();
   });
 });
 

@@ -56,6 +56,9 @@ export interface QuoteRowProps {
   confirmSaving: boolean;
   confirmError?: string;
   onToggleConfirm: (productoId: number, next: boolean) => void;
+  tallasSaving: boolean;
+  tallasError?: string;
+  onEditTallas: (productoId: number, next: string) => void;
   /** Mismo gate que canAddLines — el botón "✕" de eliminar línea. */
   canDelete: boolean;
   deleting: boolean;
@@ -72,6 +75,7 @@ function QuoteRowInner({
   editableCols, writableIds, catalog, catalogLoading,
   onEdit, onBlur, onColorChange, onEmbellecimientoChange, onStatusChange, onProductoPick,
   expanded, onToggleExpand, canConfirm, confirmSaving, confirmError, onToggleConfirm,
+  tallasSaving, tallasError, onEditTallas,
   canDelete, deleting, onDeleteLine, canAjustar, onAjustarLinea,
 }: QuoteRowProps) {
   const lineWarnings = getLineWarnings(p, state, variant, catalog, precioOnly);
@@ -367,6 +371,9 @@ function QuoteRowInner({
           saving={confirmSaving}
           error={confirmError}
           onToggleConfirm={onToggleConfirm}
+          tallasSaving={tallasSaving}
+          tallasError={tallasError}
+          onEditTallas={onEditTallas}
         />
       )}
     </div>

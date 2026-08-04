@@ -29,6 +29,11 @@ const OPP_INSTITUCION = 'lookup_mm1bs976';        // validar_costeo rechaza sin 
 
 // Productos (18395657591) — checkbox creada 2026-07-18, docs/monday-column-map.md.
 const PRODUCTO_CONFIRM_COL = 'boolean_mm5cqtjs';  // "Descripción y tallas confirmadas"
+// Tallas — lista simple ("S,M,XL" / "unitalla"), reemplazó el JSON por género
+// (long_text_mm174q0j) el 2026-08-03. El llenado automático deja el literal
+// "error" cuando no pudo determinar tallas del texto libre del producto — eso
+// tampoco cuenta como válido aunque Compras haya marcado el checkbox de arriba.
+const PRODUCTO_TALLAS_COL = 'text_mm5v6jhj';
 
 const ETAPA_NO_INICIADO = 'No iniciado';
 
@@ -221,7 +226,7 @@ export async function checkValidacion(env: Env, itemId: number, viewer: Identity
     return { ok: false, errors: ['La oportunidad no tiene líneas de producto.'] };
   }
   const errors: string[] = [];
-  const productoCache = new Map<number, boolean>(); // productoId -> confirmado
+  const productoCache = new Map<number, { confirmado: boolean; tallasOk: boolean }>();
 
   for (let i = 0; i < lineas.length; i++) {
     const linea = lineas[i];
@@ -233,11 +238,18 @@ export async function checkValidacion(env: Env, itemId: number, viewer: Identity
     }
     if (!productoCache.has(productoId)) {
       const producto = await getItem(env, 'productos', productoId, viewer);
-      const confirmado = !!producto && !!colsOf(producto).get(PRODUCTO_CONFIRM_COL)?.text;
-      productoCache.set(productoId, confirmado);
+      const pCols = producto ? colsOf(producto) : undefined;
+      const confirmado = !!pCols?.get(PRODUCTO_CONFIRM_COL)?.text;
+      const tallas = (pCols?.get(PRODUCTO_TALLAS_COL)?.text ?? '').trim();
+      const tallasOk = tallas !== '' && tallas.toLowerCase() !== 'error';
+      productoCache.set(productoId, { confirmado, tallasOk });
     }
-    if (!productoCache.get(productoId)) {
+    const estado = productoCache.get(productoId)!;
+    if (!estado.confirmado) {
       errors.push(`${tag}: descripción y tallas sin confirmar.`);
+    }
+    if (!estado.tallasOk) {
+      errors.push(`${tag}: el producto no tiene tallas definidas en el catálogo.`);
     }
   }
 

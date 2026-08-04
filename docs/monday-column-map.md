@@ -123,7 +123,7 @@ disponibles" (`lookup_mkznm0h3`, mirror del catálogo) cuando la lista existe.
 | ✅ | SKU | `lookup_mkzn7x9a` (auto) / `text_mm0bxy39` | mirror/text |
 | ✅ | Marca | `lookup_mm0xn98d` | mirror |
 | ✅ | Color | `text_mm07s2mg` | text |
-| ✅ | Tallas | `lookup_mm19c0b6` | mirror |
+| ✅ | Tallas | `lookup_mm5v1qb` | mirror (fuente: Productos `text_mm5v6jhj`) |
 | ✅ | Cantidad | `numeric_mkzm6399` | numbers |
 | ✅ | Unidad | `lookup_mm0w4f4v` | mirror |
 | ✅ | Descripción Cotización | `lookup_mm0xw8p7` | mirror |
@@ -180,10 +180,20 @@ Social / Correo Proveedor) — el vendedor no necesita saber el proveedor. ❓ c
 `long_text_mm1tcga0`, Proveedor + mirrors. Rest available to authenticated roles when a
 module needs the catalog.
 
+✅ | Tallas | `text_mm5v6jhj` | text — creada 2026-08-03, reemplaza el JSON por género
+(`long_text_mm174q0j` "Tallas JSON", retirado) por una lista simple: `"S,M,XL"`,
+el literal `"unitalla"`, o `"error"`/vacío cuando el llenado automático de
+cmp-tallas no pudo determinar tallas del texto libre del producto. Mirrorea a
+`lookup_mm5v1qb` en las líneas de Oportunidad vía `board_relation_mkzmafgp`.
+Escribible por compras/admin desde el portal (panel de detalle de la línea en
+Costeo, `LineDetailPanel.tsx`) además de en Monday directo — `checkValidacion`
+(`worker/lib/costeo.ts`) bloquea "Mandar a Validación de costeo" si está vacía
+o en `"error"`.
+
 ✅ | Descripción y tallas confirmadas | `boolean_mm5cqtjs` | checkbox — creada 2026-07-18
 (vía Monday MCP) para el flujo "Mandar a Validación de costeo": Compras confirma por SKU
-que `long_text_mm0xse7v` (Descripción cotización) y `long_text_mm174q0j` (Tallas JSON) son
-correctas — esos dos campos mirrorean hacia `lookup_mm0xw8p7`/`lookup_mm19c0b6` en las
+que `long_text_mm0xse7v` (Descripción cotización) y `text_mm5v6jhj` (Tallas) son
+correctas — esos dos campos mirrorean hacia `lookup_mm0xw8p7`/`lookup_mm5v1qb` en las
 líneas de Oportunidad vía `board_relation_mkzmafgp`. Escribible solo compras/admin
 (`shared/visibility.ts`); gate real en `worker/lib/costeo.ts` (`checkValidacion`).
 

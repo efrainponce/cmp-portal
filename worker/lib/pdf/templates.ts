@@ -100,36 +100,16 @@ export function fechaLarga(iso: string): string {
   }
 }
 
-/** Las Tallas del catálogo llegan como un bloque JSON (a veces envuelto en
- * fences de markdown): {"hombre":["CH","M"],"mujer":[],"unitalla":false,…}.
- * En papel eso es ilegible, así que se aplana a "Hombre: CH, M" omitiendo lo
- * vacío. Si no se puede parsear se devuelve el texto tal cual, nunca se pierde. */
+/** Tallas del catálogo — lista simple separada por comas ("S,M,XL"), el literal
+ * "unitalla", o "error"/vacío cuando el llenado automático no encontró tallas
+ * en el texto libre del producto. Reemplazó el JSON por género (hombre/mujer)
+ * el 2026-08-03 — ya no hay nada que parsear, solo limpiar. */
 export function formatTallas(raw?: string): string | undefined {
-  const text = (raw ?? '').trim();
-  if (!text) return undefined;
-  const json = text.replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(json);
-  } catch {
-    return text.replace(/\s+/g, ' ');
-  }
-  if (!parsed || typeof parsed !== 'object') return text.replace(/\s+/g, ' ');
-
-  const partes: string[] = [];
-  for (const [clave, valor] of Object.entries(parsed as Record<string, unknown>)) {
-    const etiqueta = clave.charAt(0).toUpperCase() + clave.slice(1);
-    if (Array.isArray(valor)) {
-      const items = valor.map(v => String(v).trim()).filter(Boolean);
-      if (items.length) partes.push(`${etiqueta}: ${items.join(', ')}`);
-    } else if (valor === true) {
-      partes.push(etiqueta);
-    } else if (typeof valor === 'string' && valor.trim()) {
-      partes.push(`${etiqueta}: ${valor.trim()}`);
-    }
-    // false / null / arrays vacíos: no se imprimen.
-  }
-  return partes.length ? partes.join(' · ') : undefined;
+  const cleaned = (raw ?? '').trim();
+  if (!cleaned || cleaned.toLowerCase() === 'error') return undefined;
+  if (cleaned.toLowerCase() === 'unitalla') return 'Unitalla';
+  const items = cleaned.split(',').map(t => t.trim()).filter(Boolean);
+  return items.length ? items.join(', ') : undefined;
 }
 
 /** Los long_text de Monday llegan con ",," entre renglones y con campos vacíos

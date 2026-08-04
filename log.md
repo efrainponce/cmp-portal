@@ -1,5 +1,15 @@
 # Log de commits
 
+## 2026-08-03
+
+- Tallas: migración al campo simplificado de Productos (`text_mm5v6jhj`), en línea con el cambio ya desplegado en cmp-tallas (el archivo de tallas por Oportunidad dejó de separar por género y ahora usa una lista plana)
+  - `text_mm5v6jhj` ("Tallas", texto simple: `"S,M,XL"` / `"unitalla"` / `"error"`/vacío) reemplaza `long_text_mm174q0j` ("Tallas JSON", el JSON viejo por género) en el catálogo de Productos; su mirror en las líneas de Oportunidad es `lookup_mm5v1qb` (reemplaza `lookup_mm19c0b6`). `scripts/introspect-boards.mjs` re-corrido para traer ambas columnas nuevas a `shared/column-meta.gen.ts`.
+  - `shared/visibility.ts`: `text_mm5v6jhj` ahora escribible por compras/admin (`w: WAC`) — el JSON viejo nunca lo fue (solo se editaba directo en Monday).
+  - Compras puede editar Tallas desde el portal, en el panel de detalle de la línea (chevron) del board Costeo — mismo lugar donde ya confirmaba "Descripción y tallas confirmadas" (`LineDetailPanel.tsx` + `onEditTallas` en `CotizacionTab.tsx`, guarda sobre el catálogo por SKU, no por línea).
+  - `worker/lib/costeo.ts` `checkValidacion`: además del checkbox de confirmación, ahora exige que el catálogo traiga Tallas no vacías y distintas de `"error"` antes de dejar pasar "Mandar a Validación de costeo" — antes Compras podía marcar el checkbox sin que el campo tuviera nada útil. Reflejado también como aviso de línea en el front (`getLineWarnings`/`productoTallasOk`, gridMeta.tsx).
+  - `worker/lib/pdf/templates.ts` `formatTallas()`: simplificado — ya no parsea JSON con fences, solo limpia espacios y trata `"unitalla"`/`"error"`/vacío como casos especiales (usado en el PDF de solicitud de costeo que genera el portal).
+  - `npx tsc --noEmit`, `npm test` (115/115) y `npm run lint` limpios.
+
 ## 2026-08-02
 
 - Tallas: captura por boxes (vendedor) — subitems del Proyecto directo, sin pasar por cmp-tallas

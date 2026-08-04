@@ -40,11 +40,15 @@ export const PRODUCTO_COL = 'lookup_mm0x4kda';        // mirror del producto lig
 export const PRODUCTO_TXT_COL = 'text_mm0bkm1j';      // Producto (texto libre) — fallback sin catálogo
 export const PRODUCTO_REL_COL = 'board_relation_mkzmafgp'; // relación real a Productos — puebla el mirror
 export const DESCRIPCION_COL = 'lookup_mm0xw8p7';     // mirror: Descripción Cotización (fuente: Productos long_text_mm0xse7v)
-export const TALLAS_COL = 'lookup_mm19c0b6';          // mirror: Tallas (fuente: Productos long_text_mm174q0j "Tallas JSON")
+// Tallas — lista simple ("S,M,XL" / "unitalla" / vacío), reemplazó el JSON por
+// género (long_text_mm174q0j → lookup_mm19c0b6) el 2026-08-03. El nuevo campo
+// del catálogo SÍ es editable por Compras (ver LineDetailPanel/CotizacionTab
+// onEditTallas) — a diferencia del resto de los mirrors de esta sección.
+export const TALLAS_COL = 'lookup_mm5v1qb';           // mirror: Tallas (fuente: Productos text_mm5v6jhj)
 // Fuente real de los dos mirrors de arriba, en el catálogo de Productos — fallback
 // mientras el mirror asíncrono del subitem no se ha poblado todavía.
 export const CATALOGO_DESCRIPCION_COL = 'long_text_mm0xse7v';
-export const CATALOGO_TALLAS_COL = 'long_text_mm174q0j';
+export const CATALOGO_TALLAS_COL = 'text_mm5v6jhj';
 // "Descripción y tallas confirmadas" — checkbox en Productos (18395657591), creada
 // 2026-07-18. Vive en el catálogo por SKU, no por línea (Efraín: la ficha es del
 // producto, no de la cotización) — Compras la marca y eso desbloquea "Mandar a
@@ -326,6 +330,17 @@ export function productoConfirmado(row: ItemDTO, catalog: ItemDTO[]): boolean {
   return !!catalogItem?.cols[PRODUCTO_CONFIRM_COL]?.text;
 }
 
+// Espejo del check del server (worker/lib/costeo.ts checkValidacion): el campo
+// Tallas del producto de catálogo debe traer algo y no el literal "error" que
+// deja el llenado automático cuando no pudo determinar tallas del texto libre.
+export function productoTallasOk(row: ItemDTO, catalog: ItemDTO[]): boolean {
+  const id = linkedProductoId(row);
+  if (id == null) return false;
+  const catalogItem = catalogIndex(catalog).byId.get(id);
+  const tallas = (catalogItem?.cols[CATALOGO_TALLAS_COL]?.text ?? '').trim();
+  return tallas !== '' && tallas.toLowerCase() !== 'error';
+}
+
 // Moneda efectiva de una línea: la capturada en la línea gana; si está vacía se
 // hereda la del producto en el catálogo (el mirror). `heredada` distingue las
 // dos para pintar "MXN (catálogo)" en el selector — sin eso no se nota si la
@@ -479,6 +494,12 @@ export function getLineWarnings(
   // En costeo: producto debe estar confirmado
   if (variant === 'costeo' && !productoConfirmado(product, catalog)) {
     warnings.push('Sin confirmar');
+  }
+
+  // En costeo: el catálogo debe traer tallas — mismo check que checkValidacion
+  // en el server, reflejado aquí para que el aviso viva en la línea.
+  if (variant === 'costeo' && !productoTallasOk(product, catalog)) {
+    warnings.push('Sin tallas');
   }
 
   // En costeo: si el proveedor cotizó en otra moneda, el Valor de Conversión

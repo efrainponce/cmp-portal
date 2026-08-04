@@ -36,7 +36,7 @@ import {
   loadHiddenCols, saveHiddenCols, gridWrapStyle,
   PRODUCTO_COL, PRODUCTO_TXT_COL, PRODUCTO_REL_COL, COLOR_COL,
   EMB_STATUS_COL, EMB_LABEL_CON, EMB_LABEL_SIN,
-  PRODUCTO_CONFIRM_COL, linkedProductoId, MONEY_COLS,
+  PRODUCTO_CONFIRM_COL, CATALOGO_TALLAS_COL, linkedProductoId, MONEY_COLS,
 } from './cotizacion/gridMeta';
 import type { ProductoChoice } from '../../../components/forms/ProductPicker';
 
@@ -201,6 +201,29 @@ export function CotizacionTab({
       setConfirmError((er) => ({ ...er, [key]: e instanceof Error ? e.message : 'No se pudo guardar.' }));
     } finally {
       setConfirmSaving((s) => ({ ...s, [key]: false }));
+    }
+  };
+
+  const [tallasSaving, setTallasSaving] = useState<Record<string, boolean>>({});
+  const [tallasError, setTallasError] = useState<Record<string, string | undefined>>({});
+
+  // Escribe text_mm5v6jhj (Tallas) en el producto del catálogo — mismo
+  // patrón/optimismo que onToggleConfirm de arriba (Efraín, 2026-08-03: Compras
+  // edita la lista simple de tallas desde el panel de detalle de la línea).
+  const onEditTallas = async (productoId: number, next: string) => {
+    const key = String(productoId);
+    setTallasSaving((s) => ({ ...s, [key]: true }));
+    setTallasError((e) => ({ ...e, [key]: undefined }));
+    try {
+      await patchItem('productos', key, { [CATALOGO_TALLAS_COL]: next });
+      setCatalog((cat) => cat.map((c) => (c.id === key
+        ? { ...c, cols: { ...c.cols, [CATALOGO_TALLAS_COL]: { text: next, type: 'text' } } }
+        : c)));
+      onSaved?.();
+    } catch (e) {
+      setTallasError((er) => ({ ...er, [key]: e instanceof Error ? e.message : 'No se pudo guardar.' }));
+    } finally {
+      setTallasSaving((s) => ({ ...s, [key]: false }));
     }
   };
 
@@ -421,13 +444,13 @@ export function CotizacionTab({
   const latest = useRef({
     onEdit, onBlur, onColorChange,
     onEmbellecimientoChange, onStatusChange, onProductoPick,
-    onToggleConfirm, onDeleteLine, toggleExpanded,
+    onToggleConfirm, onEditTallas, onDeleteLine, toggleExpanded,
     onAjustarLinea: setAjustarLineaTarget,
   });
   latest.current = {
     onEdit, onBlur, onColorChange,
     onEmbellecimientoChange, onStatusChange, onProductoPick,
-    onToggleConfirm, onDeleteLine, toggleExpanded,
+    onToggleConfirm, onEditTallas, onDeleteLine, toggleExpanded,
     onAjustarLinea: setAjustarLineaTarget,
   };
   const sEdit = useCallback((pr: ItemDTO, c: string, r: string) => latest.current.onEdit(pr, c, r), []);
@@ -437,6 +460,7 @@ export function CotizacionTab({
   const sStatusChange = useCallback((pr: ItemDTO, c: string, l: string) => latest.current.onStatusChange(pr, c, l), []);
   const sProductoPick = useCallback((pr: ItemDTO, ch: ProductoChoice) => latest.current.onProductoPick(pr, ch), []);
   const sToggleConfirm = useCallback((id: number, next: boolean) => latest.current.onToggleConfirm(id, next), []);
+  const sEditTallas = useCallback((id: number, next: string) => latest.current.onEditTallas(id, next), []);
   const sDeleteLine = useCallback((id: string) => latest.current.onDeleteLine(id), []);
   const sToggleExpand = useCallback((id: string) => latest.current.toggleExpanded(id), []);
   const sAjustarLinea = useCallback((pr: ItemDTO) => latest.current.onAjustarLinea(pr), []);
@@ -537,6 +561,9 @@ export function CotizacionTab({
               confirmSaving={!!confirmSaving[String(linkedProductoId(p))]}
               confirmError={confirmError[String(linkedProductoId(p))]}
               onToggleConfirm={sToggleConfirm}
+              tallasSaving={!!tallasSaving[String(linkedProductoId(p))]}
+              tallasError={tallasError[String(linkedProductoId(p))]}
+              onEditTallas={sEditTallas}
               canDelete={canAddLines}
               deleting={deletingId === p.id}
               onDeleteLine={sDeleteLine}
@@ -599,6 +626,9 @@ export function CotizacionTab({
               confirmSaving={!!confirmSaving[String(linkedProductoId(p))]}
               confirmError={confirmError[String(linkedProductoId(p))]}
               onToggleConfirm={sToggleConfirm}
+              tallasSaving={!!tallasSaving[String(linkedProductoId(p))]}
+              tallasError={tallasError[String(linkedProductoId(p))]}
+              onEditTallas={sEditTallas}
               canDelete={canAddLines}
               deleting={deletingId === p.id}
               onDeleteLine={sDeleteLine}

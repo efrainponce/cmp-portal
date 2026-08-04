@@ -64,7 +64,7 @@ export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
 
   oportunidades_sub: {
     ...vis(['name', 'lookup_mm0x4kda', 'lookup_mkzn7x9a',
-      'text_mm0bxy39', 'lookup_mm0xn98d', 'lookup_mm19c0b6',
+      'text_mm0bxy39', 'lookup_mm0xn98d', 'lookup_mm5v1qb',
       'lookup_mm0w4f4v', 'lookup_mm0xw8p7',
       'long_text_mm1hyszv',
       'formula_mkznmjh6', 'formula_mm0rtdqp', 'formula_mm00xy0n'], V),
@@ -162,10 +162,15 @@ export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
     ...vis(['name', 'product_and_service_sku', 'text_mm0wvga2'], CAT),
     ...vis(['product_and_service_description',
       'dropdown_mkztty4b', 'text_mkzp9428', 'text_mkzpbhb5', 'long_text_mm0xse7v',
-      'dropdown_mm07pjsv', 'long_text_mm174q0j'], V),
+      'dropdown_mm07pjsv'], V),
     ...vis(['numeric_mkzpx7eb', 'text_mkzp59zf', 'numeric_mm0bnkch',
       'numeric_mm0bgd2f', 'long_text_mm1tcga0', 'board_relation_mm1cwqky',
       'lookup_mm1cyy7f', 'lookup_mm1dv3jy', 'text_mkzmgvc7'], AC),
+    // Tallas — lista simple ("S,M,XL" / "unitalla" / vacío), creada 2026-08-03
+    // en reemplazo del JSON viejo por género (long_text_mm174q0j, retirado).
+    // Compras la edita por SKU desde el panel de detalle de la línea en Costeo
+    // (Efraín, 2026-08-03) — mismo patrón que boolean_mm5cqtjs de abajo.
+    text_mm5v6jhj: { vis: V, w: WAC },
     // "Descripción y tallas confirmadas" (checkbox, creada 2026-07-18) — Compras
     // confirma por SKU que la ficha del catálogo (Descripción/Tallas) es correcta;
     // bloquea "Mandar a Validación de costeo" (worker/lib/costeo.ts checkValidacion).
