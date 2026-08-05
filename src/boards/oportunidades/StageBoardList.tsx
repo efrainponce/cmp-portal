@@ -4,6 +4,7 @@
 // design, just a different deal_stage filter + grouping column per board.
 import { useMemo } from 'react';
 import { useBoards, usePoll, colForBoard, type ItemDTO } from '../../lib/api';
+import { useMe } from '../../lib/useMe';
 import { groupByColumn } from '../../lib/groupBy';
 import { GroupCard } from '../../components/layout/GroupCard';
 import { StatusBadge, MonoTag } from '../../components/core/Badges';
@@ -34,8 +35,22 @@ const INSTITUCION_COL = 'lookup_mm1bs976';
 const ETAPA_COSTEO_COL = 'lookup_mm087at6';
 const VENDEDOR_COL = 'deal_owner';
 const COMPRAS_COL = 'multiple_person_mm03qyw9';
+const VENDEDOR_SECUNDARIO_COL = 'multiple_person_mm0wt53c';
 const CONTACTO_COL = 'deal_contact';
 const ETAPA_COL = 'deal_stage';
+
+/** El viewer ve este item por estar como "Vendedor secundario" ahí, no por ser
+ * el dueño (deal_owner) ni por su zona — worker/lib/zonas.ts amplía lectura por
+ * AMBAS columnas (shared/boards.ts authzCols), así que a un vendedor le puede
+ * aparecer una oportunidad ajena sin más contexto que este. false si el viewer
+ * aún no cargó (useMe) — nunca marcamos de más mientras tanto. */
+function isSecondaryFor(item: ItemDTO, viewerNombre: string | undefined): boolean {
+  if (!viewerNombre) return false;
+  const owner = item.cols[VENDEDOR_COL]?.text?.trim();
+  if (owner === viewerNombre) return false;
+  const secundarios = (item.cols[VENDEDOR_SECUNDARIO_COL]?.text || '').split(',').map((s) => s.trim());
+  return secundarios.includes(viewerNombre);
+}
 
 /** Distinct, sorted option list for a filter select, built from the text of
  * one column across the loaded items (skips blanks). */
@@ -46,6 +61,25 @@ function optionsFromCol(items: ItemDTO[], colId: string): FilterOption[] {
     if (text) seen.add(text);
   }
   return Array.from(seen).sort((a, b) => a.localeCompare(b, 'es')).map((v) => ({ value: v, label: v }));
+}
+
+/** Como optionsFromCol, pero para Vendedor: marca "(secundario)" cuando TODOS
+ * los items de ese dueño le llegan al viewer solo por estar tageado como
+ * Vendedor secundario ahí (isSecondaryFor) — nunca por ser suyo ni de su
+ * zona. El value sigue siendo el nombre limpio: no debe romper el filtrado
+ * por texto exacto contra item.cols[VENDEDOR_COL]. */
+function vendedorOptionsFromItems(items: ItemDTO[], viewerNombre: string | undefined): FilterOption[] {
+  const allSecondary = new Map<string, boolean>();
+  for (const it of items) {
+    const text = it.cols[VENDEDOR_COL]?.text?.trim();
+    if (!text) continue;
+    const secondary = isSecondaryFor(it, viewerNombre);
+    const prev = allSecondary.get(text);
+    allSecondary.set(text, prev === undefined ? secondary : prev && secondary);
+  }
+  return Array.from(allSecondary.entries())
+    .sort(([a], [b]) => a.localeCompare(b, 'es'))
+    .map(([value, secondary]) => ({ value, label: secondary ? `${value} (secundario)` : value }));
 }
 
 /** Etapa options, restricted to stages actually present in the loaded items
@@ -67,6 +101,7 @@ interface Props {
 
 export function StageBoardList({ config, groupColId = 'deal_stage', q, onSearch, onOpen, headerAction }: Props) {
   const isMobile = useIsMobile();
+  const viewerNombre = useMe()?.nombre;
   const { boards } = useBoards();
   const cols = colForBoard(boards, 'oportunidades');
   const groupCol = cols.find((c) => c.id === groupColId);
@@ -92,7 +127,7 @@ export function StageBoardList({ config, groupColId = 'deal_stage', q, onSearch,
   const setEtapaFilter = (v: string) => setFilters((f) => ({ ...f, etapa: v }));
   const showEtapaFilter = !config.stages || config.stages.length > 1;
 
-  const vendedorOptions = useMemo(() => optionsFromCol(stageItems, VENDEDOR_COL), [stageItems]);
+  const vendedorOptions = useMemo(() => vendedorOptionsFromItems(stageItems, viewerNombre), [stageItems, viewerNombre]);
   const comprasOptions = useMemo(() => optionsFromCol(stageItems, COMPRAS_COL), [stageItems]);
   const etapaOptions = useMemo(() => stageOptionsFromItems(stageItems), [stageItems]);
 
@@ -164,7 +199,7 @@ export function StageBoardList({ config, groupColId = 'deal_stage', q, onSearch,
               collapsed={!!collapsedGroups[g.key]} onToggleCollapsed={() => toggleGroup(g.key)}
             >
               {g.items.map((item) => (
-                <Row key={item.id} item={item} etapaCosteoCol={etapaCosteoCol} onClick={() => onOpen(item.id)} />
+                <Row key={item.id} item={item} etapaCosteoCol={etapaCosteoCol} viewerNombre={viewerNombre} onClick={() => onOpen(item.id)} />
               ))}
             </GroupCard>
           ))}
@@ -174,13 +209,16 @@ export function StageBoardList({ config, groupColId = 'deal_stage', q, onSearch,
   );
 }
 
-function Row({ item, etapaCosteoCol, onClick }: { item: ItemDTO; etapaCosteoCol?: ReturnType<typeof colForBoard>[number]; onClick: () => void }) {
+function Row({ item, etapaCosteoCol, viewerNombre, onClick }: {
+  item: ItemDTO; etapaCosteoCol?: ReturnType<typeof colForBoard>[number]; viewerNombre: string | undefined; onClick: () => void;
+}) {
   const isMobile = useIsMobile();
   const institucion = item.cols[INSTITUCION_COL]?.text || '—';
   const folio = item.cols[FOLIO_COL]?.text || '—';
   const etapaCosteoVal = etapaCosteoCol ? item.cols[etapaCosteoCol.id] : undefined;
   const vendedor = item.cols[VENDEDOR_COL]?.text || undefined;
   const compras = item.cols[COMPRAS_COL]?.text || undefined;
+  const vendedorSecondary = isSecondaryFor(item, viewerNombre);
 
   // En cel el renglón se apila: nombre+folio arriba, institución debajo y los
   // chips en su propia línea — nada se corta ni exige scroll horizontal.
@@ -200,7 +238,7 @@ function Row({ item, etapaCosteoCol, onClick }: { item: ItemDTO; etapaCosteoCol?
         </div>
         <div style={{ font: 'var(--text-label)', color: 'var(--ink-tertiary)' }}>{institucion}</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 2 }}>
-          <PersonPair vendedor={vendedor} compras={compras} />
+          <PersonPair vendedor={vendedor} compras={compras} vendedorSecondary={vendedorSecondary} />
           {etapaCosteoVal?.text && (() => {
             const { color, tint } = chipFor(etapaCosteoCol!, etapaCosteoVal);
             return <StatusBadge label={dedupeMirrorText(etapaCosteoVal.text)} color={color} tint={tint} />;
@@ -227,7 +265,7 @@ function Row({ item, etapaCosteoCol, onClick }: { item: ItemDTO; etapaCosteoCol?
         <div style={{ font: 'var(--text-label)', color: 'var(--ink-tertiary)' }}>{institucion}</div>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, flex: 'none' }}>
-        <PersonPair vendedor={vendedor} compras={compras} />
+        <PersonPair vendedor={vendedor} compras={compras} vendedorSecondary={vendedorSecondary} />
         {etapaCosteoVal?.text && (() => {
           const { color, tint } = chipFor(etapaCosteoCol!, etapaCosteoVal);
           return <StatusBadge label={dedupeMirrorText(etapaCosteoVal.text)} color={color} tint={tint} />;

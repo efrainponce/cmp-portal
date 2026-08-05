@@ -13,6 +13,7 @@ export const CREATE_FIELDS: Record<'instituciones' | 'contactos' | 'oportunidade
   oportunidades: [
     { id: 'name', required: true },
     { id: 'deal_owner', required: true },       // Vendedor (authz key)
+    { id: 'multiple_person_mm0wt53c' },         // Vendedor secundario (authz key también)
     { id: 'multiple_person_mm03qyw9' },         // Compras
     { id: 'deal_contact' },                     // Contacto (cliente) → Contactos
     { id: 'dropdown_mm03g067' },                // Zona

@@ -16,6 +16,7 @@ import {
 
 // Ids reales de Monday (docs/monday-column-map.md) — nunca fabricar.
 const COL_VENDEDOR = 'deal_owner';
+const COL_VENDEDOR_SECUNDARIO = 'multiple_person_mm0wt53c';
 const COL_COMPRAS = 'multiple_person_mm03qyw9';
 const COL_CONTACTO = 'deal_contact';
 const COL_ZONA = 'dropdown_mm03g067';
@@ -151,6 +152,13 @@ export default function CreateOportunidadModal({
             value={cols[COL_VENDEDOR] ?? ''} onChange={set(COL_VENDEDOR)}
             options={vendedores.map((v) => ({ value: String(v.id), label: v.nombre }))}
             placeholder="Buscar vendedor…"
+          />
+        </Field>
+        <Field label="Vendedor secundario">
+          <SearchableSelect
+            value={cols[COL_VENDEDOR_SECUNDARIO] ?? ''} onChange={set(COL_VENDEDOR_SECUNDARIO)}
+            options={vendedores.map((v) => ({ value: String(v.id), label: v.nombre }))}
+            placeholder="Buscar vendedor secundario…"
           />
         </Field>
         <Field label="Compras">
