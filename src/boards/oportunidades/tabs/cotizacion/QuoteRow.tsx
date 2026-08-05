@@ -20,6 +20,7 @@ import { ProductPicker, type ProductoChoice } from '../../../../components/forms
 import {
   type GridCol, type RowEditState, marginColor, suggestedPrecio23, numFrom, displayProducto, cellValue,
   inputStyle, valueChipStyle, ETAPA_COSTEO_COLORS, getLineWarnings, needsConfirmarTallas, productoProveedorOk, gridWrapStyle, colsTemplate,
+  STICKY_PRODUCTO_STYLE,
   ETAPA_COSTEO_COL, SUGERIDO_COL, MARGEN_COL,
   PRODUCTO_COL, PRODUCTO_TXT_COL, PRODUCTO_REL_COL, COLOR_COL,
   EMB_STATUS_COL, EMB_LABEL_CON, EMB_LABEL_SIN,
@@ -83,11 +84,18 @@ function QuoteRowInner({
   canDelete, deleting, onDeleteLine, canAjustar, onAjustarLinea,
 }: QuoteRowProps) {
   const lineWarnings = getLineWarnings(p, state, variant, catalog, precioOnly);
-  // Aparte del resto de warnings: se pinta arriba a la izquierda, encima del
-  // nombre del producto, en vez de perderse en el badge del fondo de la fila.
+  // Un solo banner arriba del nombre del producto con TODOS los avisos de la
+  // línea — ya no hay columna "Avisos" aparte al final de la grid (Efraín,
+  // 2026-08-05: "quiero quitar avisos y que el error esté súper claro arriba
+  // del producto como costeo", generalizando el banner que antes solo cubría
+  // tallas/proveedor).
   const needsTallas = !precioOnly && needsConfirmarTallas(p, variant, catalog);
   const needsProveedor = needsTallas && !productoProveedorOk(p, catalog);
   const otherWarnings = lineWarnings.filter((w) => w !== 'Sin confirmar' && w !== 'Sin tallas' && w !== 'Sin proveedor');
+  const bannerText = [
+    needsTallas ? `HAY QUE CONFIRMAR TALLAS${needsProveedor ? ' Y PROVEEDOR' : ''}` : null,
+    ...otherWarnings,
+  ].filter(Boolean).join(' • ');
 
   // Chevron + eliminar. Se renderizaban solo en la celda de Producto de solo
   // lectura, pero en Nueva oportunidad (justo donde canDelete es true) Producto
@@ -146,9 +154,9 @@ function QuoteRowInner({
     // El tinte de warnings se repite en el grid interno para que siga cubriendo
     // toda la fila incluso scrolleada.
     <div style={{ background: rowTint }}>
-      {needsTallas && (
+      {bannerText && (
         <div style={{ padding: '8px 10px 0', font: '700 11px \'Inter\', sans-serif', color: '#ce3048' }}>
-          ⚠ HAY QUE CONFIRMAR TALLAS{needsProveedor ? ' Y PROVEEDOR' : ''}
+          ⚠ {bannerText}
         </div>
       )}
       <div style={{
@@ -173,7 +181,7 @@ function QuoteRowInner({
 
           if (writable && c.id === PRODUCTO_COL) {
             return (
-              <div key={c.id} style={{ textAlign: c.align, display: 'flex', alignItems: 'center' }}>
+              <div key={c.id} style={{ textAlign: c.align, display: 'flex', alignItems: 'center', ...STICKY_PRODUCTO_STYLE, background: rowTint }}>
                 {lineControls}
                 <ProductPicker
                   value={displayProducto(p, state.preview)}
@@ -321,7 +329,7 @@ function QuoteRowInner({
               textAlign: c.align,
               font: idx === 0 ? 'var(--text-body-strong)' : 'var(--text-label)',
               color: idx === 0 ? 'var(--ink)' : 'var(--ink-secondary)',
-              ...(idx === 0 ? { display: 'flex', alignItems: 'center', minWidth: 0 } : undefined),
+              ...(idx === 0 ? { display: 'flex', alignItems: 'center', minWidth: 0, ...STICKY_PRODUCTO_STYLE, background: rowTint } : undefined),
               ...(isChip ? valueChipStyle : undefined),
             }}>
               {idx === 0 && lineControls}
@@ -374,11 +382,6 @@ function QuoteRowInner({
             </div>
           );
         })}
-        <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-          {otherWarnings.length > 0 && (
-            <StatusBadge label={`⚠ ${otherWarnings.join(' • ')}`} color="#ce3048" tint="#fbdbdf" />
-          )}
-        </div>
       </div>
       {state.error && (
         <div style={{ padding: '0 14px 8px', font: 'var(--text-caption)', color: 'var(--status-perdida)' }}>

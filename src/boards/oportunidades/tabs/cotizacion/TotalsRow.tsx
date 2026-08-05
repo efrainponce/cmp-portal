@@ -4,6 +4,7 @@ import { COL } from '../../../../lib/costeoCalc';
 import {
   type GridCol, type RowEditState, EMPTY_ROW, numFrom, marginColor, colsTemplate, gridWrapStyle,
   MARGEN_COL, SUBTOTAL_COL, IVA_COL, TOTAL_CON_IVA_COL, COSTO_TOTAL_ROW_COL, UTILIDAD_TOTAL_COL,
+  STICKY_PRODUCTO_STYLE,
 } from './gridMeta';
 
 /** Fila de totales alineada a la misma grid de columnas que el header/filas —
@@ -114,12 +115,12 @@ export function TotalsRow({ variant, visibleCols, products, rows, isMobile = fal
             textAlign: idx === 0 ? 'left' : 'right', font: 'var(--text-body-strong)',
             color: byCol[c.id]?.color ?? 'var(--ink)',
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            ...(idx === 0 ? { ...STICKY_PRODUCTO_STYLE, background: 'var(--bg-sunken)' } : undefined),
           }}
         >
           {idx === 0 ? 'TOTAL' : (byCol[c.id]?.value ?? '')}
         </div>
       ))}
-      <div />
     </div>
   );
 }

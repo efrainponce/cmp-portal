@@ -227,22 +227,22 @@ function MobileQuoteRowInner({
   };
 
   const lineWarnings = getLineWarnings(p, state, variant, catalog, precioOnly);
-  // Aparte del resto: se pinta como texto explícito arriba del nombre del
-  // producto en vez de perderse mezclado en el badge genérico de warnings.
+  // Un solo banner con TODOS los avisos de la línea — mismo criterio que
+  // QuoteRow (desktop): ya no hay badge aparte, todo vive arriba del nombre
+  // del producto (Efraín, 2026-08-05).
   const needsTallas = !precioOnly && needsConfirmarTallas(p, variant, catalog);
   const needsProveedor = needsTallas && !productoProveedorOk(p, catalog);
   const otherWarnings = lineWarnings.filter((w) => w !== 'Sin confirmar' && w !== 'Sin tallas' && w !== 'Sin proveedor');
+  const bannerText = [
+    needsTallas ? `HAY QUE CONFIRMAR TALLAS${needsProveedor ? ' Y PROVEEDOR' : ''}` : null,
+    ...otherWarnings,
+  ].filter(Boolean).join(' • ');
 
   return (
     <div style={{ borderTop: '1px solid var(--border-subtle)', background: lineWarnings.length > 0 ? '#fdf1f2' : '#fff', padding: '14px' }}>
-      {needsTallas && (
-        <div style={{ font: '700 11px \'Inter\', sans-serif', color: '#ce3048', marginBottom: 6 }}>
-          ⚠ HAY QUE CONFIRMAR TALLAS{needsProveedor ? ' Y PROVEEDOR' : ''}
-        </div>
-      )}
-      {otherWarnings.length > 0 && (
-        <div style={{ marginBottom: 10 }}>
-          <StatusBadge label={`⚠ ${otherWarnings.join(' • ')}`} color="#ce3048" tint="#fbdbdf" />
+      {bannerText && (
+        <div style={{ font: '700 11px \'Inter\', sans-serif', color: '#ce3048', marginBottom: 10 }}>
+          ⚠ {bannerText}
         </div>
       )}
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>

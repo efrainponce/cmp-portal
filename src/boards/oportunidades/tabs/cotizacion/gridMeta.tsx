@@ -174,32 +174,25 @@ export const GRID_COLS_COSTEO: GridCol[] = [
   { id: 'formula_mkznpw5p', label: 'Utilidad %', align: 'right', kind: 'percent', width: 80 },
 ];
 
-// Ancho fijo de la columna "Avisos" al final de la grid — siempre presente
-// como pista real (header, cada fila y TotalsRow la definen), nunca un
-// espacio condicional: cuando el warning aparecía solo como celda opcional
-// al final de la fila, una línea sin problemas no reservaba ese espacio y
-// las columnas se sentían "desalineadas" fila a fila (Efraín, 2026-07-21:
-// "esta desalineado cuando esta o no con error"). Con una pista de ancho
-// fijo siempre reservada, cada fila mide exactamente igual tenga o no aviso.
-export const WARNINGS_COL_WIDTH = 150;
-
 // Genera el `gridTemplateColumns` para la porción de columnas de datos
 // (sin el # de línea, que header/fila/TotalsRow anteponen aparte con
 // `28px` según haga falta). Todas las pistas son anchos fijos (Producto con
-// un tope, el resto su ancho real) — sin ninguna pista `fr` de relleno.
+// un tope, el resto su ancho real) — sin ninguna pista `fr` de relleno. Ya
+// no hay columna "Avisos" al final (Efraín, 2026-08-05: los avisos de la
+// línea ahora viven en un solo banner arriba del producto, ver QuoteRow).
 // Junto con `gridWrapStyle` (`width: fit-content` puesto directo en el propio
 // `display:grid`, no en un wrapper aparte — anidar el fit-content en un
 // bloque plano que envuelve al grid es fresco entre navegadores y causó un
 // bug real, ver commit de "esta desalineado…"), la tabla mide exactamente lo
-// que ocupan sus columnas: angosta en "Nueva oportunidad" (pocas columnas,
-// sin hueco antes de Avisos), y en Costeo (16 columnas) se desborda del
-// contenedor con scroll horizontal en vez de encogerse — es responsive por
-// construcción, no por media queries (Efraín, 2026-07-21: "que la tabla
-// llegue hasta avisos y se corte, que sea responsive").
+// que ocupan sus columnas: angosta en "Nueva oportunidad" (pocas columnas),
+// y en Costeo (16 columnas) se desborda del contenedor con scroll horizontal
+// en vez de encogerse — es responsive por construcción, no por media queries
+// (Efraín, 2026-07-21: "que la tabla llegue hasta avisos y se corte, que sea
+// responsive").
 export function colsTemplate(cols: GridCol[]): string {
   const [first, ...rest] = cols;
   const firstW = first?.width ?? 160;
-  return `minmax(${firstW}px, ${Math.max(firstW, 340)}px) ${rest.map((c) => `${c.width}px`).join(' ')} ${WARNINGS_COL_WIDTH}px`;
+  return `minmax(${firstW}px, ${Math.max(firstW, 340)}px) ${rest.map((c) => `${c.width}px`).join(' ')}`;
 }
 
 // Puesto directo en el elemento `display:grid` (header, cada fila, TotalsRow)
@@ -207,6 +200,15 @@ export function colsTemplate(cols: GridCol[]): string {
 // calcule sobre el propio grid (mismos tracks, mismo padding) y no dependa
 // de cómo un bloque padre propague el tamaño intrínseco de un hijo anidado.
 export const gridWrapStyle: React.CSSProperties = { width: 'fit-content' };
+
+// Columna Producto congelada al hacer scroll horizontal (16 columnas en
+// Costeo se desbordan del contenedor — Efraín, 2026-08-05: quiere Producto
+// siempre visible). `left: 0` (no el ancho de "#") a propósito: "#" no es
+// sticky, así que se desliza fuera de vista con el resto y Producto termina
+// pegado al borde izquierdo sin dejar una franja hueca donde "#" solía estar.
+// El fondo debe ponerse explícito en cada uso (blanco en header/TotalsRow,
+// `rowTint` dinámico en QuoteRow) para tapar las columnas que pasan debajo.
+export const STICKY_PRODUCTO_STYLE: React.CSSProperties = { position: 'sticky', left: 0, zIndex: 1 };
 
 export const PRECIO_VENTA_COL = 'numeric_mkzneg3d';
 

@@ -2,6 +2,13 @@
 
 ## 2026-08-05
 
+- Cotización: columna Producto congelada al hacer scroll + avisos unificados en un solo banner
+  - Efraín pidió congelar la columna Producto en la grid de Costeo/Validación de costeo al mover la tabla horizontalmente, y quitar la columna "Avisos" al final — quería el error "súper claro arriba del producto como costeo", generalizando el banner que hasta ahora solo cubría "HAY QUE CONFIRMAR TALLAS Y PROVEEDOR".
+  - `gridMeta.tsx`: nuevo `STICKY_PRODUCTO_STYLE` (`position: sticky; left: 0`) en la celda Producto de header/`QuoteRow`/`TotalsRow`. A propósito no se fija también "#" — al no ser sticky se desliza fuera de vista con el resto, así Producto termina pegado al borde izquierdo sin dejar un hueco donde "#" solía estar. `colsTemplate` pierde la pista fija `WARNINGS_COL_WIDTH` que reservaba la columna Avisos.
+  - `QuoteRow.tsx`/`MobileQuoteRow.tsx`: el banner que antes solo cubría "Sin confirmar"/"Sin tallas"/"Sin proveedor" ahora concatena TODOS los avisos de la línea (`getLineWarnings`) en un solo renglón rojo arriba del producto — ya no hay `StatusBadge` aparte al final de la fila. Mismo componente en Costeo y Validación (`precioOnly`), así que el único aviso posible en Validación ("Falta precio") sale con idéntico tratamiento visual al de Costeo.
+  - Verificado con Playwright en local: scroll horizontal en Costeo con Producto fijo (header, filas y TOTAL manteniendo su tinte/fondo), banner combinando 2-3 avisos por línea en una sola oración.
+  - `npx tsc --noEmit`, `npm run lint` y `npm test` (119/119) limpios.
+
 - Tallas del Proyecto: grid simplificado + cantidad editable inline
   - Efraín reportó que la pantalla de tallas (tab "Tallas" del Proyecto) estaba "horriblemente complicada" — pills anidados por producto, sin poder corregir nada sin ir al Sheet/Monday. `TallasGrid` (`src/boards/oportunidades/ProyectoSection.tsx`) pasa de pills envueltos a filas planas (Talla · Color · Cantidad) por producto.
   - Cantidad ahora es editable inline (input numérico, guarda en blur/Enter contra `PATCH /api/boards/proyectos_sub/items/:id`) para vendedor, compras y admin (decisión de Efraín: los tres corrigen, no solo vendedor). Talla y color se quedan de solo lectura a propósito — son texto libre que viene del catálogo de cmp-tallas, un typo aquí no calzaría con el Sheet.

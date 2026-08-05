@@ -33,7 +33,7 @@ import { ColumnVisibilityPicker } from './cotizacion/ColumnVisibilityPicker';
 import {
   type RowEditState, EMPTY_ROW, inlineEditableCols,
   GRID_COLS_COSTEO, GRID_COLS_VENTA, colsTemplate, displayProducto,
-  loadHiddenCols, saveHiddenCols, gridWrapStyle,
+  loadHiddenCols, saveHiddenCols, gridWrapStyle, STICKY_PRODUCTO_STYLE,
   PRODUCTO_COL, PRODUCTO_TXT_COL, PRODUCTO_REL_COL, COLOR_COL,
   EMB_STATUS_COL, EMB_LABEL_CON, EMB_LABEL_SIN,
   PRODUCTO_CONFIRM_COL, PRODUCTO_PROVEEDOR_COL, CATALOGO_TALLAS_COL, linkedProductoId, MONEY_COLS,
@@ -630,13 +630,20 @@ export function CotizacionTab({
             ...gridWrapStyle,
             display: 'grid', gridTemplateColumns: `28px ${colsTemplate(visibleCols)}`,
             gap: 6, padding: '9px 10px', borderBottom: '1px solid var(--border)',
-            font: '600 11px \'Inter\', sans-serif', color: 'var(--ink-tertiary)',
+            font: '600 11px \'Inter\', sans-serif', color: 'var(--ink-tertiary)', background: 'var(--bg-raised)',
           }}>
             <div title="Partida" style={{ textAlign: 'center' }}>#</div>
-            {visibleCols.map((c) => (
-              <div key={c.id} style={{ textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.label}</div>
+            {visibleCols.map((c, idx) => (
+              <div
+                key={c.id}
+                style={{
+                  textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  ...(idx === 0 ? { ...STICKY_PRODUCTO_STYLE, background: 'var(--bg-raised)' } : undefined),
+                }}
+              >
+                {c.label}
+              </div>
             ))}
-            <div style={{ textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Avisos</div>
           </div>
           {products.map((p, lineIdx) => (
             <QuoteRow
