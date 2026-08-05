@@ -9,6 +9,8 @@ import { Button } from '../../components/core/Button';
 import { ConfirmButton } from '../../components/core/ConfirmButton';
 import { IconBack, IconEdit, IconLink } from '../../components/icons';
 import { SyncIndicator } from '../../components/board/SyncIndicator';
+import { StatusBadge } from '../../components/core/Badges';
+import { chipFor } from '../../components/board/cellHelpers';
 import { useMe } from '../../lib/useMe';
 import {
   useBoards, colForBoard, checkCosteo, checkValidacion, duplicarOportunidad, duplicarVersion, enviarCosteo, enviarValidacion, ganarOportunidad, generarCotizacion, getItemDetail, getVersiones,
@@ -511,7 +513,14 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
         padding: isMobile ? '12px 14px 16px' : '16px 32px 20px', borderBottom: '1px solid var(--border)',
       }}>
         <div>
-          <div style={{ font: 'var(--text-subtitle)', color: 'var(--ink)' }}>{item.name}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <div style={{ font: 'var(--text-subtitle)', color: 'var(--ink)' }}>{item.name}</div>
+            {item.cols.deal_stage?.text && (() => {
+              const dealStageCol = oppCols.find((c) => c.id === 'deal_stage');
+              const { color, tint } = dealStageCol ? chipFor(dealStageCol, item.cols.deal_stage) : { color: 'var(--ink-quiet)', tint: 'var(--bg-sunken)' };
+              return <StatusBadge label={item.cols.deal_stage.text} color={color} tint={tint} />;
+            })()}
+          </div>
           <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginTop: 4, font: 'var(--text-label)', color: 'var(--ink-tertiary)' }}>
             <span>Institución: <span style={{ color: 'var(--ink-secondary)' }}>{item.cols[INSTITUCION_COL]?.text || '—'}</span></span>
             <span>·</span>

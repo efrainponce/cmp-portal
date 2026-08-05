@@ -8,6 +8,15 @@
   - Verificado en vivo contra el worker local (Playwright, item de prueba real en stage "Nueva oportunidad" vía API de creación): elegir producto → editar Cantidad → el nombre del producto se mantiene visible antes y después del guardado.
   - `npx tsc --noEmit` y `npm test` (117/117) limpios.
 
+- Oportunidades: badge de Etapa (deal_stage) al lado del título en el drawer
+  - Pedido por Efraín. `OpportunityDrawer.tsx`: nuevo `StatusBadge` junto a `item.name`
+    con el label/color reales de Monday para `deal_stage` (mismo `chipFor()` que ya
+    usa `StageBoardList` para Etapa Costeo — reusa `oppCols` para los colores por
+    label, no hardcodea nada).
+  - Verificado en vivo: "Nueva oportunidad" (gris) y "Ganada" (verde) muestran el
+    color que trae Monday para cada etapa.
+  - `npx tsc --noEmit` y `npm test` (117/117) limpios.
+
 ## 2026-08-04
 
 - Oportunidades: "Ganar" ahora crea el Proyecto ligado — antes solo cambiaba la Etapa
