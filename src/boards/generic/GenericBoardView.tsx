@@ -28,13 +28,13 @@ const HIDDEN_LIST_COLS: Partial<Record<BoardSlug, string[]>> = {};
 
 // Boards donde la tabla muestra solo estas columnas, en este orden exacto —
 // Nombre siempre va primero (BoardTable lo pinta aparte). Contactos: Efraín
-// 2026-08-05, "acomoda Nombre, Cargo e Institución" — el board trae Vendedor/
-// Comentarios/Prioridad/Calificación/Ciudad/Estado y una columna "Cargo"
-// duplicada (text_mm562a0m, sin uso en el código) que solo ensuciaban la
-// lista; se quedan legibles (siguen en `cols`/el drawer si algún día lo
-// tiene) pero fuera de esta tabla.
+// 2026-08-05, "acomoda Nombre, Cargo e Institución" (+ Vendedor, mismo día) —
+// el board trae también Comentarios/Prioridad/Calificación/Ciudad/Estado y
+// una columna "Cargo" duplicada (text_mm562a0m, sin uso en el código) que
+// solo ensuciaban la lista; se quedan legibles (siguen en `cols`/el drawer
+// si algún día lo tiene) pero fuera de esta tabla.
 const LIST_COLS: Partial<Record<BoardSlug, string[]>> = {
-  contactos: ['text_mm0dz8yj', 'contact_account'], // Cargo, Institución
+  contactos: ['text_mm0dz8yj', 'contact_account', 'multiple_person_mm03vqwx'], // Cargo, Institución, Vendedor
 };
 
 export function GenericBoardView({ slug, title }: Props) {

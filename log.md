@@ -27,6 +27,8 @@
     que antes, solo cambia qué se pinta en esta tabla.
   - Verificado en vivo: encabezados quedan Nombre · Cargo · Institución.
   - `npx tsc --noEmit` y `npm test` (117/117) limpios.
+  - Mismo día, a pedido de Efraín: se agrega Vendedor a la tabla (Nombre ·
+    Cargo · Institución · Vendedor).
 
 ## 2026-08-04
 
