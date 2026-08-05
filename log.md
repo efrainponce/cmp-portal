@@ -19,6 +19,11 @@
   - Pendiente que NO se resuelve con este cambio: la mayoría de las identidades de `compras` (`cotizaciones3/4/6`, `logistica`) siguen sin `phone` en D1 — hay que darlos de alta en Admin → usuarios para que efectivamente reciban el WhatsApp.
   - `npx tsc --noEmit` y `npm test` (117/117) limpios.
 
+- Configuración: el dropdown "Rol a asignar" en Importar desde Monday siempre arrancaba en "Ventas"
+  - Efraín reportó (con captura) que era confuso — el default no reflejaba el equipo real del usuario en Monday (ej. alguien de Admin o Compras aparecía con "Ventas" preseleccionado).
+  - `SettingsPage.tsx`: nuevo `inferRoleFromTeams()` que adivina el rol inicial por prefijo case-insensitive sobre `user.teams` (admin/compras/almac/ventas), con `vendedor` como fallback; `MondayUserRow` inicializa `role` con esto en vez de un literal fijo. Sigue siendo editable, solo cambia el valor de arranque.
+  - `npx tsc --noEmit` limpio (cambio de UI puro, no toca write path ni visibility).
+
 - Cotización: separación entre la tabla de líneas/totales y "Condiciones de la cotización"
   - Efraín (captura): el bloque de condiciones quedaba pegado justo debajo del renglón TOTAL, sin aire visual entre ambos.
   - `CondicionesCotizacion.tsx`: se agrega `marginTop: 20` al contenedor del bloque.

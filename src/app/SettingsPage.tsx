@@ -27,6 +27,19 @@ const ROLE_LABELS: Record<Role, string> = {
 };
 const ROLE_OPTIONS = (Object.keys(ROLE_LABELS) as Role[]).map((r) => ({ value: r, label: ROLE_LABELS[r] }));
 
+// El equipo de Monday no es un rol del portal 1:1 (trae cosas como "Sureste" o
+// "Administracion"), así que solo lo usamos para adivinar el rol por default.
+function inferRoleFromTeams(teams: string[]): Role {
+  for (const team of teams) {
+    const t = team.toLowerCase();
+    if (t.startsWith('admin')) return 'admin';
+    if (t.startsWith('compras')) return 'compras';
+    if (t.startsWith('almac')) return 'almacen';
+    if (t.startsWith('ventas')) return 'vendedor';
+  }
+  return 'vendedor';
+}
+
 interface Toast { kind: 'success' | 'error'; message: string }
 
 export function SettingsPage() {
@@ -629,7 +642,7 @@ function MondayUserRow({ user, imported, onImported, onError }: {
   onError: () => void;
 }) {
   const [phone, setPhone] = useState(user.phone ?? '');
-  const [role, setRole] = useState<Role>('vendedor');
+  const [role, setRole] = useState<Role>(() => inferRoleFromTeams(user.teams));
   const [saving, setSaving] = useState(false);
 
   async function add() {
