@@ -466,11 +466,7 @@ export function ProyectoTallasSection({ state, oppId }: { state: ProyectoState; 
   }
   const p = state.proyecto;
   return (
-    <div style={{ marginTop: 20, borderTop: '1px solid var(--border)', paddingTop: 16 }}>
-      <div style={{ font: 'var(--text-small-strong)', color: 'var(--ink)', marginBottom: 2 }}>Proyecto {p.name}</div>
-      <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)', marginBottom: 10 }}>
-        Desglose de tallas del proyecto — mismo flujo que los botones de Monday.
-      </div>
+    <div style={{ marginTop: 20 }}>
       <ProyectoLinks proyecto={p} />
       <ProyectoActionBar proyecto={p} reload={state.reload} actions={['tallas-regenerar', 'tallas-confirmar', 'tallas-importar']} />
       <TallasGrid

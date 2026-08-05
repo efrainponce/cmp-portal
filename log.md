@@ -2,6 +2,11 @@
 
 ## 2026-08-05
 
+- Proyecto: quitar título "Proyecto {nombre}" y la línea divisoria del tab Tallas
+  - Efraín (captura): pidió quitar la línea horizontal entre la barra de tabs (Actualizaciones/Documentación/Tallas/Órdenes de compra/Logística) y el contenido, y quitar el nombre del proyecto repetido ahí — ya está arriba en el header del drawer — dejando solo los links ("Abrir archivo de tallas", "Carpeta Drive") y los botones de acción.
+  - `ProyectoTallasSection` (`src/boards/oportunidades/ProyectoSection.tsx`): se quita el `div` de título+subtítulo y el `borderTop` del contenedor; cambio acotado a este tab (no es un wrapper compartido con Documentación/Órdenes de compra/Logística).
+  - Verificado con Playwright en local contra PRO-0039 (UNIFORMES COTAXTLA). `npx tsc --noEmit` limpio; no corrí `npm test` — cambio de UI puro, no toca write path ni `shared/visibility.ts`.
+
 - Oportunidades: aviso de "Vendedor secundario" en filas/filtro + campo en "Nueva oportunidad"
   - Efraín reportó (con captura), viendo el portal como Ricardo Rivera Rodríguez (líder de zona) vía "Ver como", que el filtro de Vendedor mostraba nombres fuera de su zona — sospecha de fuga de permisos, "problema grave". Investigación con Playwright + queries directas contra D1 remota confirmó que el scoping (`worker/lib/dal.ts` + `worker/lib/zonas.ts`) es correcto: esos nombres aparecen porque Ricardo está marcado como "Vendedor secundario" (`multiple_person_mm0wt53c`, segundo `authzCol` de Oportunidades junto a `deal_owner`) en oportunidades ajenas — comportamiento intencional; Efraín lo confirmó tras revisarlo ("si lo asigno como vendedor secundario esta perfect").
   - Como el origen no era obvio ("yo no entendí eso"), se agregó un badge "S" en el avatar de Vendedor (`PersonAvatar`/`PersonPair`) cuando el viewer ve una oportunidad solo por ser secundario ahí — esquina superior-izquierda del avatar, la inferior-derecha quedaba tapada por el avatar de Compras que se traslapa encima. El dropdown de filtro Vendedor etiqueta esas mismas opciones con "(secundario)" (`vendedorOptionsFromItems`, nuevo en `StageBoardList.tsx`).
