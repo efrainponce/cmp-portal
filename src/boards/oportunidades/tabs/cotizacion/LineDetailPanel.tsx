@@ -95,11 +95,17 @@ function ProveedorField({
 
   if (!picking) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <span style={{ font: 'var(--text-label)', color: current ? 'var(--ink)' : 'var(--status-perdida)' }}>
           {current || 'Sin proveedor asignado'}
         </span>
-        <span onClick={() => setPicking(true)} style={{ cursor: 'pointer', color: 'var(--accent)', font: 'var(--text-caption)' }}>
+        <span
+          onClick={() => setPicking(true)}
+          style={{
+            cursor: 'pointer', color: 'var(--accent)', font: 'var(--text-caption-strong, var(--text-caption))',
+            textDecoration: 'underline',
+          }}
+        >
           {current ? 'Cambiar' : 'Asignar'}
         </span>
       </div>

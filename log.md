@@ -2,6 +2,9 @@
 
 ## 2026-08-05
 
+- Costeo: "Asignar" Proveedor pegado al texto, ya no al otro extremo de la fila
+  - Con el fix de ancho anterior "Asignar" ya era visible, pero seguía separado del texto por `justify-content:space-between` — Efraín: "no es nada claro". `LineDetailPanel.tsx` (`ProveedorField`): se quita el space-between (queda `flex-start` con gap 10) y el link gana subrayado para que se note que es clickeable.
+
 - Costeo: el link "Asignar" de Proveedor en el panel de línea quedaba fuera de la pantalla
   - Efraín seguía reportando (con captura) no poder elegir Proveedor pese a ya ser admin sin identidad fantasma. Causa real, no de permisos: `QuoteRow.tsx`, el wrapper exterior de cada fila reutilizaba `gridWrapStyle` (`width: fit-content`) — pensado para que la grid de 16 columnas de Costeo mida exactamente sus columnas y dispare scroll horizontal (`colsTemplate`, ver comentario en `gridMeta.tsx`). Pero `LineDetailPanel` (el panel del chevron ⌄) es hijo de ESE mismo wrapper, así que heredaba el mismo ancho ~2255px. Con `justify-content:space-between` en `ProveedorField`, el span "Asignar"/"Cambiar" terminaba a ~2488px en un viewport de 1280 — visible solo scrolleando horizontalmente casi 1200px, invisible en la práctica. Confirmado con Playwright (`getBoundingClientRect`) antes y después del fix.
   - Fix: el wrapper exterior de la fila ya no lleva `gridWrapStyle` — solo el grid interno (las 16 columnas) lo conserva, con el mismo tinte de warnings replicado ahí para que siga cubriendo toda la fila al scrollear. El exterior ahora mide el ancho visible real, así que `LineDetailPanel` (Descripción/Tallas/Proveedor/Embellecimiento) queda acotado a lo que se ve sin scroll.
