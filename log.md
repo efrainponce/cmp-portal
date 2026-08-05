@@ -2,6 +2,12 @@
 
 ## 2026-08-05
 
+- Frontend: pantalla en blanco al hacer push mientras la app está abierta
+  - Efraín reportó que la página se ponía en blanco al hacer commit/push. Causa: cada push a `main` dispara el deploy automático (`deploy.yml`), que reemplaza por completo los assets servidos por Cloudflare Workers; `App.tsx` carga cada vista con `React.lazy` (un chunk por board), y si el navegador ya tenía la app abierta y disparaba un `import()` justo después del deploy, el chunk viejo ya no existía (404) — sin ningún `ErrorBoundary` en el árbol, React se caía en silencio.
+  - Nuevo `src/app/ChunkReloadBoundary.tsx`: `ErrorBoundary` envolviendo `<App />` en `main.tsx` que detecta errores de chunk (regex sobre el mensaje del error) y recarga la página una sola vez (guard por `sessionStorage`, sin loop si el deploy sigue roto por otra razón); cualquier otro error de render cae en un fallback con botón "Recargar" en vez de blanco puro. También listener del evento nativo de Vite `vite:preloadError` para el caso de falla en el preload del módulo.
+  - Verificado con Playwright en local: carga normal sin regresión (sin errores de consola) y el disparo manual del evento `vite:preloadError` sí provoca la recarga (confirmado vía `sessionStorage` y `framenavigated`); el escenario real de chunk 404 post-deploy solo se puede confirmar en producción tras el próximo push.
+  - `npx tsc --noEmit` limpio.
+
 - Costeo: el input de Tallas en el panel de línea se veía como placeholder estático
   - Efraín reportó (con captura) que el campo Tallas del chevron de detalle "no es texto editable, solo un placeholder". Ya era un `<input>` real y funcional (confirmado en vivo con Playwright — escribir y guardar funcionan) — el problema era puramente de contraste: usaba `border: 1px solid var(--border)` (`#e2ded3`) sobre un fondo casi idéntico (`--bg-sunken` `#efeae0`), así que se veía plano en vez de como caja editable. `LineDetailPanel.tsx`: mismo tratamiento que ya usan los demás campos editables de la grid (`gridMeta.tsx` `inputStyle`) — borde `var(--accent)` sobre fondo blanco.
   - `npx tsc --noEmit` limpio (cambio de estilo puro, no toca write path).
