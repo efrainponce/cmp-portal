@@ -352,7 +352,16 @@ export function CotizacionTab({
       const n = parseFloat(v);
       if (Number.isFinite(n)) edited[k] = n;
     }
-    const preview = Number.isFinite(parseFloat(raw)) ? previewRow(product, edited) : state.preview;
+    // previewRow() solo devuelve columnas de fórmula (costos/subtotal/etc) —
+    // mezclar sobre state.preview, nunca reemplazarlo entero: si el usuario
+    // acaba de elegir Producto/Color/Embellecimiento, ese preview local vive
+    // aquí mismo mientras el mirror real de Monday sigue en vuelo (outbox
+    // async), y reemplazar el objeto lo borraba — el producto/color "se
+    // limpiaba" en pantalla al tocar Cantidad justo después de elegirlo
+    // (Efraín, 2026-08-05).
+    const preview = Number.isFinite(parseFloat(raw))
+      ? { ...state.preview, ...previewRow(product, edited) }
+      : state.preview;
     patchRow(product.id, { editing, preview, error: undefined });
   };
 

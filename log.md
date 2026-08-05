@@ -1,5 +1,13 @@
 # Log de commits
 
+## 2026-08-05
+
+- Cotización: editar Cantidad justo después de elegir Producto lo limpiaba en pantalla
+  - Reportado por Efraín como "bug super horrible para crear una cotización". `onEdit` (CotizacionTab.tsx) recalcula el preview local con `previewRow()` en cada tecleo de un campo numérico (Cantidad, Costo Distr., etc.) y REEMPLAZABA entero `state.preview` con el resultado — pero `previewRow()` solo devuelve columnas de fórmula (costos/subtotal/IVA…), nunca Producto/Color/Embellecimiento. Si el usuario acababa de elegir Producto (`onProductoPick`), ese preview local vive únicamente en `state.preview` mientras el mirror real de Monday sigue en vuelo (outbox async) — y tocar Cantidad justo después lo borraba, cayendo `displayProducto` al mirror de Monday todavía vacío.
+  - Fix de una línea: mezclar (`{ ...state.preview, ...previewRow(...) }`) en vez de reemplazar. `previewRow()` solo trae ids `formula_*`, así que no colisiona con Producto/Color/Embellecimiento.
+  - Verificado en vivo contra el worker local (Playwright, item de prueba real en stage "Nueva oportunidad" vía API de creación): elegir producto → editar Cantidad → el nombre del producto se mantiene visible antes y después del guardado.
+  - `npx tsc --noEmit` y `npm test` (117/117) limpios.
+
 ## 2026-08-04
 
 - Oportunidades: "Ganar" ahora crea el Proyecto ligado — antes solo cambiaba la Etapa
