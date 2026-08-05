@@ -135,8 +135,17 @@ function QuoteRowInner({
     </div>
   );
 
+  const rowTint = lineWarnings.length > 0 ? '#fdf1f2' : '#fff';
   return (
-    <div style={{ ...gridWrapStyle, background: lineWarnings.length > 0 ? '#fdf1f2' : '#fff' }}>
+    // OUTER a propósito SIN gridWrapStyle (a diferencia del grid interno de abajo):
+    // si hereda el fit-content de la grid de 16 columnas, LineDetailPanel (hijo de
+    // este wrapper) se estira al mismo ancho — con `justify-content:space-between`
+    // (ProveedorField) eso manda "Asignar"/"Cambiar" miles de px fuera de la vista,
+    // solo alcanzable scrolleando horizontalmente (bug real reportado por Efraín,
+    // 2026-08-05, con Playwright confirmando el span en x≈2488 con viewport 1280).
+    // El tinte de warnings se repite en el grid interno para que siga cubriendo
+    // toda la fila incluso scrolleada.
+    <div style={{ background: rowTint }}>
       {needsTallas && (
         <div style={{ padding: '8px 10px 0', font: '700 11px \'Inter\', sans-serif', color: '#ce3048' }}>
           ⚠ HAY QUE CONFIRMAR TALLAS{needsProveedor ? ' Y PROVEEDOR' : ''}
@@ -145,7 +154,7 @@ function QuoteRowInner({
       <div style={{
         ...gridWrapStyle,
         display: 'grid', gridTemplateColumns: `28px ${colsTemplate(visibleCols)}`,
-        gap: 6, alignItems: 'center', padding: '8px 10px',
+        gap: 6, alignItems: 'center', padding: '8px 10px', background: rowTint,
       }}>
         <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)', fontWeight: 700 }}>{partida}</div>
         {visibleCols.map((c, idx) => {
