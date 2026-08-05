@@ -7,7 +7,6 @@ import { Button } from '../../components/core/Button';
 import { FormField } from '../../components/forms/FormField';
 import { SearchInput } from '../../components/forms/SearchInput';
 import { PickerRow } from '../../components/forms/PickerRow';
-import { Select } from '../../components/forms/Select';
 import { IconBack } from '../../components/icons';
 import { useBoards, usePoll, colForBoard, createItem, getVendedores, type BoardSlug, type VendedorDTO } from '../../lib/api';
 import { useMe } from '../../lib/useMe';
@@ -15,17 +14,15 @@ import { CREATE_FIELDS } from '../../../shared/createFields';
 
 const CONTACTO_VENDEDOR = 'multiple_person_mm03vqwx';
 const CONTACTO_INSTITUCION = 'contact_account';
-// instituciones exige Tipo/Estado además de Nombre (CREATE_FIELDS.instituciones,
-// `required: true`) — el quick-create de abajo los pide inline en vez de aflojar
-// ese requisito para el flujo normal de "Nueva institución".
-const INST_TIPO = 'dropdown_mm1bajsm';
-const INST_ESTADO = 'dropdown_mm1b46m9';
 
 interface Props {
   slug: 'instituciones' | 'contactos';
   title: string;
   onClose: () => void;
-  onCreated: () => void;
+  // El quick-create de Institución (abajo) necesita el id/nombre recién creado
+  // para autoseleccionarlo en el combobox — GenericBoardView le pasa `refetch`,
+  // que ignora argumentos de sobra, así que este parámetro no rompe ese uso.
+  onCreated: (created?: { id: string; name: string }) => void;
 }
 
 export function CreateRecordModal({ slug, title, onClose, onCreated }: Props) {
@@ -46,45 +43,21 @@ export function CreateRecordModal({ slug, title, onClose, onCreated }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [showMore, setShowMore] = useState(optionalFields.length === 0);
 
-  const institucionesCols = colForBoard(boards, 'instituciones');
-  const instTipoCol = institucionesCols.find((c) => c.id === INST_TIPO);
-  const instEstadoCol = institucionesCols.find((c) => c.id === INST_ESTADO);
-  const instTipoOptions = Object.values(instTipoCol?.labels ?? {}).map((l) => ({ value: l.label, label: l.label }));
-  const instEstadoOptions = Object.values(instEstadoCol?.labels ?? {}).map((l) => ({ value: l.label, label: l.label }));
-
   const [instQ, setInstQ] = useState('');
   const { data: instData } = usePoll('instituciones', instQ);
   const institucionOptions = instData?.items ?? [];
   const [institucionLabel, setInstitucionLabel] = useState('');
-  const [instTipo, setInstTipo] = useState('');
-  const [instEstado, setInstEstado] = useState('');
-  const [creatingInst, setCreatingInst] = useState(false);
-  const [instError, setInstError] = useState<string | null>(null);
-  // "+ Crear institución «X»" solo cuando lo tecleado no es YA una institución
-  // existente — si ya hay una coincidencia exacta, elegirla de la lista es lo
-  // correcto (mismo criterio que el "texto libre" de ProductPicker).
-  const instQTrim = instQ.trim();
-  const instExactMatch = institucionOptions.some((i) => i.name.toLowerCase() === instQTrim.toLowerCase());
-  const canQuickCreateInst = instQTrim !== '' && !instExactMatch;
+  const [showInstModal, setShowInstModal] = useState(false);
 
-  const onQuickCreateInstitucion = async () => {
-    if (!instQTrim || creatingInst) return;
-    if (!instTipo || !instEstado) { setInstError('Elige Tipo y Estado para crear la institución.'); return; }
-    setCreatingInst(true);
-    setInstError(null);
-    try {
-      const res = await createItem('instituciones', instQTrim, { [INST_TIPO]: instTipo, [INST_ESTADO]: instEstado });
-      if (!res.id) throw new Error('No se pudo crear la institución.');
-      setCol(CONTACTO_INSTITUCION)(res.id);
-      setInstitucionLabel(instQTrim);
-      setInstQ('');
-      setInstTipo('');
-      setInstEstado('');
-    } catch (e) {
-      setInstError(e instanceof Error ? e.message : 'No se pudo crear la institución.');
-    } finally {
-      setCreatingInst(false);
-    }
+  const selectInstitucion = (id: string, label: string) => {
+    setCol(CONTACTO_INSTITUCION)(id);
+    setInstitucionLabel(label);
+    setInstQ('');
+  };
+  const clearInstitucion = () => {
+    setCol(CONTACTO_INSTITUCION)('');
+    setInstitucionLabel('');
+    setInstQ('');
   };
 
   // Sin condicionar al tipo de columna: `allCols` depende de que useBoards()
@@ -123,8 +96,8 @@ export function CreateRecordModal({ slug, title, onClose, onCreated }: Props) {
     setError(null);
     try {
       const nonEmpty = Object.fromEntries(Object.entries(cols).filter(([, v]) => v.trim() !== ''));
-      await createItem(slug, name.trim(), nonEmpty);
-      onCreated();
+      const res = await createItem(slug, name.trim(), nonEmpty);
+      onCreated(res.id ? { id: res.id, name: name.trim() } : undefined);
       onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo crear el registro.');
@@ -157,48 +130,52 @@ export function CreateRecordModal({ slug, title, onClose, onCreated }: Props) {
 
         {slug === 'contactos' && (
           <div>
-            <div style={{ font: 'var(--text-label-strong)', color: 'var(--ink-secondary)', marginBottom: 6 }}>
-              Institución *
-              {institucionLabel && <span style={{ fontWeight: 400, color: 'var(--ink-tertiary)' }}> — elegida: {institucionLabel}</span>}
-            </div>
-            <SearchInput value={instQ} onChange={(e) => setInstQ(e.target.value)} placeholder="Buscar institución…" style={{ maxWidth: 'none' }} />
-            <div style={{
-              marginTop: 6, padding: '8px 10px', borderRadius: 'var(--radius-lg)',
-              background: 'var(--bg-sunken)', font: 'var(--text-caption)', color: 'var(--ink-tertiary)',
-            }}>
-              ¿No aparece la institución que buscas? Escribe el nombre completo y créala aquí mismo.
-            </div>
-            <div style={{ maxHeight: 160, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', marginTop: 6 }}>
-              {institucionOptions.length === 0 && !canQuickCreateInst && (
-                <div style={{ padding: 12, font: 'var(--text-label)', color: 'var(--ink-quiet)' }}>Sin resultados.</div>
-              )}
-              {institucionOptions.map((inst) => (
-                <PickerRow key={inst.id} onClick={() => { setCol(CONTACTO_INSTITUCION)(inst.id); setInstitucionLabel(inst.name); }}>
-                  {inst.name}
-                </PickerRow>
-              ))}
-            </div>
-            {canQuickCreateInst && (
-              <div style={{
-                marginTop: 6, padding: 10, border: '1px dashed var(--border)', borderRadius: 'var(--radius-lg)',
-                display: 'flex', flexDirection: 'column', gap: 8,
-              }}>
-                <div style={{ font: 'var(--text-label)', color: 'var(--ink-secondary)' }}>
-                  Crear «{instQTrim}» como institución nueva:
+            <div style={{ font: 'var(--text-label-strong)', color: 'var(--ink-secondary)', marginBottom: 6 }}>Institución *</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {institucionLabel ? (
+                <div style={{
+                  flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '8px 10px',
+                  background: 'var(--bg-sunken)', font: 'var(--text-body)', color: 'var(--ink)', boxSizing: 'border-box',
+                }}>
+                  <span>{institucionLabel}</span>
+                  <button
+                    type="button"
+                    onClick={clearInstitucion}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ink-tertiary)', font: 'var(--text-label-strong)', padding: 4 }}
+                  >
+                    ✕
+                  </button>
                 </div>
-                <Select value={instTipo} onChange={setInstTipo} options={instTipoOptions} placeholder="Tipo…" />
-                <Select value={instEstado} onChange={setInstEstado} options={instEstadoOptions} placeholder="Estado…" />
-                <Button
-                  variant="secondary"
-                  onClick={creatingInst ? undefined : onQuickCreateInstitucion}
-                  style={{ alignSelf: 'flex-start', opacity: creatingInst ? 0.6 : 1 }}
-                >
-                  {creatingInst ? 'Creando…' : '+ Crear institución'}
-                </Button>
+              ) : (
+                <SearchInput value={instQ} onChange={(e) => setInstQ(e.target.value)} placeholder="Buscar institución…" style={{ flex: 1, maxWidth: 'none' }} />
+              )}
+              <Button variant="secondary" onClick={() => setShowInstModal(true)}>+ Nueva</Button>
+            </div>
+            {!institucionLabel && instQ.trim() !== '' && (
+              <div style={{ maxHeight: 160, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', marginTop: 6 }}>
+                {institucionOptions.length === 0 && (
+                  <div style={{ padding: 12, font: 'var(--text-label)', color: 'var(--ink-quiet)' }}>
+                    Sin resultados. Usa «+ Nueva» para crearla.
+                  </div>
+                )}
+                {institucionOptions.map((inst) => (
+                  <PickerRow key={inst.id} onClick={() => selectInstitucion(inst.id, inst.name)}>
+                    {inst.name}
+                  </PickerRow>
+                ))}
               </div>
             )}
-            {instError && <div style={{ marginTop: 6, color: 'var(--status-perdida)', font: 'var(--text-label)' }}>{instError}</div>}
           </div>
+        )}
+
+        {showInstModal && (
+          <CreateRecordModal
+            slug="instituciones"
+            title="Nueva institución"
+            onClose={() => setShowInstModal(false)}
+            onCreated={(created) => { if (created) selectInstitucion(created.id, created.name); }}
+          />
         )}
 
         {requiredFields.map((f) => {

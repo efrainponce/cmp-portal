@@ -2,6 +2,12 @@
 
 ## 2026-08-05
 
+- Contactos: combobox de Institución más claro + "+ Nueva" abre modal en vez de panel inline
+  - Efraín: no quedaba claro qué institución estaba elegida (buscador seguía mostrando el texto tecleado, la selección solo se reflejaba en una leyenda gris chiquita arriba). Pidió que la institución elegida se muestre directamente en el campo y que crear una nueva se mueva a un botón que abra su propia modal.
+  - `CreateRecordModal.tsx`: el campo Institución ahora alterna entre buscador (sin selección) y una caja con el nombre elegido + botón "✕" para volver a buscar — ya no convive el buscador con la leyenda "elegida: X". El panel inline de Tipo/Estado ("+ Crear institución") se quitó: un botón "+ Nueva" junto al campo abre `CreateRecordModal` anidado con `slug="instituciones"` (mismo componente, reusado por recursión — ya traía el form completo con sus opcionales). `onCreated` gana un parámetro opcional `{id, name}` para autoseleccionar la institución recién creada; `GenericBoardView` (única otra llamada) sigue pasando `refetch` sin cambios, un callback con menos parámetros sigue siendo asignable.
+  - Verificado con Playwright en local: buscar "efra" y elegir "TEST EFRA" la deja escrita en el campo (con ✕ para cambiarla); "+ Nueva" abre la modal de institución apilada encima con Nombre/Tipo/Estado.
+  - `npx tsc --noEmit` y `npm run lint` limpios. No corrí `npm test` — cambio de UI únicamente, no toca write path ni `shared/visibility.ts`.
+
 - Contactos: 3 bugs en "Nuevo contacto" + campos obligatorios
   - Efraín reportó que el combobox de Institución no dejaba seleccionar (al buscar y hacer click parecía no pasar nada), que el toggle "Más campos (opcional)" no se podía volver a colapsar, y que el dropdown de Vendedor salía vacío. Pidió además que todos los campos del form sean obligatorios excepto Comentarios.
   - `CreateRecordModal.tsx`: el click en un resultado de Institución hacía `setInstQ('')` en el mismo evento que guardaba el id — eso disparaba un refetch de `usePoll('instituciones', '')` (trae el catálogo completo) justo después de seleccionar, dando la sensación de que la selección no pegó. Se quitó el reset del query (mismo patrón, sin reset, que ya usaba `EditContactoModal`).
