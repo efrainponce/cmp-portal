@@ -16,7 +16,7 @@ import { StatusBadge } from '../components/core/Badges';
 import { GroupCard } from '../components/layout/GroupCard';
 import { textIncludes } from '../lib/textMatch';
 import { startImpersonation } from '../lib/impersonation';
-import { useMe } from '../lib/useMe';
+import { useMe, refreshMe } from '../lib/useMe';
 import { BOARD_LABELS } from './Sidebar';
 import { BOARD_KEYS, TEAM_ROLES } from '../../shared/boardAccess';
 
@@ -82,6 +82,17 @@ export function SettingsPage() {
           </div>
         )}
 
+        <MyAccountSection
+          me={me}
+          onSaved={(nombre) => {
+            setIdentities((prev) => (prev ?? []).map((i) => (i.email === me?.email ? { ...i, nombre } : i)));
+            showToast('success', 'Nombre actualizado.');
+          }}
+          onError={() => showToast('error', 'No se pudo guardar el nombre.')}
+        />
+
+        <div style={{ height: 24 }} />
+
         <IdentitiesSection
           identities={identities}
           ownEmail={me?.email ?? null}
@@ -125,6 +136,68 @@ export function SettingsPage() {
           {toast.message}
         </div>
       )}
+    </div>
+  );
+}
+
+// Bloque fijo hasta arriba de Configuración: nombre + correo de la sesión activa
+// (no del rol impersonado — ImpersonationBanner ya cubre ese caso aparte), para
+// que sea obvio con qué cuenta se está entrando cuando hay más de una disponible
+// (Efraín, 2026-08-05, tras el bug de la identidad fantasma de Gmail).
+function MyAccountSection({ me, onSaved, onError }: {
+  me: ReturnType<typeof useMe>;
+  onSaved: (nombre: string) => void;
+  onError: () => void;
+}) {
+  const [nombre, setNombre] = useState(me?.nombre ?? '');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => { setNombre(me?.nombre ?? ''); }, [me?.nombre]);
+
+  if (!me) return null;
+  const dirty = nombre.trim() !== me.nombre && nombre.trim() !== '';
+
+  async function save() {
+    const next = nombre.trim();
+    if (!next) return;
+    setSaving(true);
+    try {
+      await putIdentity(me!.email, { nombre: next });
+      await refreshMe();
+      onSaved(next);
+    } catch {
+      onError();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div style={{
+      margin: '0 24px 16px', padding: '14px 18px', borderRadius: 'var(--radius-2xl)',
+      border: '1px solid var(--border)', background: 'var(--bg-raised)',
+      display: 'flex', alignItems: 'flex-end', gap: 12, flexWrap: 'wrap',
+    }}>
+      <div style={{ flex: '1 1 200px', minWidth: 160 }}>
+        <div style={{ font: 'var(--text-micro)', color: 'var(--ink-quiet)', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 6 }}>
+          Cuenta
+        </div>
+        <input
+          value={nombre}
+          onChange={(e) => setNombre(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') save(); }}
+          style={{ ...inputStyle, font: 'var(--text-label-strong)', color: 'var(--ink)' }}
+        />
+      </div>
+      <div style={{ flex: '1 1 220px', minWidth: 180 }}>
+        <div style={{ font: 'var(--text-micro)', color: 'var(--ink-quiet)', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 6 }}>
+          Correo (no editable)
+        </div>
+        <div style={{ font: 'var(--text-label)', color: 'var(--ink-tertiary)', padding: '6px 9px' }}>{me.email}</div>
+      </div>
+      <Button variant={dirty && !saving ? 'primary' : 'disabled'} onClick={save} style={{ padding: '6px 12px' }}>
+        {saving ? 'Guardando…' : 'Guardar'}
+      </Button>
     </div>
   );
 }

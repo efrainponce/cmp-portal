@@ -2,6 +2,12 @@
 
 ## 2026-08-05
 
+- Configuración: tarjeta "Cuenta" fija arriba con nombre editable y correo de la sesión activa
+  - Efraín reportó no poder elegir Proveedor en el tab Cotización de Costeo pese a ser admin; causa real: D1 producción tenía dos filas de `identity` para él con distinto `monday_user_id` (`salinasefrain@mexicanadeproteccion.com` admin y `poncesalinasefrain@gmail.com` vendedor, esta última un usuario de prueba "Ventas EP") — coincide con el límite ya conocido de Cloudflare Access/Google quedándose pegado a la sesión equivocada cuando el navegador tiene varias cuentas abiertas. Se confirmó sin referencias en `zona_miembros`/`zonas`/`notifications` y se borró la fila fantasma de D1 remoto (`DELETE FROM identity WHERE email = 'poncesalinasefrain@gmail.com'`).
+  - A petición de Efraín, para que sea obvio con qué cuenta se está entrando cuando hay más de una disponible: nueva sección `MyAccountSection` hasta arriba de Configuración (`SettingsPage.tsx`) con el nombre de la sesión activa (editable, `PUT /api/admin/identities/:email` ya existente) y su correo (solo lectura — no se puede cambiar, es el login real). Guardar dispara `refreshMe()` para que el chip del sidebar y el resto de la UI se actualicen sin recargar.
+  - Verificado en vivo con Playwright contra el worker local: editar el nombre, guardar, confirmar que se refleja en la tarjeta, en la fila de "Usuarios del portal" y en el chip del sidebar, y revertirlo al valor original.
+  - `npx tsc --noEmit` y `oxlint` limpios (sin tests nuevos — no toca write path a Monday ni `visibility.ts`).
+
 - Cotización: editar Cantidad justo después de elegir Producto lo limpiaba en pantalla
   - Reportado por Efraín como "bug super horrible para crear una cotización". `onEdit` (CotizacionTab.tsx) recalcula el preview local con `previewRow()` en cada tecleo de un campo numérico (Cantidad, Costo Distr., etc.) y REEMPLAZABA entero `state.preview` con el resultado — pero `previewRow()` solo devuelve columnas de fórmula (costos/subtotal/IVA…), nunca Producto/Color/Embellecimiento. Si el usuario acababa de elegir Producto (`onProductoPick`), ese preview local vive únicamente en `state.preview` mientras el mirror real de Monday sigue en vuelo (outbox async) — y tocar Cantidad justo después lo borraba, cayendo `displayProducto` al mirror de Monday todavía vacío.
   - Fix de una línea: mezclar (`{ ...state.preview, ...previewRow(...) }`) en vez de reemplazar. `previewRow()` solo trae ids `formula_*`, así que no colisiona con Producto/Color/Embellecimiento.
