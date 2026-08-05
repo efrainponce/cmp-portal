@@ -51,6 +51,16 @@
     `linked_item_ids: ["12533829842"]` ("TEST — borrar (cmp-portal create)").
   - `npx tsc --noEmit` (3 tsconfigs, mismos 2 errores preexistentes de
     `worker/routes/{admin,boards}.ts` intactos) y `npm test` (117/117) limpios.
+  - Mismo día, a pedido de Efraín ("¿se podría crear la institución desde el
+    formulario, fácil?"): quick-create inline — si lo tecleado en el buscador
+    de Institución no matchea ninguna existente, aparece un bloque con Tipo +
+    Estado (los dos únicos campos `required` de `CREATE_FIELDS.instituciones`
+    además de Nombre — no se aflojó ese requisito, se piden ahí mismo) y un
+    botón "+ Crear institución" que la crea y la liga al contacto sin salir
+    del modal. El banner cambia de "créala primero en Instituciones" a
+    "créala aquí mismo". Verificado en vivo contra Monday real: institución
+    nueva con Tipo "Socio Comercial" / Estado "Nuevo León", contacto ligado
+    (`contact_account.value.linked_item_ids`) al id real devuelto.
 
 ## 2026-08-04
 
