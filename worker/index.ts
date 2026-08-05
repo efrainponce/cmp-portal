@@ -7,6 +7,7 @@ import type { Env } from './env';
 import { access } from './mw/access';
 import { identity } from './mw/identity';
 import { syncRoutes, reconcileAll } from './sync';
+import { BOARDS, type BoardSlug } from '../shared/boards';
 import { waRoutes } from './wa/routes';
 import { assistantRoutes } from './assistant/routes';
 import { boardRoutes } from './routes/boards';
@@ -45,9 +46,18 @@ documentRoutes(app);
 
 app.all('*', c => c.env.ASSETS.fetch(c.req.raw));
 
+// Los 8 boards no caben en una sola invocación de reconcile (ver comentario en
+// reconcileAll): dos cron triggers a las 3h uno del otro, cada uno con su propio
+// grupo — wrangler.jsonc debe declarar exactamente estos dos strings de cron.
+const CRON_GROUPS: Record<string, BoardSlug[]> = {
+  '0 */6 * * *': ['oportunidades', 'oportunidades_sub', 'proyectos', 'proyectos_sub'],
+  '0 3,9,15,21 * * *': ['productos', 'instituciones', 'contactos', 'proveedores'],
+};
+
 export default {
   fetch: app.fetch,
-  scheduled: async (_controller: ScheduledController, env: Env, ctx: ExecutionContext) => {
-    ctx.waitUntil(reconcileAll(env).then(() => flushOutbox(env)));
+  scheduled: async (controller: ScheduledController, env: Env, ctx: ExecutionContext) => {
+    const slugs = CRON_GROUPS[controller.cron] ?? (Object.keys(BOARDS) as BoardSlug[]);
+    ctx.waitUntil(reconcileAll(env, slugs).then(() => flushOutbox(env)));
   },
 };

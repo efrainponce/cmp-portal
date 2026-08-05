@@ -6,10 +6,12 @@ import type { Env } from '../env';
 import type { Role } from '../../shared/types';
 import type { IdentityDTO, MondayUserDTO, BoardAccessDTO, ZonaDTO } from '../../shared/dto';
 import { TEAM_ROLES } from '../../shared/boardAccess';
+import { BOARDS, type BoardSlug } from '../../shared/boards';
 import { listIdentities, getIdentityByEmail, upsertIdentity } from '../lib/dal';
 import { cachedFetchUsers } from '../lib/rosterCache';
 import { listAllBoardAccess, setBoardAccess, BoardAccessError } from '../lib/boardAccess';
 import { listZonas, createZona, updateZona, deleteZona, ZonaError } from '../lib/zonas';
+import { reconcileBoard } from '../sync/reconcile';
 
 export function adminRoutes(app: Hono<{ Bindings: Env }>) {
   app.get('/api/admin/identities', async c => {
@@ -135,5 +137,21 @@ export function adminRoutes(app: Hono<{ Bindings: Env }>) {
     if (!Number.isFinite(id)) return c.json({ error: 'not found' }, 404);
     await deleteZona(c.env, id);
     return c.json({ ok: true });
+  });
+
+  // Fuerza un full-sync de un board contra Monday sin esperar al cron (cada 6h,
+  // worker/index.ts). Existía la función (reconcileBoard) pero ningún trigger
+  // manual — encontrado 2026-08-04 al diagnosticar el board Proveedores vacío.
+  app.post('/api/admin/sync/:slug', async c => {
+    if (c.get('viewer').role !== 'admin') return c.json({ error: 'forbidden' }, 403);
+    const slug = c.req.param('slug') as BoardSlug;
+    if (!(slug in BOARDS)) return c.json({ error: 'board desconocido' }, 400);
+    try {
+      const result = await reconcileBoard(c.env, slug);
+      return c.json({ ok: true, ...result });
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      return c.json({ error: `sync failed: ${detail}` }, 502);
+    }
   });
 }

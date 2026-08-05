@@ -44,14 +44,20 @@ export async function reconcileBoard(env: Env, slug: BoardSlug): Promise<{ upser
 interface BoardState { board_id: number; monday_updated_at: string; reconciled_at: string }
 
 /** One light Monday call for all boards; only boards whose updated_at moved
- * (or that haven't had a full pass in FORCE_FULL_MS) get paged in full. */
-export async function reconcileAll(env: Env): Promise<void> {
+ * (or that haven't had a full pass in FORCE_FULL_MS) get paged in full.
+ *
+ * `slugs` limits which boards this pass covers. Necesario porque procesar los
+ * 8 boards en una sola invocación se corta a medias por límites de CPU/subrequests
+ * de Cloudflare — visto en prod: el loop siempre llegaba hasta 'proyectos' (3er
+ * board) y moría ahí sin excepción ni log, dejando productos/instituciones/
+ * contactos/proveedores sin sincronizar jamás (encontrado 2026-08-04, board
+ * Proveedores vacío). worker/index.ts reparte los 8 boards en dos cron triggers. */
+export async function reconcileAll(env: Env, slugs: BoardSlug[] = Object.keys(BOARDS) as BoardSlug[]): Promise<void> {
   await env.DB.prepare(
     `CREATE TABLE IF NOT EXISTS board_state (
        board_id INTEGER PRIMARY KEY, monday_updated_at TEXT NOT NULL, reconciled_at TEXT NOT NULL)`,
   ).run();
 
-  const slugs = Object.keys(BOARDS) as BoardSlug[];
   let remote: Map<number, string> | null = null;
   try {
     remote = await fetchBoardsUpdatedAt(env, slugs.map(s => BOARDS[s].id));
