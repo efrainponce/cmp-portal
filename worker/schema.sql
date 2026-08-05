@@ -64,7 +64,7 @@ CREATE TABLE IF NOT EXISTS board_state (  -- reconcile gate: skip boards whose u
 
 CREATE TABLE IF NOT EXISTS sync_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  kind TEXT NOT NULL,                 -- webhook|reconcile|manual|outbox
+  kind TEXT NOT NULL,                 -- webhook|reconcile|manual|outbox|http
   board_id INTEGER, item_id INTEGER,
   ok INTEGER NOT NULL, detail TEXT, at TEXT NOT NULL
 );

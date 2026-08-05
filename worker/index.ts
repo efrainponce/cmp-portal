@@ -17,6 +17,9 @@ import { inventarioRoutes } from './routes/inventario';
 import { notificationRoutes } from './routes/notifications';
 import { documentRoutes } from './routes/documents';
 import { flushOutbox } from './lib/outbox';
+import { checkErrorsAndAlert } from './lib/errorAlerts';
+import { logSync } from './sync/log';
+import { jsonStatus } from './lib/http';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -46,9 +49,21 @@ documentRoutes(app);
 
 app.all('*', c => c.env.ASSETS.fetch(c.req.raw));
 
+// Red de seguridad para excepciones no capturadas por los try/catch específicos que ya
+// existen por ruta (AutomationError, QuoteVersionError, etc. — esos nunca llegan aquí,
+// se resuelven donde ya se resuelven). Deja rastro en sync_log para el cron de alertas
+// de abajo; sin esto un bug real no dejaba ningún rastro.
+app.onError(async (err, c) => {
+  await logSync(c.env, 'http', null, null, false, `${c.req.method} ${c.req.path}: ${err}`);
+  return jsonStatus({ error: 'internal error' }, 500);
+});
+
 // Los 8 boards no caben en una sola invocación de reconcile (ver comentario en
 // reconcileAll): dos cron triggers a las 3h uno del otro, cada uno con su propio
-// grupo — wrangler.jsonc debe declarar exactamente estos dos strings de cron.
+// grupo. El tercer cron (cada 15 min) no es un board group — revisa sync_log y avisa
+// por WhatsApp (worker/lib/errorAlerts.ts) — wrangler.jsonc debe declarar exactamente
+// estos tres strings de cron.
+const ALERT_CRON = '*/15 * * * *';
 const CRON_GROUPS: Record<string, BoardSlug[]> = {
   '0 */6 * * *': ['oportunidades', 'oportunidades_sub', 'proyectos', 'proyectos_sub'],
   '0 3,9,15,21 * * *': ['productos', 'instituciones', 'contactos', 'proveedores'],
@@ -57,6 +72,10 @@ const CRON_GROUPS: Record<string, BoardSlug[]> = {
 export default {
   fetch: app.fetch,
   scheduled: async (controller: ScheduledController, env: Env, ctx: ExecutionContext) => {
+    if (controller.cron === ALERT_CRON) {
+      ctx.waitUntil(checkErrorsAndAlert(env));
+      return;
+    }
     const slugs = CRON_GROUPS[controller.cron] ?? (Object.keys(BOARDS) as BoardSlug[]);
     ctx.waitUntil(reconcileAll(env, slugs).then(() => flushOutbox(env)));
   },

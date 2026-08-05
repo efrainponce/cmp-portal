@@ -19,4 +19,6 @@ export interface Env {
   WHATSAPP_PHONE_NUMBER_ID?: string; // sender phone-number id from Meta app
   WA_VERIFY_TOKEN?: string;       // arbitrary string echoed at webhook subscribe time
   WA_APP_SECRET?: string;         // Meta app secret — verifies X-Hub-Signature-256
+
+  ADMIN_ALERT_PHONE?: string;     // E.164 (52XXXXXXXXXX) — destino de alertas de sync_log
 }
