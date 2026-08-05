@@ -21,7 +21,7 @@ scoping de renglones de `worker/lib/dal.ts`.
 - [shared/embellecimiento.ts](shared/embellecimiento.ts) — Compartido con worker: parse/serialize embellecimiento por zona. Exports: EMBELL_TEMPLATE_KEYS, EmbellZoneKey, EMB_STATUS_COL, EMB_LABEL_CON, EMB_LABEL_SIN.
 - [shared/inventory.ts](shared/inventory.ts) — DTOs Inventario + reglas negocio (feature D1 nativa). Exports: MovementType, WarehouseType, MOVEMENT_TYPES, WarehouseDTO, MovementDTO.
 - [shared/documents.ts](shared/documents.ts) — Contrato de documentos del portal + firma electrónica: registro de plantillas, roles que generan/firman, consentimiento (ver docs/documentos-firma.md). Exports: DOC_TEMPLATES, SIGN_INTENT, DocumentDTO, SignatureDTO, documentFilename.
-- [shared/notifications.ts](shared/notifications.ts) — Ruteo del centro de notificaciones (decisión de whitelist de Efraín). Exports: RecipientSelector, STAGE_NOTIFY.
+- [shared/notifications.ts](shared/notifications.ts) — Ruteo del centro de notificaciones (decisión de whitelist de Efraín). Cada etapa puede marcar `severity: 'importante'` para además disparar WhatsApp. Exports: RecipientSelector, StageNotifyEntry, STAGE_NOTIFY, PROJECT_STATUS_NOTIFY.
 - [shared/types.ts](shared/types.ts) — Tipos base compartidos: Role, Identity, MirrorItem. Exports: Role, Identity, MirrorItem.
 - [shared/visibility.ts](shared/visibility.ts) — La whitelist como data: reglas de lectura/escritura por columna y rol (fail-closed). Exports: ColRule, VISIBILITY, canRead, canWrite, readableCols.
 

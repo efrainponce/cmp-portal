@@ -4,7 +4,7 @@
 // cualquier fallo se traga y se loguea a sync_log.
 import type { Env } from '../env';
 import type { Role } from '../../shared/types';
-import type { RecipientSelector } from '../../shared/notifications';
+import type { RecipientSelector, StageNotifyEntry } from '../../shared/notifications';
 import { STAGE_NOTIFY, PROJECT_STATUS_NOTIFY, PROJECT_STATUS_LABELS, PROJECT_STATUS_BOARD_KEY } from '../../shared/notifications';
 import { DEAL_STAGE_LABELS } from '../../shared/dealStages';
 import { logSync } from '../sync/log';
@@ -136,7 +136,7 @@ async function maybeEmitStatusChange(env: Env, args: {
   vendedorIds: number[];
   colId: string;
   labels: Record<string, string>;
-  notifyMap: Record<string, RecipientSelector[]>;
+  notifyMap: Record<string, StageNotifyEntry>;
   boardKey: string | ((newIndex: string) => string);
   kind: string;
   dedupePrefix: string;
@@ -151,15 +151,15 @@ async function maybeEmitStatusChange(env: Env, args: {
 
     const label = args.labels[newIndex];
     if (!label) return;
-    const selectors = args.notifyMap[label];
-    if (!selectors || selectors.length === 0) return;
+    const entry = args.notifyMap[label];
+    if (!entry || entry.selectors.length === 0) return;
 
     const boardKey = typeof args.boardKey === 'function' ? args.boardKey(newIndex) : args.boardKey;
-    const recipients = await resolveRecipients(env, selectors, { vendedorIds: args.vendedorIds });
+    const recipients = await resolveRecipients(env, entry.selectors, { vendedorIds: args.vendedorIds });
     for (const recipientEmail of recipients) {
       await emitNotification(env, {
         recipientEmail,
-        severity: 'actualizacion',
+        severity: entry.severity ?? 'actualizacion',
         kind: args.kind,
         title: `${args.itemName} pasó a ${label}`,
         boardKey,

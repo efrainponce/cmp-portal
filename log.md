@@ -2,6 +2,13 @@
 
 ## 2026-08-05
 
+- Notificaciones: "En costeo" ahora dispara WhatsApp además del portal
+  - Efraín reportó que no le llegaba ningún WhatsApp de sus oportunidades. Causa: `STAGE_NOTIFY` emitía TODOS los cambios de etapa con `severity: 'actualizacion'` (worker/lib/notify.ts), y `notifyPortalWa` solo manda WhatsApp para `'importante'` — decisión de alcance previa (2026-07-31). Además, verificado en D1 remoto: su identidad (`efrain.ponces@gmail.com`) y la mayoría de `compras` no tienen `phone` cargado, así que aunque cambiara la severidad no habría a dónde mandar el WA.
+  - `shared/notifications.ts`: `STAGE_NOTIFY`/`PROJECT_STATUS_NOTIFY` cambian de `Record<string, RecipientSelector[]>` a `Record<string, StageNotifyEntry>` (`{ selectors, severity? }`) — permite marcar severidad por etapa en vez de todo fijo a `'actualizacion'`. Se marca `'En costeo'` como `importante` (Compras necesita enterarse de inmediato).
+  - `worker/lib/notify.ts` (`maybeEmitStatusChange`): usa `entry.selectors`/`entry.severity ?? 'actualizacion'`.
+  - Pendiente que NO se resuelve con este cambio: la mayoría de las identidades de `compras` (`cotizaciones3/4/6`, `logistica`) siguen sin `phone` en D1 — hay que darlos de alta en Admin → usuarios para que efectivamente reciban el WhatsApp.
+  - `npx tsc --noEmit` y `npm test` (117/117) limpios.
+
 - Cotización: separación entre la tabla de líneas/totales y "Condiciones de la cotización"
   - Efraín (captura): el bloque de condiciones quedaba pegado justo debajo del renglón TOTAL, sin aire visual entre ambos.
   - `CondicionesCotizacion.tsx`: se agrega `marginTop: 20` al contenedor del bloque.

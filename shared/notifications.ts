@@ -9,15 +9,25 @@ import type { Role } from './types';
 //  - `role:<rol>` → todas las identidades activas de ese rol
 export type RecipientSelector = 'owner' | 'actor' | 'mentioned' | `role:${Role}`;
 
+// Severidad de un cambio de etapa: 'actualizacion' (default, solo Centro de
+// Notificaciones del portal) o 'importante' (además dispara WhatsApp, ver
+// worker/wa/notify.ts — requiere que el destinatario tenga phone en `identity`).
+export interface StageNotifyEntry {
+  selectors: RecipientSelector[];
+  severity?: 'importante' | 'actualizacion';
+}
+
 // Cuando una Oportunidad llega a una etapa (deal_stage), ¿a quién se le notifica?
 // Llaves = labels canon EXACTOS de shared/dealStages.ts DEAL_STAGE_LABELS.
 // Etapa sin entrada aquí = sin notificación de cambio de etapa.
-export const STAGE_NOTIFY: Record<string, RecipientSelector[]> = {
-  'En costeo': ['role:compras'],                    // el vendedor la mandó a costeo → Compras
-  'Costeo en validación': ['role:compras', 'role:admin'],
-  'Costeo Confirmado': ['owner'],                   // Compras confirmó → el vendedor puede seguir
-  'Esperando OC': ['owner'],
-  'Ganada': ['owner', 'role:compras'],
+export const STAGE_NOTIFY: Record<string, StageNotifyEntry> = {
+  // Compras necesita enterarse de inmediato, no solo al revisar el portal
+  // (Efraín, 2026-08-05).
+  'En costeo': { selectors: ['role:compras'], severity: 'importante' },
+  'Costeo en validación': { selectors: ['role:compras', 'role:admin'] },
+  'Costeo Confirmado': { selectors: ['owner'] },    // Compras confirmó → el vendedor puede seguir
+  'Esperando OC': { selectors: ['owner'] },
+  'Ganada': { selectors: ['owner', 'role:compras'] },
 };
 
 // Labels de `project_status` (board Proyectos, post-venta) — copiados de
@@ -37,11 +47,11 @@ export const PROJECT_STATUS_LABELS: Record<string, string> = {
 // notifica? Reemplaza las notificaciones nativas de Monday por-elemento, que
 // Compras reportó que no les llegan (WhatsApp 2026-08-04) — primer corte,
 // pendiente de que Efraín tune destinatarios.
-export const PROJECT_STATUS_NOTIFY: Record<string, RecipientSelector[]> = {
-  'Tallas Confirmadas': ['role:compras'],           // vendedor validó → Compras arma las OC
-  'Ordenes de compra listas': ['owner'],            // el vendedor puede avisar a su cliente
-  'Ejecución': ['owner'],
-  'Proyecto Terminado': ['owner', 'role:compras'],
+export const PROJECT_STATUS_NOTIFY: Record<string, StageNotifyEntry> = {
+  'Tallas Confirmadas': { selectors: ['role:compras'] },  // vendedor validó → Compras arma las OC
+  'Ordenes de compra listas': { selectors: ['owner'] },   // el vendedor puede avisar a su cliente
+  'Ejecución': { selectors: ['owner'] },
+  'Proyecto Terminado': { selectors: ['owner', 'role:compras'] },
 };
 
 // project_status → acceso del sidebar que lo lista (para el deep-link de la
