@@ -8,7 +8,7 @@ import type { Role } from './types';
 
 export const BOARD_KEYS = [
   'oportunidades', 'oportunidades_web', 'costeo', 'validacion',
-  'doctallas', 'ordenescompra', 'logistica',
+  'doctallas', 'ordenescompra', 'ejecucion', 'logistica',
   'productos', 'instituciones', 'contactos', 'proveedores',
   'inventario',
 ] as const;
@@ -28,10 +28,10 @@ export const TEAM_ROLES: Role[] = ['vendedor', 'compras', 'almacen'];
 // (todo abierto salvo Proveedores, ya restringido a compras/admin en Sidebar).
 // Editable después desde el admin — esto es solo el punto de partida.
 export const DEFAULT_BOARD_ACCESS: Record<Role, readonly ConfigurableBoardKey[]> = {
-  vendedor: ['oportunidades', 'oportunidades_web', 'doctallas', 'ordenescompra', 'logistica',
+  vendedor: ['oportunidades', 'oportunidades_web', 'doctallas', 'ordenescompra', 'ejecucion', 'logistica',
     'productos', 'instituciones', 'contactos'],
   compras: ['oportunidades', 'oportunidades_web', 'costeo', 'validacion',
-    'doctallas', 'ordenescompra', 'logistica',
+    'doctallas', 'ordenescompra', 'ejecucion', 'logistica',
     'productos', 'instituciones', 'contactos', 'proveedores', 'inventario'],
   almacen: ['inventario'],
   admin: BOARD_KEYS,

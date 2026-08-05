@@ -6,7 +6,7 @@ import type { Context, Hono } from 'hono';
 import type { Env } from '../env';
 import type { Identity } from '../../shared/types';
 import { BOARDS } from '../../shared/boards';
-import type { AjustarLineaRequest, AjustarLineaResponse, DuplicarOportunidadResponse, DuplicarVersionResponse, ItemDetailDTO, QuoteVersionsResponse, TallaBoxInput, CapturarTallasResponse } from '../../shared/dto';
+import type { AjustarLineaRequest, AjustarLineaResponse, DuplicarOportunidadResponse, DuplicarVersionResponse, ItemDetailDTO, QuoteVersionsResponse, TallaBoxInput, CapturarTallasResponse, EstadoHistorialResponse } from '../../shared/dto';
 import type { ProposedProductsResponse, AddProposedProductResponse } from '../../shared/productosPropuestos';
 import { getItem, childrenOf, pendingItemIds, proyectoForOportunidad, linkedItemId, PROYECTO_OPP_REL } from '../lib/dal';
 import { toItemDTO } from '../lib/serialize';
@@ -19,6 +19,7 @@ import { enviarACosteo, enviarAValidacion, checkCosteo, checkValidacion, CosteoE
 import { listVersions, duplicateVersion, restoreVersion, esDraftVigente, recordFirstVersion, QuoteVersionError } from '../lib/quoteVersions';
 import { ajustarLinea, AjusteLineaError } from '../lib/lineaAjustes';
 import { capturarTallas, reportarTallasIncorrectas } from '../lib/proyectoTallas';
+import { listEstadoHistorial } from '../lib/estadoProducto';
 import { duplicateOportunidad, DuplicateOportunidadError } from '../lib/duplicateOportunidad';
 import { ganarOportunidad, GanarOportunidadError } from '../lib/ganarOportunidad';
 import { createSubitem, addFileToColumn, fetchAssetPublicUrls, gql } from '../lib/monday';
@@ -596,6 +597,30 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     // Proyecto sea visible no implica que la Oportunidad también lo sea.
     const opp = await getItem(c.env, 'oportunidades', oppId, viewer);
     return c.json({ oportunidadId: opp ? String(oppId) : null });
+  });
+
+  // Timeline de "Estado del producto" por línea (tab Ejecución) — historial vive en
+  // D1 (worker/lib/estadoProducto.ts), no en columnas de fecha de Monday. Mismo
+  // scoping de lectura que el resto de rutas de Proyecto (propio + zona liderada).
+  app.get('/api/proyectos/:id/estado-historial', async c => {
+    const itemId = Number(c.req.param('id'));
+    if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
+    const viewer = c.get('viewer');
+    const row = await getItem(c.env, 'proyectos', itemId, viewer);
+    if (!row) return c.json({ error: 'not found' }, 404);
+
+    const historial = await listEstadoHistorial(c.env, itemId);
+    const response: EstadoHistorialResponse = {
+      historial: historial.map(h => ({
+        subItemId: String(h.sub_item_id),
+        estadoPrevio: h.estado_previo,
+        estadoNuevo: h.estado_nuevo,
+        changedAt: h.changed_at,
+        changedBy: h.changed_by,
+        comentario: h.comentario,
+      })),
+    };
+    return c.json(response);
   });
 
   // Línea manual del Proyecto — para productos que faltaron en el desglose de

@@ -60,6 +60,13 @@ export const IconLogistica = (p: IconProps) => (
   </svg>
 );
 
+export const IconEjecucion = (p: IconProps) => (
+  <svg {...base} {...p}>
+    <path d="M12 20a8 8 0 1 0-8-8" /><path d="M12 20a8 8 0 0 0 8-8" strokeOpacity="0.35" />
+    <path d="M12 12l4-4" /><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none" />
+  </svg>
+);
+
 export const IconProductos = (p: IconProps) => (
   <svg {...base} {...p}>
     <path d="M21 8l-9-5-9 5 9 5 9-5z" /><path d="M3 8v8l9 5 9-5V8" /><path d="M12 13v8" />

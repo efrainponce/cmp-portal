@@ -29,7 +29,7 @@ import { NuevosProductosTab } from './tabs/NuevosProductosTab';
 import { DocumentacionTab } from './tabs/DocumentacionTab';
 import { TallasTab } from './tabs/TallasTab';
 import { EmptyDocTab } from './tabs/EmptyDocTab';
-import { useProyecto, ProyectoOrdenesSection } from './ProyectoSection';
+import { useProyecto, ProyectoOrdenesSection, EjecucionSection } from './ProyectoSection';
 import { PaymentRequestButton } from '../../components/board/PaymentRequestButton';
 import { EditClienteModal } from './EditClienteModal';
 import { EditPersonaModal } from './EditPersonaModal';
@@ -450,7 +450,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
 
   const showProyectos = stageAtOrAfter(stage, '8');
   const activeTab = (tab === 'documentacion' || tab === 'tallas') && !showPostventa ? 'cotizacion'
-    : (tab === 'ordenes' || tab === 'logistica') && !showProyectos ? 'cotizacion'
+    : (tab === 'ordenes' || tab === 'ejecucion' || tab === 'logistica') && !showProyectos ? 'cotizacion'
     : tab;
   const cotizacionVariant = boardKey && COSTEO_VARIANT_BOARDS.includes(boardKey) ? 'costeo' : 'venta';
   // Board Costeo = solo lectura para producto/color/cantidad/embellecimiento y
@@ -695,6 +695,11 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
           <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)', marginBottom: 10 }}>Cuando se mandan de CMP a los proveedores.</div>
           <PaymentRequestButton slug="oportunidades" itemId={id} kind="proveedor" />
           <ProyectoOrdenesSection state={proyecto} oppId={id} />
+        </div>
+      )}
+      {activeTab === 'ejecucion' && (
+        <div style={{ padding: '24px 32px 40px', maxWidth: 920, width: '100%', boxSizing: 'border-box' }}>
+          <EjecucionSection state={proyecto} oppId={id} />
         </div>
       )}
       {activeTab === 'logistica' && (

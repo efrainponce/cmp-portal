@@ -4,6 +4,7 @@ import type { MondayItem } from '../lib/monday';
 import { rawHash, type RawColumn } from '../lib/canon';
 import { BOARDS, type BoardSlug } from '../../shared/boards';
 import { maybeEmitStageChange, maybeEmitProjectStatusChange } from '../lib/notify';
+import { maybeLogProductoStatus } from '../lib/estadoProducto';
 
 // authzCols are people columns; value JSON carries personsAndTeams:[{id,kind}].
 function extractVendedorIds(item: MondayItem, authzCols: string[]): number[] {
@@ -57,8 +58,9 @@ export async function upsertItem(
   // cambió.
   const isOportunidades = slug === 'oportunidades';
   const isProyectos = slug === 'proyectos';
+  const isProyectosSub = slug === 'proyectos_sub';
   let prevColumnsJson: string | null = null;
-  if (isOportunidades || isProyectos) {
+  if (isOportunidades || isProyectos || isProyectosSub) {
     const prevRow = await env.DB.prepare(
       `SELECT columns FROM items WHERE board_id = ? AND item_id = ?`,
     ).bind(def.id, itemId).first<{ columns: string }>();
@@ -96,6 +98,14 @@ export async function upsertItem(
       prevColumnsJson,
       newColumnsJson: JSON.stringify(columns),
       vendedorIds,
+    });
+  } else if (isProyectosSub && item.parent_item?.id) {
+    await maybeLogProductoStatus(env, {
+      proyectosBoardId: BOARDS.proyectos.id,
+      proyectoId: Number(item.parent_item.id),
+      subItemId: itemId,
+      prevColumnsJson,
+      newColumnsJson: JSON.stringify(columns),
     });
   }
 

@@ -2,7 +2,7 @@
 // directamente por su propio id — nunca vía el board_relation hacia la
 // Oportunidad (frágil, ver worker/lib/dal.ts linkedItemId). Agrupa/filtra por
 // `project_status`, no por `deal_stage` de Oportunidades (Efraín, 2026-07-17).
-export type ProjectBoardKey = 'doctallas' | 'ordenescompra' | 'logistica';
+export type ProjectBoardKey = 'doctallas' | 'ordenescompra' | 'ejecucion' | 'logistica';
 
 export interface ProjectBoardConfig {
   key: ProjectBoardKey;
@@ -20,5 +20,10 @@ export const PROJECT_STATUS_ORDER = ['5', '0', '4', '2', '3', '1'];
 export const PROJECT_BOARDS: Record<ProjectBoardKey, ProjectBoardConfig> = {
   doctallas: { key: 'doctallas', title: 'Documentación y Tallas', statuses: ['5', '0', '4'], defaultTab: 'documentacion' },
   ordenescompra: { key: 'ordenescompra', title: 'Órdenes de Compra', statuses: ['2'], defaultTab: 'ordenes' },
-  logistica: { key: 'logistica', title: 'Logística', statuses: ['3', '1'], defaultTab: 'logistica' },
+  // Acceso propio (2026-08-05, Efraín): antes vivía junto con "Proyecto Terminado"
+  // dentro de "logistica" — separado para que el seguimiento operativo (batería +
+  // estado por producto/talla, tab "ejecucion") no se mezcle con proyectos ya
+  // cerrados. Agrupado por Zona en vez de por status (ProyectoBoardList.tsx).
+  ejecucion: { key: 'ejecucion', title: 'Ejecución', statuses: ['3'], defaultTab: 'ejecucion' },
+  logistica: { key: 'logistica', title: 'Logística', statuses: ['1'], defaultTab: 'logistica' },
 };

@@ -18,6 +18,8 @@ import { PersonPair } from '../../components/core/PersonAvatar';
 import { PROJECT_STATUS_ORDER, type ProjectBoardConfig } from '../../lib/projectStages';
 import { useSavedView } from '../../lib/useSavedView';
 import { useIsMobile } from '../../lib/useIsMobile';
+import { batteryFromMirrorText } from '../../lib/estadoProductoBuckets';
+import { ProgressBattery } from '../../components/board/ProgressBattery';
 
 const FOLIO_COL = 'pulse_id_mm1a12gy';
 const INSTITUCION_COL = 'lookup_mm1dwn6';
@@ -25,10 +27,29 @@ const FECHA_ENTREGA_COL = 'date_mm0m1vfv';
 const VENDEDOR_COL = 'multiple_person_mm0hrnqq';
 const ESTADO_PRODUCTOS_COL = 'lookup_mm20g4n6';
 const STATUS_COL = 'project_status';
+const ZONA_COL = 'dropdown_mm0hnyv';
 
 function dedupeMirrorText(text: string): string {
   const parts = Array.from(new Set(text.split(',').map((s) => s.trim()).filter(Boolean)));
   return parts.length <= 2 ? parts.join(', ') : `${parts[0]} +${parts.length - 1}`;
+}
+
+/** Agrupa por Zona (dropdown, no status) — Ejecución se divide por zona geográfica
+ * de entrega, no por etapa (Efraín, 2026-08-05). `groupByColumn` no aplica: está
+ * hecho para columnas `status` (índice numérico), y Zona es un `dropdown` cuyo
+ * value trae `{ids:[...]}`, no `{index}` — se agrupa directo por el texto ya
+ * resuelto del serializer. Sin metadata de color para dropdowns, se usa un tono
+ * neutro fijo para todos los grupos. */
+function groupByZona(items: ItemDTO[]): { key: string; label: string; color: string; items: ItemDTO[] }[] {
+  const map = new Map<string, ItemDTO[]>();
+  for (const item of items) {
+    const label = item.cols[ZONA_COL]?.text?.trim() || 'Sin zona';
+    if (!map.has(label)) map.set(label, []);
+    map.get(label)!.push(item);
+  }
+  return [...map.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([label, groupItems]) => ({ key: label, label, color: '#7f8f78', items: groupItems }));
 }
 
 interface Props {
@@ -62,7 +83,9 @@ export function ProyectoBoardList({ config, q, onSearch, onOpen }: Props) {
     return textIncludes(haystack, q);
   });
 
-  const groups = groupByColumn(items, statusCol, undefined, undefined, PROJECT_STATUS_ORDER);
+  const groups = config.key === 'ejecucion'
+    ? groupByZona(items)
+    : groupByColumn(items, statusCol, undefined, undefined, PROJECT_STATUS_ORDER);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -95,7 +118,10 @@ export function ProyectoBoardList({ config, q, onSearch, onOpen }: Props) {
               collapsed={!!collapsedGroups[g.key]} onToggleCollapsed={() => toggleGroup(g.key)}
             >
               {g.items.map((item) => (
-                <Row key={item.id} item={item} estadoProductosCol={estadoProductosCol} onClick={() => onOpen(item.id)} />
+                <Row
+                  key={item.id} item={item} estadoProductosCol={estadoProductosCol}
+                  showBattery={config.key === 'ejecucion'} onClick={() => onOpen(item.id)}
+                />
               ))}
             </GroupCard>
           ))}
@@ -105,8 +131,8 @@ export function ProyectoBoardList({ config, q, onSearch, onOpen }: Props) {
   );
 }
 
-function Row({ item, estadoProductosCol, onClick }: {
-  item: ItemDTO; estadoProductosCol?: ReturnType<typeof colForBoard>[number]; onClick: () => void;
+function Row({ item, estadoProductosCol, showBattery, onClick }: {
+  item: ItemDTO; estadoProductosCol?: ReturnType<typeof colForBoard>[number]; showBattery: boolean; onClick: () => void;
 }) {
   const isMobile = useIsMobile();
   const institucion = item.cols[INSTITUCION_COL]?.text || '—';
@@ -114,6 +140,7 @@ function Row({ item, estadoProductosCol, onClick }: {
   const fechaEntrega = item.cols[FECHA_ENTREGA_COL]?.text;
   const vendedor = item.cols[VENDEDOR_COL]?.text || undefined;
   const estadoVal = estadoProductosCol ? item.cols[estadoProductosCol.id] : undefined;
+  const battery = showBattery ? batteryFromMirrorText(estadoVal?.text) : null;
 
   if (isMobile) {
     return (
@@ -132,11 +159,12 @@ function Row({ item, estadoProductosCol, onClick }: {
         <div style={{ font: 'var(--text-label)', color: 'var(--ink-tertiary)' }}>{institucion}</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 2 }}>
           <PersonPair vendedor={vendedor} />
-          {estadoVal?.text && (() => {
+          {battery && <div style={{ flex: 1, minWidth: 80 }}><ProgressBattery data={battery} /></div>}
+          {!battery && estadoVal?.text && (() => {
             const { color, tint } = chipFor(estadoProductosCol!, estadoVal);
             return <StatusBadge label={dedupeMirrorText(estadoVal.text)} color={color} tint={tint} />;
           })()}
-          <div style={{ font: 'var(--text-caption)', color: 'var(--ink-faint)', marginLeft: 'auto' }}>
+          <div style={{ font: 'var(--text-caption)', color: 'var(--ink-faint)', marginLeft: battery ? undefined : 'auto' }}>
             {fechaEntrega ? `Entrega ${fechaEntrega}` : item.mondayUpdatedAt ? fmtSyncAgo(item.mondayUpdatedAt) : '—'}
           </div>
         </div>
@@ -153,13 +181,14 @@ function Row({ item, estadoProductosCol, onClick }: {
         padding: '3px 18px', background: '#fff', borderTop: '1px solid var(--border-subtle)', cursor: 'pointer',
       }}
     >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0, flex: battery ? 1 : 'none' }}>
         <div style={{ font: 'var(--text-body-strong)', color: 'var(--ink)' }}>{item.name}</div>
         <div style={{ font: 'var(--text-label)', color: 'var(--ink-tertiary)' }}>{institucion}</div>
       </div>
+      {battery && <div style={{ width: 160, flex: 'none' }}><ProgressBattery data={battery} /></div>}
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, flex: 'none' }}>
         <PersonPair vendedor={vendedor} />
-        {estadoVal?.text && (() => {
+        {!battery && estadoVal?.text && (() => {
           const { color, tint } = chipFor(estadoProductosCol!, estadoVal);
           return <StatusBadge label={dedupeMirrorText(estadoVal.text)} color={color} tint={tint} />;
         })()}

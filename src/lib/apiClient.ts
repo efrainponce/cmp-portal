@@ -6,7 +6,7 @@ import type {
   BoardAccessDTO, ColMeta, ColVal, CreateResponse, DuplicarOportunidadResponse, DuplicarVersionResponse, EnviarCosteoResponse, IdentityDTO, ItemDTO, ItemDetailDTO,
   ListResponse, MeDTO, MentionUserDTO, MondayUserDTO, ProyectoActionResponse, ProyectoResponse,
   QuoteLineSnapshot, QuoteVersionDTO, QuoteVersionsResponse,
-  TallaBoxInput, CapturarTallasResponse,
+  TallaBoxInput, CapturarTallasResponse, EstadoHistorialEntryDTO, EstadoHistorialResponse,
   UpdateAttachmentDTO, UpdateDTO, VendedorDTO, WriteResponse, ZonaDTO,
 } from '../../shared/dto';
 import type { AddProposedProductResponse, ProposedProductDTO, ProposedProductsResponse } from '../../shared/productosPropuestos';
@@ -17,6 +17,7 @@ import { markSessionExpired } from './sessionState';
 export type {
   BoardAccessDTO, BoardSlug, ColMeta, ColVal, IdentityDTO, ItemDTO, ItemDetailDTO, ListResponse, MeDTO, MentionUserDTO,
   MondayUserDTO, ProposedProductDTO, QuoteLineSnapshot, QuoteVersionDTO, TallaBoxInput, CapturarTallasResponse,
+  EstadoHistorialEntryDTO,
   UpdateAttachmentDTO, UpdateDTO, VendedorDTO, ZonaDTO,
 };
 
@@ -417,6 +418,16 @@ export async function reportarTallasIncorrectas(
   const body = await res.json();
   if (!res.ok) return { ok: false, error: body.error ?? 'No se pudo reportar.' };
   return body;
+}
+
+/** Timeline de "Estado del producto" por línea del Proyecto (tab Ejecución) —
+ * historial vive en D1 (worker/lib/estadoProducto.ts), no en columnas de fecha de
+ * Monday. Trae TODAS las líneas del proyecto; el front filtra por subItemId. */
+export async function getEstadoHistorial(proyectoId: string): Promise<EstadoHistorialEntryDTO[]> {
+  const res = await apiFetch(`/proyectos/${proyectoId}/estado-historial`);
+  if (!res.ok) throw new Error('GET estado-historial failed: ' + res.status);
+  const body: EstadoHistorialResponse = await res.json();
+  return body.historial;
 }
 
 export async function refreshItem(slug: BoardSlug, id: string): Promise<{ ok: boolean }> {

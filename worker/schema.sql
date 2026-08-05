@@ -204,11 +204,11 @@ CREATE TABLE IF NOT EXISTS role_board_access (
 -- Seed inicial — ver shared/boardAccess.ts DEFAULT_BOARD_ACCESS para el criterio.
 INSERT OR IGNORE INTO role_board_access (role, board_key) VALUES
   ('vendedor', 'oportunidades'), ('vendedor', 'oportunidades_web'),
-  ('vendedor', 'doctallas'), ('vendedor', 'ordenescompra'), ('vendedor', 'logistica'),
+  ('vendedor', 'doctallas'), ('vendedor', 'ordenescompra'), ('vendedor', 'ejecucion'), ('vendedor', 'logistica'),
   ('vendedor', 'productos'), ('vendedor', 'instituciones'), ('vendedor', 'contactos'),
   ('compras', 'oportunidades'), ('compras', 'oportunidades_web'),
   ('compras', 'costeo'), ('compras', 'validacion'),
-  ('compras', 'doctallas'), ('compras', 'ordenescompra'), ('compras', 'logistica'),
+  ('compras', 'doctallas'), ('compras', 'ordenescompra'), ('compras', 'ejecucion'), ('compras', 'logistica'),
   ('compras', 'productos'), ('compras', 'instituciones'), ('compras', 'contactos'),
   ('compras', 'proveedores'), ('compras', 'inventario'),
   ('almacen', 'inventario');
@@ -319,3 +319,25 @@ CREATE TABLE IF NOT EXISTS producto_propuesto (
   created_at     TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_producto_propuesto_opp ON producto_propuesto(oportunidad_id);
+
+-- Historial de "Estado del producto" (2026-08-05, worker/lib/estadoProducto.ts, tab
+-- "Ejecución" del Proyecto). En vez de seguir agregando una columna de fecha en Monday
+-- por cada estado nuevo que se quiera trackear (patrón usado hasta hoy: date_mm20y5t3,
+-- date_mm21p1ex, etc. en proyectos_sub), el cambio de `color_mm0hqf79` se diffea en el
+-- mismo chokepoint que ya usa maybeEmitProjectStatusChange (worker/sync/upsert.ts) y
+-- queda aquí, agnóstico a cuántos estados existan. Corre para AMBOS orígenes (webhook
+-- nativo de Monday y el upsert optimista que dispara worker/lib/outbox.ts tras un PATCH
+-- del portal) — `changed_by` solo se conoce en el segundo caso. Se crea LAZY en runtime
+-- (mismo patrón que documents/zonas) — está aquí solo como documentación.
+CREATE TABLE IF NOT EXISTS estado_producto_historial (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  sub_item_id   INTEGER NOT NULL,        -- proyectos_sub item id
+  proyecto_id   INTEGER NOT NULL,        -- parent_item_id, para listar por proyecto sin join
+  estado_previo TEXT,
+  estado_nuevo  TEXT NOT NULL,
+  changed_at    TEXT NOT NULL,           -- ISO, server-side (now())
+  changed_by    TEXT,                    -- email del viewer; NULL si vino de Monday/reconcile
+  comentario    TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_estado_historial_proyecto ON estado_producto_historial(proyecto_id);
+CREATE INDEX IF NOT EXISTS idx_estado_historial_sub ON estado_producto_historial(sub_item_id);

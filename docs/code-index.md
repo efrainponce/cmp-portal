@@ -52,7 +52,8 @@ scoping de renglones de `worker/lib/dal.ts`.
 - [worker/lib/http.ts](worker/lib/http.ts) — Helper mínimo compartido por rutas (statusCode responses). Exports: jsonStatus.
 - [worker/lib/inventory.ts](worker/lib/inventory.ts) — Inventario DAL + validación (feature D1 nativa, no espejado de Monday). Exports: InventoryError, listWarehouses, listMovements, listStock.
 - [worker/lib/monday.ts](worker/lib/monday.ts) — Cliente GraphQL thin de Monday.com (API 2024-10). Exports: MondayCol, MondayItem, gql, ItemsPage.
-- [worker/lib/notify.ts](worker/lib/notify.ts) — Emisor best-effort del centro de notificaciones (idempotente por dedupe_key). Exports: emitNotification, resolveRecipients, maybeEmitStageChange.
+- [worker/lib/notify.ts](worker/lib/notify.ts) — Emisor best-effort del centro de notificaciones (idempotente por dedupe_key). Exports: emitNotification, resolveRecipients, maybeEmitStageChange, statusIndex.
+- [worker/lib/estadoProducto.ts](worker/lib/estadoProducto.ts) — Historial de "Estado del producto" (proyectos_sub, tab Ejecución) en D1 en vez de una columna de fecha por estado; notifica Incidencia/Retraso. Exports: maybeLogProductoStatus, logProductoStatusFromPortalWrite, listEstadoHistorial.
 - [worker/lib/outbox.ts](worker/lib/outbox.ts) — Write path optimista: D1 mirror primero, Monday async vía waitUntil + echo. Exports: OutboxError, submitWrite, flushOutbox.
 - [worker/lib/quoteVersions.ts](worker/lib/quoteVersions.ts) — Versiones de cotización: vigente siempre es primera subitem, borradores/snapshots para histórico. Exports: QuoteVersionError, listVersions, recordFirstVersion, esDraftVigente.
 - [worker/lib/documents.ts](worker/lib/documents.ts) — Documentos del portal: crea/lista/firma sobre D1+R2, snapshot de datos y portón de integridad SHA-256. Exports: createDocument, listDocuments, documentPdf, signDocument, DocumentError.
@@ -126,12 +127,13 @@ scoping de renglones de `worker/lib/dal.ts`.
 - [src/lib/embellecimiento.ts](src/lib/embellecimiento.ts) — Re-export de shared/embellecimiento (parse/serialize por zona). Exports: (re-exports).
 - [src/lib/format.ts](src/lib/format.ts) — Helpers de formato compartidos por renderers y indicators. Exports: isMoneyTitle, fmtMoney, fmtSyncAgo.
 - [src/lib/groupBy.ts](src/lib/groupBy.ts) — Agrupa items por valor de columna status/dropdown (con labels). Exports: ColumnGroup, groupByColumn.
+- [src/lib/estadoProductoBuckets.ts](src/lib/estadoProductoBuckets.ts) — Agrupa los 11 labels de "Estado del producto" en buckets de avance para la batería del tab Ejecución (lógica pura, testeada). Exports: batteryFromSubitems, batteryFromMirrorText, ESTADO_PRODUCTO_ORDER.
 - [src/lib/impersonation.ts](src/lib/impersonation.ts) — Admin "ver como": target email persiste en localStorage. Exports: getImpersonateTarget, startImpersonation, stopImpersonation.
 - [src/lib/inventoryApi.ts](src/lib/inventoryApi.ts) — Cliente fetch para /api/inventario/* (feature D1 nativa). Exports: (tipos), getWarehouses, getStock, createMovement.
 - [src/lib/documentsApi.ts](src/lib/documentsApi.ts) — Cliente de /api/documents* (generar, listar, firmar, URL del PDF). Exports: listDocuments, createDocument, signDocument, documentPdfUrl.
 - [src/lib/notificationsApi.ts](src/lib/notificationsApi.ts) — Cliente + hook del centro de notificaciones (polling ETag 12s, optimista). Exports: markNotificationRead, markAllNotificationsRead, useNotifications.
 - [src/lib/mockFallback.ts](src/lib/mockFallback.ts) — Fallback offline-only para que board Oportunidades demo sin API. Exports: mockBoardMeta, mockPatch, mockList, mockItemDetail.
-- [src/lib/projectStages.ts](src/lib/projectStages.ts) — Config de los 3 accesos Proyectos (post-venta: Tallas, OC, Logística). Exports: ProjectBoardKey, ProjectBoardConfig, PROJECT_STATUS_ORDER, PROJECT_BOARDS.
+- [src/lib/projectStages.ts](src/lib/projectStages.ts) — Config de los 4 accesos Proyectos (post-venta: Tallas, OC, Ejecución, Logística). Exports: ProjectBoardKey, ProjectBoardConfig, PROJECT_STATUS_ORDER, PROJECT_BOARDS.
 - [src/lib/routing.ts](src/lib/routing.ts) — Ruteo mínimo por History API (sin react-router, deep links). Exports: useRoute.
 - [src/lib/statusValue.ts](src/lib/statusValue.ts) — Monday status-type columns: parse value {index, post_id, ...}. Exports: statusIndex.
 - [src/lib/syncStatus.ts](src/lib/syncStatus.ts) — Board-list header: "actualizado hace X min" (item.updated_at de Monday). Exports: lastMondayUpdateFromItems.
@@ -147,6 +149,7 @@ scoping de renglones de `worker/lib/dal.ts`.
 - [src/components/notifications/NotificationBell.tsx](src/components/notifications/NotificationBell.tsx) — Campana con badge (popover desktop / hoja móvil), vive en Sidebar + MobileTopBar. Exports: NotificationBell.
 - [src/components/notifications/NotificationCenter.tsx](src/components/notifications/NotificationCenter.tsx) — Panel de 2 bandejas (Importantes/Actualizaciones), deep-link al drawer. Exports: NotificationCenter.
 - [src/components/board/BoardStatus.tsx](src/components/board/BoardStatus.tsx) — Loading/denied/offline states compartidos. Exports: BoardStatus.
+- [src/components/board/ProgressBattery.tsx](src/components/board/ProgressBattery.tsx) — Barra segmentada de avance (tab Ejecución + lista): compact para fila de lista, full con leyenda para el header del drawer. Exports: ProgressBattery.
 - [src/components/board/BoardTable.tsx](src/components/board/BoardTable.tsx) — Tabla genérica estilo Monday. Exports: BoardTable.
 - [src/components/board/PaymentRequestButton.tsx](src/components/board/PaymentRequestButton.tsx) — Botón POST solicitud pago a Monday item. Exports: PaymentRequestButton.
 - [src/components/board/SyncIndicator.tsx](src/components/board/SyncIndicator.tsx) — Indicador "sincronizado hace X min". Exports: SyncIndicator.
@@ -202,7 +205,7 @@ scoping de renglones de `worker/lib/dal.ts`.
 - [src/boards/oportunidades/EditPersonaModal.tsx](src/boards/oportunidades/EditPersonaModal.tsx) — Reasigna Vendedor o Comprador de Oportunidad. Exports: EditPersonaModal.
 - [src/boards/oportunidades/OportunidadesBoard.tsx](src/boards/oportunidades/OportunidadesBoard.tsx) — Orquestador de vistas de Oportunidades (stages + drawer). Exports: OportunidadesBoard.
 - [src/boards/oportunidades/OpportunityDrawer.tsx](src/boards/oportunidades/OpportunityDrawer.tsx) — Drawer compartido fullscreen de detalle + tabs por role. Exports: OpportunityDrawer.
-- [src/boards/oportunidades/ProyectoSection.tsx](src/boards/oportunidades/ProyectoSection.tsx) — Sección Proyecto compartida por tabs Tallas y OC. Exports: P_SHEET_LINK, P_OC_CLIENTE.
+- [src/boards/oportunidades/ProyectoSection.tsx](src/boards/oportunidades/ProyectoSection.tsx) — Sección Proyecto compartida por tabs Tallas, OC y Ejecución. Exports: P_SHEET_LINK, P_OC_CLIENTE, EjecucionSection, ESTADO_PRODUCTO_COLORS.
 - [src/boards/oportunidades/StageBoard.tsx](src/boards/oportunidades/StageBoard.tsx) — Wrapper genérico para boards de etapa (Oportunidades, Costeo, Validación, etc.). Exports: StageBoard.
 - [src/boards/oportunidades/StageBoardList.tsx](src/boards/oportunidades/StageBoardList.tsx) — Lista compartida agrupada por etapa + búsqueda. Exports: StageBoardList.
 

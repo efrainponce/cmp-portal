@@ -62,3 +62,29 @@ export const PROJECT_STATUS_BOARD_KEY: Record<string, string> = {
   '2': 'ordenescompra',
   '3': 'logistica', '1': 'logistica',
 };
+
+// Labels de `color_mm0hqf79` "Estado del producto" (board proyectos_sub, líneas
+// producto+color+talla del Proyecto) — copiados de shared/column-meta.gen.ts
+// (introspectado), no fabricados. Mismo motivo que PROJECT_STATUS_LABELS: el worker
+// no puede importar column-meta.gen.ts como fuente de labels de negocio.
+export const PRODUCT_STATUS_LABELS: Record<string, string> = {
+  '0': 'Con vendedor para entrega cliente',
+  '1': 'En CMP para embellecer',
+  '2': 'En embellecimiento',
+  '3': 'En CMP para entrega cliente',
+  '4': 'En produccion',
+  '5': 'OC Proveedor lista',
+  '6': 'Entregado',
+  '7': 'Incidencia/Retraso',
+  '8': 'OC Proveedor enviada',
+  '9': 'Pendiente OC al Prov',
+  '10': 'En tránsito',
+};
+
+// Cuando una línea producto+talla del Proyecto (proyectos_sub) llega a un
+// `color_mm0hqf79`, ¿a quién se le notifica? Solo Incidencia/Retraso dispara aviso —
+// el resto de transiciones solo alimenta el historial (worker/lib/estadoProducto.ts),
+// no el centro de notificaciones (serían demasiadas por línea+talla).
+export const PRODUCT_STATUS_NOTIFY: Record<string, StageNotifyEntry> = {
+  'Incidencia/Retraso': { selectors: ['owner', 'role:compras'], severity: 'importante' },
+};

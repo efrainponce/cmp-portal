@@ -13,6 +13,7 @@ import { refetchItem, upsertItem, confirmOutboxEcho } from '../sync';
 import { getItem } from './dal';
 import type { RawCol } from './serialize';
 import type { MondayItem, MondayCol } from './monday';
+import { logProductoStatusFromPortalWrite } from './estadoProducto';
 
 export class OutboxError extends Error {
   status: number;
@@ -88,6 +89,25 @@ export async function submitWrite(
   const canonCols: Record<string, string> = {};
   for (const colId of colIds) canonCols[colId] = canonValue(types[colId], cols[colId]);
   const contentHash = writeHash(canonCols, types);
+
+  // Historial de "Estado del producto" (worker/lib/estadoProducto.ts) — se registra
+  // AQUÍ, antes del merge optimista de arriba, porque `row` todavía trae el label
+  // viejo real; una vez mergeado, el mirror pierde el shape {index} que el diff de
+  // upsertItem necesita (ver notas del archivo). Solo aplica al board de líneas del
+  // Proyecto — el resto de columnas/boards no llevan historial.
+  if (slug === 'proyectos_sub' && 'color_mm0hqf79' in cols && row.parent_item_id) {
+    const rawCols: RawCol[] = JSON.parse(row.columns || '[]');
+    const oldLabel = rawCols.find(c => c.id === 'color_mm0hqf79')?.text ?? null;
+    await logProductoStatusFromPortalWrite(env, {
+      proyectosBoardId: BOARDS.proyectos.id,
+      proyectoId: row.parent_item_id,
+      subItemId: itemId,
+      oldLabel,
+      newLabel: cols['color_mm0hqf79'],
+      actorEmail: viewer.email,
+      comentario: cols['text_mm20gzsb'],
+    });
+  }
 
   await env.DB
     .prepare(

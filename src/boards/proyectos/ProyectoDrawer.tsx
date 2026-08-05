@@ -15,9 +15,9 @@ import { useIsMobile } from '../../lib/useIsMobile';
 import { ActualizacionesTab } from '../oportunidades/tabs/ActualizacionesTab';
 import { EmptyDocTab } from '../oportunidades/tabs/EmptyDocTab';
 import { OcContratoSection } from '../oportunidades/tabs/DocumentacionTab';
-import { ProyectoTallasSection, ProyectoOrdenesSection, type ProyectoState } from '../oportunidades/ProyectoSection';
+import { ProyectoTallasSection, ProyectoOrdenesSection, EjecucionSection, type ProyectoState } from '../oportunidades/ProyectoSection';
 
-type ProyectoTabKey = 'actualizaciones' | 'documentacion' | 'tallas' | 'ordenes' | 'logistica';
+type ProyectoTabKey = 'actualizaciones' | 'documentacion' | 'tallas' | 'ordenes' | 'ejecucion' | 'logistica';
 
 const FOLIO_COL = 'pulse_id_mm1a12gy';
 const INSTITUCION_COL = 'lookup_mm1dwn6';
@@ -29,6 +29,7 @@ const TABS: { key: ProyectoTabKey; label: string }[] = [
   { key: 'documentacion', label: 'Documentación' },
   { key: 'tallas', label: 'Tallas' },
   { key: 'ordenes', label: 'Órdenes de compra' },
+  { key: 'ejecucion', label: 'Ejecución' },
   { key: 'logistica', label: 'Logística' },
 ];
 
@@ -153,6 +154,11 @@ export function ProyectoDrawer({ id, backLabel, defaultTab, onBack, onOpenOportu
       {tab === 'ordenes' && (
         <div style={{ padding: '24px 32px 40px', maxWidth: 920, width: '100%', boxSizing: 'border-box' }}>
           <ProyectoOrdenesSection state={proyectoState} oppId={oportunidadId} />
+        </div>
+      )}
+      {tab === 'ejecucion' && (
+        <div style={{ padding: '24px 32px 40px', maxWidth: 920, width: '100%', boxSizing: 'border-box' }}>
+          <EjecucionSection state={proyectoState} oppId={oportunidadId} />
         </div>
       )}
       {tab === 'logistica' && (

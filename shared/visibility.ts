@@ -141,8 +141,8 @@ export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
 
   proyectos_sub: {
     ...vis(['name', 'text_mm0hs17x', 'text_mm0h4a1c',
-      'text_mm1antcb', 'text_mm1a5yyq', 'text_mm0hyrfs', 'color_mm0hqf79',
-      'text_mm20gzsb', 'text_mm52x1bx', 'text_mm56dbkm', 'text_mm0mzet0',
+      'text_mm1antcb', 'text_mm1a5yyq', 'text_mm0hyrfs',
+      'text_mm52x1bx', 'text_mm56dbkm', 'text_mm0mzet0',
       'date_mm20xdtm', 'date_mm20fq6t', 'date_mm20y5t3', 'date_mm21p1ex',
       'date_mm217ms0', 'date_mm21w46m', 'date_mm20t4kr', 'date_mm21swc5',
       'long_text_mm1cqh8e', 'long_text_mm1cyqts', 'long_text_mm1c59cg',
@@ -154,6 +154,13 @@ export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
     // solo lectura: son texto libre que viene del catálogo de cmp-tallas y un
     // typo aquí no calzaría con el Sheet/Monday.
     numeric_mm0hj2q4: { vis: V, w: V },
+    // Estado del producto + su comentario — tab Ejecución del Proyecto (2026-08-05).
+    // El vendedor VE el avance (batería/chips) pero no lo cambia; compras/admin son
+    // quienes reciben/embarcan y actualizan el estado. Cada cambio queda en
+    // estado_producto_historial (worker/lib/estadoProducto.ts) — ver ahí antes de
+    // agregar más columnas de fecha en Monday por cada estado nuevo.
+    color_mm0hqf79: { vis: V, w: AC },
+    text_mm20gzsb: { vis: V, w: AC },
     ...vis(['numeric_mm1dj4fp', 'numeric_mm1dmsaz', 'text_mm1gdsvg',
       'board_relation_mm1cfgv5', 'lookup_mm1d2y9b', 'lookup_mm2145g',
       'multiple_person_mm4pc2ns', 'text_mm4ph3a9', 'text_mm4pywyx',

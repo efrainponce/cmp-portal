@@ -108,7 +108,7 @@ export async function resolveRecipients(
   }
 }
 
-function statusIndex(columnsJson: string, colId: string): string | null {
+export function statusIndex(columnsJson: string, colId: string): string | null {
   try {
     const cols: RawCol[] = JSON.parse(columnsJson || '[]');
     const col = cols.find(c => c.id === colId);

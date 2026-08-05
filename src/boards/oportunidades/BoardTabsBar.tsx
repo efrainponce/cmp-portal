@@ -6,7 +6,7 @@ import { useIsMobile } from '../../lib/useIsMobile';
 
 export type DrawerTabKey =
   | 'actualizaciones' | 'cotizacion' | 'embellecimientos' | 'nuevosproductos'
-  | 'documentacion' | 'tallas' | 'ordenes' | 'logistica';
+  | 'documentacion' | 'tallas' | 'ordenes' | 'ejecucion' | 'logistica';
 
 interface Props {
   active: DrawerTabKey;
@@ -30,6 +30,7 @@ const POSTVENTA_TABS: { key: DrawerTabKey; label: string }[] = [
 
 const PROYECTOS_TABS: { key: DrawerTabKey; label: string }[] = [
   { key: 'ordenes', label: 'Órdenes de compra' },
+  { key: 'ejecucion', label: 'Ejecución' },
   { key: 'logistica', label: 'Logística' },
 ];
 

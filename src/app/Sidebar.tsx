@@ -4,12 +4,12 @@ import { UserChip } from './UserChip';
 import { useMe } from '../lib/useMe';
 import logo from '../assets/logo.webp';
 import {
-  IconOportunidades, IconGlobe, IconCosteo, IconValidacion, IconDocTallas, IconOrdenesCompra, IconLogistica,
+  IconOportunidades, IconGlobe, IconCosteo, IconValidacion, IconDocTallas, IconOrdenesCompra, IconEjecucion, IconLogistica,
   IconProductos, IconCuentas, IconClientes, IconInventario, IconChevronLeft, IconChevronRight, IconSettings,
 } from '../components/icons';
 
 export type BoardKey =
-  | 'oportunidades' | 'oportunidades_web' | 'costeo' | 'validacion' | 'doctallas' | 'ordenescompra' | 'logistica'
+  | 'oportunidades' | 'oportunidades_web' | 'costeo' | 'validacion' | 'doctallas' | 'ordenescompra' | 'ejecucion' | 'logistica'
   | 'productos' | 'instituciones' | 'contactos' | 'proveedores' | 'inventario' | 'settings';
 
 type NavIcon = (p: { style?: React.CSSProperties }) => React.ReactElement;
@@ -27,6 +27,7 @@ const VENTAS_ITEMS: NavItemConfig[] = [
 const PROYECTOS_ITEMS: NavItemConfig[] = [
   { key: 'doctallas', label: 'Documentación y Tallas', icon: IconDocTallas },
   { key: 'ordenescompra', label: 'Órdenes de Compra', icon: IconOrdenesCompra },
+  { key: 'ejecucion', label: 'Ejecución', icon: IconEjecucion },
   { key: 'logistica', label: 'Logística', icon: IconLogistica },
 ];
 

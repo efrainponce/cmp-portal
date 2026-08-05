@@ -173,6 +173,19 @@ Manga der., `long_text_mm1cyq91` Manga izq., `long_text_mm1c6ya0` Etiq. fabrican
 🔒: Costo Distr. C/U `numeric_mm1dj4fp`, Descuento, Moneda, Proveedor (+mirrors Razón
 Social / Correo Proveedor) — el vendedor no necesita saber el proveedor. ❓ confirmar.
 
+**Tab Ejecución (2026-08-05)**: `color_mm0hqf79` (Estado del producto, 11 labels —
+ver `shared/notifications.ts` PRODUCT_STATUS_LABELS) y `text_mm20gzsb` (Comentario de
+Estado) pasan a **escribibles por compras/admin** (`w: AC`) desde el tab Ejecución del
+Proyecto — antes solo se leían. Cada cambio queda en la tabla D1
+`estado_producto_historial` (`worker/lib/estadoProducto.ts`), NO en una columna de
+fecha nueva de Monday — las 6 columnas de fecha ad-hoc que ya existían
+(`date_mm20xdtm`, `date_mm20fq6t`, `date_mm20y5t3`, `date_mm21p1ex`, `date_mm217ms0`,
+`date_mm21w46m`, `date_mm20t4kr`, `date_mm21swc5`) se dejan de escalar por pedido de
+Efraín ("no necesito una columna por cada una"). El mirror `lookup_mm20g4n6` (Estado
+de productos, `sumType: allStatuses`) del board Proyectos sigue siendo la fuente para
+la "batería" agregada — el portal la recalcula del lado propio (`ProgressBattery.tsx`)
+en vez de parsear el widget nativo de Monday.
+
 ## Productos (18395657591) — catalog
 
 🔒 always: Costo Distribuidor `numeric_mkzpx7eb`, Descuento Distribuidor

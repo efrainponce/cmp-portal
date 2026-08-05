@@ -175,6 +175,21 @@ export interface CapturarTallasResponse {
   omitted: number;
 }
 
+// GET /api/proyectos/:id/estado-historial — timeline de "Estado del producto" por
+// línea (tab Ejecución), worker/lib/estadoProducto.ts. changedBy null = cambio hecho
+// directo en Monday (webhook/reconcile), sin autor conocido del lado del portal.
+export interface EstadoHistorialEntryDTO {
+  subItemId: string;
+  estadoPrevio: string | null;
+  estadoNuevo: string;
+  changedAt: string;
+  changedBy: string | null;
+  comentario: string | null;
+}
+export interface EstadoHistorialResponse {
+  historial: EstadoHistorialEntryDTO[];
+}
+
 // Monday item updates (comments) — read/posted live, never mirrored to D1.
 // attachments carry no url: it's a presigned S3 link that expires in ~1h, so
 // the frontend resolves a fresh one on demand via the attachment proxy route
