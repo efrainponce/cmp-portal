@@ -21,11 +21,16 @@ const OPP_SUB_COSTO = 'numeric_mm0bph99';
 const OPP_SUB_MONEDA = 'lookup_mm11t8gj';
 const OPP_SUB_DESCUENTO = 'numeric_mkzn2q51';
 const OPP_SUB_UNIDAD = 'lookup_mm0w4f4v';
+const OPP_SUB_PRODUCTO_REL = 'board_relation_mkzmafgp';
+
+// Productos (18395657591) — Proveedor asignado por Compras en Costeo
+// (worker/lib/costeo.ts PRODUCTO_PROVEEDOR_COL, Efraín 2026-08-04: "no puede
+// pasar si no tiene proveedor"), copiado de aquí al subitem del Proyecto.
+const PRODUCTO_PROVEEDOR_COL = 'board_relation_mm1cwqky';
 
 // Proyecto — subitems (proyectos_sub, 18395657609): mismas columnas que ya
-// escribe POST /api/proyectos/:id/lineas, más costeo copiado de la línea de
-// cotización. Proveedor (board_relation_mm1cfgv5) se deja sin asignar — igual
-// que ya hace ese endpoint hoy; Compras lo pone en Monday antes de la OC.
+// escribe POST /api/proyectos/:id/lineas, más costeo y proveedor copiados de
+// la línea de cotización / su producto de catálogo.
 const SUB_PRODUCTO = 'text_mm0hs17x';
 const SUB_SKU = 'text_mm0hyrfs';
 const SUB_COLOR = 'text_mm0h4a1c';
@@ -35,6 +40,7 @@ const SUB_COSTO = 'numeric_mm1dj4fp';
 const SUB_MONEDA = 'text_mm1gdsvg';
 const SUB_DESCUENTO = 'numeric_mm1dmsaz';
 const SUB_UNIDAD = 'text_mm56dbkm';
+const SUB_PROVEEDOR = 'board_relation_mm1cfgv5';
 
 function colsOf(row: MirrorItem): Map<string, RawCol> {
   try {
@@ -65,19 +71,35 @@ export async function resolveOportunidadId(env: Env, viewer: Identity, proyectoI
   return oppId;
 }
 
-export interface CosteoEnrichment { costo?: string; moneda?: string; descuento?: string; unidad?: string }
+export interface CosteoEnrichment {
+  costo?: string; moneda?: string; descuento?: string; unidad?: string;
+  proveedorId?: number;
+}
 
 async function fetchCosteoEnrichment(env: Env, oppId: number, viewer: Identity): Promise<Map<number, CosteoEnrichment>> {
   const lineas = await childrenOf(env, 'oportunidades', oppId, viewer);
   const map = new Map<number, CosteoEnrichment>();
+  // Cache por producto de catálogo — varias líneas pueden compartir SKU, y así
+  // solo se pide una vez el Proveedor de cada uno (mismo patrón que
+  // productoCache en worker/lib/costeo.ts checkValidacion).
+  const proveedorCache = new Map<number, number | null>();
   for (const row of lineas) {
     const cols = colsOf(row);
-    map.set(row.item_id, {
+    const enr: CosteoEnrichment = {
       costo: cols.get(OPP_SUB_COSTO)?.text || undefined,
       moneda: cols.get(OPP_SUB_MONEDA)?.text || undefined,
       descuento: cols.get(OPP_SUB_DESCUENTO)?.text || undefined,
       unidad: cols.get(OPP_SUB_UNIDAD)?.text || undefined,
-    });
+    };
+    const productoId = linkedItemId(row, OPP_SUB_PRODUCTO_REL);
+    if (productoId !== null) {
+      if (!proveedorCache.has(productoId)) {
+        const producto = await getItem(env, 'productos', productoId, viewer);
+        proveedorCache.set(productoId, producto ? linkedItemId(producto, PRODUCTO_PROVEEDOR_COL) : null);
+      }
+      enr.proveedorId = proveedorCache.get(productoId) ?? undefined;
+    }
+    map.set(row.item_id, enr);
   }
   return map;
 }
@@ -114,6 +136,7 @@ export function buildTallaColumns(r: TallaBoxInput, enr: CosteoEnrichment | unde
   if (enr?.moneda) cols[SUB_MONEDA] = enr.moneda;
   if (enr?.descuento) cols[SUB_DESCUENTO] = enr.descuento;
   if (enr?.unidad) cols[SUB_UNIDAD] = enr.unidad;
+  if (enr?.proveedorId != null) cols[SUB_PROVEEDOR] = { item_ids: [enr.proveedorId] };
   return cols;
 }
 

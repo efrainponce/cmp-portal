@@ -54,6 +54,11 @@ export const CATALOGO_TALLAS_COL = 'text_mm5v6jhj';
 // producto, no de la cotización) — Compras la marca y eso desbloquea "Mandar a
 // Validación de costeo" (worker/lib/costeo.ts checkValidacion).
 export const PRODUCTO_CONFIRM_COL = 'boolean_mm5cqtjs';
+// Proveedor del producto — mismo patrón que Tallas: vive en el catálogo,
+// Compras lo asigna en Costeo (LineDetailPanel) y bloquea "Mandar a
+// Validación de costeo" mientras falte (Efraín, 2026-08-04). Se copia al
+// Proyecto al capturar tallas (worker/lib/proyectoTallas.ts).
+export const PRODUCTO_PROVEEDOR_COL = 'board_relation_mm1cwqky';
 export const COLOR_COL = 'text_mm07s2mg';
 export const COLORES_DISP_COL = 'lookup_mkznm0h3';    // mirror: colores disponibles del producto ligado (asíncrono)
 export const PRODUCTO_COLOR_DROPDOWN_COL = 'dropdown_mkztty4b'; // Color del producto en el catálogo — misma
@@ -341,14 +346,24 @@ export function productoTallasOk(row: ItemDTO, catalog: ItemDTO[]): boolean {
   return tallas !== '' && tallas.toLowerCase() !== 'error';
 }
 
-// Ambos warnings de Costeo ("Sin confirmar" / "Sin tallas") son, para quien
-// vende, la misma pregunta: "¿por qué no puedo mandar a validación?". Un
-// helper aparte deja mostrar un aviso explícito y prominente encima del
-// nombre del producto en vez de que se pierda mezclado con el resto de
-// warnings al fondo de la fila (Efraín, 2026-08-04: "no dice porque no lo
-// puedes mandar a costeo").
+// Espejo del check del server (worker/lib/costeo.ts checkValidacion): el
+// producto de catálogo debe traer Proveedor asignado.
+export function productoProveedorOk(row: ItemDTO, catalog: ItemDTO[]): boolean {
+  const id = linkedProductoId(row);
+  if (id == null) return false;
+  const catalogItem = catalogIndex(catalog).byId.get(id);
+  return !!catalogItem?.cols[PRODUCTO_PROVEEDOR_COL]?.text?.trim();
+}
+
+// Ambos warnings de Costeo ("Sin confirmar" / "Sin tallas" / "Sin proveedor")
+// son, para quien vende, la misma pregunta: "¿por qué no puedo mandar a
+// validación?". Un helper aparte deja mostrar un aviso explícito y prominente
+// encima del nombre del producto en vez de que se pierda mezclado con el
+// resto de warnings al fondo de la fila (Efraín, 2026-08-04: "no dice porque
+// no lo puedes mandar a costeo").
 export function needsConfirmarTallas(row: ItemDTO, variant: 'venta' | 'costeo', catalog: ItemDTO[]): boolean {
-  return variant === 'costeo' && (!productoConfirmado(row, catalog) || !productoTallasOk(row, catalog));
+  return variant === 'costeo'
+    && (!productoConfirmado(row, catalog) || !productoTallasOk(row, catalog) || !productoProveedorOk(row, catalog));
 }
 
 // Moneda efectiva de una línea: la capturada en la línea gana; si está vacía se
@@ -510,6 +525,12 @@ export function getLineWarnings(
   // en el server, reflejado aquí para que el aviso viva en la línea.
   if (variant === 'costeo' && !productoTallasOk(product, catalog)) {
     warnings.push('Sin tallas');
+  }
+
+  // En costeo: el catálogo debe traer proveedor asignado — mismo check que
+  // checkValidacion en el server (Efraín, 2026-08-04).
+  if (variant === 'costeo' && !productoProveedorOk(product, catalog)) {
+    warnings.push('Sin proveedor');
   }
 
   // En costeo: si el proveedor cotizó en otra moneda, el Valor de Conversión

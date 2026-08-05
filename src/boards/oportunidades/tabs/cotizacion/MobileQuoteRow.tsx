@@ -12,7 +12,7 @@ import { LineDetailPanel } from './LineDetailPanel';
 import { ProductPicker, type ProductoChoice } from '../../../../components/forms/ProductPicker';
 import {
   type GridCol, type RowEditState, marginColor, suggestedPrecio23, numFrom, displayProducto, cellValue,
-  inputStyle, valueChipStyle, ETAPA_COSTEO_COLORS, getLineWarnings, needsConfirmarTallas,
+  inputStyle, valueChipStyle, ETAPA_COSTEO_COLORS, getLineWarnings, needsConfirmarTallas, productoProveedorOk,
   ETAPA_COSTEO_COL, SUGERIDO_COL, MARGEN_COL,
   PRODUCTO_COL, PRODUCTO_TXT_COL, PRODUCTO_REL_COL, COLOR_COL,
   EMB_STATUS_COL, EMB_LABEL_CON, EMB_LABEL_SIN,
@@ -30,6 +30,7 @@ function MobileQuoteRowInner({
   onEdit, onBlur, onColorChange, onEmbellecimientoChange, onStatusChange, onProductoPick,
   expanded, onToggleExpand, canConfirm, confirmSaving, confirmError, onToggleConfirm,
   tallasSaving, tallasError, onEditTallas,
+  proveedorSaving, proveedorError, onEditProveedor,
   canDelete, deleting, onDeleteLine, canAjustar, onAjustarLinea,
 }: {
   product: ItemDTO;
@@ -60,6 +61,9 @@ function MobileQuoteRowInner({
   tallasSaving: boolean;
   tallasError?: string;
   onEditTallas: (productoId: number, next: string) => void;
+  proveedorSaving: boolean;
+  proveedorError?: string;
+  onEditProveedor: (productoId: number, proveedorId: string, proveedorNombre: string) => void;
   /** Mismo gate que el botón "✕" de desktop (canAddLines). */
   canDelete: boolean;
   deleting: boolean;
@@ -226,13 +230,14 @@ function MobileQuoteRowInner({
   // Aparte del resto: se pinta como texto explícito arriba del nombre del
   // producto en vez de perderse mezclado en el badge genérico de warnings.
   const needsTallas = !precioOnly && needsConfirmarTallas(p, variant, catalog);
-  const otherWarnings = lineWarnings.filter((w) => w !== 'Sin confirmar' && w !== 'Sin tallas');
+  const needsProveedor = needsTallas && !productoProveedorOk(p, catalog);
+  const otherWarnings = lineWarnings.filter((w) => w !== 'Sin confirmar' && w !== 'Sin tallas' && w !== 'Sin proveedor');
 
   return (
     <div style={{ borderTop: '1px solid var(--border-subtle)', background: lineWarnings.length > 0 ? '#fdf1f2' : '#fff', padding: '14px' }}>
       {needsTallas && (
         <div style={{ font: '700 11px \'Inter\', sans-serif', color: '#ce3048', marginBottom: 6 }}>
-          ⚠ HAY QUE CONFIRMAR TALLAS
+          ⚠ HAY QUE CONFIRMAR TALLAS{needsProveedor ? ' Y PROVEEDOR' : ''}
         </div>
       )}
       {otherWarnings.length > 0 && (
@@ -321,6 +326,9 @@ function MobileQuoteRowInner({
             tallasSaving={tallasSaving}
             tallasError={tallasError}
             onEditTallas={onEditTallas}
+            proveedorSaving={proveedorSaving}
+            proveedorError={proveedorError}
+            onEditProveedor={onEditProveedor}
           />
         </div>
       )}

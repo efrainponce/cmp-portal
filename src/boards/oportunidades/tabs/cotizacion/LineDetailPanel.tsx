@@ -14,11 +14,13 @@
 // viviendo en EmbellecimientosTab.
 import { useEffect, useState } from 'react';
 import type { ItemDTO } from '../../../../lib/api';
-import { getZoneImages } from '../../../../lib/api';
+import { getZoneImages, usePoll } from '../../../../lib/api';
 import { StatusBadge } from '../../../../components/core/Badges';
+import { SearchInput } from '../../../../components/forms/SearchInput';
 import { EMB_STATUS_COL, EMB_LABEL_CON, explodeEmbellecimiento } from '../../../../lib/embellecimiento';
 import {
-  DESCRIPCION_COL, TALLAS_COL, PRODUCTO_CONFIRM_COL, CATALOGO_DESCRIPCION_COL, CATALOGO_TALLAS_COL,
+  DESCRIPCION_COL, TALLAS_COL, PRODUCTO_CONFIRM_COL, PRODUCTO_PROVEEDOR_COL,
+  CATALOGO_DESCRIPCION_COL, CATALOGO_TALLAS_COL,
   linkedProductoId, catalogIndex,
 } from './gridMeta';
 
@@ -73,9 +75,67 @@ function EmbellecimientoDetail({ product }: { product: ItemDTO }) {
   );
 }
 
+/** Buscador + lista para asignar Proveedor al producto de catálogo — mismo
+ * patrón que AgregarLineaModal.tsx (proyectos), pero editando sobre el
+ * catálogo (board_relation_mm1cwqky), no sobre una línea nueva del Proyecto.
+ * Bloquea "Mandar a Validación de costeo" mientras falte (Efraín, 2026-08-04). */
+function ProveedorField({
+  productoId, current, saving, error, onEditProveedor,
+}: {
+  productoId: number;
+  current: string;
+  saving: boolean;
+  error?: string;
+  onEditProveedor: (productoId: number, proveedorId: string, proveedorNombre: string) => void;
+}) {
+  const [picking, setPicking] = useState(false);
+  const [q, setQ] = useState('');
+  const { data } = usePoll('proveedores', picking ? q : '');
+  const opciones = picking ? (data?.items ?? []) : [];
+
+  if (!picking) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+        <span style={{ font: 'var(--text-label)', color: current ? 'var(--ink)' : 'var(--status-perdida)' }}>
+          {current || 'Sin proveedor asignado'}
+        </span>
+        <span onClick={() => setPicking(true)} style={{ cursor: 'pointer', color: 'var(--accent)', font: 'var(--text-caption)' }}>
+          {current ? 'Cambiar' : 'Asignar'}
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <SearchInput value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar proveedor…" style={{ maxWidth: 'none' }} />
+      <div style={{ maxHeight: 140, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', marginTop: 6 }}>
+        {opciones.length === 0 ? (
+          <div style={{ padding: 10, font: 'var(--text-label)', color: 'var(--ink-quiet)' }}>Sin resultados.</div>
+        ) : opciones.map((p) => (
+          <div
+            key={p.id}
+            className="row-hover"
+            onClick={() => { onEditProveedor(productoId, p.id, p.name); setPicking(false); setQ(''); }}
+            style={{ padding: '8px 12px', borderBottom: '1px solid var(--border-subtle)', font: 'var(--text-label)', color: 'var(--ink)', cursor: 'pointer' }}
+          >
+            {p.name}
+          </div>
+        ))}
+      </div>
+      <span onClick={() => { setPicking(false); setQ(''); }} style={{ cursor: 'pointer', color: 'var(--ink-tertiary)', font: 'var(--text-caption)' }}>
+        Cancelar
+      </span>
+      {saving && <span style={{ font: 'var(--text-caption)', color: 'var(--ink-faint)', marginLeft: 8 }}>guardando…</span>}
+      {error && <div style={{ font: 'var(--text-caption)', color: 'var(--status-perdida)', marginTop: 2 }}>{error}</div>}
+    </div>
+  );
+}
+
 export function LineDetailPanel({
   product, catalog, variant, canConfirm, saving, error, onToggleConfirm,
   tallasSaving, tallasError, onEditTallas,
+  proveedorSaving, proveedorError, onEditProveedor,
 }: {
   product: ItemDTO;
   catalog: ItemDTO[];
@@ -87,6 +147,9 @@ export function LineDetailPanel({
   tallasSaving: boolean;
   tallasError?: string;
   onEditTallas: (productoId: number, next: string) => void;
+  proveedorSaving: boolean;
+  proveedorError?: string;
+  onEditProveedor: (productoId: number, proveedorId: string, proveedorNombre: string) => void;
 }) {
   const productoId = linkedProductoId(product);
   const catalogItem = productoId != null ? catalogIndex(catalog).byId.get(productoId) : undefined;
@@ -141,6 +204,24 @@ export function LineDetailPanel({
           </div>
         )}
       </div>
+      {variant === 'costeo' && productoId != null && (
+        <div>
+          <div style={fieldLabel}>Proveedor</div>
+          {canConfirm ? (
+            <ProveedorField
+              productoId={productoId}
+              current={catalogItem?.cols[PRODUCTO_PROVEEDOR_COL]?.text ?? ''}
+              saving={proveedorSaving}
+              error={proveedorError}
+              onEditProveedor={onEditProveedor}
+            />
+          ) : (
+            <div style={{ font: 'var(--text-label)', color: 'var(--ink-secondary)' }}>
+              {catalogItem?.cols[PRODUCTO_PROVEEDOR_COL]?.text || '—'}
+            </div>
+          )}
+        </div>
+      )}
       {variant === 'costeo' && <EmbellecimientoDetail product={product} />}
       {variant === 'costeo' && (
         productoId == null ? (

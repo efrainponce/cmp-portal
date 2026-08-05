@@ -88,4 +88,14 @@ describe('buildTallaColumns', () => {
       text_mm56dbkm: 'pieza',
     });
   });
+
+  it('copia el proveedor del producto de catálogo cuando hay match', () => {
+    const cols = buildTallaColumns(row(), { proveedorId: 123 });
+    expect(cols.board_relation_mm1cfgv5).toEqual({ item_ids: [123] });
+  });
+
+  it('sin proveedor en el catálogo no manda la columna — nunca inventa un default', () => {
+    const cols = buildTallaColumns(row(), undefined);
+    expect(cols.board_relation_mm1cfgv5).toBeUndefined();
+  });
 });

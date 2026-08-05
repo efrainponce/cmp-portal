@@ -213,6 +213,16 @@ export async function duplicarOportunidad(id: string): Promise<DuplicarOportunid
   return body;
 }
 
+/** Ganar — Etapa a "Ganada" + crea el Proyecto ligado (tallas/OC viven ahí),
+ * mismo mapeo que la automatización nativa de Monday que vivía atada a un
+ * botón (Efraín, 2026-08-05: ganar desde el portal no la disparaba). */
+export async function ganarOportunidad(id: string): Promise<{ ok: boolean; proyectoId?: string; error?: string }> {
+  const res = await apiFetch(`/oportunidades/${id}/ganar`, { method: 'POST' });
+  const body = await res.json();
+  if (!res.ok && !body.error) throw new Error('ganar failed: ' + res.status);
+  return body;
+}
+
 /** Generar cotización — cmp-tallas genera PDFs con/sin precio, manda a firma
  * (DocuSeal) y mueve la etapa a "Cotización". */
 export async function generarCotizacion(id: string): Promise<ProyectoActionResponse> {

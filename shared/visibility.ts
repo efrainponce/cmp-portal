@@ -164,7 +164,7 @@ export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
       'dropdown_mkztty4b', 'text_mkzp9428', 'text_mkzpbhb5', 'long_text_mm0xse7v',
       'dropdown_mm07pjsv'], V),
     ...vis(['numeric_mkzpx7eb', 'text_mkzp59zf', 'numeric_mm0bnkch',
-      'numeric_mm0bgd2f', 'long_text_mm1tcga0', 'board_relation_mm1cwqky',
+      'numeric_mm0bgd2f', 'long_text_mm1tcga0',
       'lookup_mm1cyy7f', 'lookup_mm1dv3jy', 'text_mkzmgvc7'], AC),
     // Tallas — lista simple ("S,M,XL" / "unitalla" / vacío), creada 2026-08-03
     // en reemplazo del JSON viejo por género (long_text_mm174q0j, retirado).
@@ -175,6 +175,12 @@ export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
     // confirma por SKU que la ficha del catálogo (Descripción/Tallas) es correcta;
     // bloquea "Mandar a Validación de costeo" (worker/lib/costeo.ts checkValidacion).
     boolean_mm5cqtjs: { vis: V, w: WAC },
+    // Proveedor — vive en AC (nunca V: "ventas cero proveedores", 2026-07-30).
+    // No era escribible desde el portal hasta ahora: Compras lo asignaba en
+    // Monday directo. Efraín, 2026-08-04: "la línea de proveedor la debe
+    // llenar compras en costeo, y no puede pasar si no tiene proveedor" — mismo
+    // patrón que Tallas/confirmación de arriba (worker/lib/costeo.ts checkValidacion).
+    board_relation_mm1cwqky: { vis: AC, w: WAC },
   },
 
   instituciones: {

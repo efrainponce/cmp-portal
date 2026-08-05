@@ -20,6 +20,7 @@ import { listVersions, duplicateVersion, restoreVersion, esDraftVigente, recordF
 import { ajustarLinea, AjusteLineaError } from '../lib/lineaAjustes';
 import { capturarTallas } from '../lib/proyectoTallas';
 import { duplicateOportunidad, DuplicateOportunidadError } from '../lib/duplicateOportunidad';
+import { ganarOportunidad, GanarOportunidadError } from '../lib/ganarOportunidad';
 import { createSubitem, addFileToColumn, fetchAssetPublicUrls, gql } from '../lib/monday';
 import { listZoneImages, uploadZoneImage, EmbellImageError } from '../lib/embellecimientoImagenes';
 import { listProposedProducts, addProposedProduct, ProposedProductError } from '../lib/productosPropuestos';
@@ -189,6 +190,25 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       if (err instanceof CosteoError) return jsonStatus({ ok: false, errors: [err.message] }, err.status);
       if (err instanceof OutboxError) return jsonStatus({ ok: false, errors: [err.message] }, err.status);
       return jsonStatus({ ok: false, errors: ['internal error'] }, 500);
+    }
+  });
+
+  // "Ganar" (Efraín, 2026-08-05): además de la Etapa, crea el Proyecto ligado
+  // con el mismo mapeo que la automatización nativa de Monday que vivía atada
+  // a un BOTÓN de esa columna (nunca al valor de Etapa) — ganar desde el
+  // portal no la disparaba y el Proyecto (tallas/OC) nunca aparecía. Hallazgo
+  // real haciendo la prueba end-to-end pedida por Efraín — ver
+  // worker/lib/ganarOportunidad.ts.
+  app.post('/api/oportunidades/:id/ganar', async c => {
+    const itemId = Number(c.req.param('id'));
+    if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
+    try {
+      const result = await ganarOportunidad(c.env, c.executionCtx, itemId, c.get('viewer'));
+      await refetchItem(c.env, BOARDS.oportunidades.id, itemId);
+      return c.json({ ok: true, proyectoId: String(result.proyectoId) });
+    } catch (err) {
+      if (err instanceof GanarOportunidadError) return jsonStatus({ ok: false, error: err.message }, err.status);
+      return jsonStatus({ ok: false, error: 'internal error' }, 500);
     }
   });
 

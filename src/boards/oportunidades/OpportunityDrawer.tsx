@@ -11,7 +11,7 @@ import { IconBack, IconEdit, IconLink } from '../../components/icons';
 import { SyncIndicator } from '../../components/board/SyncIndicator';
 import { useMe } from '../../lib/useMe';
 import {
-  useBoards, colForBoard, checkCosteo, checkValidacion, duplicarOportunidad, duplicarVersion, enviarCosteo, enviarValidacion, generarCotizacion, getItemDetail, getVersiones,
+  useBoards, colForBoard, checkCosteo, checkValidacion, duplicarOportunidad, duplicarVersion, enviarCosteo, enviarValidacion, ganarOportunidad, generarCotizacion, getItemDetail, getVersiones,
   refreshItem, restaurarVersion, patchItem, type ItemDetailDTO, type QuoteVersionDTO,
 } from '../../lib/api';
 import { statusIndex } from '../../lib/statusValue';
@@ -428,10 +428,10 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
   const onGanarOportunidad = async () => {
     setNotice(null);
     try {
-      const res = await patchItem('oportunidades', id, { deal_stage: DEAL_STAGE_LABELS['1'] });
+      const res = await ganarOportunidad(id);
       if (res.ok) {
         applyStageOptimistic('1');
-        setNotice({ kind: 'ok', title: 'Oportunidad ganada', lines: ['La etapa pasó a "Ganada".'] });
+        setNotice({ kind: 'ok', title: 'Oportunidad ganada', lines: ['La etapa pasó a "Ganada" y se creó el Proyecto.'] });
         load();
       } else {
         setNotice({ kind: 'error', title: 'No se pudo marcar como ganada:', lines: [res.error ?? 'Verifica tu conexión.'] });

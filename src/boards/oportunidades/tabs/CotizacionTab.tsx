@@ -36,7 +36,7 @@ import {
   loadHiddenCols, saveHiddenCols, gridWrapStyle,
   PRODUCTO_COL, PRODUCTO_TXT_COL, PRODUCTO_REL_COL, COLOR_COL,
   EMB_STATUS_COL, EMB_LABEL_CON, EMB_LABEL_SIN,
-  PRODUCTO_CONFIRM_COL, CATALOGO_TALLAS_COL, linkedProductoId, MONEY_COLS,
+  PRODUCTO_CONFIRM_COL, PRODUCTO_PROVEEDOR_COL, CATALOGO_TALLAS_COL, linkedProductoId, MONEY_COLS,
 } from './cotizacion/gridMeta';
 import type { ProductoChoice } from '../../../components/forms/ProductPicker';
 
@@ -224,6 +224,31 @@ export function CotizacionTab({
       setTallasError((er) => ({ ...er, [key]: e instanceof Error ? e.message : 'No se pudo guardar.' }));
     } finally {
       setTallasSaving((s) => ({ ...s, [key]: false }));
+    }
+  };
+
+  const [proveedorSaving, setProveedorSaving] = useState<Record<string, boolean>>({});
+  const [proveedorError, setProveedorError] = useState<Record<string, string | undefined>>({});
+
+  // Escribe board_relation_mm1cwqky (Proveedor) en el producto del catálogo —
+  // mismo patrón/optimismo que onEditTallas de arriba (Efraín, 2026-08-04:
+  // "la línea de proveedor la debe llenar compras en costeo, y no puede pasar
+  // si no tiene proveedor"). El valor optimista solo trae `text` (nombre
+  // exacto llega con el próximo refetch del catálogo vía onSaved).
+  const onEditProveedor = async (productoId: number, proveedorId: string, proveedorNombre: string) => {
+    const key = String(productoId);
+    setProveedorSaving((s) => ({ ...s, [key]: true }));
+    setProveedorError((e) => ({ ...e, [key]: undefined }));
+    try {
+      await patchItem('productos', key, { [PRODUCTO_PROVEEDOR_COL]: proveedorId });
+      setCatalog((cat) => cat.map((c) => (c.id === key
+        ? { ...c, cols: { ...c.cols, [PRODUCTO_PROVEEDOR_COL]: { text: proveedorNombre, type: 'board_relation' } } }
+        : c)));
+      onSaved?.();
+    } catch (e) {
+      setProveedorError((er) => ({ ...er, [key]: e instanceof Error ? e.message : 'No se pudo guardar.' }));
+    } finally {
+      setProveedorSaving((s) => ({ ...s, [key]: false }));
     }
   };
 
@@ -444,13 +469,13 @@ export function CotizacionTab({
   const latest = useRef({
     onEdit, onBlur, onColorChange,
     onEmbellecimientoChange, onStatusChange, onProductoPick,
-    onToggleConfirm, onEditTallas, onDeleteLine, toggleExpanded,
+    onToggleConfirm, onEditTallas, onEditProveedor, onDeleteLine, toggleExpanded,
     onAjustarLinea: setAjustarLineaTarget,
   });
   latest.current = {
     onEdit, onBlur, onColorChange,
     onEmbellecimientoChange, onStatusChange, onProductoPick,
-    onToggleConfirm, onEditTallas, onDeleteLine, toggleExpanded,
+    onToggleConfirm, onEditTallas, onEditProveedor, onDeleteLine, toggleExpanded,
     onAjustarLinea: setAjustarLineaTarget,
   };
   const sEdit = useCallback((pr: ItemDTO, c: string, r: string) => latest.current.onEdit(pr, c, r), []);
@@ -461,6 +486,7 @@ export function CotizacionTab({
   const sProductoPick = useCallback((pr: ItemDTO, ch: ProductoChoice) => latest.current.onProductoPick(pr, ch), []);
   const sToggleConfirm = useCallback((id: number, next: boolean) => latest.current.onToggleConfirm(id, next), []);
   const sEditTallas = useCallback((id: number, next: string) => latest.current.onEditTallas(id, next), []);
+  const sEditProveedor = useCallback((id: number, proveedorId: string, nombre: string) => latest.current.onEditProveedor(id, proveedorId, nombre), []);
   const sDeleteLine = useCallback((id: string) => latest.current.onDeleteLine(id), []);
   const sToggleExpand = useCallback((id: string) => latest.current.toggleExpanded(id), []);
   const sAjustarLinea = useCallback((pr: ItemDTO) => latest.current.onAjustarLinea(pr), []);
@@ -564,6 +590,9 @@ export function CotizacionTab({
               tallasSaving={!!tallasSaving[String(linkedProductoId(p))]}
               tallasError={tallasError[String(linkedProductoId(p))]}
               onEditTallas={sEditTallas}
+              proveedorSaving={!!proveedorSaving[String(linkedProductoId(p))]}
+              proveedorError={proveedorError[String(linkedProductoId(p))]}
+              onEditProveedor={sEditProveedor}
               canDelete={canAddLines}
               deleting={deletingId === p.id}
               onDeleteLine={sDeleteLine}
@@ -629,6 +658,9 @@ export function CotizacionTab({
               tallasSaving={!!tallasSaving[String(linkedProductoId(p))]}
               tallasError={tallasError[String(linkedProductoId(p))]}
               onEditTallas={sEditTallas}
+              proveedorSaving={!!proveedorSaving[String(linkedProductoId(p))]}
+              proveedorError={proveedorError[String(linkedProductoId(p))]}
+              onEditProveedor={sEditProveedor}
               canDelete={canAddLines}
               deleting={deletingId === p.id}
               onDeleteLine={sDeleteLine}

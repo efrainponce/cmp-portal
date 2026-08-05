@@ -19,7 +19,7 @@ import { LineDetailPanel } from './LineDetailPanel';
 import { ProductPicker, type ProductoChoice } from '../../../../components/forms/ProductPicker';
 import {
   type GridCol, type RowEditState, marginColor, suggestedPrecio23, numFrom, displayProducto, cellValue,
-  inputStyle, valueChipStyle, ETAPA_COSTEO_COLORS, getLineWarnings, needsConfirmarTallas, gridWrapStyle, colsTemplate,
+  inputStyle, valueChipStyle, ETAPA_COSTEO_COLORS, getLineWarnings, needsConfirmarTallas, productoProveedorOk, gridWrapStyle, colsTemplate,
   ETAPA_COSTEO_COL, SUGERIDO_COL, MARGEN_COL,
   PRODUCTO_COL, PRODUCTO_TXT_COL, PRODUCTO_REL_COL, COLOR_COL,
   EMB_STATUS_COL, EMB_LABEL_CON, EMB_LABEL_SIN,
@@ -59,6 +59,9 @@ export interface QuoteRowProps {
   tallasSaving: boolean;
   tallasError?: string;
   onEditTallas: (productoId: number, next: string) => void;
+  proveedorSaving: boolean;
+  proveedorError?: string;
+  onEditProveedor: (productoId: number, proveedorId: string, proveedorNombre: string) => void;
   /** Mismo gate que canAddLines — el botón "✕" de eliminar línea. */
   canDelete: boolean;
   deleting: boolean;
@@ -76,13 +79,15 @@ function QuoteRowInner({
   onEdit, onBlur, onColorChange, onEmbellecimientoChange, onStatusChange, onProductoPick,
   expanded, onToggleExpand, canConfirm, confirmSaving, confirmError, onToggleConfirm,
   tallasSaving, tallasError, onEditTallas,
+  proveedorSaving, proveedorError, onEditProveedor,
   canDelete, deleting, onDeleteLine, canAjustar, onAjustarLinea,
 }: QuoteRowProps) {
   const lineWarnings = getLineWarnings(p, state, variant, catalog, precioOnly);
   // Aparte del resto de warnings: se pinta arriba a la izquierda, encima del
   // nombre del producto, en vez de perderse en el badge del fondo de la fila.
   const needsTallas = !precioOnly && needsConfirmarTallas(p, variant, catalog);
-  const otherWarnings = lineWarnings.filter((w) => w !== 'Sin confirmar' && w !== 'Sin tallas');
+  const needsProveedor = needsTallas && !productoProveedorOk(p, catalog);
+  const otherWarnings = lineWarnings.filter((w) => w !== 'Sin confirmar' && w !== 'Sin tallas' && w !== 'Sin proveedor');
 
   // Chevron + eliminar. Se renderizaban solo en la celda de Producto de solo
   // lectura, pero en Nueva oportunidad (justo donde canDelete es true) Producto
@@ -134,7 +139,7 @@ function QuoteRowInner({
     <div style={{ ...gridWrapStyle, background: lineWarnings.length > 0 ? '#fdf1f2' : '#fff' }}>
       {needsTallas && (
         <div style={{ padding: '8px 10px 0', font: '700 11px \'Inter\', sans-serif', color: '#ce3048' }}>
-          ⚠ HAY QUE CONFIRMAR TALLAS
+          ⚠ HAY QUE CONFIRMAR TALLAS{needsProveedor ? ' Y PROVEEDOR' : ''}
         </div>
       )}
       <div style={{
@@ -383,6 +388,9 @@ function QuoteRowInner({
           tallasSaving={tallasSaving}
           tallasError={tallasError}
           onEditTallas={onEditTallas}
+          proveedorSaving={proveedorSaving}
+          proveedorError={proveedorError}
+          onEditProveedor={onEditProveedor}
         />
       )}
     </div>

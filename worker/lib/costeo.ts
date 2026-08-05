@@ -34,6 +34,13 @@ const PRODUCTO_CONFIRM_COL = 'boolean_mm5cqtjs';  // "Descripción y tallas conf
 // "error" cuando no pudo determinar tallas del texto libre del producto — eso
 // tampoco cuenta como válido aunque Compras haya marcado el checkbox de arriba.
 const PRODUCTO_TALLAS_COL = 'text_mm5v6jhj';
+// Proveedor del producto (Efraín, 2026-08-04: "la línea de proveedor la debe
+// llenar compras en costeo, y no puede pasar si no tiene proveedor") — mismo
+// patrón que Tallas: vive en el catálogo por SKU, se edita desde el panel de
+// detalle de línea en Costeo (LineDetailPanel.tsx) y bloquea "Mandar a
+// Validación de costeo" mientras falte. Se copia al Proyecto al capturar
+// tallas (worker/lib/proyectoTallas.ts).
+const PRODUCTO_PROVEEDOR_COL = 'board_relation_mm1cwqky';
 
 const ETAPA_NO_INICIADO = 'No iniciado';
 
@@ -226,7 +233,7 @@ export async function checkValidacion(env: Env, itemId: number, viewer: Identity
     return { ok: false, errors: ['La oportunidad no tiene líneas de producto.'] };
   }
   const errors: string[] = [];
-  const productoCache = new Map<number, { confirmado: boolean; tallasOk: boolean }>();
+  const productoCache = new Map<number, { confirmado: boolean; tallasOk: boolean; proveedorOk: boolean }>();
 
   for (let i = 0; i < lineas.length; i++) {
     const linea = lineas[i];
@@ -242,7 +249,8 @@ export async function checkValidacion(env: Env, itemId: number, viewer: Identity
       const confirmado = !!pCols?.get(PRODUCTO_CONFIRM_COL)?.text;
       const tallas = (pCols?.get(PRODUCTO_TALLAS_COL)?.text ?? '').trim();
       const tallasOk = tallas !== '' && tallas.toLowerCase() !== 'error';
-      productoCache.set(productoId, { confirmado, tallasOk });
+      const proveedorOk = hasLinkedProduct(pCols?.get(PRODUCTO_PROVEEDOR_COL));
+      productoCache.set(productoId, { confirmado, tallasOk, proveedorOk });
     }
     const estado = productoCache.get(productoId)!;
     if (!estado.confirmado) {
@@ -250,6 +258,9 @@ export async function checkValidacion(env: Env, itemId: number, viewer: Identity
     }
     if (!estado.tallasOk) {
       errors.push(`${tag}: el producto no tiene tallas definidas en el catálogo.`);
+    }
+    if (!estado.proveedorOk) {
+      errors.push(`${tag}: el producto no tiene proveedor asignado en el catálogo.`);
     }
   }
 

@@ -122,12 +122,19 @@ export async function createItem(
   boardId: number,
   itemName: string,
   columnValues: Record<string, unknown>,
-  opts?: { maxRetries?: number },
+  opts?: { maxRetries?: number; groupId?: string },
 ): Promise<MondayItem> {
-  const query = `mutation($b:ID!,$n:String!,$cv:JSON){ create_item(board_id:$b,item_name:$n,column_values:$cv,create_labels_if_missing:true){ ${ITEM_FIELDS} } }`;
-  const data = await gql(env, query, { b: String(boardId), n: itemName, cv: JSON.stringify(columnValues) }, opts);
+  const query = `mutation($b:ID!,$n:String!,$cv:JSON,$g:String){ create_item(board_id:$b,item_name:$n,column_values:$cv,create_labels_if_missing:true,group_id:$g){ ${ITEM_FIELDS} } }`;
+  const data = await gql(env, query, { b: String(boardId), n: itemName, cv: JSON.stringify(columnValues), g: opts?.groupId ?? null }, opts);
   const raw = data?.create_item;
   return { ...raw, column_values: normalizeCols(raw.column_values ?? []) };
+}
+
+/** Mueve un item a otro grupo del mismo board — mismo patrón que deleteItem
+ * (mutación angosta, sin refetch propio; el llamador decide si refresca). */
+export async function moveItemToGroup(env: Env, itemId: number, groupId: string): Promise<void> {
+  const query = `mutation($id:ID!,$g:String!){ move_item_to_group(item_id:$id,group_id:$g){ id } }`;
+  await gql(env, query, { id: String(itemId), g: groupId });
 }
 
 /** Delete an item (works for subitems too). The mirror row is NOT touched here —
