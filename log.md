@@ -2,6 +2,10 @@
 
 ## 2026-08-05
 
+- Costeo: el input de Tallas en el panel de línea se veía como placeholder estático
+  - Efraín reportó (con captura) que el campo Tallas del chevron de detalle "no es texto editable, solo un placeholder". Ya era un `<input>` real y funcional (confirmado en vivo con Playwright — escribir y guardar funcionan) — el problema era puramente de contraste: usaba `border: 1px solid var(--border)` (`#e2ded3`) sobre un fondo casi idéntico (`--bg-sunken` `#efeae0`), así que se veía plano en vez de como caja editable. `LineDetailPanel.tsx`: mismo tratamiento que ya usan los demás campos editables de la grid (`gridMeta.tsx` `inputStyle`) — borde `var(--accent)` sobre fondo blanco.
+  - `npx tsc --noEmit` limpio (cambio de estilo puro, no toca write path).
+
 - Notificaciones: "En costeo" ahora dispara WhatsApp además del portal
   - Efraín reportó que no le llegaba ningún WhatsApp de sus oportunidades. Causa: `STAGE_NOTIFY` emitía TODOS los cambios de etapa con `severity: 'actualizacion'` (worker/lib/notify.ts), y `notifyPortalWa` solo manda WhatsApp para `'importante'` — decisión de alcance previa (2026-07-31). Además, verificado en D1 remoto: su identidad (`efrain.ponces@gmail.com`) y la mayoría de `compras` no tienen `phone` cargado, así que aunque cambiara la severidad no habría a dónde mandar el WA.
   - `shared/notifications.ts`: `STAGE_NOTIFY`/`PROJECT_STATUS_NOTIFY` cambian de `Record<string, RecipientSelector[]>` a `Record<string, StageNotifyEntry>` (`{ selectors, severity? }`) — permite marcar severidad por etapa en vez de todo fijo a `'actualizacion'`. Se marca `'En costeo'` como `importante` (Compras necesita enterarse de inmediato).

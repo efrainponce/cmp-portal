@@ -196,8 +196,8 @@ export function LineDetailPanel({
               }}
               style={{
                 width: '100%', font: 'var(--text-label)', color: 'var(--ink)',
-                border: '1px solid var(--border)', borderRadius: 'var(--radius-md)',
-                padding: '6px 8px', boxSizing: 'border-box', background: 'var(--bg)',
+                border: '1px solid var(--accent)', borderRadius: 'var(--radius-md)',
+                padding: '6px 8px', boxSizing: 'border-box', background: '#fff',
               }}
             />
             {tallasError && (
