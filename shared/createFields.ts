@@ -34,15 +34,17 @@ export const CREATE_FIELDS: Record<'instituciones' | 'contactos' | 'oportunidade
   ],
   contactos: [
     { id: 'name', required: true },
-    // No required (Efraín, 2026-08-05: "no es obligatorio pero es mejor") — el
-    // picker vive en CreateRecordModal, no en FormField genérico: es un
-    // board_relation que necesita buscar sobre `instituciones` en vivo, mismo
-    // patrón que ya usaba EditContactoModal para reasignarla después.
-    { id: 'contact_account' },
-    { id: 'contact_email' },
-    { id: 'contact_phone' },
-    { id: 'text_mm0dz8yj' },       // Cargo
-    { id: 'multiple_person_mm03vqwx' }, // Vendedor
+    // Efraín, 2026-08-05: todos los campos obligatorios excepto Comentarios.
+    // contact_account es required aquí pero se valida a mano en
+    // CreateRecordModal (no pasa por el loop genérico de requiredFields): el
+    // picker vive ahí, no en FormField genérico, porque es un board_relation
+    // que necesita buscar sobre `instituciones` en vivo, mismo patrón que ya
+    // usaba EditContactoModal para reasignarla después.
+    { id: 'contact_account', required: true },
+    { id: 'contact_email', required: true },
+    { id: 'contact_phone', required: true },
+    { id: 'text_mm0dz8yj', required: true },       // Cargo
+    { id: 'multiple_person_mm03vqwx', required: true }, // Vendedor
     { id: 'long_text4' },          // Comentarios
   ],
 };

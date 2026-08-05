@@ -2,6 +2,15 @@
 
 ## 2026-08-05
 
+- Contactos: 3 bugs en "Nuevo contacto" + campos obligatorios
+  - Efraín reportó que el combobox de Institución no dejaba seleccionar (al buscar y hacer click parecía no pasar nada), que el toggle "Más campos (opcional)" no se podía volver a colapsar, y que el dropdown de Vendedor salía vacío. Pidió además que todos los campos del form sean obligatorios excepto Comentarios.
+  - `CreateRecordModal.tsx`: el click en un resultado de Institución hacía `setInstQ('')` en el mismo evento que guardaba el id — eso disparaba un refetch de `usePoll('instituciones', '')` (trae el catálogo completo) justo después de seleccionar, dando la sensación de que la selección no pegó. Se quitó el reset del query (mismo patrón, sin reset, que ya usaba `EditContactoModal`).
+  - El botón "Más campos (opcional)" solo se renderizaba con `!showMore`, sin ningún botón de vuelta cuando `showMore` era `true` — se unificó en un solo botón que alterna `setShowMore(v => !v)` y cambia texto/ícono ("Más campos (opcional)" ↔ "Menos campos").
+  - El fetch de vendedores estaba condicionado a que `allCols` (derivado de `useBoards()`, async) ya tuviera un campo `people` — en el primer render `allCols` siempre viene vacío, así que la condición nunca era cierta y `getVendedores()` jamás se llamaba. Se quitó la condición (mismo patrón sin condicionar que ya usaba `EditContactoModal`).
+  - `shared/createFields.ts`: `contact_account`, `contact_email`, `contact_phone`, `text_mm0dz8yj` (Cargo) y `multiple_person_mm03vqwx` (Vendedor) pasan a `required: true`; `long_text4` (Comentarios) se queda opcional. Institución vive fuera del loop genérico de `requiredFields` (es un board_relation con su propio bloque de búsqueda), así que se agregó su validación a mano en `onSubmit` + `*` en el label.
+  - Verificado con Playwright en local: selección de institución por búsqueda queda reflejada ("— elegida: X") sin resetear el buscador, el toggle colapsa/expande correctamente, y el `<select>` de Vendedor trae los 18 vendedores activos.
+  - `npx tsc --noEmit` limpio. No corrí `npm test` — no toqué write path a Monday ni la whitelist de escritura (`shared/visibility.ts`), solo validación de required en cliente.
+
 - Cotización: columna Producto congelada al hacer scroll + avisos unificados en un solo banner
   - Efraín pidió congelar la columna Producto en la grid de Costeo/Validación de costeo al mover la tabla horizontalmente, y quitar la columna "Avisos" al final — quería el error "súper claro arriba del producto como costeo", generalizando el banner que hasta ahora solo cubría "HAY QUE CONFIRMAR TALLAS Y PROVEEDOR".
   - `gridMeta.tsx`: nuevo `STICKY_PRODUCTO_STYLE` (`position: sticky; left: 0`) en la celda Producto de header/`QuoteRow`/`TotalsRow`. A propósito no se fija también "#" — al no ser sticky se desliza fuera de vista con el resto, así Producto termina pegado al borde izquierdo sin dejar un hueco donde "#" solía estar. `colsTemplate` pierde la pista fija `WARNINGS_COL_WIDTH` que reservaba la columna Avisos.

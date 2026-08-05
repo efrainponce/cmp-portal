@@ -87,11 +87,11 @@ export function CreateRecordModal({ slug, title, onClose, onCreated }: Props) {
     }
   };
 
-  useEffect(() => {
-    if (allFields.some((f) => allCols.find((c) => c.id === f.id)?.type === 'people')) {
-      getVendedores().then(setVendedores);
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Sin condicionar al tipo de columna: `allCols` depende de que useBoards()
+  // ya haya resuelto su fetch, y en el primer render siempre viene vacío —
+  // condicionar aquí dejaba el fetch de vendedores sin disparar nunca
+  // (mismo patrón sin condición que ya usa EditContactoModal).
+  useEffect(() => { getVendedores().then(setVendedores); }, []);
 
   // Contactos se leen scopeados por Vendedor (shared/boards.ts): un contacto sin
   // vendedor no lo vería ni quien lo creó. El server estampa al creador cuando el
@@ -109,6 +109,10 @@ export function CreateRecordModal({ slug, title, onClose, onCreated }: Props) {
 
   const onSubmit = async () => {
     if (!name.trim()) { setError('El nombre es obligatorio.'); return; }
+    if (slug === 'contactos' && !(cols[CONTACTO_INSTITUCION] ?? '').trim()) {
+      setError('Falta completar: Institución.');
+      return;
+    }
     const missing = requiredFields.filter((f) => !(cols[f.id] ?? '').trim());
     if (missing.length > 0) {
       const labels = missing.map((f) => allCols.find((c) => c.id === f.id)?.title ?? f.id).join(', ');
@@ -154,7 +158,7 @@ export function CreateRecordModal({ slug, title, onClose, onCreated }: Props) {
         {slug === 'contactos' && (
           <div>
             <div style={{ font: 'var(--text-label-strong)', color: 'var(--ink-secondary)', marginBottom: 6 }}>
-              Institución
+              Institución *
               {institucionLabel && <span style={{ fontWeight: 400, color: 'var(--ink-tertiary)' }}> — elegida: {institucionLabel}</span>}
             </div>
             <SearchInput value={instQ} onChange={(e) => setInstQ(e.target.value)} placeholder="Buscar institución…" style={{ maxWidth: 'none' }} />
@@ -169,7 +173,7 @@ export function CreateRecordModal({ slug, title, onClose, onCreated }: Props) {
                 <div style={{ padding: 12, font: 'var(--text-label)', color: 'var(--ink-quiet)' }}>Sin resultados.</div>
               )}
               {institucionOptions.map((inst) => (
-                <PickerRow key={inst.id} onClick={() => { setCol(CONTACTO_INSTITUCION)(inst.id); setInstitucionLabel(inst.name); setInstQ(''); }}>
+                <PickerRow key={inst.id} onClick={() => { setCol(CONTACTO_INSTITUCION)(inst.id); setInstitucionLabel(inst.name); }}>
                   {inst.name}
                 </PickerRow>
               ))}
@@ -208,14 +212,14 @@ export function CreateRecordModal({ slug, title, onClose, onCreated }: Props) {
           );
         })}
 
-        {optionalFields.length > 0 && !showMore && (
+        {optionalFields.length > 0 && (
           <button
             type="button"
-            onClick={() => setShowMore(true)}
+            onClick={() => setShowMore((v) => !v)}
             style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', padding: 0, cursor: 'pointer', font: 'var(--text-label-strong)', color: 'var(--ink-secondary)', alignSelf: 'flex-start' }}
           >
-            <IconBack style={{ transform: 'rotate(-90deg)' }} />
-            Más campos (opcional)
+            <IconBack style={{ transform: showMore ? 'rotate(90deg)' : 'rotate(-90deg)' }} />
+            {showMore ? 'Menos campos' : 'Más campos (opcional)'}
           </button>
         )}
 
