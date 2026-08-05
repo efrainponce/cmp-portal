@@ -404,6 +404,21 @@ export async function capturarTallas(
   return body;
 }
 
+/** Avisa a Compras (Monday @mención + WhatsApp) que una línea producto+color
+ * del Proyecto no cuadra contra lo cotizado (worker/lib/proyectoTallas.ts). */
+export async function reportarTallasIncorrectas(
+  proyectoId: string, producto: string, color?: string,
+): Promise<{ ok: boolean; notificados?: number; error?: string }> {
+  const res = await apiFetch(`/proyectos/${proyectoId}/tallas-reportar`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ producto, color }),
+  });
+  const body = await res.json();
+  if (!res.ok) return { ok: false, error: body.error ?? 'No se pudo reportar.' };
+  return body;
+}
+
 export async function refreshItem(slug: BoardSlug, id: string): Promise<{ ok: boolean }> {
   const res = await apiFetch(`/boards/${slug}/items/${id}/refresh`, { method: 'POST' });
   if (!res.ok) throw new Error('refresh failed: ' + res.status);

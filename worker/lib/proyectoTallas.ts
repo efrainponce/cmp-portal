@@ -8,8 +8,10 @@ import type { Identity, MirrorItem } from '../../shared/types';
 import type { TallaBoxInput, CapturarTallasResponse } from '../../shared/dto';
 import type { RawCol } from './serialize';
 import { getItem, childrenOf, linkedItemId, PROYECTO_OPP_REL } from './dal';
-import { createSubitem, gql } from './monday';
+import { createSubitem, createUpdate, gql, type MentionInput } from './monday';
+import { emitNotification } from './notify';
 import { upsertItem } from '../sync';
+import { BOARDS } from '../../shared/boards';
 
 export type { TallaBoxInput };
 
@@ -41,6 +43,12 @@ const SUB_MONEDA = 'text_mm1gdsvg';
 const SUB_DESCUENTO = 'numeric_mm1dmsaz';
 const SUB_UNIDAD = 'text_mm56dbkm';
 const SUB_PROVEEDOR = 'board_relation_mm1cfgv5';
+
+// Oportunidad — línea de cotización, mismos ids que TallasTab.tsx SUB_COLOR/
+// SUB_CANTIDAD: lo cotizado originalmente para esa línea (producto+color),
+// para cruzar contra lo ya importado al Proyecto (reportarTallasIncorrectas).
+const OPP_SUB_COLOR = 'text_mm07s2mg';
+const OPP_SUB_CANTIDAD_COTIZADA = 'numeric_mkzm6399';
 
 function colsOf(row: MirrorItem): Map<string, RawCol> {
   try {
@@ -178,4 +186,77 @@ export async function capturarTallas(
   }
 
   return { ok: true, created, omitted };
+}
+
+export interface ReportarTallasResult { ok: true; notificados: number }
+
+/** Avisa a Compras (update en Monday @mencionando + WhatsApp "importante",
+ * mismo mecanismo que productosPropuestos.ts) que el desglose de una línea
+ * producto+color no cuadra contra lo cotizado. El cruce es 100% D1 (sin
+ * llamada nueva a Monday): lee las líneas ya importadas del Proyecto y las de
+ * la Oportunidad ligada del mirror, y compara por nombre+color normalizados
+ * (Efraín, 2026-08-05: "que coincida con la opp, si se puede todo en D1
+ * mejor"). Sin match en la Oportunidad, reporta igual pero sin "cotizado".
+ * Best-effort en el envío a cada destinatario (emitNotification ya se traga
+ * sus propios errores); el update de Monday si puede tronar, se deja subir al
+ * caller (es la acción principal, no un efecto secundario). */
+export async function reportarTallasIncorrectas(
+  env: Env, viewer: Identity, proyectoId: number, proyectoNombre: string,
+  producto: string, color: string | undefined,
+): Promise<ReportarTallasResult> {
+  const proyectoRows = await childrenOf(env, 'proyectos', proyectoId, viewer);
+  const asignadas = proyectoRows
+    .filter(row => {
+      const cols = colsOf(row);
+      return norm(cols.get(SUB_PRODUCTO)?.text || '') === norm(producto)
+        && norm(cols.get(SUB_COLOR)?.text || '') === norm(color ?? '');
+    })
+    .reduce((s, row) => s + (Number((colsOf(row).get(SUB_CANTIDAD)?.text ?? '').replace(/,/g, '')) || 0), 0);
+
+  const oppId = await resolveOportunidadId(env, viewer, proyectoId);
+  let cotizado: number | null = null;
+  if (oppId !== null) {
+    const oppRows = await childrenOf(env, 'oportunidades', oppId, viewer);
+    const matches = oppRows.filter(row =>
+      norm(row.name) === norm(producto)
+      && norm(colsOf(row).get(OPP_SUB_COLOR)?.text || '') === norm(color ?? ''));
+    if (matches.length > 0) {
+      cotizado = matches.reduce((s, row) =>
+        s + (Number((colsOf(row).get(OPP_SUB_CANTIDAD_COTIZADA)?.text ?? '').replace(/,/g, '')) || 0), 0);
+    }
+  }
+
+  const { results } = await env.DB.prepare(
+    `SELECT monday_user_id, nombre, email FROM identity WHERE active = 1 AND role = 'compras' AND monday_user_id IS NOT NULL`,
+  ).all<{ monday_user_id: number; nombre: string | null; email: string }>();
+  const compras = results ?? [];
+
+  const actorName = viewer.nombre || viewer.email;
+  const detalle = cotizado !== null
+    ? `cotizado ${cotizado}, van ${asignadas} asignadas (${asignadas < cotizado ? `faltan ${cotizado - asignadas}` : `sobran ${asignadas - cotizado}`})`
+    : `van ${asignadas} asignadas, sin línea de cotización para cruzar`;
+  const body = `${actorName} reportó que el desglose de tallas de "${producto}"${color ? ` (${color})` : ''} en ${proyectoNombre} no cuadra: ${detalle}.`;
+
+  const mentions: MentionInput[] = compras.filter(c => c.nombre).map(c => ({ id: c.monday_user_id, nombre: c.nombre as string }));
+  if (mentions.length > 0) await createUpdate(env, proyectoId, body, mentions);
+
+  const reportId = crypto.randomUUID();
+  let notificados = 0;
+  for (const c of compras) {
+    if (c.email === viewer.email) continue;
+    await emitNotification(env, {
+      recipientEmail: c.email,
+      severity: 'importante',
+      kind: 'tallas_incorrectas',
+      title: `Tallas incorrectas en ${proyectoNombre}`,
+      body,
+      boardKey: 'doctallas',
+      boardId: BOARDS.proyectos.id,
+      itemId: proyectoId,
+      actor: actorName,
+      dedupeKey: `tallas_incorrectas:${reportId}:${c.email}`,
+    });
+    notificados++;
+  }
+  return { ok: true, notificados };
 }

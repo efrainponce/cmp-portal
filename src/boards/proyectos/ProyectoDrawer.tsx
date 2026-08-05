@@ -12,12 +12,10 @@ import { IconBack } from '../../components/icons';
 import { SyncIndicator } from '../../components/board/SyncIndicator';
 import { getItemDetail, refreshItem, getProyectoOportunidad, type ItemDetailDTO } from '../../lib/api';
 import { useIsMobile } from '../../lib/useIsMobile';
-import { useMe } from '../../lib/useMe';
 import { ActualizacionesTab } from '../oportunidades/tabs/ActualizacionesTab';
 import { EmptyDocTab } from '../oportunidades/tabs/EmptyDocTab';
 import { OcContratoSection } from '../oportunidades/tabs/DocumentacionTab';
 import { ProyectoTallasSection, ProyectoOrdenesSection, type ProyectoState } from '../oportunidades/ProyectoSection';
-import { AgregarLineaModal } from './AgregarLineaModal';
 
 type ProyectoTabKey = 'actualizaciones' | 'documentacion' | 'tallas' | 'ordenes' | 'logistica';
 
@@ -48,14 +46,11 @@ const detailCache = new Map<string, ItemDetailDTO>();
 
 export function ProyectoDrawer({ id, backLabel, defaultTab, onBack, onOpenOportunidad }: Props) {
   const isMobile = useIsMobile();
-  const me = useMe();
-  const canAgregarLinea = me?.role === 'compras' || me?.role === 'admin';
   const [item, setItem] = useState<ItemDetailDTO | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [tab, setTab] = useState<ProyectoTabKey>(defaultTab as ProyectoTabKey);
   const [oportunidadId, setOportunidadId] = useState<string | null>(null);
-  const [showAgregarLinea, setShowAgregarLinea] = useState(false);
 
   const load = () => {
     setError(null);
@@ -152,11 +147,6 @@ export function ProyectoDrawer({ id, backLabel, defaultTab, onBack, onOpenOportu
       )}
       {tab === 'tallas' && (
         <div style={{ padding: '24px 32px 40px', maxWidth: 920, width: '100%', boxSizing: 'border-box' }}>
-          {canAgregarLinea && (
-            <Button variant="secondary" onClick={() => setShowAgregarLinea(true)}>
-              + Agregar línea manual
-            </Button>
-          )}
           <ProyectoTallasSection state={proyectoState} oppId={oportunidadId} />
         </div>
       )}
@@ -170,14 +160,6 @@ export function ProyectoDrawer({ id, backLabel, defaultTab, onBack, onOpenOportu
           title="Documentos de logística"
           subtitle="Guías de embarque, comprobantes de entrega y documentación de envío."
           uploadLabel="Subir documento de logística"
-        />
-      )}
-
-      {showAgregarLinea && (
-        <AgregarLineaModal
-          proyectoId={id}
-          onClose={() => setShowAgregarLinea(false)}
-          onCreated={load}
         />
       )}
     </div>

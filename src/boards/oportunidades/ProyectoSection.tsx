@@ -5,8 +5,8 @@
 // muestran desde el mirror (proyectos_sub) — el objetivo es que dejen de vivir
 // solo en el Excel.
 import { useCallback, useEffect, useState } from 'react';
-import { getProyecto, proyectoAction, type ItemDetailDTO, type ItemDTO, type ProyectoAction } from '../../lib/api';
-import { patchItem } from '../../lib/apiClient';
+import { getProyecto, proyectoAction, getItem, type ItemDetailDTO, type ItemDTO, type ProyectoAction } from '../../lib/api';
+import { patchItem, reportarTallasIncorrectas } from '../../lib/apiClient';
 import { useMe } from '../../lib/useMe';
 import { ConfirmButton } from '../../components/core/ConfirmButton';
 import { MonoTag, StatusBadge } from '../../components/core/Badges';
@@ -244,14 +244,64 @@ function FileList({ label, files }: { label: string; files: { url: string; name:
 
 interface CantidadEdit { draft?: string; saving?: boolean; error?: string }
 
-/** Grid de tallas importadas (subitems del Proyecto), agrupado por producto.
- * Filas planas (talla / color / cantidad) en vez de pills anidados — más
- * fácil de escanear. Cantidad es editable inline (Efraín, 2026-08-05): se
- * guarda contra la línea del Proyecto en Monday sin tocar el Sheet, así que
- * un "Importar tallas a Monday" posterior la vuelve a pisar. */
-function TallasGrid({ lineas, canEditCantidad, reload }: { lineas: ItemDTO[]; canEditCantidad: boolean; reload: () => void }) {
+function norm(s: string): string {
+  return s.trim().toLowerCase();
+}
+
+// Oportunidad — línea de cotización (oportunidades_sub), mismos ids que
+// worker/lib/proyectoTallas.ts: lo cotizado originalmente por producto+color,
+// para el "Cotizado: N" / "Faltan" de cada tarjeta (cruce 100% D1, sin llamada
+// nueva a Monday — Efraín, 2026-08-05).
+const OPP_SUB_COLOR = 'text_mm07s2mg';
+const OPP_SUB_CANTIDAD = 'numeric_mkzm6399';
+
+/** producto+color (normalizados) → suma cotizada. Varias líneas de cotización
+ * con el mismo producto+color (raro, pero posible) se suman. */
+function cotizadoMapFrom(oppLineas: ItemDTO[]): Map<string, number> {
+  const map = new Map<string, number>();
+  for (const l of oppLineas) {
+    const key = `${norm(l.name)}|${norm(l.cols[OPP_SUB_COLOR]?.text || '')}`;
+    const cantidad = Number((l.cols[OPP_SUB_CANTIDAD]?.text || '').replace(/,/g, '')) || 0;
+    map.set(key, (map.get(key) ?? 0) + cantidad);
+  }
+  return map;
+}
+
+interface TallaGroup { producto: string; sku?: string; color: string; rows: ItemDTO[] }
+
+/** Una tarjeta por producto+color (no solo producto): dos colores del mismo
+ * producto son dos tarjetas, cada una con sus propias tallas — mismo criterio
+ * de agrupado que TallaBoxesCapture (TallasTab.tsx), donde cada card ya es un
+ * subitem de cotización = un producto+color específico. */
+function groupByProductoColor(lineas: ItemDTO[]): TallaGroup[] {
+  const groups = new Map<string, TallaGroup>();
+  for (const l of lineas) {
+    const producto = l.cols[S_PRODUCTO]?.text || l.name;
+    const color = l.cols[S_COLOR]?.text || '';
+    const key = `${norm(producto)}|${norm(color)}`;
+    if (!groups.has(key)) groups.set(key, { producto, sku: l.cols[S_SKU]?.text || undefined, color, rows: [] });
+    groups.get(key)!.rows.push(l);
+  }
+  return [...groups.values()];
+}
+
+const boxInputStyle = {
+  width: 52, textAlign: 'center' as const, font: 'var(--text-label-strong)', color: 'var(--ink)',
+  padding: '6px 4px', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border)', background: '#fff',
+} as const;
+
+/** Tarjeta de un producto+color: una cajita editable por talla + "Cotizado" vs
+ * lo ya asignado. Cantidad se guarda inline contra la línea del Proyecto en
+ * Monday (sin tocar el Sheet, así que "Importar tallas a Monday" la vuelve a
+ * pisar); "Reportar tallas incorrectas" avisa a Compras (Monday + WhatsApp,
+ * worker/lib/proyectoTallas.ts) cuando el desglose no cuadra. */
+function TallaBoxCard({ group, cotizado, canEditCantidad, canReport, proyectoId, reload }: {
+  group: TallaGroup; cotizado: number | null; canEditCantidad: boolean; canReport: boolean;
+  proyectoId: string; reload: () => void;
+}) {
   const [overrides, setOverrides] = useState<Record<string, string>>({});
   const [edits, setEdits] = useState<Record<string, CantidadEdit>>({});
+  const [reportOutcome, setReportOutcome] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
 
   const cantidadOf = (r: ItemDTO) => overrides[r.id] ?? r.cols[S_CANTIDAD]?.text ?? '0';
 
@@ -280,6 +330,94 @@ function TallasGrid({ lineas, canEditCantidad, reload }: { lineas: ItemDTO[]; ca
     }
   };
 
+  const asignadas = group.rows.reduce((s, r) => s + (Number(cantidadOf(r).replace(/,/g, '')) || 0), 0);
+  const cuadra = cotizado !== null && asignadas === cotizado;
+  let progresoTexto: string;
+  let progresoColor: string;
+  if (cotizado === null) {
+    progresoTexto = `${asignadas} asignadas (sin línea de cotización para comparar)`;
+    progresoColor = 'var(--ink-tertiary)';
+  } else if (cuadra) {
+    progresoTexto = `${asignadas} asignadas — cuadra con lo cotizado`;
+    progresoColor = 'var(--status-ganada)';
+  } else if (asignadas < cotizado) {
+    progresoTexto = `Faltan ${cotizado - asignadas} de ${cotizado} (${asignadas} asignadas)`;
+    progresoColor = 'var(--status-perdida)';
+  } else {
+    progresoTexto = `Sobran ${asignadas - cotizado} sobre los ${cotizado} cotizados (${asignadas} asignadas)`;
+    progresoColor = 'var(--status-perdida)';
+  }
+
+  const reportar = async () => {
+    setReportOutcome(null);
+    const res = await reportarTallasIncorrectas(proyectoId, group.producto, group.color || undefined);
+    setReportOutcome(res.ok
+      ? { kind: 'ok', text: 'Compras notificado (Monday + WhatsApp).' }
+      : { kind: 'error', text: res.error ?? 'No se pudo reportar.' });
+  };
+
+  return (
+    <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-xl)', padding: 14, background: '#fff' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+        <div>
+          <div style={{ font: 'var(--text-body-strong)', color: 'var(--ink)' }}>{group.producto}</div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 2, flexWrap: 'wrap' }}>
+            {group.sku && <MonoTag>{group.sku}</MonoTag>}
+            {group.color && <span style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)' }}>{group.color}</span>}
+            {cotizado !== null && <span style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)' }}>· Cotizado: {cotizado}</span>}
+          </div>
+        </div>
+        {canReport && (
+          <ConfirmButton
+            label="Reportar tallas incorrectas"
+            confirmLabel="¿Avisar a Compras que este desglose no cuadra?"
+            busyLabel="Avisando…"
+            variant="secondary"
+            onConfirm={reportar}
+          />
+        )}
+      </div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
+        {group.rows.map(r => {
+          const st = edits[r.id];
+          return (
+            <label key={r.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+              <span style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)' }}>{r.cols[S_TALLA]?.text || '—'}</span>
+              {canEditCantidad ? (
+                <input
+                  type="number" min={0} inputMode="numeric"
+                  value={st?.draft ?? cantidadOf(r)}
+                  onChange={e => setEdits(p => ({ ...p, [r.id]: { ...p[r.id], draft: e.target.value } }))}
+                  onBlur={() => commit(r)}
+                  onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                  disabled={st?.saving}
+                  style={{ ...boxInputStyle, border: `1px solid ${st?.error ? 'var(--status-perdida)' : 'var(--border)'}` }}
+                />
+              ) : (
+                <div style={boxInputStyle}>{cantidadOf(r)}</div>
+              )}
+            </label>
+          );
+        })}
+      </div>
+      <div style={{ marginTop: 10, font: 'var(--text-caption-strong)', color: progresoColor }}>{progresoTexto}</div>
+      {reportOutcome && (
+        <div style={{ marginTop: 6, font: 'var(--text-caption)', color: reportOutcome.kind === 'ok' ? 'var(--status-ganada)' : 'var(--status-perdida)' }}>
+          {reportOutcome.text}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Grid de tallas importadas (subitems del Proyecto): una tarjeta por
+ * producto+color con una cajita editable por talla — mismo estilo que la
+ * captura de tallas del vendedor (TallasTab.tsx), en vez de la lista de pills
+ * anidados de antes. */
+function TallasGrid({ lineas, cotizadoMap, canEditCantidad, canReport, proyectoId, reload }: {
+  lineas: ItemDTO[]; cotizadoMap: Map<string, number>; canEditCantidad: boolean; canReport: boolean;
+  proyectoId: string; reload: () => void;
+}) {
   if (lineas.length === 0) {
     return (
       <div style={{ marginTop: 14, font: 'var(--text-label)', color: 'var(--ink-quiet)' }}>
@@ -288,51 +426,20 @@ function TallasGrid({ lineas, canEditCantidad, reload }: { lineas: ItemDTO[]; ca
     );
   }
 
-  const grupos = new Map<string, ItemDTO[]>();
-  for (const l of lineas) {
-    const key = l.cols[S_PRODUCTO]?.text || l.name;
-    grupos.set(key, [...(grupos.get(key) ?? []), l]);
-  }
+  const grupos = groupByProductoColor(lineas);
 
   return (
     <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
-      {[...grupos.entries()].map(([producto, rows]) => (
-        <div key={producto} style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-xl)', padding: 14, background: '#fff' }}>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', marginBottom: 6 }}>
-            <div style={{ font: 'var(--text-body-strong)', color: 'var(--ink)' }}>{producto}</div>
-            {rows[0].cols[S_SKU]?.text && <MonoTag>{rows[0].cols[S_SKU].text}</MonoTag>}
-            <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)' }}>
-              Total: {rows.reduce((s, r) => s + (Number(cantidadOf(r).replace(/,/g, '')) || 0), 0)}
-            </div>
-          </div>
-          {rows.map(r => {
-            const st = edits[r.id];
-            return (
-              <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 0', borderTop: '1px solid var(--border-subtle)' }}>
-                <div style={{ flex: '0 0 60px', font: 'var(--text-label-strong)', color: 'var(--ink)' }}>{r.cols[S_TALLA]?.text || '—'}</div>
-                <div style={{ flex: 1, font: 'var(--text-label)', color: 'var(--ink-secondary)' }}>{r.cols[S_COLOR]?.text || '—'}</div>
-                {canEditCantidad ? (
-                  <input
-                    type="number" min={0} inputMode="numeric"
-                    value={st?.draft ?? cantidadOf(r)}
-                    onChange={e => setEdits(p => ({ ...p, [r.id]: { ...p[r.id], draft: e.target.value } }))}
-                    onBlur={() => commit(r)}
-                    onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-                    disabled={st?.saving}
-                    style={{
-                      width: 64, textAlign: 'right', font: 'var(--text-label-strong)', color: 'var(--ink)',
-                      padding: '4px 6px', borderRadius: 'var(--radius-md)',
-                      border: `1px solid ${st?.error ? 'var(--status-perdida)' : 'var(--border)'}`,
-                    }}
-                  />
-                ) : (
-                  <div style={{ width: 64, textAlign: 'right', font: 'var(--text-label-strong)', color: 'var(--ink)' }}>{cantidadOf(r)}</div>
-                )}
-                {st?.error && <span style={{ font: 'var(--text-caption)', color: 'var(--status-perdida)' }}>{st.error}</span>}
-              </div>
-            );
-          })}
-        </div>
+      {grupos.map(g => (
+        <TallaBoxCard
+          key={`${g.producto}|${g.color}`}
+          group={g}
+          cotizado={cotizadoMap.get(`${norm(g.producto)}|${norm(g.color)}`) ?? null}
+          canEditCantidad={canEditCantidad}
+          canReport={canReport}
+          proyectoId={proyectoId}
+          reload={reload}
+        />
       ))}
     </div>
   );
@@ -341,6 +448,18 @@ function TallasGrid({ lineas, canEditCantidad, reload }: { lineas: ItemDTO[]; ca
 export function ProyectoTallasSection({ state, oppId }: { state: ProyectoState; oppId: string | null }) {
   const me = useMe();
   const canEditCantidad = me?.role === 'vendedor' || me?.role === 'compras' || me?.role === 'admin';
+  const [cotizadoMap, setCotizadoMap] = useState<Map<string, number>>(new Map());
+
+  // Lo cotizado por producto+color viene de la Oportunidad ligada — un solo
+  // GET al mirror D1 (sin round-trip a Monday), para el "Cotizado"/"Faltan" de
+  // cada tarjeta (Efraín, 2026-08-05: "que coincida con la opp, todo en D1").
+  useEffect(() => {
+    if (!oppId) { setCotizadoMap(new Map()); return; }
+    getItem('oportunidades', oppId)
+      .then(d => setCotizadoMap(cotizadoMapFrom(d.children ?? [])))
+      .catch(() => setCotizadoMap(new Map()));
+  }, [oppId]);
+
   if (state.loading) return <Shell hint="Buscando el proyecto ligado…" />;
   if (!state.proyecto) {
     return <Shell hint="Esta oportunidad aún no tiene Proyecto en Monday — se crea cuando se GANA la oportunidad, y ahí vive el desglose de tallas." />;
@@ -354,7 +473,14 @@ export function ProyectoTallasSection({ state, oppId }: { state: ProyectoState; 
       </div>
       <ProyectoLinks proyecto={p} />
       <ProyectoActionBar proyecto={p} reload={state.reload} actions={['tallas-regenerar', 'tallas-confirmar', 'tallas-importar']} />
-      <TallasGrid lineas={p.children ?? []} canEditCantidad={canEditCantidad} reload={state.reload} />
+      <TallasGrid
+        lineas={p.children ?? []}
+        cotizadoMap={cotizadoMap}
+        canEditCantidad={canEditCantidad}
+        canReport={canEditCantidad}
+        proyectoId={p.id}
+        reload={state.reload}
+      />
       <FileList label="Relaciones de tallas (PDF)" files={toR2Files(parseFiles(p.cols[P_TALLAS_PDF]?.text), oppId, 'tallas')} />
     </div>
   );

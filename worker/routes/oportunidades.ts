@@ -18,7 +18,7 @@ import {
 import { enviarACosteo, enviarAValidacion, checkCosteo, checkValidacion, CosteoError } from '../lib/costeo';
 import { listVersions, duplicateVersion, restoreVersion, esDraftVigente, recordFirstVersion, QuoteVersionError } from '../lib/quoteVersions';
 import { ajustarLinea, AjusteLineaError } from '../lib/lineaAjustes';
-import { capturarTallas } from '../lib/proyectoTallas';
+import { capturarTallas, reportarTallasIncorrectas } from '../lib/proyectoTallas';
 import { duplicateOportunidad, DuplicateOportunidadError } from '../lib/duplicateOportunidad';
 import { ganarOportunidad, GanarOportunidadError } from '../lib/ganarOportunidad';
 import { createSubitem, addFileToColumn, fetchAssetPublicUrls, gql } from '../lib/monday';
@@ -660,6 +660,33 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
       return c.json({ error: 'No se pudieron guardar las tallas: ' + detail }, 500);
+    }
+  });
+
+  // Reportar tallas incorrectas (vendedor/compras/admin, mismo grupo que edita
+  // Cantidad inline en ProyectoTallasSection) — avisa a Compras por Monday +
+  // WhatsApp cuando una línea producto+color no cuadra contra lo cotizado.
+  // Registrada ANTES de /api/proyectos/:id/:action por el mismo motivo que
+  // /lineas y /tallas-capturar arriba.
+  app.post('/api/proyectos/:id/tallas-reportar', async c => {
+    const itemId = Number(c.req.param('id'));
+    if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
+    const viewer = c.get('viewer');
+    if (!['vendedor', 'compras', 'admin'].includes(viewer.role)) return c.json({ error: 'forbidden' }, 403);
+
+    const row = await getItem(c.env, 'proyectos', itemId, viewer, 'own');
+    if (!row) return c.json({ error: 'not found' }, 404);
+
+    const body = await c.req.json<{ producto?: string; color?: string }>();
+    const producto = body.producto?.trim();
+    if (!producto) return c.json({ error: 'producto is required' }, 400);
+
+    try {
+      const result = await reportarTallasIncorrectas(c.env, viewer, itemId, row.name, producto, body.color?.trim() || undefined);
+      return c.json(result);
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      return c.json({ error: 'No se pudo reportar: ' + detail }, 500);
     }
   });
 
