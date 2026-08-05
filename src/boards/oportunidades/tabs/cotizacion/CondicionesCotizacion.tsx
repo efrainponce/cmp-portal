@@ -61,7 +61,7 @@ export function CondicionesCotizacion({
     <div style={{
       border: '1px solid var(--border)', borderRadius: 'var(--radius-xl)',
       background: 'var(--bg-raised)', padding: isMobile ? '14px' : '16px 18px',
-      marginBottom: 16,
+      marginTop: 20, marginBottom: 16,
     }}>
       <div style={{ font: 'var(--text-label-strong)', color: 'var(--ink)', marginBottom: 2 }}>
         Condiciones de la cotización

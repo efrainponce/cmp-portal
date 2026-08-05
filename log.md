@@ -2,6 +2,10 @@
 
 ## 2026-08-05
 
+- Cotización: separación entre la tabla de líneas/totales y "Condiciones de la cotización"
+  - Efraín (captura): el bloque de condiciones quedaba pegado justo debajo del renglón TOTAL, sin aire visual entre ambos.
+  - `CondicionesCotizacion.tsx`: se agrega `marginTop: 20` al contenedor del bloque.
+
 - Costeo: "Asignar" Proveedor pegado al texto, ya no al otro extremo de la fila
   - Con el fix de ancho anterior "Asignar" ya era visible, pero seguía separado del texto por `justify-content:space-between` — Efraín: "no es nada claro". `LineDetailPanel.tsx` (`ProveedorField`): se quita el space-between (queda `flex-start` con gap 10) y el link gana subrayado para que se note que es clickeable.
 
