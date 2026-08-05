@@ -6,6 +6,7 @@
 // solo en el Excel.
 import { useCallback, useEffect, useState } from 'react';
 import { getProyecto, proyectoAction, type ItemDetailDTO, type ItemDTO, type ProyectoAction } from '../../lib/api';
+import { patchItem } from '../../lib/apiClient';
 import { useMe } from '../../lib/useMe';
 import { ConfirmButton } from '../../components/core/ConfirmButton';
 import { MonoTag, StatusBadge } from '../../components/core/Badges';
@@ -241,8 +242,44 @@ function FileList({ label, files }: { label: string; files: { url: string; name:
   );
 }
 
-/** Grid de tallas importadas (subitems del Proyecto) agrupado por producto. */
-function TallasGrid({ lineas }: { lineas: ItemDTO[] }) {
+interface CantidadEdit { draft?: string; saving?: boolean; error?: string }
+
+/** Grid de tallas importadas (subitems del Proyecto), agrupado por producto.
+ * Filas planas (talla / color / cantidad) en vez de pills anidados — más
+ * fácil de escanear. Cantidad es editable inline (Efraín, 2026-08-05): se
+ * guarda contra la línea del Proyecto en Monday sin tocar el Sheet, así que
+ * un "Importar tallas a Monday" posterior la vuelve a pisar. */
+function TallasGrid({ lineas, canEditCantidad, reload }: { lineas: ItemDTO[]; canEditCantidad: boolean; reload: () => void }) {
+  const [overrides, setOverrides] = useState<Record<string, string>>({});
+  const [edits, setEdits] = useState<Record<string, CantidadEdit>>({});
+
+  const cantidadOf = (r: ItemDTO) => overrides[r.id] ?? r.cols[S_CANTIDAD]?.text ?? '0';
+
+  const commit = async (row: ItemDTO) => {
+    const draft = edits[row.id]?.draft;
+    if (draft == null) return;
+    const trimmed = draft.trim();
+    const current = cantidadOf(row);
+    if (trimmed === '' || trimmed === current) {
+      setEdits(p => ({ ...p, [row.id]: { ...p[row.id], draft: undefined, error: undefined } }));
+      return;
+    }
+    const n = Number(trimmed.replace(/,/g, ''));
+    if (!Number.isFinite(n) || n < 0) {
+      setEdits(p => ({ ...p, [row.id]: { ...p[row.id], error: 'Cantidad inválida' } }));
+      return;
+    }
+    setEdits(p => ({ ...p, [row.id]: { ...p[row.id], saving: true, error: undefined } }));
+    try {
+      await patchItem('proyectos_sub', row.id, { [S_CANTIDAD]: String(n) });
+      setOverrides(p => ({ ...p, [row.id]: String(n) }));
+      setEdits(p => ({ ...p, [row.id]: { draft: undefined, saving: false } }));
+      reload();
+    } catch {
+      setEdits(p => ({ ...p, [row.id]: { ...p[row.id], saving: false, error: 'No se pudo guardar' } }));
+    }
+  };
+
   if (lineas.length === 0) {
     return (
       <div style={{ marginTop: 14, font: 'var(--text-label)', color: 'var(--ink-quiet)' }}>
@@ -261,25 +298,40 @@ function TallasGrid({ lineas }: { lineas: ItemDTO[] }) {
     <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
       {[...grupos.entries()].map(([producto, rows]) => (
         <div key={producto} style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-xl)', padding: 14, background: '#fff' }}>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', marginBottom: 6 }}>
             <div style={{ font: 'var(--text-body-strong)', color: 'var(--ink)' }}>{producto}</div>
             {rows[0].cols[S_SKU]?.text && <MonoTag>{rows[0].cols[S_SKU].text}</MonoTag>}
             <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)' }}>
-              Total: {rows.reduce((s, r) => s + (Number(r.cols[S_CANTIDAD]?.text?.replace(/,/g, '')) || 0), 0)}
+              Total: {rows.reduce((s, r) => s + (Number(cantidadOf(r).replace(/,/g, '')) || 0), 0)}
             </div>
           </div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {rows.map(r => (
-              <div key={r.id} style={{
-                border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-lg)',
-                padding: '6px 10px', background: 'var(--bg)', font: 'var(--text-label)', color: 'var(--ink-secondary)',
-              }}>
-                <span style={{ font: 'var(--text-label-strong)', color: 'var(--ink)' }}>{r.cols[S_TALLA]?.text || '—'}</span>
-                {' · '}{r.cols[S_CANTIDAD]?.text || '0'}
-                {r.cols[S_COLOR]?.text ? ` · ${r.cols[S_COLOR].text}` : ''}
+          {rows.map(r => {
+            const st = edits[r.id];
+            return (
+              <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 0', borderTop: '1px solid var(--border-subtle)' }}>
+                <div style={{ flex: '0 0 60px', font: 'var(--text-label-strong)', color: 'var(--ink)' }}>{r.cols[S_TALLA]?.text || '—'}</div>
+                <div style={{ flex: 1, font: 'var(--text-label)', color: 'var(--ink-secondary)' }}>{r.cols[S_COLOR]?.text || '—'}</div>
+                {canEditCantidad ? (
+                  <input
+                    type="number" min={0} inputMode="numeric"
+                    value={st?.draft ?? cantidadOf(r)}
+                    onChange={e => setEdits(p => ({ ...p, [r.id]: { ...p[r.id], draft: e.target.value } }))}
+                    onBlur={() => commit(r)}
+                    onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                    disabled={st?.saving}
+                    style={{
+                      width: 64, textAlign: 'right', font: 'var(--text-label-strong)', color: 'var(--ink)',
+                      padding: '4px 6px', borderRadius: 'var(--radius-md)',
+                      border: `1px solid ${st?.error ? 'var(--status-perdida)' : 'var(--border)'}`,
+                    }}
+                  />
+                ) : (
+                  <div style={{ width: 64, textAlign: 'right', font: 'var(--text-label-strong)', color: 'var(--ink)' }}>{cantidadOf(r)}</div>
+                )}
+                {st?.error && <span style={{ font: 'var(--text-caption)', color: 'var(--status-perdida)' }}>{st.error}</span>}
               </div>
-            ))}
-          </div>
+            );
+          })}
         </div>
       ))}
     </div>
@@ -287,6 +339,8 @@ function TallasGrid({ lineas }: { lineas: ItemDTO[] }) {
 }
 
 export function ProyectoTallasSection({ state, oppId }: { state: ProyectoState; oppId: string | null }) {
+  const me = useMe();
+  const canEditCantidad = me?.role === 'vendedor' || me?.role === 'compras' || me?.role === 'admin';
   if (state.loading) return <Shell hint="Buscando el proyecto ligado…" />;
   if (!state.proyecto) {
     return <Shell hint="Esta oportunidad aún no tiene Proyecto en Monday — se crea cuando se GANA la oportunidad, y ahí vive el desglose de tallas." />;
@@ -300,7 +354,7 @@ export function ProyectoTallasSection({ state, oppId }: { state: ProyectoState; 
       </div>
       <ProyectoLinks proyecto={p} />
       <ProyectoActionBar proyecto={p} reload={state.reload} actions={['tallas-regenerar', 'tallas-confirmar', 'tallas-importar']} />
-      <TallasGrid lineas={p.children ?? []} />
+      <TallasGrid lineas={p.children ?? []} canEditCantidad={canEditCantidad} reload={state.reload} />
       <FileList label="Relaciones de tallas (PDF)" files={toR2Files(parseFiles(p.cols[P_TALLAS_PDF]?.text), oppId, 'tallas')} />
     </div>
   );

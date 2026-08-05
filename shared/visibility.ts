@@ -140,7 +140,7 @@ export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
   },
 
   proyectos_sub: {
-    ...vis(['name', 'text_mm0hs17x', 'text_mm0h4a1c', 'numeric_mm0hj2q4',
+    ...vis(['name', 'text_mm0hs17x', 'text_mm0h4a1c',
       'text_mm1antcb', 'text_mm1a5yyq', 'text_mm0hyrfs', 'color_mm0hqf79',
       'text_mm20gzsb', 'text_mm52x1bx', 'text_mm56dbkm', 'text_mm0mzet0',
       'date_mm20xdtm', 'date_mm20fq6t', 'date_mm20y5t3', 'date_mm21p1ex',
@@ -148,6 +148,12 @@ export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
       'long_text_mm1cqh8e', 'long_text_mm1cyqts', 'long_text_mm1c59cg',
       'long_text_mm1c2eyf', 'long_text_mm1cyq91', 'long_text_mm1c6ya0',
       'long_text_mm1cnbbr', 'long_text_mm2077h1'], V),   // incl. 8 zonas embellecimiento
+    // Cantidad por talla — editable inline (tab Tallas del Proyecto) por
+    // vendedor/compras/admin para corregir una línea ya importada sin tener
+    // que regresar al Sheet (Efraín, 2026-08-05). Talla y color se quedan de
+    // solo lectura: son texto libre que viene del catálogo de cmp-tallas y un
+    // typo aquí no calzaría con el Sheet/Monday.
+    numeric_mm0hj2q4: { vis: V, w: V },
     ...vis(['numeric_mm1dj4fp', 'numeric_mm1dmsaz', 'text_mm1gdsvg',
       'board_relation_mm1cfgv5', 'lookup_mm1d2y9b', 'lookup_mm2145g',
       'multiple_person_mm4pc2ns', 'text_mm4ph3a9', 'text_mm4pywyx',

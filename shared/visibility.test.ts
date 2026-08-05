@@ -191,3 +191,21 @@ describe('condiciones de la cotización — las escribe compras (Efraín, 2026-0
     }
   });
 });
+
+describe('cantidad por talla — editable inline post-import (Efraín, 2026-08-05)', () => {
+  it('vendedor, compras y admin corrigen la cantidad de una línea ya importada', () => {
+    for (const role of ['vendedor', 'compras', 'admin'] as Role[]) {
+      expect(canWrite('proyectos_sub', 'numeric_mm0hj2q4', role)).toBe(true);
+    }
+    expect(canWrite('proyectos_sub', 'numeric_mm0hj2q4', 'almacen')).toBe(false);
+  });
+
+  it('talla y color se quedan de solo lectura (texto libre del catálogo cmp-tallas)', () => {
+    for (const col of ['text_mm1antcb', 'text_mm0h4a1c']) {
+      for (const role of ROLES) {
+        expect(canWrite('proyectos_sub', col, role)).toBe(false);
+      }
+      expect(canRead('proyectos_sub', col, 'vendedor')).toBe(true);
+    }
+  });
+});
