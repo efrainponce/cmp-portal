@@ -30,6 +30,22 @@
   - Mismo día, a pedido de Efraín: se agrega Vendedor a la tabla (Nombre ·
     Cargo · Institución · Vendedor).
 
+- Contactos: se puede ligar Institución al crear (antes solo después, vía el modal
+  de edición) + banner de "créala primero" si no existe
+  - Pedido por Efraín: "no es obligatorio pero es mejor" — `contact_account` se
+    agrega a `CREATE_FIELDS.contactos` sin `required`. Es un `board_relation`
+    (necesita buscar en vivo sobre el board `instituciones`, no un `<select>`
+    con opciones fijas), así que en vez de forzarlo por el `FormField` genérico
+    se le da su propio bloque siempre visible en `CreateRecordModal.tsx`
+    (mismo patrón de búsqueda + `PickerRow` que ya usaba `EditContactoModal`
+    para reasignarla después de creado). Banner fijo debajo del buscador:
+    "¿No aparece la institución que buscas? Créala primero en 'Instituciones'…".
+  - Verificado en vivo contra Monday real (no solo el mirror): contacto
+    "CLAUDE TEST CONTACTO - borrar" creado con `contact_account` →
+    `linked_item_ids: ["12533829842"]` ("TEST — borrar (cmp-portal create)").
+  - `npx tsc --noEmit` (3 tsconfigs, mismos 2 errores preexistentes de
+    `worker/routes/{admin,boards}.ts` intactos) y `npm test` (117/117) limpios.
+
 ## 2026-08-04
 
 - Oportunidades: "Ganar" ahora crea el Proyecto ligado — antes solo cambiaba la Etapa

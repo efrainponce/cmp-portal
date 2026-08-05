@@ -34,9 +34,11 @@ export const CREATE_FIELDS: Record<'instituciones' | 'contactos' | 'oportunidade
   ],
   contactos: [
     { id: 'name', required: true },
-    // Institución (contact_account) intentionally excluded from creation for now —
-    // it's editable after creation (see shared/visibility.ts) but wiring it into the
-    // create form is a separate change (needs an Instituciones picker in FormField).
+    // No required (Efraín, 2026-08-05: "no es obligatorio pero es mejor") — el
+    // picker vive en CreateRecordModal, no en FormField genérico: es un
+    // board_relation que necesita buscar sobre `instituciones` en vivo, mismo
+    // patrón que ya usaba EditContactoModal para reasignarla después.
+    { id: 'contact_account' },
     { id: 'contact_email' },
     { id: 'contact_phone' },
     { id: 'text_mm0dz8yj' },       // Cargo
