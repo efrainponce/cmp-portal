@@ -12,6 +12,7 @@ import { CreateRecordModal } from './CreateRecordModal';
 import { EditContactoModal } from './EditContactoModal';
 import { useIsMobile } from '../../lib/useIsMobile';
 import type { ItemDTO } from '../../lib/api';
+import type { ColMeta } from '../../../shared/dto';
 
 interface Props {
   slug: BoardSlug;
@@ -23,8 +24,17 @@ const CREATE_LABEL: Record<string, string> = { instituciones: 'Nueva institució
 // Columnas que existen y se pueden capturar, pero no se pintan en la tabla.
 // Correo y Teléfono de Contactos: escondidos por lo pronto (Efraín, 2026-07-30);
 // siguen en el form de "Nuevo contacto" (shared/createFields.ts).
-const HIDDEN_LIST_COLS: Partial<Record<BoardSlug, string[]>> = {
-  contactos: ['contact_email', 'contact_phone'],
+const HIDDEN_LIST_COLS: Partial<Record<BoardSlug, string[]>> = {};
+
+// Boards donde la tabla muestra solo estas columnas, en este orden exacto —
+// Nombre siempre va primero (BoardTable lo pinta aparte). Contactos: Efraín
+// 2026-08-05, "acomoda Nombre, Cargo e Institución" — el board trae Vendedor/
+// Comentarios/Prioridad/Calificación/Ciudad/Estado y una columna "Cargo"
+// duplicada (text_mm562a0m, sin uso en el código) que solo ensuciaban la
+// lista; se quedan legibles (siguen en `cols`/el drawer si algún día lo
+// tiene) pero fuera de esta tabla.
+const LIST_COLS: Partial<Record<BoardSlug, string[]>> = {
+  contactos: ['text_mm0dz8yj', 'contact_account'], // Cargo, Institución
 };
 
 export function GenericBoardView({ slug, title }: Props) {
@@ -42,8 +52,11 @@ export function GenericBoardView({ slug, title }: Props) {
   const createSlug = slug === 'instituciones' || slug === 'contactos' ? slug : null;
   const creatable = createSlug !== null;
   const canEditContacto = slug === 'contactos' && cols.some((c) => (c.id === 'contact_account' || c.id === 'multiple_person_mm03vqwx') && c.w);
+  const listColIds = LIST_COLS[slug];
   const hidden = HIDDEN_LIST_COLS[slug];
-  const tableCols = hidden ? cols.filter((c) => !hidden.includes(c.id)) : cols;
+  const tableCols: ColMeta[] = listColIds
+    ? listColIds.map((id) => cols.find((c) => c.id === id)).filter((c): c is ColMeta => !!c)
+    : hidden ? cols.filter((c) => !hidden.includes(c.id)) : cols;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>

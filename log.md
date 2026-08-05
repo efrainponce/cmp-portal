@@ -17,6 +17,17 @@
     color que trae Monday para cada etapa.
   - `npx tsc --noEmit` y `npm test` (117/117) limpios.
 
+- Contactos: tabla acomodada a solo Nombre, Cargo e Institución
+  - Pedido por Efraín. El board traía visibles Vendedor/Comentarios/Prioridad/
+    Calificación/Ciudad/Estado y una columna "Cargo" duplicada sin uso en el
+    código (`text_mm562a0m`) — la tabla se veía saturada. `GenericBoardView.tsx`:
+    nuevo `LIST_COLS` (allow-list explícita y ordenada por board, hoy solo
+    contactos) que reemplaza el `HIDDEN_LIST_COLS` de antes; no se tocó
+    `shared/visibility.ts` — las columnas siguen legibles/escribibles igual
+    que antes, solo cambia qué se pinta en esta tabla.
+  - Verificado en vivo: encabezados quedan Nombre · Cargo · Institución.
+  - `npx tsc --noEmit` y `npm test` (117/117) limpios.
+
 ## 2026-08-04
 
 - Oportunidades: "Ganar" ahora crea el Proyecto ligado — antes solo cambiaba la Etapa
