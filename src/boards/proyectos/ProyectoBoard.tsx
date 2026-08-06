@@ -26,6 +26,7 @@ export function ProyectoBoard({ boardKey, openId, onOpenChange, onOpenOportunida
       {openId && (
         <ProyectoDrawer
           id={openId}
+          boardKey={boardKey}
           backLabel={`Volver a ${config.title}`}
           defaultTab={config.defaultTab}
           onBack={() => onOpenChange(null)}

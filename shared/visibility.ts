@@ -123,7 +123,7 @@ export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
 
   proyectos: {
     ...vis(['name', 'pulse_id_mm1a12gy', 'project_status', 'lookup_mm20g4n6',
-      'date_mm0m1vfv', 'link_mm1amwz8', 'file_mm0hwapr', 'lookup_mm1dwn6',
+      'link_mm1amwz8', 'file_mm0hwapr', 'lookup_mm1dwn6',
       'color_mm0mcrjq',                          // Estado Pago — recomendación aceptada
       'multiple_person_mm0hrnqq', 'board_relation_mm0hb0gy', 'lookup_mm1d1546',
       'dropdown_mm0hnyv', 'lookup_mm1d56mp', 'board_relation_mm0hf0y3',
@@ -134,6 +134,9 @@ export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
       'multiple_person_mm169k2f', 'file_mm478mkq', 'link_mm462saa',
       'text_mm4cct6a', 'text_mm4cdyjb', 'text_mm4c74f8', 'color_mm52csps',
       'file_mm4pa2h8', 'date_mm525k42', 'file_mm3393nf'], AC),
+    // Fecha Entrega — obligatoria (tab Documentación del Proyecto), la captura
+    // el vendedor; compras/admin la ven pero no la tocan (Efraín, 2026-08-05).
+    date_mm0m1vfv: { vis: V, w: WV },
     // OC / cotización / contrato firmado por el cliente — sube el vendedor
     // (quien lo recibe) o compras/admin (Efraín, 2026-07-17).
     file_mm0hayh4: { vis: V, w: V },

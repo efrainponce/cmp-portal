@@ -14,8 +14,9 @@ import { getItemDetail, refreshItem, getProyectoOportunidad, type ItemDetailDTO 
 import { useIsMobile } from '../../lib/useIsMobile';
 import { ActualizacionesTab } from '../oportunidades/tabs/ActualizacionesTab';
 import { EmptyDocTab } from '../oportunidades/tabs/EmptyDocTab';
-import { OcContratoSection } from '../oportunidades/tabs/DocumentacionTab';
+import { FechaEntregaField, OcContratoSection } from '../oportunidades/tabs/DocumentacionTab';
 import { ProyectoTallasSection, ProyectoOrdenesSection, EjecucionSection, type ProyectoState } from '../oportunidades/ProyectoSection';
+import type { ProjectBoardKey } from '../../lib/projectStages';
 
 type ProyectoTabKey = 'actualizaciones' | 'documentacion' | 'tallas' | 'ordenes' | 'ejecucion' | 'logistica';
 
@@ -33,8 +34,18 @@ const TABS: { key: ProyectoTabKey; label: string }[] = [
   { key: 'logistica', label: 'Logística' },
 ];
 
+// Cada acceso del sidebar solo necesita ver sus propios tabs, no los 6
+// (Efraín, 2026-08-05): "Documentación y Tallas" -> doc+tallas; "Órdenes de
+// Compra" -> doc+tallas+ordenes. Ejecución/Logística se quedan con el set
+// completo hasta que se pida lo mismo para esos accesos.
+const TABS_BY_BOARD: Partial<Record<ProjectBoardKey, ProyectoTabKey[]>> = {
+  doctallas: ['documentacion', 'tallas'],
+  ordenescompra: ['documentacion', 'tallas', 'ordenes'],
+};
+
 interface Props {
   id: string;
+  boardKey: ProjectBoardKey;
   backLabel: string;
   defaultTab: string;
   onBack: () => void;
@@ -45,7 +56,7 @@ interface Props {
 // SWR de sesión — mismo patrón que OpportunityDrawer.
 const detailCache = new Map<string, ItemDetailDTO>();
 
-export function ProyectoDrawer({ id, backLabel, defaultTab, onBack, onOpenOportunidad }: Props) {
+export function ProyectoDrawer({ id, boardKey, backLabel, defaultTab, onBack, onOpenOportunidad }: Props) {
   const isMobile = useIsMobile();
   const [item, setItem] = useState<ItemDetailDTO | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -125,7 +136,7 @@ export function ProyectoDrawer({ id, backLabel, defaultTab, onBack, onOpenOportu
       </div>
 
       <div style={{ display: 'flex', gap: 6, padding: isMobile ? '0 14px' : '0 32px', borderBottom: '1px solid var(--border)', overflowX: 'auto' }}>
-        {TABS.map((t) => (
+        {(TABS_BY_BOARD[boardKey] ? TABS.filter((t) => TABS_BY_BOARD[boardKey]!.includes(t.key)) : TABS).map((t) => (
           <div
             key={t.key}
             onClick={() => setTab(t.key)}
@@ -142,7 +153,8 @@ export function ProyectoDrawer({ id, backLabel, defaultTab, onBack, onOpenOportu
 
       {tab === 'actualizaciones' && <ActualizacionesTab slug="proyectos" itemId={id} />}
       {tab === 'documentacion' && (
-        <div style={{ padding: '24px 32px 40px', maxWidth: 920, width: '100%', boxSizing: 'border-box' }}>
+        <div style={{ padding: '24px 32px 40px', maxWidth: 920, width: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 20 }}>
+          <FechaEntregaField proyecto={proyectoState} />
           <OcContratoSection proyecto={proyectoState} oppId={oportunidadId} />
         </div>
       )}

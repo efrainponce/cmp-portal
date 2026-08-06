@@ -2,6 +2,12 @@
 
 ## 2026-08-05
 
+- Proyectos: tabs recortados por acceso + Fecha de entrega obligatoria en Documentación
+  - Efraín pidió que "Documentación y Tallas" solo muestre Documentación/Tallas (sin Actualizaciones/Órdenes de compra/Ejecución/Logística) y que "Órdenes de Compra" solo muestre Documentación/Tallas/Órdenes de compra (sin Ejecución/Logística). Ejecución y Logística se dejan con el set completo de tabs — no se pidió lo mismo para esos accesos.
+  - `ProyectoDrawer.tsx`: nuevo `TABS_BY_BOARD` (por `ProjectBoardKey`) que filtra la barra de tabs; `ProyectoBoard.tsx` ahora le pasa `boardKey`.
+  - Fecha Entrega (`date_mm0m1vfv`, Proyectos) pasa de solo-lectura (`vis: V`, sin `w`) a escribible por vendedor/admin (`w: WV`) en `shared/visibility.ts` — la captura vendedor, compras solo la ve. Nuevo campo `FechaEntregaField` (`DocumentacionTab.tsx`, reusado por `ProyectoDrawer` y por el tab Documentación del lado Oportunidad) con asterisco de obligatorio y aviso en rojo mientras esté vacío; guarda con `patchItem('proyectos', ...)` al cambiar el date picker.
+  - Verificado con Playwright en local: PRO-0039 (UNIFORMES COTAXTLA, acceso Documentación y Tallas) solo trae 2 tabs y el campo de fecha precargado editable; PRO-0064 (acceso Órdenes de Compra) trae 3 tabs. `npx tsc --noEmit` y `npm test` (shared/visibility.test.ts, worker/lib/columnEncode.test.ts) limpios.
+
 - Proyecto: quitar título "Proyecto {nombre}" y la línea divisoria del tab Tallas
   - Efraín (captura): pidió quitar la línea horizontal entre la barra de tabs (Actualizaciones/Documentación/Tallas/Órdenes de compra/Logística) y el contenido, y quitar el nombre del proyecto repetido ahí — ya está arriba en el header del drawer — dejando solo los links ("Abrir archivo de tallas", "Carpeta Drive") y los botones de acción.
   - `ProyectoTallasSection` (`src/boards/oportunidades/ProyectoSection.tsx`): se quita el `div` de título+subtítulo y el `borderTop` del contenedor; cambio acotado a este tab (no es un wrapper compartido con Documentación/Órdenes de compra/Logística).

@@ -14,12 +14,15 @@
 import { useState, type ChangeEvent } from 'react';
 import type { ItemDetailDTO } from '../../../lib/api';
 import { uploadProyectoDocumento } from '../../../lib/api';
+import { patchItem } from '../../../lib/apiClient';
+import { useMe } from '../../../lib/useMe';
 import { P_OC_CLIENTE, type ProyectoState } from '../ProyectoSection';
 import { DocumentsPanel } from '../../../components/documents/DocumentsPanel';
 
 export const SOLICITUDES_COL = 'file_mm0z6rze'; // Cotizaciones sin precio
 export const NO_FIRMADAS_COL = 'file_mm0fgrzq'; // Cotizaciones generadas
 export const FIRMADAS_COL = 'file_mm0zjras';    // Cotizaciones Firmadas
+const FECHA_ENTREGA_COL = 'date_mm0m1vfv';
 
 interface DocFile { url: string; name: string; key?: string }
 
@@ -63,6 +66,8 @@ export function DocumentacionTab({ item, proyecto }: { item: ItemDetailDTO; proy
           <DocSection title={null} accentColor="var(--status-ganada)" label="Firmadas por vendedor" files={toR2Files(parseFiles(item.cols[FIRMADAS_COL]?.text), item.id, 'cotizacion-firmada')} uploadLabel="Subir cotización firmada" />
         </div>
       </div>
+
+      <FechaEntregaField proyecto={proyecto} />
 
       <OcContratoSection proyecto={proyecto} oppId={item.id} />
 
@@ -152,6 +157,69 @@ function FileListOrEmpty({ files }: { files: DocFile[] }) {
           <div style={{ font: 'var(--text-body-strong)', color: 'var(--accent)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</div>
         </a>
       ))}
+    </div>
+  );
+}
+
+/** Fecha de entrega del proyecto — obligatoria, la captura el vendedor
+ * (Efraín, 2026-08-05). Guarda al cambiar el date picker, sin botón de
+ * submit; mientras esté vacía se marca en rojo como pendiente. */
+export function FechaEntregaField({ proyecto }: { proyecto?: ProyectoState }) {
+  const me = useMe();
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const p = proyecto?.proyecto;
+  const stored = p?.cols[FECHA_ENTREGA_COL]?.text ?? '';
+  const canEdit = me?.role === 'vendedor' || me?.role === 'admin';
+  const isEmpty = stored.trim() === '';
+
+  const save = async (raw: string) => {
+    if (!p || raw === stored) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await patchItem('proyectos', p.id, { [FECHA_ENTREGA_COL]: raw });
+      proyecto?.reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudo guardar.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!p) return null;
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 4 }}>
+        <SectionTitle>Fecha de entrega del proyecto *</SectionTitle>
+        {saving && <span style={{ font: 'var(--text-caption)', color: 'var(--ink-faint)' }}>guardando…</span>}
+      </div>
+      {canEdit ? (
+        <input
+          type="date"
+          defaultValue={stored}
+          key={stored}
+          onChange={(e) => void save(e.target.value)}
+          style={{
+            padding: '8px 10px', border: `1px solid ${isEmpty ? 'var(--status-perdida)' : 'var(--border)'}`,
+            borderRadius: 'var(--radius-lg)', background: 'var(--bg)', color: 'var(--ink)', font: 'var(--text-label)',
+          }}
+        />
+      ) : (
+        <div style={{ font: 'var(--text-label)', color: isEmpty ? 'var(--ink-faint)' : 'var(--ink-secondary)' }}>
+          {isEmpty ? 'Sin definir' : stored}
+        </div>
+      )}
+      {isEmpty && (
+        <div style={{ font: 'var(--text-caption)', color: 'var(--status-perdida)', marginTop: 4 }}>
+          Este campo es obligatorio.
+        </div>
+      )}
+      {error && (
+        <div style={{ font: 'var(--text-caption)', color: 'var(--status-perdida)', marginTop: 4 }}>{error}</div>
+      )}
     </div>
   );
 }
