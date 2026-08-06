@@ -7,7 +7,7 @@ import type { Role } from '../../shared/types';
 import type { IdentityDTO, MondayUserDTO, BoardAccessDTO, ZonaDTO } from '../../shared/dto';
 import { TEAM_ROLES } from '../../shared/boardAccess';
 import { BOARDS, type BoardSlug } from '../../shared/boards';
-import { listIdentities, getIdentityByEmail, upsertIdentity } from '../lib/dal';
+import { listIdentities, getIdentityByEmail, upsertIdentity, createNativeIdentity } from '../lib/dal';
 import { cachedFetchUsers } from '../lib/rosterCache';
 import { listAllBoardAccess, setBoardAccess, BoardAccessError } from '../lib/boardAccess';
 import { listZonas, createZona, updateZona, deleteZona, ZonaError } from '../lib/zonas';
@@ -22,6 +22,32 @@ export function adminRoutes(app: Hono<{ Bindings: Env }>) {
       mondayUserId: r.monday_user_id, role: r.role, active: !!r.active,
     }));
     return c.json(dto);
+  });
+
+  // Alta de usuario sin pasar por Monday (pedido de Efraín, 2026-08-06): a
+  // diferencia del PUT de abajo, esto SIEMPRE crea una fila nueva — 409 si el
+  // email ya existe. dal.createNativeIdentity le asigna un monday_user_id
+  // sintético negativo (ver ese comentario para el porqué).
+  app.post('/api/admin/identities', async c => {
+    if (c.get('viewer').role !== 'admin') return c.json({ error: 'forbidden' }, 403);
+    const body = await c.req.json<{ email?: string; nombre?: string; phone?: string | null; role?: string; active?: boolean }>();
+    const email = body.email?.trim() ?? '';
+    const nombre = body.nombre?.trim() ?? '';
+    if (!/^\S+@\S+\.\S+$/.test(email)) return c.json({ error: 'correo inválido' }, 400);
+    if (!nombre) return c.json({ error: 'nombre is required' }, 400);
+    const validRoles = ['vendedor', 'compras', 'admin', 'almacen'];
+    const role = body.role ?? 'vendedor';
+    if (!validRoles.includes(role)) return c.json({ error: 'invalid role' }, 400);
+    if (await getIdentityByEmail(c.env, email)) return c.json({ error: 'ya existe un usuario con ese correo' }, 409);
+
+    const row = await createNativeIdentity(c.env, {
+      email, nombre, phone: body.phone?.trim() || null, role, active: body.active === false ? 0 : 1,
+    });
+    const dto: IdentityDTO = {
+      email: row.email, phone: row.phone ?? null, nombre: row.nombre ?? null,
+      mondayUserId: row.monday_user_id, role: row.role, active: row.active,
+    };
+    return c.json(dto, 201);
   });
 
   // Merge parcial contra la fila existente: la tabla "Usuarios del portal" edita

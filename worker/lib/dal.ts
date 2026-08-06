@@ -219,8 +219,11 @@ export async function listVendedores(env: Env, role: string = 'vendedor'): Promi
   // identity (ej. login de trabajo + gmail personal, mismo monday_user_id) —
   // sin esto salían duplicados en los selects de Vendedor/Compras (mismo id
   // dos veces => key duplicada de React), encontrado en el stress test 2026-07-21.
+  // monday_user_id > 0: saca a los usuarios dados de alta desde el portal (sin
+  // asiento real en Monday, ver createNativeIdentity) — asignarlos aquí
+  // terminaría escribiendo un id inventado en la columna de personas de Monday.
   const res = await env.DB
-    .prepare(`SELECT monday_user_id, nombre FROM identity WHERE (role = ? OR role = 'admin') AND active = 1 GROUP BY monday_user_id ORDER BY nombre`)
+    .prepare(`SELECT monday_user_id, nombre FROM identity WHERE (role = ? OR role = 'admin') AND active = 1 AND monday_user_id > 0 GROUP BY monday_user_id ORDER BY nombre`)
     .bind(safeRole)
     .all<{ monday_user_id: number; nombre: string }>();
   return res.results ?? [];
@@ -248,6 +251,23 @@ export async function upsertIdentity(
         monday_user_id=excluded.monday_user_id, role=excluded.role, active=excluded.active`)
     .bind(row.email, row.phone, row.nombre, row.monday_user_id, row.role, row.active)
     .run();
+}
+
+// Usuario dado de alta a mano en Configuración, sin pasar por el directorio de
+// Monday (pedido de Efraín, 2026-08-06: soltar la dependencia de Monday para
+// alta de usuarios). Como monday_user_id es NOT NULL y se usa en todo el
+// codebase para leer/escribir contra Monday, se le asigna un id sintético
+// NEGATIVO (los ids reales de Monday siempre son positivos) — listVendedores y
+// la mención de compras en proyectoTallas.ts ya filtran monday_user_id > 0
+// para no tratar a estos usuarios como personas reales de Monday.
+export async function createNativeIdentity(
+  env: Env,
+  row: { email: string; nombre: string; phone: string | null; role: string; active: number },
+): Promise<Identity> {
+  const min = await env.DB.prepare('SELECT MIN(monday_user_id) AS m FROM identity').first<{ m: number | null }>();
+  const syntheticId = Math.min(0, min?.m ?? 0) - 1;
+  await upsertIdentity(env, { ...row, monday_user_id: syntheticId });
+  return { email: row.email, nombre: row.nombre, phone: row.phone ?? undefined, monday_user_id: syntheticId, role: row.role as Identity['role'], active: !!row.active };
 }
 
 export async function pendingItemIds(env: Env, boardId: number): Promise<Set<number>> {

@@ -516,6 +516,19 @@ export async function putIdentity(email: string, patch: Partial<IdentityDTO>): P
   if (!res.ok) throw new Error('PUT identity failed: ' + res.status);
 }
 
+export async function createIdentity(payload: {
+  email: string; nombre: string; phone: string | null; role: IdentityDTO['role']; active?: boolean;
+}): Promise<IdentityDTO> {
+  const res = await apiFetch('/admin/identities', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const body: { error?: string } = await res.json().catch(() => ({}));
+    throw new Error(body.error || 'POST identity failed: ' + res.status);
+  }
+  return res.json();
+}
+
 export async function getMondayUsers(): Promise<MondayUserDTO[]> {
   const res = await apiFetch('/admin/monday-users');
   if (!res.ok) throw new Error('GET monday-users failed: ' + res.status);

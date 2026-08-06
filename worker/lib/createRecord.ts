@@ -30,6 +30,10 @@ export async function submitCreate(
 ): Promise<CreateResponse> {
   if (!isCreatable(slug)) throw new CreateError(404, 'not found');
   if (!CREATOR_ROLES.includes(viewer.role)) throw new CreateError(403, 'cannot create');
+  // Usuario dado de alta desde el portal (sin persona real en Monday, ver
+  // dal.createNativeIdentity): el auto-estampado de Vendedor en Contactos
+  // (abajo) mandaría un id inventado a la columna de personas de Monday.
+  if (viewer.monday_user_id <= 0) throw new CreateError(403, 'tu usuario no está vinculado a Monday; no puedes crear registros todavía');
   if (!name?.trim()) throw new CreateError(400, 'name is required');
 
   const fields = CREATE_FIELDS[slug];

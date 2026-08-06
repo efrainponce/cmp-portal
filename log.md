@@ -1,5 +1,13 @@
 # Log de commits
 
+## 2026-08-06
+
+- Configuración: alta de usuarios del portal sin pasar por Monday
+  - Efraín pidió poder agregar usuarios (nombre, correo, teléfono, rol, zona) independientes de Monday, como primer paso para soltar esa dependencia — confirmado con él: por ahora es directorio funcional (rol + zona reales), el login sigue siendo 100% Cloudflare Access, no se toca ese mecanismo.
+  - `identity.monday_user_id` es `NOT NULL` y se usa en todo el codebase tanto para scoping local en D1 como para escribir/mencionar personas reales en Monday. En vez de migrar el esquema (la tabla ya vive en producción con datos reales), a los usuarios creados desde el portal se les asigna un id sintético **negativo** (`MIN(monday_user_id) - 1`) — los ids reales de Monday siempre son positivos, así que `monday_user_id > 0` es la señal "persona real de Monday". `worker/lib/dal.ts` (`createNativeIdentity`, filtro en `listVendedores`) y `worker/lib/proyectoTallas.ts` (mención de compras) ya excluyen a estos usuarios de cualquier sitio que escriba/mencione en Monday; `createOportunidad.ts`/`createRecord.ts` bloquean con 403 si un usuario portal (id negativo) intenta crear un registro que se autoestamparía como Vendedor.
+  - Nueva ruta `POST /api/admin/identities` (admin-only, 409 si el email ya existe) y botón "+ Agregar usuario" en `SettingsPage.tsx` (modal reusando `components/core/Modal.tsx`) con nombre/correo/teléfono/rol/zona; columna "Origen" (Portal/Monday) nueva en la tabla de Usuarios del portal para distinguir de un vistazo.
+  - Verificado: `npx tsc --noEmit`, `npm run lint`, `npm test` limpios. Manual end-to-end con Playwright contra el dev server (zona nueva + usuario nuevo asignado a ella, badge "Portal", ausente del picker de Vendedor en "Nueva oportunidad", 409/400 en email duplicado/inválido vía curl) — datos de prueba limpiados de la D1 local al terminar.
+
 ## 2026-08-05
 
 - Proyectos: tabs recortados por acceso + Fecha de entrega obligatoria en Documentación

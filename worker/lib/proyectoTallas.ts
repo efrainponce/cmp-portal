@@ -226,8 +226,11 @@ export async function reportarTallasIncorrectas(
     }
   }
 
+  // monday_user_id > 0: excluye usuarios dados de alta desde el portal (sin
+  // persona real en Monday, ver dal.createNativeIdentity) — no se les puede
+  // @mencionar en un update de Monday.
   const { results } = await env.DB.prepare(
-    `SELECT monday_user_id, nombre, email FROM identity WHERE active = 1 AND role = 'compras' AND monday_user_id IS NOT NULL`,
+    `SELECT monday_user_id, nombre, email FROM identity WHERE active = 1 AND role = 'compras' AND monday_user_id > 0`,
   ).all<{ monday_user_id: number; nombre: string | null; email: string }>();
   const compras = results ?? [];
 

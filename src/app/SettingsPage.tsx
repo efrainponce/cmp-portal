@@ -5,7 +5,7 @@
 import { useEffect, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import {
-  getIdentities, putIdentity, getMondayUsers, getBoardAccess, putBoardAccess,
+  getIdentities, putIdentity, createIdentity, getMondayUsers, getBoardAccess, putBoardAccess,
   getZonas, createZona, putZona, deleteZona,
   type IdentityDTO, type MondayUserDTO, type BoardAccessDTO, type ZonaDTO,
 } from '../lib/api';
@@ -14,6 +14,7 @@ import { SearchInput } from '../components/forms/SearchInput';
 import { Select } from '../components/forms/Select';
 import { StatusBadge } from '../components/core/Badges';
 import { GroupCard } from '../components/layout/GroupCard';
+import { Modal } from '../components/core/Modal';
 import { textIncludes } from '../lib/textMatch';
 import { startImpersonation } from '../lib/impersonation';
 import { useMe, refreshMe } from '../lib/useMe';
@@ -111,6 +112,8 @@ export function SettingsPage() {
           ownEmail={me?.email ?? null}
           onSaved={(next) => { upsertIdentity(next); showToast('success', `Teléfono actualizado para ${next.email}.`); }}
           onError={() => showToast('error', 'No se pudo guardar el teléfono.')}
+          onCreated={(next) => { upsertIdentity(next); showToast('success', `${next.nombre ?? next.email} agregado al portal.`); }}
+          onToast={showToast}
         />
 
         <div style={{ height: 24 }} />
@@ -215,12 +218,17 @@ function MyAccountSection({ me, onSaved, onError }: {
   );
 }
 
-function IdentitiesSection({ identities, ownEmail, onSaved, onError }: {
+function IdentitiesSection({ identities, ownEmail, onSaved, onError, onCreated, onToast }: {
   identities: IdentityDTO[] | null;
   ownEmail: string | null;
   onSaved: (next: IdentityDTO) => void;
   onError: () => void;
+  onCreated: (next: IdentityDTO) => void;
+  onToast: (kind: Toast['kind'], message: string) => void;
 }) {
+  const [addOpen, setAddOpen] = useState(false);
+  const existingEmails = new Set((identities ?? []).map((i) => i.email));
+
   return (
     <GroupCard label="Usuarios del portal" color="var(--accent-blue)" tint="var(--status-seguimiento-tint)" count={identities?.length ?? '…'}>
       {!identities ? (
@@ -235,6 +243,7 @@ function IdentitiesSection({ identities, ownEmail, onSaved, onError }: {
                 <th style={thStyle}>Nombre</th>
                 <th style={thStyle}>Email</th>
                 <th style={thStyle}>Rol</th>
+                <th style={thStyle}>Origen</th>
                 <th style={thStyle}>Estado</th>
                 <th style={thStyle}>Teléfono</th>
                 <th style={thStyle} />
@@ -249,7 +258,118 @@ function IdentitiesSection({ identities, ownEmail, onSaved, onError }: {
           </table>
         </div>
       )}
+
+      <div style={{ display: 'flex', padding: '12px 18px', background: 'var(--bg-raised)', borderTop: '1px solid var(--border-subtle)' }}>
+        <Button variant="secondary" onClick={() => setAddOpen(true)} style={{ padding: '6px 12px' }}>
+          + Agregar usuario
+        </Button>
+      </div>
+
+      {addOpen && (
+        <AddUserModal
+          existingEmails={existingEmails}
+          onClose={() => setAddOpen(false)}
+          onCreated={(next) => { onCreated(next); setAddOpen(false); }}
+          onError={(message) => onToast('error', message)}
+        />
+      )}
     </GroupCard>
+  );
+}
+
+// Alta de usuario sin pasar por Monday (Efraín, 2026-08-06): a diferencia de
+// "Importar desde Monday" abajo, esto crea la fila directo en `identity` con
+// un monday_user_id sintético (worker/lib/dal.ts createNativeIdentity) — por
+// eso este usuario no puede quedar asignado como Vendedor/Comprador en
+// Monday, solo cuenta para permisos y zonas del portal.
+function AddUserModal({ existingEmails, onClose, onCreated, onError }: {
+  existingEmails: Set<string>;
+  onClose: () => void;
+  onCreated: (next: IdentityDTO) => void;
+  onError: (message: string) => void;
+}) {
+  const [nombre, setNombre] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [role, setRole] = useState<Role>('vendedor');
+  const [zonaId, setZonaId] = useState('');
+  const [zonas, setZonas] = useState<ZonaDTO[] | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => { getZonas().then(setZonas).catch(() => setZonas([])); }, []);
+
+  const cleanEmail = email.trim().toLowerCase();
+  const valid = nombre.trim() !== '' && /^\S+@\S+\.\S+$/.test(cleanEmail) && !existingEmails.has(cleanEmail);
+
+  async function save() {
+    if (!valid) return;
+    setSaving(true);
+    try {
+      const next = await createIdentity({
+        email: cleanEmail, nombre: nombre.trim(), phone: phone.trim() || null, role,
+      });
+      if (zonaId) {
+        const zona = (zonas ?? []).find((z) => String(z.id) === zonaId);
+        if (zona) await putZona(zona.id, { miembros: [...zona.miembros, cleanEmail] });
+      }
+      onCreated(next);
+    } catch (err) {
+      onError(err instanceof Error ? err.message : 'No se pudo crear el usuario.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const zonaOptions = [
+    { value: '', label: 'Sin zona' },
+    ...(zonas ?? []).map((z) => ({ value: String(z.id), label: z.nombre })),
+  ];
+
+  return (
+    <Modal
+      title="Agregar usuario"
+      onClose={onClose}
+      footer={(
+        <>
+          <Button variant="secondary" onClick={onClose} style={{ padding: '6px 12px' }}>Cancelar</Button>
+          <Button variant={valid && !saving ? 'primary' : 'disabled'} onClick={save} style={{ padding: '6px 12px' }}>
+            {saving ? 'Creando…' : 'Crear usuario'}
+          </Button>
+        </>
+      )}
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <Field label="Nombre">
+          <input value={nombre} onChange={(e) => setNombre(e.target.value)} style={inputStyle} />
+        </Field>
+        <Field label="Correo">
+          <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="nombre@empresa.com" style={inputStyle} />
+        </Field>
+        <Field label="Teléfono">
+          <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Opcional" style={inputStyle} />
+        </Field>
+        <Field label="Rol">
+          <Select value={role} onChange={(v) => setRole(v as Role)} options={ROLE_OPTIONS} />
+        </Field>
+        <Field label="Zona">
+          <Select value={zonaId} onChange={setZonaId} options={zonaOptions} />
+        </Field>
+        <div style={{ font: 'var(--text-micro)', color: 'var(--ink-quiet)' }}>
+          Este usuario no tiene cuenta en Monday.com: solo cuenta para permisos y zonas del portal, no puede quedar asignado como Vendedor o Comprador en Monday.
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div>
+      <div style={{ font: 'var(--text-micro)', color: 'var(--ink-quiet)', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 6 }}>
+        {label}
+      </div>
+      {children}
+    </div>
   );
 }
 
@@ -281,6 +401,11 @@ function IdentityRow({ identity, isSelf, onSaved, onError }: {
       <td style={tdStyle}>{identity.nombre || '—'}</td>
       <td style={tdStyle}>{identity.email}</td>
       <td style={tdStyle}><StatusBadge label={ROLE_LABELS[identity.role]} color="var(--ink-secondary)" tint="var(--bg-sunken)" /></td>
+      <td style={tdStyle}>
+        {identity.mondayUserId > 0
+          ? <StatusBadge label="Monday" color="var(--ink-tertiary)" tint="var(--bg-sunken)" />
+          : <StatusBadge label="Portal" color="var(--accent-blue)" tint="var(--status-seguimiento-tint)" />}
+      </td>
       <td style={tdStyle}>
         {identity.active
           ? <StatusBadge label="Activo" color="var(--status-ganada)" tint="var(--status-ganada-tint)" />

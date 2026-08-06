@@ -68,6 +68,9 @@ export async function createOportunidad(
   viewer: Identity,
 ): Promise<OportunidadResult> {
   if (!CREATOR_ROLES.includes(viewer.role)) throw new OportunidadError(403, 'cannot create');
+  // Usuario dado de alta desde el portal (sin persona real en Monday, ver
+  // dal.createNativeIdentity): no se le puede estampar como Vendedor abajo.
+  if (viewer.monday_user_id <= 0) throw new OportunidadError(403, 'tu usuario no está vinculado a Monday; no puedes crear oportunidades todavía');
   if (!input.nombre?.trim()) throw new OportunidadError(400, 'nombre is required');
   if (!input.lineas?.length) throw new OportunidadError(400, 'at least one product line is required');
   for (const l of input.lineas) {
