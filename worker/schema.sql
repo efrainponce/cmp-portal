@@ -341,3 +341,20 @@ CREATE TABLE IF NOT EXISTS estado_producto_historial (
 );
 CREATE INDEX IF NOT EXISTS idx_estado_historial_proyecto ON estado_producto_historial(proyecto_id);
 CREATE INDEX IF NOT EXISTS idx_estado_historial_sub ON estado_producto_historial(sub_item_id);
+
+-- Resumen libre por producto+color (2026-08-06, worker/lib/productoResumen.ts, tab
+-- "Ejecución"), un texto global por tarjeta además del comentario por talla
+-- (text_mm20gzsb en proyectos_sub). No hay columna de Monday a nivel producto+color
+-- (el grupo es puramente una agrupación del cliente sobre subitems de talla), así
+-- que vive nativo en D1, mismo patrón lazy-create que producto_propuesto/
+-- estado_producto_historial — está aquí solo como documentación.
+CREATE TABLE IF NOT EXISTS producto_resumen (
+  proyecto_id INTEGER NOT NULL,
+  producto    TEXT NOT NULL,
+  color       TEXT NOT NULL,
+  resumen     TEXT NOT NULL DEFAULT '',
+  updated_at  TEXT NOT NULL,
+  updated_by  TEXT,
+  PRIMARY KEY (proyecto_id, producto, color)
+);
+CREATE INDEX IF NOT EXISTS idx_producto_resumen_proyecto ON producto_resumen(proyecto_id);

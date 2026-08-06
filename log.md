@@ -2,6 +2,12 @@
 
 ## 2026-08-06
 
+- Ejecución: un solo popover abierto a la vez + resumen libre por producto
+  - Efraín reportó (captura) que los popovers de estado por talla no se cerraban entre sí — cada `EstadoChip` tenía su propio estado local, así que abrir uno nunca cerraba los demás y se apilaban varios a la vez. Pidió también agregar un texto libre de resumen por producto (dejando el comentario por talla intacto) y "que puedan seleccionar"; aclaró que solo se refería a que un popover cierre al abrir otro, no a selección múltiple de tallas.
+  - `ProyectoSection.tsx`: `openPopover` (un solo string) sube a `EjecucionSection` y baja a chips/historial/resumen — abrir cualquiera cierra el que estuviera abierto; un backdrop `position: fixed` de página completa lo cierra al hacer click fuera.
+  - Nuevo bloque "Resumen" en cada tarjeta de `EjecucionCard`, siempre visible, mismo patrón textarea+Cancelar/Guardar, editable solo compras/admin. El grupo producto+color no es una columna de Monday (es agrupado del cliente sobre subitems de talla), así que el resumen vive nativo en D1 — mismo patrón lazy-create que `estado_producto_historial` (`worker/lib/productoResumen.ts`, tabla `producto_resumen`, rutas `GET/PATCH /api/proyectos/:id/resumen-producto` en `worker/routes/oportunidades.ts`).
+  - Verificado: `npx tsc --noEmit`, `npm run lint`, `npm test` (126 tests) limpios; rutas nuevas probadas con curl contra el Worker local (mismo comportamiento 404 "not found" sin auth que la ruta ya existente `estado-historial`, confirma el wiring). Sin verificación visual en navegador — dev servers ya en uso por otra sesión y sin credenciales de login a mano.
+
 - Notificaciones: WhatsApp al llegar a Cotización y a Ganada
   - Efraín pidió que las opps disparen WhatsApp (severidad "importante") al llegar a la etapa "Cotización" (cuando ya se generó y se le puede mandar al cliente) y también al "Ganada". `STAGE_NOTIFY` (`shared/notifications.ts`) no tenía entrada para "Cotización"; se agregó con `selectors: ['owner']`. "Ganada" ya notificaba (solo Centro de Notificaciones, sin WA) a `owner + role:compras`; a petición explícita de Efraín se cambió a `owner` + Elisa/administración específicamente, no todo Compras.
   - Elisa (`administracion@mexicanadeproteccion.com`) es `role: 'vendedor'` en `identity`, no `admin` — no hay selector de rol que la capture sola. Se agregó un nuevo tipo de selector `email:<addr>` (destinatario fijo, no depende de rol) en `RecipientSelector` y su resolución en `worker/lib/notify.ts` (`resolveRecipients`).

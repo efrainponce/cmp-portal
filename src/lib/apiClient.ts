@@ -7,6 +7,7 @@ import type {
   ListResponse, MeDTO, MentionUserDTO, MondayUserDTO, ProyectoActionResponse, ProyectoResponse,
   QuoteLineSnapshot, QuoteVersionDTO, QuoteVersionsResponse,
   TallaBoxInput, CapturarTallasResponse, EstadoHistorialEntryDTO, EstadoHistorialResponse,
+  ProductoResumenDTO, ProductoResumenResponse,
   UpdateAttachmentDTO, UpdateDTO, VendedorDTO, WriteResponse, ZonaDTO,
 } from '../../shared/dto';
 import type { AddProposedProductResponse, ProposedProductDTO, ProposedProductsResponse } from '../../shared/productosPropuestos';
@@ -17,7 +18,7 @@ import { markSessionExpired } from './sessionState';
 export type {
   BoardAccessDTO, BoardSlug, ColMeta, ColVal, IdentityDTO, ItemDTO, ItemDetailDTO, ListResponse, MeDTO, MentionUserDTO,
   MondayUserDTO, ProposedProductDTO, QuoteLineSnapshot, QuoteVersionDTO, TallaBoxInput, CapturarTallasResponse,
-  EstadoHistorialEntryDTO,
+  EstadoHistorialEntryDTO, ProductoResumenDTO,
   UpdateAttachmentDTO, UpdateDTO, VendedorDTO, ZonaDTO,
 };
 
@@ -428,6 +429,24 @@ export async function getEstadoHistorial(proyectoId: string): Promise<EstadoHist
   if (!res.ok) throw new Error('GET estado-historial failed: ' + res.status);
   const body: EstadoHistorialResponse = await res.json();
   return body.historial;
+}
+
+/** Resumen libre por producto+color (tab Ejecución) — nativo en D1, worker/lib/
+ * productoResumen.ts. Trae solo los grupos que ya tienen resumen guardado. */
+export async function getProductoResumen(proyectoId: string): Promise<ProductoResumenDTO[]> {
+  const res = await apiFetch(`/proyectos/${proyectoId}/resumen-producto`);
+  if (!res.ok) throw new Error('GET resumen-producto failed: ' + res.status);
+  const body: ProductoResumenResponse = await res.json();
+  return body.resumen;
+}
+
+export async function patchProductoResumen(proyectoId: string, producto: string, color: string, resumen: string): Promise<void> {
+  const res = await apiFetch(`/proyectos/${proyectoId}/resumen-producto`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ producto, color, resumen }),
+  });
+  if (!res.ok) throw new Error('PATCH resumen-producto failed: ' + res.status);
 }
 
 export async function refreshItem(slug: BoardSlug, id: string): Promise<{ ok: boolean }> {

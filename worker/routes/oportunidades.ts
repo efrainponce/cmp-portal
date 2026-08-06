@@ -6,7 +6,7 @@ import type { Context, Hono } from 'hono';
 import type { Env } from '../env';
 import type { Identity } from '../../shared/types';
 import { BOARDS } from '../../shared/boards';
-import type { AjustarLineaRequest, AjustarLineaResponse, DuplicarOportunidadResponse, DuplicarVersionResponse, ItemDetailDTO, QuoteVersionsResponse, TallaBoxInput, CapturarTallasResponse, EstadoHistorialResponse } from '../../shared/dto';
+import type { AjustarLineaRequest, AjustarLineaResponse, DuplicarOportunidadResponse, DuplicarVersionResponse, ItemDetailDTO, QuoteVersionsResponse, TallaBoxInput, CapturarTallasResponse, EstadoHistorialResponse, ProductoResumenResponse } from '../../shared/dto';
 import type { ProposedProductsResponse, AddProposedProductResponse } from '../../shared/productosPropuestos';
 import { getItem, childrenOf, pendingItemIds, proyectoForOportunidad, linkedItemId, PROYECTO_OPP_REL } from '../lib/dal';
 import { toItemDTO } from '../lib/serialize';
@@ -20,6 +20,7 @@ import { listVersions, duplicateVersion, restoreVersion, esDraftVigente, recordF
 import { ajustarLinea, AjusteLineaError } from '../lib/lineaAjustes';
 import { capturarTallas, reportarTallasIncorrectas } from '../lib/proyectoTallas';
 import { listEstadoHistorial } from '../lib/estadoProducto';
+import { listProductoResumen, upsertProductoResumen } from '../lib/productoResumen';
 import { duplicateOportunidad, DuplicateOportunidadError } from '../lib/duplicateOportunidad';
 import { ganarOportunidad, GanarOportunidadError } from '../lib/ganarOportunidad';
 import { createSubitem, addFileToColumn, fetchAssetPublicUrls, gql } from '../lib/monday';
@@ -621,6 +622,49 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       })),
     };
     return c.json(response);
+  });
+
+  // Resumen libre por producto+color (tab Ejecución) — nativo en D1, worker/lib/
+  // productoResumen.ts. Mismo scoping de lectura que estado-historial (propio + zona
+  // liderada); escritura solo compras/admin, mismo gate que S_COMENTARIO por talla.
+  app.get('/api/proyectos/:id/resumen-producto', async c => {
+    const itemId = Number(c.req.param('id'));
+    if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
+    const viewer = c.get('viewer');
+    const row = await getItem(c.env, 'proyectos', itemId, viewer);
+    if (!row) return c.json({ error: 'not found' }, 404);
+
+    const resumen = await listProductoResumen(c.env, itemId);
+    const response: ProductoResumenResponse = {
+      resumen: resumen.map(r => ({
+        producto: r.producto,
+        color: r.color,
+        resumen: r.resumen,
+        updatedAt: r.updated_at,
+        updatedBy: r.updated_by,
+      })),
+    };
+    return c.json(response);
+  });
+
+  app.patch('/api/proyectos/:id/resumen-producto', async c => {
+    const itemId = Number(c.req.param('id'));
+    if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
+    const viewer = c.get('viewer');
+    if (viewer.role !== 'compras' && viewer.role !== 'admin') return c.json({ error: 'forbidden' }, 403);
+
+    const row = await getItem(c.env, 'proyectos', itemId, viewer, 'own');
+    if (!row) return c.json({ error: 'not found' }, 404);
+
+    const body = await c.req.json<{ producto?: string; color?: string; resumen?: string }>();
+    const producto = body.producto?.trim();
+    if (!producto) return c.json({ error: 'producto is required' }, 400);
+
+    await upsertProductoResumen(c.env, {
+      proyectoId: itemId, producto, color: body.color?.trim() ?? '',
+      resumen: body.resumen ?? '', actorEmail: viewer.email,
+    });
+    return c.json({ ok: true });
   });
 
   // Línea manual del Proyecto — para productos que faltaron en el desglose de

@@ -6,7 +6,7 @@
 // solo en el Excel.
 import { useCallback, useEffect, useState } from 'react';
 import { getProyecto, proyectoAction, getItem, type ItemDetailDTO, type ItemDTO, type ProyectoAction, type EstadoHistorialEntryDTO } from '../../lib/api';
-import { patchItem, reportarTallasIncorrectas, getEstadoHistorial } from '../../lib/apiClient';
+import { patchItem, reportarTallasIncorrectas, getEstadoHistorial, getProductoResumen, patchProductoResumen } from '../../lib/apiClient';
 import { useMe } from '../../lib/useMe';
 import { ConfirmButton } from '../../components/core/ConfirmButton';
 import { Button } from '../../components/core/Button';
@@ -714,11 +714,22 @@ const chipBtnStyle = { padding: '6px 14px', font: 'var(--text-label)' } as const
 /** Un chip por línea (producto+color+talla): color = estado actual, cantidad
  * debajo de la talla. Editable solo por compras/admin — abre un popover angosto
  * con el selector de estado + comentario (obligatorio si el nuevo estado es
- * Incidencia/Retraso, mismo criterio que reportarTallasIncorrectas). */
-function EstadoChip({ row, canEdit, onSaved }: { row: ItemDTO; canEdit: boolean; onSaved: () => void }) {
+ * Incidencia/Retraso, mismo criterio que reportarTallasIncorrectas). El popover
+ * abierto es UNO SOLO en todo el tab (Efraín, 2026-08-06: "no se cierran los pop
+ * ups por elemento") — `isOpen`/`onOpen`/`onClose` vienen de EjecucionSection. */
+function EstadoChip({ row, canEdit, onSaved, isOpen, onOpen, onClose }: {
+  row: ItemDTO; canEdit: boolean; onSaved: () => void;
+  isOpen: boolean; onOpen: () => void; onClose: () => void;
+}) {
   const estado = row.cols[S_ESTADO]?.text || 'Pendiente OC al Prov';
   const color = ESTADO_PRODUCTO_COLORS[estado] ?? '#9aa5b1';
   const [edit, setEdit] = useState<EstadoEdit | null>(null);
+
+  const abrir = () => {
+    if (!canEdit) return;
+    setEdit({ nuevoEstado: estado, comentario: row.cols[S_COMENTARIO]?.text || '', saving: false });
+    onOpen();
+  };
 
   const guardar = async () => {
     if (!edit) return;
@@ -729,7 +740,7 @@ function EstadoChip({ row, canEdit, onSaved }: { row: ItemDTO; canEdit: boolean;
     setEdit({ ...edit, saving: true, error: undefined });
     try {
       await patchItem('proyectos_sub', row.id, { [S_ESTADO]: edit.nuevoEstado, [S_COMENTARIO]: edit.comentario });
-      setEdit(null);
+      onClose();
       onSaved();
     } catch {
       setEdit({ ...edit, saving: false, error: 'No se pudo guardar' });
@@ -739,7 +750,7 @@ function EstadoChip({ row, canEdit, onSaved }: { row: ItemDTO; canEdit: boolean;
   return (
     <div style={{ position: 'relative' }}>
       <div
-        onClick={() => canEdit && setEdit({ nuevoEstado: estado, comentario: row.cols[S_COMENTARIO]?.text || '', saving: false })}
+        onClick={abrir}
         title={row.cols[S_COMENTARIO]?.text || estado}
         style={{
           display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, minWidth: 50,
@@ -750,7 +761,7 @@ function EstadoChip({ row, canEdit, onSaved }: { row: ItemDTO; canEdit: boolean;
         <span style={{ font: 'var(--text-label-strong)', color: 'var(--ink)' }}>{row.cols[S_TALLA]?.text || '—'}</span>
         <span style={{ font: 'var(--text-caption-strong)', color }}>{row.cols[S_CANTIDAD]?.text || '0'}</span>
       </div>
-      {edit && (
+      {isOpen && edit && (
         <div style={{
           position: 'absolute', top: '100%', left: 0, marginTop: 6, zIndex: 5, width: 250,
           background: '#fff', border: '1px solid var(--border)', borderRadius: 'var(--radius-xl)',
@@ -772,7 +783,7 @@ function EstadoChip({ row, canEdit, onSaved }: { row: ItemDTO; canEdit: boolean;
           />
           {edit.error && <div style={{ font: 'var(--text-caption)', color: 'var(--status-perdida)' }}>{edit.error}</div>}
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <Button variant="secondary" style={chipBtnStyle} onClick={edit.saving ? undefined : () => setEdit(null)}>Cancelar</Button>
+            <Button variant="secondary" style={chipBtnStyle} onClick={edit.saving ? undefined : onClose}>Cancelar</Button>
             <Button style={chipBtnStyle} onClick={edit.saving ? undefined : guardar}>{edit.saving ? 'Guardando…' : 'Guardar'}</Button>
           </div>
         </div>
@@ -789,7 +800,7 @@ function HistorialPanel({ subItemId, historial, onClose }: {
   const propios = historial.filter((h) => h.subItemId === subItemId);
   return (
     <div style={{
-      position: 'absolute', top: '100%', left: 0, marginTop: 6, zIndex: 6, width: 280, maxHeight: 320, overflowY: 'auto',
+      position: 'absolute', top: '100%', left: 0, marginTop: 6, zIndex: 5, width: 280, maxHeight: 320, overflowY: 'auto',
       background: '#fff', border: '1px solid var(--border)', borderRadius: 'var(--radius-xl)',
       boxShadow: '0 6px 20px rgba(0,0,0,.15)', padding: 12,
     }}>
@@ -814,13 +825,94 @@ function HistorialPanel({ subItemId, historial, onClose }: {
   );
 }
 
-/** Tarjeta de un producto+color: chips de estado por talla (una fila = una talla,
- * ya resuelto estructuralmente por proyectos_sub — nunca una columna por talla) +
- * ícono de historial. Mismo agrupado que TallaBoxCard (Tallas), distinto contenido. */
-function EjecucionCard({ group, canEdit, historial, onChanged }: {
-  group: TallaGroup; canEdit: boolean; historial: EstadoHistorialEntryDTO[]; onChanged: () => void;
+/** Resumen libre por producto+color — un texto global de la tarjeta, aparte del
+ * comentario por talla (worker/lib/productoResumen.ts, nativo en D1: el grupo
+ * producto+color no es una columna de Monday). Siempre visible (aunque esté
+ * vacío) para que "de un vistazo" se entienda cómo va el producto sin abrir cada
+ * talla; compras/admin lo edita con el mismo patrón select/textarea+Guardar. */
+function ResumenBlock({ groupKey, resumen, canEdit, proyectoId, isOpen, onOpen, onClose, onSaved }: {
+  groupKey: string; resumen: string; canEdit: boolean; proyectoId: string;
+  isOpen: boolean; onOpen: () => void; onClose: () => void; onSaved: (resumen: string) => void;
 }) {
-  const [historialOpenId, setHistorialOpenId] = useState<string | null>(null);
+  const [draft, setDraft] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | undefined>();
+
+  const abrir = () => {
+    if (!canEdit) return;
+    setDraft(resumen);
+    setError(undefined);
+    onOpen();
+  };
+
+  const guardar = async () => {
+    setSaving(true);
+    setError(undefined);
+    const [producto, color] = groupKey.split('|');
+    try {
+      await patchProductoResumen(proyectoId, producto, color, draft.trim());
+      setSaving(false);
+      onSaved(draft.trim());
+      onClose();
+    } catch {
+      setSaving(false);
+      setError('No se pudo guardar');
+    }
+  };
+
+  return (
+    <div style={{ position: 'relative', marginTop: 10 }}>
+      <div
+        onClick={abrir}
+        title={canEdit ? 'Editar resumen del producto' : undefined}
+        style={{
+          display: 'flex', alignItems: 'flex-start', gap: 6, padding: '6px 8px',
+          borderRadius: 'var(--radius-md)', background: 'var(--bg-sunken)',
+          cursor: canEdit ? 'pointer' : 'default',
+        }}
+      >
+        <span style={{ font: 'var(--text-caption-strong)', color: 'var(--ink-tertiary)', flexShrink: 0 }}>Resumen</span>
+        <span style={{ font: 'var(--text-caption)', color: resumen ? 'var(--ink-secondary)' : 'var(--ink-quiet)', flex: 1 }}>
+          {resumen || (canEdit ? 'Sin resumen — click para agregar' : 'Sin resumen todavía')}
+        </span>
+        {canEdit && <span style={{ font: 'var(--text-caption)', color: 'var(--ink-quiet)', flexShrink: 0 }}>✎</span>}
+      </div>
+      {isOpen && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, marginTop: 6, zIndex: 5, width: '100%', minWidth: 260,
+          background: '#fff', border: '1px solid var(--border)', borderRadius: 'var(--radius-xl)',
+          boxShadow: '0 6px 20px rgba(0,0,0,.15)', padding: 12, display: 'flex', flexDirection: 'column', gap: 8,
+        }}>
+          <textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder="Cómo va este producto…"
+            rows={3}
+            autoFocus
+            style={{ font: 'var(--text-label)', padding: '7px 8px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)', resize: 'vertical' }}
+          />
+          {error && <div style={{ font: 'var(--text-caption)', color: 'var(--status-perdida)' }}>{error}</div>}
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <Button variant="secondary" style={chipBtnStyle} onClick={saving ? undefined : onClose}>Cancelar</Button>
+            <Button style={chipBtnStyle} onClick={saving ? undefined : guardar}>{saving ? 'Guardando…' : 'Guardar'}</Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Tarjeta de un producto+color: resumen global + chips de estado por talla (una
+ * fila = una talla, ya resuelto estructuralmente por proyectos_sub — nunca una
+ * columna por talla) + ícono de historial. Mismo agrupado que TallaBoxCard
+ * (Tallas), distinto contenido. */
+function EjecucionCard({ group, canEdit, historial, resumen, proyectoId, openPopover, setOpenPopover, onChanged, onResumenSaved }: {
+  group: TallaGroup; canEdit: boolean; historial: EstadoHistorialEntryDTO[]; resumen: string; proyectoId: string;
+  openPopover: string | null; setOpenPopover: (key: string | null) => void;
+  onChanged: () => void; onResumenSaved: (groupKey: string, resumen: string) => void;
+}) {
+  const groupKey = `${group.producto}|${group.color}`;
+  const resumenKey = `resumen:${groupKey}`;
   const cardBattery = batteryFromSubitems(group.rows.map((r) => ({
     estado: r.cols[S_ESTADO]?.text,
     cantidad: Number((r.cols[S_CANTIDAD]?.text || '0').replace(/,/g, '')) || 0,
@@ -838,49 +930,83 @@ function EjecucionCard({ group, canEdit, historial, onChanged }: {
         </div>
         <div style={{ width: 140 }}><ProgressBattery data={cardBattery} /></div>
       </div>
+      <ResumenBlock
+        groupKey={groupKey}
+        resumen={resumen}
+        canEdit={canEdit}
+        proyectoId={proyectoId}
+        isOpen={openPopover === resumenKey}
+        onOpen={() => setOpenPopover(resumenKey)}
+        onClose={() => setOpenPopover(null)}
+        onSaved={(r) => onResumenSaved(groupKey, r)}
+      />
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 12 }}>
-        {group.rows.map((r) => (
-          <div key={r.id} style={{ position: 'relative' }}>
-            <EstadoChip row={r} canEdit={canEdit} onSaved={onChanged} />
-            <div
-              onClick={() => setHistorialOpenId(historialOpenId === r.id ? null : r.id)}
-              title="Ver historial de esta línea"
-              style={{
-                position: 'absolute', top: -6, right: -6, width: 16, height: 16, borderRadius: '50%',
-                background: 'var(--bg-sunken)', border: '1px solid var(--border)', cursor: 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', font: '9px sans-serif', color: 'var(--ink-tertiary)',
-              }}
-            >
-              ⏱
+        {group.rows.map((r) => {
+          const chipKey = `chip:${r.id}`;
+          const histKey = `hist:${r.id}`;
+          return (
+            <div key={r.id} style={{ position: 'relative' }}>
+              <EstadoChip
+                row={r} canEdit={canEdit} onSaved={onChanged}
+                isOpen={openPopover === chipKey}
+                onOpen={() => setOpenPopover(chipKey)}
+                onClose={() => setOpenPopover(null)}
+              />
+              <div
+                onClick={() => setOpenPopover(openPopover === histKey ? null : histKey)}
+                title="Ver historial de esta línea"
+                style={{
+                  position: 'absolute', top: -6, right: -6, width: 16, height: 16, borderRadius: '50%',
+                  background: 'var(--bg-sunken)', border: '1px solid var(--border)', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', font: '9px sans-serif', color: 'var(--ink-tertiary)',
+                }}
+              >
+                ⏱
+              </div>
+              {openPopover === histKey && (
+                <HistorialPanel subItemId={r.id} historial={historial} onClose={() => setOpenPopover(null)} />
+              )}
             </div>
-            {historialOpenId === r.id && (
-              <HistorialPanel subItemId={r.id} historial={historial} onClose={() => setHistorialOpenId(null)} />
-            )}
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
 }
 
 /** Tab "Ejecución" del Proyecto: batería agregada (piezas entregadas/en camino/
- * incidencia) + tarjetas por producto+color con chips de estado por talla —
- * pensado para verse "de un vistazo" en vez de clonar la tabla de subitems de
- * Monday (Efraín, 2026-08-05). Lectura para todos; edición (compras/admin) escribe
- * `color_mm0hqf79`/`text_mm20gzsb` vía el PATCH genérico, que ya deja rastro en
- * estado_producto_historial (worker/lib/estadoProducto.ts) sin agregar columnas. */
+ * incidencia) + tarjetas por producto+color con resumen global y chips de estado
+ * por talla — pensado para verse "de un vistazo" en vez de clonar la tabla de
+ * subitems de Monday (Efraín, 2026-08-05). Lectura para todos; edición (compras/
+ * admin) escribe `color_mm0hqf79`/`text_mm20gzsb` vía el PATCH genérico, que ya
+ * deja rastro en estado_producto_historial (worker/lib/estadoProducto.ts) sin
+ * agregar columnas, más el resumen por producto (worker/lib/productoResumen.ts).
+ * Un solo popover abierto a la vez en todo el tab — `openPopover` vive aquí y un
+ * backdrop de página completa lo cierra al hacer click fuera (Efraín, 2026-08-06:
+ * "no se cierran los pop ups por elemento, se quedan abiertos"). */
 export function EjecucionSection({ state, oppId: _oppId }: { state: ProyectoState; oppId: string | null }) {
   const me = useMe();
   const canEdit = me?.role === 'compras' || me?.role === 'admin';
   const [historial, setHistorial] = useState<EstadoHistorialEntryDTO[]>([]);
+  const [resumenMap, setResumenMap] = useState<Record<string, string>>({});
+  const [openPopover, setOpenPopover] = useState<string | null>(null);
 
   const proyectoId = state.proyecto?.id;
   const reloadHistorial = useCallback(() => {
     if (!proyectoId) return;
     getEstadoHistorial(proyectoId).then(setHistorial).catch(() => setHistorial([]));
   }, [proyectoId]);
+  const reloadResumen = useCallback(() => {
+    if (!proyectoId) return;
+    getProductoResumen(proyectoId).then((rows) => {
+      const map: Record<string, string> = {};
+      for (const r of rows) map[`${r.producto}|${r.color}`] = r.resumen;
+      setResumenMap(map);
+    }).catch(() => setResumenMap({}));
+  }, [proyectoId]);
 
   useEffect(reloadHistorial, [reloadHistorial]);
+  useEffect(reloadResumen, [reloadResumen]);
 
   if (state.loading) return <Shell hint="Buscando el proyecto ligado…" />;
   if (!state.proyecto) {
@@ -898,6 +1024,9 @@ export function EjecucionSection({ state, oppId: _oppId }: { state: ProyectoStat
     state.reload();
     reloadHistorial();
   };
+  const onResumenSaved = (groupKey: string, r: string) => {
+    setResumenMap((prev) => ({ ...prev, [groupKey]: r }));
+  };
 
   return (
     <div style={{ marginTop: 16 }}>
@@ -908,17 +1037,26 @@ export function EjecucionSection({ state, oppId: _oppId }: { state: ProyectoStat
         </div>
       ) : (
         <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {grupos.map((g) => (
-            <EjecucionCard
-              key={`${g.producto}|${g.color}`} group={g} canEdit={canEdit} historial={historial} onChanged={onChanged}
-            />
-          ))}
+          {grupos.map((g) => {
+            const groupKey = `${g.producto}|${g.color}`;
+            return (
+              <EjecucionCard
+                key={groupKey} group={g} canEdit={canEdit} historial={historial}
+                resumen={resumenMap[groupKey] ?? ''} proyectoId={p.id}
+                openPopover={openPopover} setOpenPopover={setOpenPopover}
+                onChanged={onChanged} onResumenSaved={onResumenSaved}
+              />
+            );
+          })}
         </div>
       )}
       {!canEdit && (
         <div style={{ marginTop: 14, font: 'var(--text-caption)', color: 'var(--ink-quiet)' }}>
           El estado lo actualiza Compras conforme avanza la entrega.
         </div>
+      )}
+      {openPopover && (
+        <div onClick={() => setOpenPopover(null)} style={{ position: 'fixed', inset: 0, zIndex: 4 }} />
       )}
     </div>
   );

@@ -190,6 +190,20 @@ export interface EstadoHistorialResponse {
   historial: EstadoHistorialEntryDTO[];
 }
 
+// GET/PATCH /api/proyectos/:id/resumen-producto — resumen libre por producto+color
+// (tab Ejecución), worker/lib/productoResumen.ts. Nativo en D1: el grupo producto+color
+// no es una entidad de Monday, es una agrupación del cliente sobre subitems de talla.
+export interface ProductoResumenDTO {
+  producto: string;
+  color: string;
+  resumen: string;
+  updatedAt: string;
+  updatedBy: string | null;
+}
+export interface ProductoResumenResponse {
+  resumen: ProductoResumenDTO[];
+}
+
 // Monday item updates (comments) — read/posted live, never mirrored to D1.
 // attachments carry no url: it's a presigned S3 link that expires in ~1h, so
 // the frontend resolves a fresh one on demand via the attachment proxy route
