@@ -2,6 +2,11 @@
 
 ## 2026-08-06
 
+- Notificaciones: WhatsApp al llegar a Cotización y a Ganada
+  - Efraín pidió que las opps disparen WhatsApp (severidad "importante") al llegar a la etapa "Cotización" (cuando ya se generó y se le puede mandar al cliente) y también al "Ganada". `STAGE_NOTIFY` (`shared/notifications.ts`) no tenía entrada para "Cotización"; se agregó con `selectors: ['owner']`. "Ganada" ya notificaba (solo Centro de Notificaciones, sin WA) a `owner + role:compras`; a petición explícita de Efraín se cambió a `owner` + Elisa/administración específicamente, no todo Compras.
+  - Elisa (`administracion@mexicanadeproteccion.com`) es `role: 'vendedor'` en `identity`, no `admin` — no hay selector de rol que la capture sola. Se agregó un nuevo tipo de selector `email:<addr>` (destinatario fijo, no depende de rol) en `RecipientSelector` y su resolución en `worker/lib/notify.ts` (`resolveRecipients`).
+  - Verificado: `npx tsc --noEmit` y `npm test` limpios. Sin verificación en vivo del envío real de WhatsApp — depende de que la fila de `identity` del destinatario tenga `phone` poblado en D1 (`worker/wa/notify.ts` se traga el envío en silencio si no).
+
 - Configuración: "Actuar en Monday como" para usuarios del portal
   - Efraín, sobre lo de abajo: un vendedor que acaba de dar de alta SÍ necesita poder crear oportunidades ya, no solo quedar como directorio — pidió poder asignarlo temporalmente a su propio nombre de Monday mientras no tenga cuenta propia, "para que esté la info en los dos lados".
   - `dal.createNativeIdentity` acepta `mondayUserId` opcional: si se manda, se usa ese id real en vez del sintético negativo (validado contra el roster en `worker/routes/admin.ts` vía nuevo `dal.mondayUserIdExists`, 400 si no existe). Con un id real positivo, las oportunidades que cree ese usuario quedan en Monday a nombre de la persona elegida — los guards/filtros de la entrada de abajo (picker de Vendedor, @mentions, bloqueo de creación) siguen aplicando tal cual porque solo miran el signo del id.

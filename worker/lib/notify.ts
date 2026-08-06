@@ -98,6 +98,8 @@ export async function resolveRecipients(
       } else if (sel.startsWith('role:')) {
         const role = sel.slice('role:'.length) as Role;
         for (const email of await emailsByRole(env, role)) set.add(email);
+      } else if (sel.startsWith('email:')) {
+        set.add(sel.slice('email:'.length));
       }
     }
     if (ctx.actorEmail) set.delete(ctx.actorEmail);

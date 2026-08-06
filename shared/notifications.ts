@@ -3,11 +3,14 @@
 import type { Role } from './types';
 
 // Un "selector" resuelve a un conjunto de emails destinatarios en runtime:
-//  - 'owner'      → vendedor(es) asignado(s) al item (vendedor_ids del mirror)
-//  - 'actor'      → quien disparó la acción (menciones/costeo)
-//  - 'mentioned'  → los usuarios etiquetados (menciones)
-//  - `role:<rol>` → todas las identidades activas de ese rol
-export type RecipientSelector = 'owner' | 'actor' | 'mentioned' | `role:${Role}`;
+//  - 'owner'        → vendedor(es) asignado(s) al item (vendedor_ids del mirror)
+//  - 'actor'        → quien disparó la acción (menciones/costeo)
+//  - 'mentioned'    → los usuarios etiquetados (menciones)
+//  - `role:<rol>`   → todas las identidades activas de ese rol
+//  - `email:<addr>` → un destinatario fijo por email (no depende de su rol —
+//    ej. Elisa/administración es role='vendedor' pero recibe ciertas alertas
+//    igual, Efraín 2026-08-06)
+export type RecipientSelector = 'owner' | 'actor' | 'mentioned' | `role:${Role}` | `email:${string}`;
 
 // Severidad de un cambio de etapa: 'actualizacion' (default, solo Centro de
 // Notificaciones del portal) o 'importante' (además dispara WhatsApp, ver
@@ -26,8 +29,13 @@ export const STAGE_NOTIFY: Record<string, StageNotifyEntry> = {
   'En costeo': { selectors: ['role:compras'], severity: 'importante' },
   'Costeo en validación': { selectors: ['role:compras', 'role:admin'] },
   'Costeo Confirmado': { selectors: ['owner'] },    // Compras confirmó → el vendedor puede seguir
+  // Cotización generada (botón "Generar Cotización") → el vendedor ya la puede
+  // mandar al cliente, avisarle por WhatsApp de inmediato (Efraín, 2026-08-06).
+  'Cotización': { selectors: ['owner'], severity: 'importante' },
   'Esperando OC': { selectors: ['owner'] },
-  'Ganada': { selectors: ['owner', 'role:compras'] },
+  // Solo vendedor + Elisa/administración (no todo Compras) — decisión de
+  // Efraín 2026-08-06, reemplaza el 'role:compras' anterior en esta etapa.
+  'Ganada': { selectors: ['owner', 'email:administracion@mexicanadeproteccion.com'], severity: 'importante' },
 };
 
 // Labels de `project_status` (board Proyectos, post-venta) — copiados de
