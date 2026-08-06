@@ -518,6 +518,10 @@ export async function putIdentity(email: string, patch: Partial<IdentityDTO>): P
 
 export async function createIdentity(payload: {
   email: string; nombre: string; phone: string | null; role: IdentityDTO['role']; active?: boolean;
+  /** Alta "actuar en Monday como" (Efraín, 2026-08-06): mondayUserId de una
+   * persona real ya en el roster, para que este usuario pueda crear oportunidades
+   * a su nombre hasta que tenga cuenta propia. Omitido = solo directorio. */
+  mondayUserId?: number;
 }): Promise<IdentityDTO> {
   const res = await apiFetch('/admin/identities', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),

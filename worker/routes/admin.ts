@@ -7,7 +7,7 @@ import type { Role } from '../../shared/types';
 import type { IdentityDTO, MondayUserDTO, BoardAccessDTO, ZonaDTO } from '../../shared/dto';
 import { TEAM_ROLES } from '../../shared/boardAccess';
 import { BOARDS, type BoardSlug } from '../../shared/boards';
-import { listIdentities, getIdentityByEmail, upsertIdentity, createNativeIdentity } from '../lib/dal';
+import { listIdentities, getIdentityByEmail, upsertIdentity, createNativeIdentity, mondayUserIdExists } from '../lib/dal';
 import { cachedFetchUsers } from '../lib/rosterCache';
 import { listAllBoardAccess, setBoardAccess, BoardAccessError } from '../lib/boardAccess';
 import { listZonas, createZona, updateZona, deleteZona, ZonaError } from '../lib/zonas';
@@ -26,11 +26,14 @@ export function adminRoutes(app: Hono<{ Bindings: Env }>) {
 
   // Alta de usuario sin pasar por Monday (pedido de Efraín, 2026-08-06): a
   // diferencia del PUT de abajo, esto SIEMPRE crea una fila nueva — 409 si el
-  // email ya existe. dal.createNativeIdentity le asigna un monday_user_id
-  // sintético negativo (ver ese comentario para el porqué).
+  // email ya existe. Sin mondayUserId, dal.createNativeIdentity le asigna uno
+  // sintético negativo (ver ese comentario para el porqué). Con mondayUserId
+  // ("Actuar en Monday como", mismo día: un vendedor real necesitaba poder
+  // crear oportunidades antes de tener cuenta propia en Monday), se valida
+  // que sea de alguien que ya está en el roster — no cualquier id a mano.
   app.post('/api/admin/identities', async c => {
     if (c.get('viewer').role !== 'admin') return c.json({ error: 'forbidden' }, 403);
-    const body = await c.req.json<{ email?: string; nombre?: string; phone?: string | null; role?: string; active?: boolean }>();
+    const body = await c.req.json<{ email?: string; nombre?: string; phone?: string | null; role?: string; active?: boolean; mondayUserId?: number }>();
     const email = body.email?.trim() ?? '';
     const nombre = body.nombre?.trim() ?? '';
     if (!/^\S+@\S+\.\S+$/.test(email)) return c.json({ error: 'correo inválido' }, 400);
@@ -39,9 +42,14 @@ export function adminRoutes(app: Hono<{ Bindings: Env }>) {
     const role = body.role ?? 'vendedor';
     if (!validRoles.includes(role)) return c.json({ error: 'invalid role' }, 400);
     if (await getIdentityByEmail(c.env, email)) return c.json({ error: 'ya existe un usuario con ese correo' }, 409);
+    if (body.mondayUserId !== undefined) {
+      if (!Number.isFinite(body.mondayUserId) || body.mondayUserId <= 0) return c.json({ error: 'mondayUserId inválido' }, 400);
+      if (!(await mondayUserIdExists(c.env, body.mondayUserId))) return c.json({ error: 'ese mondayUserId no existe en el roster' }, 400);
+    }
 
     const row = await createNativeIdentity(c.env, {
       email, nombre, phone: body.phone?.trim() || null, role, active: body.active === false ? 0 : 1,
+      mondayUserId: body.mondayUserId,
     });
     const dto: IdentityDTO = {
       email: row.email, phone: row.phone ?? null, nombre: row.nombre ?? null,

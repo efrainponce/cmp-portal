@@ -28,6 +28,16 @@ const ROLE_LABELS: Record<Role, string> = {
 };
 const ROLE_OPTIONS = (Object.keys(ROLE_LABELS) as Role[]).map((r) => ({ value: r, label: ROLE_LABELS[r] }));
 
+// Identidades con persona real de Monday (mondayUserId > 0), dedupeadas — para
+// el picker de "actuar en Monday como" (ver AddUserModal / IdentityRow).
+function realIdentityOptions(identities: IdentityDTO[]): { value: string; label: string }[] {
+  const seen = new Map<number, string>();
+  for (const i of identities) {
+    if (i.mondayUserId > 0 && !seen.has(i.mondayUserId)) seen.set(i.mondayUserId, i.nombre || i.email);
+  }
+  return [...seen.entries()].map(([id, label]) => ({ value: String(id), label })).sort((a, b) => a.label.localeCompare(b.label));
+}
+
 // El equipo de Monday no es un rol del portal 1:1 (trae cosas como "Sureste" o
 // "Administracion"), así que solo lo usamos para adivinar el rol por default.
 function inferRoleFromTeams(teams: string[]): Role {
@@ -113,6 +123,7 @@ export function SettingsPage() {
           onSaved={(next) => { upsertIdentity(next); showToast('success', `Teléfono actualizado para ${next.email}.`); }}
           onError={() => showToast('error', 'No se pudo guardar el teléfono.')}
           onCreated={(next) => { upsertIdentity(next); showToast('success', `${next.nombre ?? next.email} agregado al portal.`); }}
+          onLinked={(next) => { upsertIdentity(next); showToast('success', `${next.email} ahora actúa en Monday.`); }}
           onToast={showToast}
         />
 
@@ -218,12 +229,13 @@ function MyAccountSection({ me, onSaved, onError }: {
   );
 }
 
-function IdentitiesSection({ identities, ownEmail, onSaved, onError, onCreated, onToast }: {
+function IdentitiesSection({ identities, ownEmail, onSaved, onError, onCreated, onLinked, onToast }: {
   identities: IdentityDTO[] | null;
   ownEmail: string | null;
   onSaved: (next: IdentityDTO) => void;
   onError: () => void;
   onCreated: (next: IdentityDTO) => void;
+  onLinked: (next: IdentityDTO) => void;
   onToast: (kind: Toast['kind'], message: string) => void;
 }) {
   const [addOpen, setAddOpen] = useState(false);
@@ -252,7 +264,15 @@ function IdentitiesSection({ identities, ownEmail, onSaved, onError, onCreated, 
             </thead>
             <tbody>
               {identities.map((identity) => (
-                <IdentityRow key={identity.email} identity={identity} isSelf={identity.email === ownEmail} onSaved={onSaved} onError={onError} />
+                <IdentityRow
+                  key={identity.email}
+                  identity={identity}
+                  isSelf={identity.email === ownEmail}
+                  realOptions={realIdentityOptions(identities.filter((i) => i.email !== identity.email))}
+                  onSaved={onSaved}
+                  onError={onError}
+                  onLinked={onLinked}
+                />
               ))}
             </tbody>
           </table>
@@ -268,6 +288,7 @@ function IdentitiesSection({ identities, ownEmail, onSaved, onError, onCreated, 
       {addOpen && (
         <AddUserModal
           existingEmails={existingEmails}
+          realOptions={realIdentityOptions(identities ?? [])}
           onClose={() => setAddOpen(false)}
           onCreated={(next) => { onCreated(next); setAddOpen(false); }}
           onError={(message) => onToast('error', message)}
@@ -278,12 +299,16 @@ function IdentitiesSection({ identities, ownEmail, onSaved, onError, onCreated, 
 }
 
 // Alta de usuario sin pasar por Monday (Efraín, 2026-08-06): a diferencia de
-// "Importar desde Monday" abajo, esto crea la fila directo en `identity` con
-// un monday_user_id sintético (worker/lib/dal.ts createNativeIdentity) — por
-// eso este usuario no puede quedar asignado como Vendedor/Comprador en
-// Monday, solo cuenta para permisos y zonas del portal.
-function AddUserModal({ existingEmails, onClose, onCreated, onError }: {
+// "Importar desde Monday" abajo, esto crea la fila directo en `identity`. Sin
+// "Actuar en Monday como", recibe un monday_user_id sintético (worker/lib/dal.ts
+// createNativeIdentity) y NO puede crear oportunidades ni quedar asignado como
+// Vendedor/Comprador en Monday — solo cuenta para permisos y zonas del portal.
+// Con "Actuar en Monday como" (pedido de Efraín, 2026-08-06: necesitaba que un
+// vendedor sin cuenta propia en Monday pudiera trabajar de una), sus altas
+// quedan a nombre de la persona elegida en Monday hasta que tenga cuenta propia.
+function AddUserModal({ existingEmails, realOptions, onClose, onCreated, onError }: {
   existingEmails: Set<string>;
+  realOptions: { value: string; label: string }[];
   onClose: () => void;
   onCreated: (next: IdentityDTO) => void;
   onError: (message: string) => void;
@@ -293,6 +318,7 @@ function AddUserModal({ existingEmails, onClose, onCreated, onError }: {
   const [phone, setPhone] = useState('');
   const [role, setRole] = useState<Role>('vendedor');
   const [zonaId, setZonaId] = useState('');
+  const [proxyId, setProxyId] = useState('');
   const [zonas, setZonas] = useState<ZonaDTO[] | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -307,6 +333,7 @@ function AddUserModal({ existingEmails, onClose, onCreated, onError }: {
     try {
       const next = await createIdentity({
         email: cleanEmail, nombre: nombre.trim(), phone: phone.trim() || null, role,
+        mondayUserId: proxyId ? Number(proxyId) : undefined,
       });
       if (zonaId) {
         const zona = (zonas ?? []).find((z) => String(z.id) === zonaId);
@@ -324,6 +351,7 @@ function AddUserModal({ existingEmails, onClose, onCreated, onError }: {
     { value: '', label: 'Sin zona' },
     ...(zonas ?? []).map((z) => ({ value: String(z.id), label: z.nombre })),
   ];
+  const proxyOptions = [{ value: '', label: 'Ninguno (solo directorio del portal)' }, ...realOptions];
 
   return (
     <Modal
@@ -354,8 +382,13 @@ function AddUserModal({ existingEmails, onClose, onCreated, onError }: {
         <Field label="Zona">
           <Select value={zonaId} onChange={setZonaId} options={zonaOptions} />
         </Field>
+        <Field label="Actuar en Monday como (opcional)">
+          <Select value={proxyId} onChange={setProxyId} options={proxyOptions} />
+        </Field>
         <div style={{ font: 'var(--text-micro)', color: 'var(--ink-quiet)' }}>
-          Este usuario no tiene cuenta en Monday.com: solo cuenta para permisos y zonas del portal, no puede quedar asignado como Vendedor o Comprador en Monday.
+          {proxyId
+            ? 'Mientras no tenga cuenta propia en Monday, lo que este usuario cree (oportunidades, etc.) quedará ahí a nombre de la persona elegida arriba.'
+            : 'Sin "Actuar en Monday como", este usuario es solo directorio del portal: no puede crear oportunidades ni quedar asignado como Vendedor o Comprador en Monday.'}
         </div>
       </div>
     </Modal>
@@ -373,15 +406,19 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-function IdentityRow({ identity, isSelf, onSaved, onError }: {
+function IdentityRow({ identity, isSelf, realOptions, onSaved, onError, onLinked }: {
   identity: IdentityDTO;
   isSelf: boolean;
+  realOptions: { value: string; label: string }[];
   onSaved: (next: IdentityDTO) => void;
   onError: () => void;
+  onLinked: (next: IdentityDTO) => void;
 }) {
   const [phone, setPhone] = useState(identity.phone ?? '');
   const [saving, setSaving] = useState(false);
   const dirty = phone !== (identity.phone ?? '');
+  const [proxyId, setProxyId] = useState('');
+  const [linking, setLinking] = useState(false);
 
   async function save() {
     setSaving(true);
@@ -396,15 +433,44 @@ function IdentityRow({ identity, isSelf, onSaved, onError }: {
     }
   }
 
+  // "Actuar en Monday como" post-alta (Efraín, 2026-08-06): un usuario creado
+  // como solo-directorio puede convertirse en real más tarde, sin recrearlo —
+  // mismo PUT que ya usa el teléfono, solo que aquí manda mondayUserId.
+  async function link() {
+    if (!proxyId) return;
+    setLinking(true);
+    try {
+      const mondayUserId = Number(proxyId);
+      await putIdentity(identity.email, { mondayUserId });
+      onLinked({ ...identity, mondayUserId });
+    } catch {
+      onError();
+    } finally {
+      setLinking(false);
+    }
+  }
+
   return (
     <tr style={{ borderTop: '1px solid var(--border-subtle)' }}>
       <td style={tdStyle}>{identity.nombre || '—'}</td>
       <td style={tdStyle}>{identity.email}</td>
       <td style={tdStyle}><StatusBadge label={ROLE_LABELS[identity.role]} color="var(--ink-secondary)" tint="var(--bg-sunken)" /></td>
       <td style={tdStyle}>
-        {identity.mondayUserId > 0
-          ? <StatusBadge label="Monday" color="var(--ink-tertiary)" tint="var(--bg-sunken)" />
-          : <StatusBadge label="Portal" color="var(--accent-blue)" tint="var(--status-seguimiento-tint)" />}
+        {identity.mondayUserId > 0 ? (
+          <StatusBadge label="Monday" color="var(--ink-tertiary)" tint="var(--bg-sunken)" />
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <StatusBadge label="Portal" color="var(--accent-blue)" tint="var(--status-seguimiento-tint)" />
+            <div style={{ display: 'flex', gap: 4, minWidth: 170 }}>
+              <Select value={proxyId} onChange={setProxyId} options={[{ value: '', label: 'Actuar como…' }, ...realOptions]} />
+              {proxyId && (
+                <Button variant={linking ? 'disabled' : 'primary'} onClick={link} style={{ padding: '4px 8px', whiteSpace: 'nowrap' }}>
+                  {linking ? '…' : 'Vincular'}
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
       </td>
       <td style={tdStyle}>
         {identity.active

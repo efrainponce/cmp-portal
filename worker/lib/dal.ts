@@ -256,18 +256,33 @@ export async function upsertIdentity(
 // Usuario dado de alta a mano en Configuración, sin pasar por el directorio de
 // Monday (pedido de Efraín, 2026-08-06: soltar la dependencia de Monday para
 // alta de usuarios). Como monday_user_id es NOT NULL y se usa en todo el
-// codebase para leer/escribir contra Monday, se le asigna un id sintético
-// NEGATIVO (los ids reales de Monday siempre son positivos) — listVendedores y
-// la mención de compras en proyectoTallas.ts ya filtran monday_user_id > 0
-// para no tratar a estos usuarios como personas reales de Monday.
+// codebase para leer/escribir contra Monday, por default se le asigna un id
+// sintético NEGATIVO (los ids reales de Monday siempre son positivos) —
+// listVendedores y la mención de compras en proyectoTallas.ts ya filtran
+// monday_user_id > 0 para no tratar a estos usuarios como personas reales de
+// Monday. Si el admin manda `mondayUserId` (mismo día, "Actuar en Monday
+// como": un vendedor real sin cuenta propia en Monday necesita poder crear
+// oportunidades YA), se usa ese id real en vez del sintético — el admin.ts
+// route ya validó que pertenece a alguien del roster.
 export async function createNativeIdentity(
   env: Env,
-  row: { email: string; nombre: string; phone: string | null; role: string; active: number },
+  row: { email: string; nombre: string; phone: string | null; role: string; active: number; mondayUserId?: number },
 ): Promise<Identity> {
-  const min = await env.DB.prepare('SELECT MIN(monday_user_id) AS m FROM identity').first<{ m: number | null }>();
-  const syntheticId = Math.min(0, min?.m ?? 0) - 1;
+  let syntheticId = row.mondayUserId;
+  if (!syntheticId) {
+    const min = await env.DB.prepare('SELECT MIN(monday_user_id) AS m FROM identity').first<{ m: number | null }>();
+    syntheticId = Math.min(0, min?.m ?? 0) - 1;
+  }
   await upsertIdentity(env, { ...row, monday_user_id: syntheticId });
   return { email: row.email, nombre: row.nombre, phone: row.phone ?? undefined, monday_user_id: syntheticId, role: row.role as Identity['role'], active: !!row.active };
+}
+
+// Para validar un `mondayUserId` de proxy ("Actuar en Monday como") contra el
+// roster real antes de aceptarlo — evita que el admin escriba cualquier id
+// arbitrario a mano.
+export async function mondayUserIdExists(env: Env, id: number): Promise<boolean> {
+  const row = await env.DB.prepare('SELECT 1 AS ok FROM identity WHERE monday_user_id = ?').bind(id).first<{ ok: number }>();
+  return !!row;
 }
 
 export async function pendingItemIds(env: Env, boardId: number): Promise<Set<number>> {
