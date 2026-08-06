@@ -255,19 +255,47 @@ function norm(s: string): string {
 // worker/lib/proyectoTallas.ts: lo cotizado originalmente por producto+color,
 // para el "Cotizado: N" / "Faltan" de cada tarjeta (cruce 100% D1, sin llamada
 // nueva a Monday — Efraín, 2026-08-05).
+const OPP_SUB_SKU = 'lookup_mkzn7x9a';
 const OPP_SUB_COLOR = 'text_mm07s2mg';
 const OPP_SUB_CANTIDAD = 'numeric_mkzm6399';
 
-/** producto+color (normalizados) → suma cotizada. Varias líneas de cotización
- * con el mismo producto+color (raro, pero posible) se suman. */
-function cotizadoMapFrom(oppLineas: ItemDTO[]): Map<string, number> {
-  const map = new Map<string, number>();
+interface CotizadoMaps {
+  byProductoColor: Map<string, number>;
+  bySkuColor: Map<string, number>;
+}
+
+/** Dos índices sobre las líneas cotizadas: producto+color (nombre del subitem,
+ * como lo captura TallaBoxesCapture) y sku+color de respaldo — el "Importar
+ * tallas" de cmp-tallas puede reescribir el nombre del producto al copiarlo al
+ * Proyecto, y ahí el SKU (más estable) es lo único que sigue cruzando. */
+function cotizadoMapsFrom(oppLineas: ItemDTO[]): CotizadoMaps {
+  const byProductoColor = new Map<string, number>();
+  const bySkuColor = new Map<string, number>();
   for (const l of oppLineas) {
-    const key = `${norm(l.name)}|${norm(l.cols[OPP_SUB_COLOR]?.text || '')}`;
+    const color = norm(l.cols[OPP_SUB_COLOR]?.text || '');
     const cantidad = Number((l.cols[OPP_SUB_CANTIDAD]?.text || '').replace(/,/g, '')) || 0;
-    map.set(key, (map.get(key) ?? 0) + cantidad);
+    const pKey = `${norm(l.name)}|${color}`;
+    byProductoColor.set(pKey, (byProductoColor.get(pKey) ?? 0) + cantidad);
+    const sku = l.cols[OPP_SUB_SKU]?.text;
+    if (sku?.trim()) {
+      const sKey = `${norm(sku)}|${color}`;
+      bySkuColor.set(sKey, (bySkuColor.get(sKey) ?? 0) + cantidad);
+    }
   }
-  return map;
+  return { byProductoColor, bySkuColor };
+}
+
+/** Cotizado de un grupo del Proyecto: primero por producto+color, con
+ * respaldo por sku+color si el nombre no cruza. */
+function lookupCotizado(group: TallaGroup, maps: CotizadoMaps): number | null {
+  const color = norm(group.color);
+  const byProducto = maps.byProductoColor.get(`${norm(group.producto)}|${color}`);
+  if (byProducto !== undefined) return byProducto;
+  if (group.sku) {
+    const bySku = maps.bySkuColor.get(`${norm(group.sku)}|${color}`);
+    if (bySku !== undefined) return bySku;
+  }
+  return null;
 }
 
 interface TallaGroup { producto: string; sku?: string; color: string; rows: ItemDTO[] }
@@ -292,6 +320,18 @@ const boxInputStyle = {
   width: 52, textAlign: 'center' as const, font: 'var(--text-label-strong)', color: 'var(--ink)',
   padding: '6px 4px', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border)', background: '#fff',
 } as const;
+
+type CardTone = 'empty' | 'unknown' | 'ok' | 'mismatch';
+
+/** empty = nada capturado todavía (gris); unknown = sin línea de cotización
+ * contra qué comparar (neutro); ok/mismatch = cuadra o no contra lo cotizado
+ * (verde claro / rojo — Efraín, 2026-08-06). */
+const CARD_TONE_STYLE: Record<CardTone, { border: string; background: string; text: string }> = {
+  empty: { border: 'var(--border)', background: 'var(--bg-sunken)', text: 'var(--ink-tertiary)' },
+  unknown: { border: 'var(--border)', background: '#fff', text: 'var(--ink-tertiary)' },
+  ok: { border: 'var(--status-ganada)', background: 'var(--status-ganada-tint)', text: 'var(--status-ganada)' },
+  mismatch: { border: 'var(--status-perdida)', background: 'var(--status-perdida-tint)', text: 'var(--status-perdida)' },
+};
 
 /** Tarjeta de un producto+color: una cajita editable por talla + "Cotizado" vs
  * lo ya asignado. Cantidad se guarda inline contra la línea del Proyecto en
@@ -336,20 +376,17 @@ function TallaBoxCard({ group, cotizado, canEditCantidad, canReport, proyectoId,
   const asignadas = group.rows.reduce((s, r) => s + (Number(cantidadOf(r).replace(/,/g, '')) || 0), 0);
   const cuadra = cotizado !== null && asignadas === cotizado;
   let progresoTexto: string;
-  let progresoColor: string;
   if (cotizado === null) {
     progresoTexto = `${asignadas} asignadas (sin línea de cotización para comparar)`;
-    progresoColor = 'var(--ink-tertiary)';
   } else if (cuadra) {
     progresoTexto = `${asignadas} asignadas — cuadra con lo cotizado`;
-    progresoColor = 'var(--status-ganada)';
   } else if (asignadas < cotizado) {
     progresoTexto = `Faltan ${cotizado - asignadas} de ${cotizado} (${asignadas} asignadas)`;
-    progresoColor = 'var(--status-perdida)';
   } else {
     progresoTexto = `Sobran ${asignadas - cotizado} sobre los ${cotizado} cotizados (${asignadas} asignadas)`;
-    progresoColor = 'var(--status-perdida)';
   }
+  const cardTone: CardTone = asignadas === 0 ? 'empty' : cotizado === null ? 'unknown' : cuadra ? 'ok' : 'mismatch';
+  const tone = CARD_TONE_STYLE[cardTone];
 
   const reportar = async () => {
     setReportOutcome(null);
@@ -360,7 +397,7 @@ function TallaBoxCard({ group, cotizado, canEditCantidad, canReport, proyectoId,
   };
 
   return (
-    <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-xl)', padding: 14, background: '#fff' }}>
+    <div style={{ border: `1px solid ${tone.border}`, borderRadius: 'var(--radius-xl)', padding: 14, background: tone.background }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
         <div>
           <div style={{ font: 'var(--text-body-strong)', color: 'var(--ink)' }}>{group.producto}</div>
@@ -403,7 +440,7 @@ function TallaBoxCard({ group, cotizado, canEditCantidad, canReport, proyectoId,
           );
         })}
       </div>
-      <div style={{ marginTop: 10, font: 'var(--text-caption-strong)', color: progresoColor }}>{progresoTexto}</div>
+      <div style={{ marginTop: 10, font: 'var(--text-caption-strong)', color: tone.text }}>{progresoTexto}</div>
       {reportOutcome && (
         <div style={{ marginTop: 6, font: 'var(--text-caption)', color: reportOutcome.kind === 'ok' ? 'var(--status-ganada)' : 'var(--status-perdida)' }}>
           {reportOutcome.text}
@@ -417,8 +454,8 @@ function TallaBoxCard({ group, cotizado, canEditCantidad, canReport, proyectoId,
  * producto+color con una cajita editable por talla — mismo estilo que la
  * captura de tallas del vendedor (TallasTab.tsx), en vez de la lista de pills
  * anidados de antes. */
-function TallasGrid({ lineas, cotizadoMap, canEditCantidad, canReport, proyectoId, reload }: {
-  lineas: ItemDTO[]; cotizadoMap: Map<string, number>; canEditCantidad: boolean; canReport: boolean;
+function TallasGrid({ lineas, cotizadoMaps, canEditCantidad, canReport, proyectoId, reload }: {
+  lineas: ItemDTO[]; cotizadoMaps: CotizadoMaps; canEditCantidad: boolean; canReport: boolean;
   proyectoId: string; reload: () => void;
 }) {
   if (lineas.length === 0) {
@@ -437,7 +474,7 @@ function TallasGrid({ lineas, cotizadoMap, canEditCantidad, canReport, proyectoI
         <TallaBoxCard
           key={`${g.producto}|${g.color}`}
           group={g}
-          cotizado={cotizadoMap.get(`${norm(g.producto)}|${norm(g.color)}`) ?? null}
+          cotizado={lookupCotizado(g, cotizadoMaps)}
           canEditCantidad={canEditCantidad}
           canReport={canReport}
           proyectoId={proyectoId}
@@ -448,19 +485,21 @@ function TallasGrid({ lineas, cotizadoMap, canEditCantidad, canReport, proyectoI
   );
 }
 
+const EMPTY_COTIZADO_MAPS: CotizadoMaps = { byProductoColor: new Map(), bySkuColor: new Map() };
+
 export function ProyectoTallasSection({ state, oppId }: { state: ProyectoState; oppId: string | null }) {
   const me = useMe();
   const canEditCantidad = me?.role === 'vendedor' || me?.role === 'compras' || me?.role === 'admin';
-  const [cotizadoMap, setCotizadoMap] = useState<Map<string, number>>(new Map());
+  const [cotizadoMaps, setCotizadoMaps] = useState<CotizadoMaps>(EMPTY_COTIZADO_MAPS);
 
   // Lo cotizado por producto+color viene de la Oportunidad ligada — un solo
   // GET al mirror D1 (sin round-trip a Monday), para el "Cotizado"/"Faltan" de
   // cada tarjeta (Efraín, 2026-08-05: "que coincida con la opp, todo en D1").
   useEffect(() => {
-    if (!oppId) { setCotizadoMap(new Map()); return; }
+    if (!oppId) { setCotizadoMaps(EMPTY_COTIZADO_MAPS); return; }
     getItem('oportunidades', oppId)
-      .then(d => setCotizadoMap(cotizadoMapFrom(d.children ?? [])))
-      .catch(() => setCotizadoMap(new Map()));
+      .then(d => setCotizadoMaps(cotizadoMapsFrom(d.children ?? [])))
+      .catch(() => setCotizadoMaps(EMPTY_COTIZADO_MAPS));
   }, [oppId]);
 
   if (state.loading) return <Shell hint="Buscando el proyecto ligado…" />;
@@ -474,7 +513,7 @@ export function ProyectoTallasSection({ state, oppId }: { state: ProyectoState; 
       <ProyectoActionBar proyecto={p} reload={state.reload} actions={['tallas-regenerar', 'tallas-confirmar', 'tallas-importar']} />
       <TallasGrid
         lineas={p.children ?? []}
-        cotizadoMap={cotizadoMap}
+        cotizadoMaps={cotizadoMaps}
         canEditCantidad={canEditCantidad}
         canReport={canEditCantidad}
         proyectoId={p.id}

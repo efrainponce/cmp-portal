@@ -47,6 +47,7 @@ const SUB_PROVEEDOR = 'board_relation_mm1cfgv5';
 // Oportunidad — línea de cotización, mismos ids que TallasTab.tsx SUB_COLOR/
 // SUB_CANTIDAD: lo cotizado originalmente para esa línea (producto+color),
 // para cruzar contra lo ya importado al Proyecto (reportarTallasIncorrectas).
+const OPP_SUB_SKU = 'lookup_mkzn7x9a';
 const OPP_SUB_COLOR = 'text_mm07s2mg';
 const OPP_SUB_CANTIDAD_COTIZADA = 'numeric_mkzm6399';
 
@@ -205,21 +206,30 @@ export async function reportarTallasIncorrectas(
   producto: string, color: string | undefined,
 ): Promise<ReportarTallasResult> {
   const proyectoRows = await childrenOf(env, 'proyectos', proyectoId, viewer);
-  const asignadas = proyectoRows
-    .filter(row => {
-      const cols = colsOf(row);
-      return norm(cols.get(SUB_PRODUCTO)?.text || '') === norm(producto)
-        && norm(cols.get(SUB_COLOR)?.text || '') === norm(color ?? '');
-    })
+  const proyectoMatches = proyectoRows.filter(row => {
+    const cols = colsOf(row);
+    return norm(cols.get(SUB_PRODUCTO)?.text || '') === norm(producto)
+      && norm(cols.get(SUB_COLOR)?.text || '') === norm(color ?? '');
+  });
+  const asignadas = proyectoMatches
     .reduce((s, row) => s + (Number((colsOf(row).get(SUB_CANTIDAD)?.text ?? '').replace(/,/g, '')) || 0), 0);
+  // Respaldo por SKU si el nombre no cruza: "Importar tallas" de cmp-tallas
+  // puede reescribir el nombre del producto al copiarlo al Proyecto, y el SKU
+  // (más estable) es lo único que sigue cruzando contra la Oportunidad.
+  const proyectoSku = proyectoMatches.map(row => colsOf(row).get(SUB_SKU)?.text).find(s => s?.trim());
 
   const oppId = await resolveOportunidadId(env, viewer, proyectoId);
   let cotizado: number | null = null;
   if (oppId !== null) {
     const oppRows = await childrenOf(env, 'oportunidades', oppId, viewer);
-    const matches = oppRows.filter(row =>
+    let matches = oppRows.filter(row =>
       norm(row.name) === norm(producto)
       && norm(colsOf(row).get(OPP_SUB_COLOR)?.text || '') === norm(color ?? ''));
+    if (matches.length === 0 && proyectoSku) {
+      matches = oppRows.filter(row =>
+        norm(colsOf(row).get(OPP_SUB_SKU)?.text || '') === norm(proyectoSku)
+        && norm(colsOf(row).get(OPP_SUB_COLOR)?.text || '') === norm(color ?? ''));
+    }
     if (matches.length > 0) {
       cotizado = matches.reduce((s, row) =>
         s + (Number((colsOf(row).get(OPP_SUB_CANTIDAD_COTIZADA)?.text ?? '').replace(/,/g, '')) || 0), 0);

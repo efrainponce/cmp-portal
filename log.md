@@ -8,6 +8,11 @@
   - Nueva ruta `POST /api/admin/identities` (admin-only, 409 si el email ya existe) y botón "+ Agregar usuario" en `SettingsPage.tsx` (modal reusando `components/core/Modal.tsx`) con nombre/correo/teléfono/rol/zona; columna "Origen" (Portal/Monday) nueva en la tabla de Usuarios del portal para distinguir de un vistazo.
   - Verificado: `npx tsc --noEmit`, `npm run lint`, `npm test` limpios. Manual end-to-end con Playwright contra el dev server (zona nueva + usuario nuevo asignado a ella, badge "Portal", ausente del picker de Vendedor en "Nueva oportunidad", 409/400 en email duplicado/inválido vía curl) — datos de prueba limpiados de la D1 local al terminar.
 
+- Proyecto/Tallas: tarjetas coloreadas por estado + cruce contra la Oportunidad más robusto
+  - Efraín reportó una tarjeta de tallas real que no cruzaba ("sin línea de cotización para comparar") y pidió color: gris cuando no se ha capturado nada, verde claro cuando cuadra contra lo cotizado, rojo cuando no cuadra (`TallaBoxCard`, `ProyectoSection.tsx`).
+  - Causa del cruce roto: `cotizadoMapFrom`/`reportarTallasIncorrectas` solo comparaban por nombre de producto + color exactos contra la línea de cotización de la Oportunidad — "Importar tallas" (cmp-tallas) puede reescribir ese nombre al copiarlo al Proyecto. Se agregó un respaldo por SKU+color (más estable que el nombre) tanto en el frontend (`cotizadoMapsFrom`/`lookupCotizado`) como en el backend (`worker/lib/proyectoTallas.ts`), sin agregar columnas nuevas en Monday — el cruce ya vivía 100% en D1.
+  - Verificado: `npx tsc --noEmit`, `npm run lint`, `npm test` limpios. Sin verificación visual en vivo (servidores de dev ya en uso por otra sesión, sin credenciales de login a mano en esta sesión).
+
 ## 2026-08-05
 
 - Proyectos: tabs recortados por acceso + Fecha de entrega obligatoria en Documentación
