@@ -204,7 +204,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
   // (Efraín, stress test 2026-07-21: nunca se reactivaba con 25 líneas hasta
   // recargar la página entera).
   useEffect(() => {
-    if (!item || boardKey === 'costeo' || boardKey === 'validacion') { setCosteoReady(null); return; }
+    if (!item || boardKey === 'validacion' || (boardKey === 'costeo' && stage !== '4')) { setCosteoReady(null); return; }
     let cancelled = false;
     let ready = false;
     const check = () => checkCosteo(id)
@@ -455,8 +455,10 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
   const cotizacionVariant = boardKey && COSTEO_VARIANT_BOARDS.includes(boardKey) ? 'costeo' : 'venta';
   // Board Costeo = solo lectura para producto/color/cantidad/embellecimiento y
   // nuevos productos (trabajo de Ventas en Oportunidades); Compras solo captura
-  // costos + Etapa Costeo y avanza a Validación (Efraín, 2026-07-16).
-  const readOnlyCosteo = boardKey === 'costeo';
+  // costos + Etapa Costeo y avanza a Validación (Efraín, 2026-07-16). Excepción:
+  // en Nueva oportunidad (stage 4) Compras puede mandar a costeo igual que
+  // Ventas — la oportunidad todavía no tiene dueño de costeo (Efraín, 2026-08-10).
+  const readOnlyCosteo = boardKey === 'costeo' && stage !== '4';
   const isValidacion = boardKey === 'validacion';
   // Condiciones de la cotización (comerciales/entrega/vigencia): las llena
   // Compras en el board Costeo — no aplica en Oportunidades ni en el resto

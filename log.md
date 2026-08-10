@@ -2,6 +2,12 @@
 
 ## 2026-08-10
 
+- Compras puede mandar a costeo una Nueva oportunidad, igual que Ventas
+  - Efraín pidió que Compras pueda pasar una oportunidad de "Nueva oportunidad" a "En costeo" desde su propio board Costeo, sin depender de que Ventas lo haga primero.
+  - `OpportunityDrawer.tsx`: `readOnlyCosteo` (que bloquea líneas/botón "Mandar a costeo" en el board Costeo) pasa de ser fijo por `boardKey==='costeo'` a excluir la etapa 4 (`boardKey==='costeo' && stage!=='4'`) — en Nueva oportunidad, Compras queda igual que Ventas en Oportunidades: edición inline de líneas y botón "Mandar a costeo" habilitados. El pre-chequeo `checkCosteo` (antes solo corría fuera del board Costeo) se ajustó igual para que el botón no se quede deshabilitado en ese caso. El backend (`worker/lib/costeo.ts`) ya no tenía gate de rol — la restricción era solo de UI.
+  - No afecta etapa 15 (En costeo): ahí Compras sigue en solo-lectura de producto/color/cantidad y solo captura costos, sin cambios.
+  - `tsc --noEmit`, `npm test` (126 tests) y `npm run lint` limpios. El working tree traía cambios sueltos de otra sesión (`shared/dto.ts`, `worker/index.ts`, `worker/lib/dal.ts`, `worker/routes/oportunidades.ts`, `worker/schema.sql`, `worker/lib/home.ts`/`worker/routes/home.ts` nuevos) — se dejaron sin commitear, solo se stageó `OpportunityDrawer.tsx` + este log.
+
 - Cotización: la columna Producto no tapaba del todo la columna siguiente al hacer scroll
   - Efraín reportó (captura) que al mover la tabla de Cotización horizontalmente se veía "raro" — un pedazo de la caja de la columna contigua se asomaba pegado a la columna Producto (fija/`sticky` al hacer scroll horizontal).
   - Causa: las tres vistas que comparten `STICKY_PRODUCTO_STYLE` (header, filas `QuoteRow`, `TotalsRow` — `gridMeta.tsx`) usan `gap: 6` entre columnas del grid; ese hueco de 6px a la derecha de la celda pegajosa no tenía fondo propio, así que dejaba ver el borde de la columna siguiente mientras esta se deslizaba por debajo.
