@@ -19,7 +19,10 @@ export const PROJECT_STATUS_ORDER = ['5', '0', '4', '2', '3', '1'];
 
 export const PROJECT_BOARDS: Record<ProjectBoardKey, ProjectBoardConfig> = {
   doctallas: { key: 'doctallas', title: 'Documentación y Tallas', statuses: ['5', '0', '4'], defaultTab: 'documentacion' },
-  ordenescompra: { key: 'ordenescompra', title: 'Órdenes de Compra', statuses: ['2'], defaultTab: 'ordenes' },
+  // '0' (En confirmación de tallas) también aparece aquí, duplicado con doctallas:
+  // Compras necesita verlo desde que entra a tallas, no solo cuando ya está listo
+  // para generar la OC (Efraín, 2026-08-10).
+  ordenescompra: { key: 'ordenescompra', title: 'Órdenes de Compra', statuses: ['0', '2'], defaultTab: 'ordenes' },
   // Acceso propio (2026-08-05, Efraín): antes vivía junto con "Proyecto Terminado"
   // dentro de "logistica" — separado para que el seguimiento operativo (batería +
   // estado por producto/talla, tab "ejecucion") no se mezcle con proyectos ya

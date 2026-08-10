@@ -2,6 +2,11 @@
 
 ## 2026-08-10
 
+- "En confirmación de tallas" también visible en Órdenes de Compra
+  - Efraín reportó (captura) que un proyecto en estado "En confirmacion de tallas" (project_status '0') solo aparecía en el acceso "Documentación y Tallas" y pidió que apareciera igual en "Órdenes de Compra".
+  - `src/lib/projectStages.ts`: `PROJECT_BOARDS.ordenescompra.statuses` pasa de `['2']` a `['0', '2']` — el mismo proyecto ahora cae en ambos accesos mientras está en tallas, hasta pasar a "Ordenes de compra listas". `doctallas` no cambia (sigue con `['5', '0', '4']`), así que el status queda duplicado a propósito entre ambos boards.
+  - `tsc --noEmit` limpio. Working tree ajeno de otra sesión concurrente (`shared/dto.ts`, `worker/index.ts`, `worker/lib/dal.ts`, `worker/routes/oportunidades.ts`, `worker/schema.sql`, `worker/lib/home.ts`/`worker/routes/home.ts`/`src/app/HomeView.tsx`/`src/lib/homeApi.ts`) sin tocar — solo se stageó `projectStages.ts` + este log.
+
 - Compras puede mandar a costeo una Nueva oportunidad, igual que Ventas
   - Efraín pidió que Compras pueda pasar una oportunidad de "Nueva oportunidad" a "En costeo" desde su propio board Costeo, sin depender de que Ventas lo haga primero.
   - `OpportunityDrawer.tsx`: `readOnlyCosteo` (que bloquea líneas/botón "Mandar a costeo" en el board Costeo) pasa de ser fijo por `boardKey==='costeo'` a excluir la etapa 4 (`boardKey==='costeo' && stage!=='4'`) — en Nueva oportunidad, Compras queda igual que Ventas en Oportunidades: edición inline de líneas y botón "Mandar a costeo" habilitados. El pre-chequeo `checkCosteo` (antes solo corría fuera del board Costeo) se ajustó igual para que el botón no se quede deshabilitado en ese caso. El backend (`worker/lib/costeo.ts`) ya no tenía gate de rol — la restricción era solo de UI.
