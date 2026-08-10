@@ -208,7 +208,11 @@ export const gridWrapStyle: React.CSSProperties = { width: 'fit-content' };
 // pegado al borde izquierdo sin dejar una franja hueca donde "#" solía estar.
 // El fondo debe ponerse explícito en cada uso (blanco en header/TotalsRow,
 // `rowTint` dinámico en QuoteRow) para tapar las columnas que pasan debajo.
-export const STICKY_PRODUCTO_STYLE: React.CSSProperties = { position: 'sticky', left: 0, zIndex: 1 };
+// `marginRight: -6` (mismo valor que el `gap` del grid en las 3 vistas que
+// usan esto) estira la celda sobre ese hueco entre columnas — sin esto, la
+// rendija del gap no tiene fondo propio y se ve la caja de la columna
+// siguiente asomando al hacer scroll (Efraín, 2026-08-10: "se ve raro").
+export const STICKY_PRODUCTO_STYLE: React.CSSProperties = { position: 'sticky', left: 0, zIndex: 1, marginRight: -6 };
 
 export const PRECIO_VENTA_COL = 'numeric_mkzneg3d';
 

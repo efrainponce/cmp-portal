@@ -1,5 +1,13 @@
 # Log de commits
 
+## 2026-08-10
+
+- Cotización: la columna Producto no tapaba del todo la columna siguiente al hacer scroll
+  - Efraín reportó (captura) que al mover la tabla de Cotización horizontalmente se veía "raro" — un pedazo de la caja de la columna contigua se asomaba pegado a la columna Producto (fija/`sticky` al hacer scroll horizontal).
+  - Causa: las tres vistas que comparten `STICKY_PRODUCTO_STYLE` (header, filas `QuoteRow`, `TotalsRow` — `gridMeta.tsx`) usan `gap: 6` entre columnas del grid; ese hueco de 6px a la derecha de la celda pegajosa no tenía fondo propio, así que dejaba ver el borde de la columna siguiente mientras esta se deslizaba por debajo.
+  - Fix: `marginRight: -6` en `STICKY_PRODUCTO_STYLE` (mismo valor que el `gap`) estira la celda sobre ese hueco — corrige las 3 vistas a la vez al vivir en el único punto compartido.
+  - Verificado con Playwright contra el dev server local (Costeo, OPP-0512): comparé capturas antes/después del fix haciendo scroll horizontal de la grid — la cobertura de Producto crece los 6px esperados y deja de asomarse el contenido de la columna vecina. `tsc --noEmit` y `npm run lint` limpios.
+
 ## 2026-08-06
 
 - Ejecución: un solo popover abierto a la vez + resumen libre por producto
