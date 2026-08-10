@@ -8,6 +8,11 @@
   - No afecta etapa 15 (En costeo): ahí Compras sigue en solo-lectura de producto/color/cantidad y solo captura costos, sin cambios.
   - `tsc --noEmit`, `npm test` (126 tests) y `npm run lint` limpios. El working tree traía cambios sueltos de otra sesión (`shared/dto.ts`, `worker/index.ts`, `worker/lib/dal.ts`, `worker/routes/oportunidades.ts`, `worker/schema.sql`, `worker/lib/home.ts`/`worker/routes/home.ts` nuevos) — se dejaron sin commitear, solo se stageó `OpportunityDrawer.tsx` + este log.
 
+- Aviso visible cuando "Mandar a costeo" está deshabilitado por falta de institución/cliente
+  - Efraín reportó (captura) una Nueva oportunidad con el botón "Mandar a costeo" deshabilitado sin ninguna pista visible — ni banner ⚠ en la línea (esa parte estaba completa) ni nada en el header. Causa: `checkCosteo` (`worker/lib/costeo.ts`) exige Institución (mirror de Cliente — `lookup_mm1bs976`), un error de la OPORTUNIDAD, no de una línea; pero en etapa 4 el tooltip del botón mostraba siempre el mensaje genérico "revisa los avisos ⚠ en cada línea", que no aplica cuando el problema no es de ninguna línea.
+  - `OpportunityDrawer.tsx`: nuevo `costeoItemErrors` separa los errores de `checkCosteo` que son de la oportunidad (institución, sin líneas, etc.) de los de línea (prefijo `#1 "..."`, ya cubiertos por el banner ⚠ de `QuoteRow`). Banner nuevo debajo del header, mismo estilo que el aviso de "oportunidad ajena", listando esos errores de oportunidad cuando el botón está deshabilitado por ellos; el tooltip del botón también los prioriza en vez del mensaje genérico.
+  - `tsc --noEmit`, `npm test` (126 tests) y `npm run lint` limpios. Mismo working tree ajeno de la entrada anterior, sin tocar.
+
 - Cotización: la columna Producto no tapaba del todo la columna siguiente al hacer scroll
   - Efraín reportó (captura) que al mover la tabla de Cotización horizontalmente se veía "raro" — un pedazo de la caja de la columna contigua se asomaba pegado a la columna Producto (fija/`sticky` al hacer scroll horizontal).
   - Causa: las tres vistas que comparten `STICKY_PRODUCTO_STYLE` (header, filas `QuoteRow`, `TotalsRow` — `gridMeta.tsx`) usan `gap: 6` entre columnas del grid; ese hueco de 6px a la derecha de la celda pegajosa no tenía fondo propio, así que dejaba ver el borde de la columna siguiente mientras esta se deslizaba por debajo.

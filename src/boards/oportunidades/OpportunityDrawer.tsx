@@ -473,6 +473,15 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
   const ajena = item.ownedByViewer === false;
   const noLineEdits = readOnlyCosteo || isValidacion || ajena;
 
+  // checkCosteo mete primero los errores de la oportunidad (institución, sin
+  // líneas) y luego los de cada línea (prefijo "#1 ..." — ver validateLinea en
+  // worker/lib/costeo.ts). Los de línea ya se ven como banner ⚠ en la fila
+  // (QuoteRow); los de oportunidad no tienen dónde aparecer si no es aquí, y
+  // "Institución" es un mirror de Cliente — con Cliente vacío, este es el único
+  // aviso visible de que falta asignarlo (Efraín, 2026-08-10: se veía
+  // deshabilitado sin ninguna pista).
+  const costeoItemErrors = costeoReady && !costeoReady.ok ? (costeoReady.errors ?? []).filter(e => !e.startsWith('#')) : [];
+
   // Borrador de versión: la vigente aún no se costea (todas las líneas con Etapa
   // Costeo vacía/"No iniciado" — recién duplicada con "+ Nueva versión" o líneas
   // nuevas). Desbloquea la edición inline del grid igual que Nueva oportunidad y
@@ -561,7 +570,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
               busyLabel="Validando y generando PDF… puede tardar unos minutos, no cierres esta pantalla"
               disabled={costeoReady === null || !costeoReady.ok}
               title={costeoReady === null ? 'Verificando requisitos…'
-                : !costeoReady.ok ? (stage === '4' ? 'Faltan requisitos — revisa los avisos ⚠ en cada línea' : (costeoReady.errors?.[0] ?? 'No disponible todavía'))
+                : !costeoReady.ok ? (costeoItemErrors[0] ?? (stage === '4' ? 'Faltan requisitos — revisa los avisos ⚠ en cada línea' : (costeoReady.errors?.[0] ?? 'No disponible todavía')))
                 : 'Genera el PDF de solicitud y pasa a "En costeo"'}
               onConfirm={onEnviarCosteo}
             />
@@ -634,6 +643,23 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
             {notice.title}
           </div>
           {notice.lines.map((e, i) => (
+            <div key={i} style={{ font: 'var(--text-label)', color: 'var(--ink-secondary)', marginTop: 2 }}>• {e}</div>
+          ))}
+        </div>
+      )}
+
+      {/* El botón deshabilitado por sí solo no dice por qué — sobre todo cuando
+          el motivo es de la oportunidad (falta institución/cliente) y no hay
+          ninguna línea con aviso ⚠ que lo delate (Efraín, 2026-08-10). */}
+      {!readOnlyCosteo && !isValidacion && !ajena && costeoItemErrors.length > 0 && (
+        <div style={{
+          margin: isMobile ? '12px 14px 0' : '14px 32px 0', padding: '12px 16px',
+          border: '1px solid var(--status-perdida)', borderRadius: 'var(--radius-lg)', background: 'var(--bg-raised)',
+        }}>
+          <div style={{ font: 'var(--text-label-strong)', color: 'var(--status-perdida)', marginBottom: 6 }}>
+            Falta esto para "Mandar a costeo":
+          </div>
+          {costeoItemErrors.map((e, i) => (
             <div key={i} style={{ font: 'var(--text-label)', color: 'var(--ink-secondary)', marginTop: 2 }}>• {e}</div>
           ))}
         </div>
