@@ -16,6 +16,7 @@ import { oportunidadRoutes } from './routes/oportunidades';
 import { inventarioRoutes } from './routes/inventario';
 import { notificationRoutes } from './routes/notifications';
 import { documentRoutes } from './routes/documents';
+import { homeRoutes } from './routes/home';
 import { flushOutbox } from './lib/outbox';
 import { checkErrorsAndAlert } from './lib/errorAlerts';
 import { logSync } from './sync/log';
@@ -46,6 +47,7 @@ oportunidadRoutes(app);
 inventarioRoutes(app);
 notificationRoutes(app);
 documentRoutes(app);
+homeRoutes(app);
 
 app.all('*', c => c.env.ASSETS.fetch(c.req.raw));
 

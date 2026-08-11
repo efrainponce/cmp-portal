@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { Sidebar, type BoardKey } from './app/Sidebar';
 import { MobileTopBar } from './app/MobileTopBar';
 import { ImpersonationBanner } from './app/ImpersonationBanner';
@@ -22,6 +22,7 @@ const ProyectoBoard = lazy(() => import('./boards/proyectos/ProyectoBoard').then
 const GenericBoardView = lazy(() => import('./boards/generic/GenericBoardView').then((m) => ({ default: m.GenericBoardView })));
 const InventarioBoard = lazy(() => import('./boards/inventario/InventarioBoard').then((m) => ({ default: m.InventarioBoard })));
 const SettingsPage = lazy(() => import('./app/SettingsPage').then((m) => ({ default: m.SettingsPage })));
+const HomeView = lazy(() => import('./app/HomeView').then((m) => ({ default: m.HomeView })));
 
 function App() {
   const sessionExpired = useSessionExpired();
@@ -29,6 +30,16 @@ function App() {
   const { board: activeBoard, itemId, navigate } = useRoute();
   const [collapsed, setCollapsed] = useState(false);
   const isMobile = useIsMobile();
+
+  // Landing por rol: la ruta raíz sin filo del fallback de parsePath ("/")
+  // aterriza en Inicio para vendedor/compras/admin — almacén sigue yendo a
+  // Inventario (su trabajo es reactivo, sin pendientes que listar). Deep
+  // links explícitos (/costeo/123, etc.) nunca pasan por aquí.
+  useEffect(() => {
+    if (!me || window.location.pathname !== '/') return;
+    navigate(me.role === 'almacen' ? 'inventario' : 'home');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [me]);
 
   if (sessionExpired) return <SessionExpiredScreen />;
   // impersonatedBy presente = un admin viendo "como" otra cuenta — ahí solo
@@ -70,6 +81,7 @@ function App() {
       {activeBoard === 'proveedores' && <GenericBoardView slug="proveedores" title="Proveedores" />}
       {activeBoard === 'inventario' && <InventarioBoard />}
       {activeBoard === 'settings' && <SettingsPage />}
+      {activeBoard === 'home' && <HomeView onOpenPendiente={onOpenNotification} />}
     </Suspense>
   );
 

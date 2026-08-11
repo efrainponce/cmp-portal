@@ -277,3 +277,22 @@ export interface NotificationsResponse {
   notifications: NotificationDTO[];
   unread: { importante: number; actualizacion: number };
 }
+
+// Home ("Inicio") — GET /api/home, worker/lib/home.ts. Pendientes por rol,
+// pensado para tarjetas (no una tabla): boardKey es a dónde navega el click.
+export interface HomePendienteDTO {
+  itemId: string;
+  boardKey: string;
+  title: string;
+  subtitle: string;
+  daysStale: number;
+}
+export interface HomeSectionDTO {
+  key: string;
+  label: string;
+  items: HomePendienteDTO[];
+}
+export interface HomeResponse {
+  greetingName: string;
+  sections: HomeSectionDTO[];
+}

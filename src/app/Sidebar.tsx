@@ -4,11 +4,12 @@ import { UserChip } from './UserChip';
 import { useMe } from '../lib/useMe';
 import logo from '../assets/logo.webp';
 import {
-  IconOportunidades, IconGlobe, IconCosteo, IconValidacion, IconDocTallas, IconOrdenesCompra, IconEjecucion, IconLogistica,
+  IconHome, IconOportunidades, IconGlobe, IconCosteo, IconValidacion, IconDocTallas, IconOrdenesCompra, IconEjecucion, IconLogistica,
   IconProductos, IconCuentas, IconClientes, IconInventario, IconChevronLeft, IconChevronRight, IconSettings,
 } from '../components/icons';
 
 export type BoardKey =
+  | 'home'
   | 'oportunidades' | 'oportunidades_web' | 'costeo' | 'validacion' | 'doctallas' | 'ordenescompra' | 'ejecucion' | 'logistica'
   | 'productos' | 'instituciones' | 'contactos' | 'proveedores' | 'inventario' | 'settings';
 
@@ -48,6 +49,7 @@ export const BOARD_LABELS: Record<BoardKey, string> = {
     [...VENTAS_ITEMS, ...PROYECTOS_ITEMS, ...CATALOG_ITEMS, ...INVENTARIO_ITEMS]
       .map((i) => [i.key, i.label]),
   ),
+  home: 'Inicio',
   settings: 'Configuración',
 } as Record<BoardKey, string>;
 
@@ -113,6 +115,21 @@ export function Sidebar({ activeBoard, onSelectBoard, collapsed, onToggleCollaps
             <NotificationBell onNavigate={onOpenNotification} collapsed={collapsed} />
           )}
         </div>
+
+        {/* "Inicio" no es un board de Monday — no vive en boardAccess/role_board_access
+            (mismo trato que Configuración abajo). Visible para todos salvo almacén,
+            cuyo trabajo es reactivo y no tiene pendientes que listar (Efraín, 2026-08-10). */}
+        {me?.role && me.role !== 'almacen' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 18 }}>
+            <NavItem
+              icon={<IconHome />}
+              label="Inicio"
+              active={activeBoard === 'home'}
+              collapsed={collapsed}
+              onClick={() => onSelectBoard('home')}
+            />
+          </div>
+        )}
 
         {ventasItems.length > 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 26 }}>

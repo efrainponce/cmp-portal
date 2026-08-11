@@ -15,6 +15,12 @@ const base = {
   strokeLinejoin: 'round' as const,
 };
 
+export const IconHome = (p: IconProps) => (
+  <svg {...base} {...p}>
+    <path d="M3 11l9-8 9 8" /><path d="M5 10v10h14V10" />
+  </svg>
+);
+
 export const IconOportunidades = (p: IconProps) => (
   <svg {...base} {...p}>
     <path d="M3 17l6-6 4 4 8-8" /><path d="M17 7h4v4" />

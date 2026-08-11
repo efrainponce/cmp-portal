@@ -358,3 +358,20 @@ CREATE TABLE IF NOT EXISTS producto_resumen (
   PRIMARY KEY (proyecto_id, producto, color)
 );
 CREATE INDEX IF NOT EXISTS idx_producto_resumen_proyecto ON producto_resumen(proyecto_id);
+
+-- Seguimiento del vendedor sobre una oportunidad stale (2026-08-10, pantalla
+-- "Inicio", worker/lib/home.ts insertSeguimiento). El mensaje SIEMPRE se postea
+-- primero como Update real en Monday (worker/lib/monday.ts createUpdate) — esta
+-- fila solo queda LIGADA por monday_update_id, nunca es un texto suelto por su
+-- lado. Se crea LAZY en runtime (mismo patrón que estado_producto_historial) —
+-- está aquí solo como documentación.
+CREATE TABLE IF NOT EXISTS seguimientos (
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  item_id           INTEGER NOT NULL,        -- oportunidades item id
+  board_id          INTEGER NOT NULL,
+  monday_update_id  INTEGER NOT NULL,        -- Update real en Monday, ya creado
+  autor_email       TEXT NOT NULL,
+  mensaje           TEXT NOT NULL,
+  created_at        TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_seguimientos_item ON seguimientos(item_id);

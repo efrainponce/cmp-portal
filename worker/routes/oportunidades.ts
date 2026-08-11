@@ -23,7 +23,8 @@ import { listEstadoHistorial } from '../lib/estadoProducto';
 import { listProductoResumen, upsertProductoResumen } from '../lib/productoResumen';
 import { duplicateOportunidad, DuplicateOportunidadError } from '../lib/duplicateOportunidad';
 import { ganarOportunidad, GanarOportunidadError } from '../lib/ganarOportunidad';
-import { createSubitem, addFileToColumn, fetchAssetPublicUrls, gql } from '../lib/monday';
+import { createSubitem, addFileToColumn, fetchAssetPublicUrls, createUpdate, gql } from '../lib/monday';
+import { insertSeguimiento } from '../lib/home';
 import { listZoneImages, uploadZoneImage, EmbellImageError } from '../lib/embellecimientoImagenes';
 import { listProposedProducts, addProposedProduct, ProposedProductError } from '../lib/productosPropuestos';
 import { resolveMondayAsset, PROYECTO_DOCUMENTO_COL } from '../lib/portalFiles';
@@ -193,6 +194,34 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       if (err instanceof OutboxError) return jsonStatus({ ok: false, errors: [err.message] }, err.status);
       return jsonStatus({ ok: false, errors: ['internal error'] }, 500);
     }
+  });
+
+  // Seguimiento (pantalla Inicio, Efraín 2026-08-10): mensaje corto del vendedor
+  // sobre una oportunidad stale — se postea como Update REAL de Monday (visible
+  // para cualquiera que abra el item ahí, no solo en el portal) y se guarda
+  // ligado por monday_update_id (worker/lib/home.ts insertSeguimiento), nunca
+  // como texto suelto desconectado del Update.
+  app.post('/api/oportunidades/:id/seguimiento', async c => {
+    const itemId = Number(c.req.param('id'));
+    if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
+    const viewer = c.get('viewer');
+
+    const body = await c.req.json().catch(() => ({}));
+    const mensaje = typeof body.mensaje === 'string' ? body.mensaje.trim() : '';
+    if (!mensaje) return jsonStatus({ error: 'mensaje requerido' }, 422);
+
+    const item = await getItem(c.env, 'oportunidades', itemId, viewer, 'own');
+    if (!item) return c.json({ error: 'not found' }, 404);
+
+    // El Update lo postea la cuenta de la integración, no el viewer — se
+    // prefija el nombre para que en Monday quede claro quién habló (mismo
+    // patrón que worker/lib/productosPropuestos.ts / proyectoTallas.ts).
+    const actorName = viewer.nombre ?? viewer.email;
+    const update = await createUpdate(c.env, itemId, `${actorName}: ${mensaje}`);
+    await insertSeguimiento(c.env, {
+      itemId, mondayUpdateId: Number(update.id), autorEmail: viewer.email, mensaje,
+    });
+    return c.json({ ok: true, updateId: update.id });
   });
 
   // "Ganar" (Efraín, 2026-08-05): además de la Etapa, crea el Proyecto ligado
