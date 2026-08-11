@@ -541,6 +541,31 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     }
   });
 
+  // Sube "Inventario Actual (Imagen)" (file_mm0hpefr) — se muestra en Documentación
+  // junto a la cotización firmada, mismo template de sección (Efraín, 2026-08-10:
+  // "Compras puede agregar el archivo Inventario"). Dual-write a R2 igual que
+  // /proyectos/:id/documento arriba.
+  app.post('/api/oportunidades/:id/inventario', async c => {
+    const itemId = Number(c.req.param('id'));
+    if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
+    const viewer = c.get('viewer');
+    if (!canWrite('oportunidades', 'file_mm0hpefr', viewer.role)) return c.json({ error: 'forbidden' }, 403);
+
+    const row = await getItem(c.env, 'oportunidades', itemId, viewer, 'own');
+    if (!row) return c.json({ error: 'not found' }, 404);
+
+    const form = await c.req.formData();
+    const file = form.get('file');
+    if (!(file instanceof File)) return c.json({ error: 'file is required' }, 400);
+
+    const asset = await addFileToColumn(c.env, itemId, 'file_mm0hpefr', file, file.name);
+    c.executionCtx.waitUntil(refetchItem(c.env, BOARDS.oportunidades.id, itemId));
+
+    const key = oportunidadFileKey(itemId, 'inventario', file.name);
+    await putFile(c.env, key, file);
+    return c.json({ ok: true, id: asset.id, name: asset.name, url: `/api/files/${key}` });
+  });
+
   // El Proyecto ligado a la oportunidad (tallas/OC viven ahí, no en la Oportunidad).
   // 200 con {proyecto: null} cuando aún no existe — el drawer muestra el estado vacío.
   app.get('/api/oportunidades/:id/proyecto', async c => {

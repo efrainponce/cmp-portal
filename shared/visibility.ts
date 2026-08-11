@@ -60,6 +60,10 @@ export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
     multiple_person_mm03qyw9: { vis: V, w: V },
     ...vis(['lookup_mm4g2hqf', 'lookup_mm35sk4e', 'lookup_mm0cvyfc',
       'lookup_mm1w47fq', 'multiple_person_mm1m73qp'], AC),
+    // Inventario Actual (Imagen) — Compras sube evidencia de inventario junto a
+    // la cotización firmada (tab Documentación); el vendedor la ve (Efraín,
+    // 2026-08-10).
+    file_mm0hpefr: { vis: V, w: WAC },
   },
 
   oportunidades_sub: {

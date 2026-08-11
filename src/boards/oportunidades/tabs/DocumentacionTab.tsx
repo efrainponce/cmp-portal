@@ -13,7 +13,7 @@
 // (Efraín, 2026-07-26).
 import { useState, type ChangeEvent } from 'react';
 import type { ItemDetailDTO } from '../../../lib/api';
-import { uploadProyectoDocumento } from '../../../lib/api';
+import { uploadProyectoDocumento, uploadOportunidadInventario } from '../../../lib/api';
 import { patchItem } from '../../../lib/apiClient';
 import { useMe } from '../../../lib/useMe';
 import { P_OC_CLIENTE, type ProyectoState } from '../ProyectoSection';
@@ -22,6 +22,7 @@ import { DocumentsPanel } from '../../../components/documents/DocumentsPanel';
 export const SOLICITUDES_COL = 'file_mm0z6rze'; // Cotizaciones sin precio
 export const NO_FIRMADAS_COL = 'file_mm0fgrzq'; // Cotizaciones generadas
 export const FIRMADAS_COL = 'file_mm0zjras';    // Cotizaciones Firmadas
+export const INVENTARIO_COL = 'file_mm0hpefr';  // Inventario Actual (Imagen)
 const FECHA_ENTREGA_COL = 'date_mm0m1vfv';
 
 interface DocFile { url: string; name: string; key?: string }
@@ -52,18 +53,21 @@ function toR2Files(files: DocFile[], oppId: string, categoria: string): DocFile[
   });
 }
 
-export function DocumentacionTab({ item, proyecto }: { item: ItemDetailDTO; proyecto?: ProyectoState }) {
+export function DocumentacionTab({ item, proyecto, onReload }: { item: ItemDetailDTO; proyecto?: ProyectoState; onReload?: () => void }) {
   return (
     <div style={{ padding: '24px 32px 40px', maxWidth: 920, width: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 20 }}>
       <DocSection title="Solicitudes de costeo" signable files={toR2Files(parseFiles(item.cols[SOLICITUDES_COL]?.text), item.id, 'solicitud-costeo')} uploadLabel="Subir solicitud de costeo" />
 
       <div>
         <SectionTitle>Cotizaciones</SectionTitle>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 10 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16, marginTop: 10 }}>
           {/* Las generadas se pueden firmar electrónicamente aquí mismo: el PDF
               se sella (SHA-256) y la firma queda en su constancia. */}
           <DocSection title={null} accentColor="var(--status-esperando)" label="No firmadas por vendedor" signable files={toR2Files(parseFiles(item.cols[NO_FIRMADAS_COL]?.text), item.id, 'cotizacion-no-firmada')} uploadLabel="Subir cotización" />
           <DocSection title={null} accentColor="var(--status-ganada)" label="Firmadas por vendedor" files={toR2Files(parseFiles(item.cols[FIRMADAS_COL]?.text), item.id, 'cotizacion-firmada')} uploadLabel="Subir cotización firmada" />
+          {/* Inventario Actual (Imagen) — Compras la sube junto a la cotización
+              firmada, mismo template de sección que las demás (Efraín, 2026-08-10). */}
+          <InventarioSection oppId={item.id} files={toR2Files(parseFiles(item.cols[INVENTARIO_COL]?.text), item.id, 'inventario')} onReload={onReload} />
         </div>
       </div>
 
@@ -119,6 +123,48 @@ function DocSection({ title, subtitle, label, accentColor, files, uploadLabel, s
       {signable && files.map((f) => (
         f.key ? <FileSignature key={f.key} file={{ ...f, key: f.key }} /> : null
       ))}
+    </div>
+  );
+}
+
+/** "Inventario Actual (Imagen)" — mismo template visual que DocSection, pero con
+ * upload real (Compras/admin, `w: WAC` en shared/visibility.ts): a diferencia de
+ * Solicitudes/Cotizaciones (aún sin endpoint), este sí tiene POST
+ * /api/oportunidades/:id/inventario (Efraín, 2026-08-10). */
+function InventarioSection({ oppId, files, onReload }: { oppId: string; files: DocFile[]; onReload?: () => void }) {
+  const me = useMe();
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const canUpload = me?.role === 'compras' || me?.role === 'admin';
+
+  const handleFile = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setUploading(true);
+    setError(null);
+    const res = await uploadOportunidadInventario(oppId, file);
+    setUploading(false);
+    if (!res.ok) { setError(res.error ?? 'No se pudo subir el archivo.'); return; }
+    onReload?.();
+  };
+
+  return (
+    <div>
+      <div style={{ font: '600 10.5px \'Inter\', sans-serif', color: 'var(--ink-tertiary)', textTransform: 'uppercase', letterSpacing: '.3px', marginBottom: 8 }}>
+        Inventario
+      </div>
+      <label style={{
+        display: 'flex', alignItems: 'center', gap: 10, border: `1px dashed ${error ? 'var(--status-perdida)' : 'var(--ink-faint)'}`,
+        borderRadius: 'var(--radius-lg)', padding: '10px 12px', marginTop: 6, marginBottom: 10, background: 'var(--bg)',
+        cursor: canUpload && !uploading ? 'pointer' : 'default', opacity: canUpload ? 1 : .6,
+      }}>
+        <span style={{ font: 'var(--text-label)', color: error ? 'var(--status-perdida)' : 'var(--ink-secondary)' }}>
+          {uploading ? 'Subiendo…' : error ? `Error — reintentar (${error})` : canUpload ? 'Subir inventario' : 'Solo Compras puede subir este archivo'}
+        </span>
+        <input type="file" onChange={handleFile} style={{ display: 'none' }} disabled={!canUpload || uploading} />
+      </label>
+      <FileListOrEmpty files={files} />
     </div>
   );
 }

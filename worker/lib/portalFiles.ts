@@ -21,6 +21,7 @@ export const OPP_FILE_COLS: Record<string, string> = {
   'solicitud-costeo': 'file_mm0z6rze',
   'cotizacion-no-firmada': 'file_mm0fgrzq',
   'cotizacion-firmada': 'file_mm0zjras',
+  'inventario': 'file_mm0hpefr',
 };
 export const PROYECTO_FILE_COLS: Record<string, string> = {
   'tallas': 'file_mm0hcrtz',

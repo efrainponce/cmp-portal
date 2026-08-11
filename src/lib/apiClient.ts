@@ -354,6 +354,19 @@ export async function proyectoAction(
   return body;
 }
 
+/** Sube "Inventario Actual (Imagen)" a la Oportunidad — Compras, junto a la
+ * cotización firmada (tab Documentación). */
+export async function uploadOportunidadInventario(
+  oppId: string, file: File,
+): Promise<{ ok: boolean; name?: string; url?: string; error?: string }> {
+  const form = new FormData();
+  form.append('file', file);
+  const res = await apiFetch(`/oportunidades/${oppId}/inventario`, { method: 'POST', body: form });
+  const body = await res.json();
+  if (!res.ok) return { ok: false, error: body.error ?? 'No se pudo subir el archivo.' };
+  return body;
+}
+
 /** Sube la OC / cotización / contrato firmado por el cliente al Proyecto ligado. */
 export async function uploadProyectoDocumento(
   proyectoId: string, file: File,

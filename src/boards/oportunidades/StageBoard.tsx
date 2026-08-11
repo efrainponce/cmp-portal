@@ -1,7 +1,12 @@
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { StageBoardList } from './StageBoardList';
 import { OpportunityDrawer } from './OpportunityDrawer';
 import { STAGE_BOARDS, type StageBoardKey } from '../../lib/dealStages';
+import { Button } from '../../components/core/Button';
+import { IconPlus } from '../../components/icons';
+
+// El modal solo pesa cuando alguien lo abre.
+const CreateOportunidadModal = lazy(() => import('./CreateOportunidadModal'));
 
 interface Props {
   boardKey: StageBoardKey;
@@ -16,14 +21,32 @@ interface Props {
  * Logística): lista por etapa + drawer. Toda la variación por board vive en
  * STAGE_BOARDS (src/lib/dealStages.ts) y en el `boardKey` que el drawer usa
  * para su modo (p. ej. solo lectura en Costeo). Oportunidades tiene su propio
- * wrapper (OportunidadesBoard) por el botón/modal "Nueva oportunidad". */
+ * wrapper (OportunidadesBoard) con el botón/modal "Nueva oportunidad" — Costeo
+ * lo repite aquí (Efraín, 2026-08-10: Compras perdió el board Oportunidades
+ * del sidebar pero sigue pudiendo crear oportunidades y elegir cualquier
+ * vendedor, mismo modal sin restricción). El resto de los boards de etapa no
+ * lo necesitan: solo llegan ahí oportunidades que ya avanzaron. */
 export function StageBoard({ boardKey, openId, onOpenChange, onDuplicated }: Props) {
   const config = STAGE_BOARDS[boardKey];
   const [q, setQ] = useState('');
+  const [creating, setCreating] = useState(false);
+  const canCreate = boardKey === 'costeo';
 
   return (
     <div style={{ position: 'relative', height: '100%', width: '100%' }}>
-      {!openId && <StageBoardList config={config} q={q} onSearch={setQ} onOpen={onOpenChange} />}
+      {!openId && (
+        <StageBoardList
+          config={config}
+          q={q}
+          onSearch={setQ}
+          onOpen={onOpenChange}
+          headerAction={canCreate ? (
+            <Button variant="primary" onClick={() => setCreating(true)}>
+              <IconPlus /> Nueva oportunidad
+            </Button>
+          ) : undefined}
+        />
+      )}
       {openId && (
         <OpportunityDrawer
           id={openId}
@@ -33,6 +56,17 @@ export function StageBoard({ boardKey, openId, onOpenChange, onDuplicated }: Pro
           boardKey={config.key}
           onDuplicated={onDuplicated}
         />
+      )}
+      {canCreate && creating && (
+        <Suspense fallback={null}>
+          <CreateOportunidadModal
+            onClose={() => setCreating(false)}
+            onCreated={(itemId) => {
+              setCreating(false);
+              onOpenChange(String(itemId)); // Abrir drawer automáticamente
+            }}
+          />
+        </Suspense>
       )}
     </div>
   );

@@ -142,6 +142,10 @@ export interface GridCol {
 export const GRID_COLS_COSTEO: GridCol[] = [
   { id: 'lookup_mm0x4kda', label: 'Producto', align: 'left', kind: 'text', width: 170 },
   { id: 'lookup_mkzn7x9a', label: 'SKU', align: 'left', kind: 'text', width: 80 },
+  // Color — vive en `oportunidades_sub` como V (el vendedor ya la ve/edita en
+  // Venta); Costeo solo la mostraba en la vista de Venta. Compras la necesita
+  // para costear el color exacto que se pidió (Efraín, 2026-08-10).
+  { id: COLOR_COL, label: 'Color', align: 'left', kind: 'text', width: 110 },
   { id: 'numeric_mkzm6399', label: 'Cant.', align: 'left', kind: 'text', width: 55 },
   { id: ETAPA_COSTEO_COL, label: 'Etapa costeo', align: 'left', kind: 'text', width: 100 },
   { id: MONEDA_COL, label: 'Moneda', align: 'left', kind: 'text', width: 96 },
@@ -152,6 +156,10 @@ export const GRID_COLS_COSTEO: GridCol[] = [
   { id: 'numeric_mkzngs9x', label: 'Gastos %', align: 'right', kind: 'percent', width: 65 },
   { id: 'numeric_mm0gxvpa', label: 'Costo embell. C/U', align: 'right', kind: 'money', width: 88 },
   { id: 'formula_mkznpfgg', label: 'Costo total C/U', align: 'right', kind: 'money', width: 88 },
+  // Techo — tope de precio capturado en Monday (no es una fórmula del portal),
+  // ya visible a compras/admin (AC) en visibility.ts pero nunca pintada como
+  // columna (Efraín, 2026-08-10: "agregar la columna TECHO a la cotización").
+  { id: 'numeric_mkznpn83', label: 'Techo', align: 'right', kind: 'money', width: 85 },
   { id: 'numeric_mm2qzzbe', label: 'P. venta sugerido', align: 'right', kind: 'money', width: 92 },
   { id: 'numeric_mkzneg3d', label: 'P. venta', align: 'right', kind: 'money', width: 82 },
   // Subtotal / IVA / Total c/IVA vivían solo en la vista de Venta: en Costeo no
