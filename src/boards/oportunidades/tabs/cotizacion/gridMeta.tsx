@@ -61,6 +61,7 @@ export const PRODUCTO_CONFIRM_COL = 'boolean_mm5cqtjs';
 export const PRODUCTO_PROVEEDOR_COL = 'board_relation_mm1cwqky';
 export const COLOR_COL = 'text_mm07s2mg';
 export const COLORES_DISP_COL = 'lookup_mkznm0h3';    // mirror: colores disponibles del producto ligado (asíncrono)
+export const HISTORIAL_PRECIOS_COL = 'lookup_mm1tjv9n'; // mirror: historial de precios (Costeo) — solo AC en visibility.ts
 export const PRODUCTO_COLOR_DROPDOWN_COL = 'dropdown_mkztty4b'; // Color del producto en el catálogo — misma
 // fuente que valida enviarCosteo. Se lee directo del `catalog` ya cargado en memoria (sin esperar
 // al mirror asíncrono del subitem, que solo se puebla después de que Monday recompute la relación).
@@ -124,6 +125,14 @@ export const ETAPA_COSTEO_COLORS: Record<string, { color: string; tint: string }
   'Detenido': { color: '#ce3048', tint: '#fbdbdf' },
   'Modificado': { color: '#3db0df', tint: '#dbf0fa' },
 };
+
+// Mismo color que el chip de solo lectura, pero aplicado al <select> editable
+// — Elizabeth (WhatsApp, 2026-08-11) pidió que el estatus de costeo se vea
+// con color también mientras se está eligiendo, no solo ya guardado.
+export function etapaCosteoSelectStyle(raw: string): React.CSSProperties {
+  const colors = ETAPA_COSTEO_COLORS[raw];
+  return colors ? { color: colors.color, background: colors.tint, borderColor: colors.color, fontWeight: 600 } : {};
+}
 
 export interface GridCol {
   id: string;

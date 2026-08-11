@@ -12,7 +12,7 @@ import { LineDetailPanel } from './LineDetailPanel';
 import { ProductPicker, type ProductoChoice } from '../../../../components/forms/ProductPicker';
 import {
   type GridCol, type RowEditState, marginColor, suggestedPrecio23, numFrom, displayProducto, cellValue,
-  inputStyle, valueChipStyle, ETAPA_COSTEO_COLORS, getLineWarnings, needsConfirmarTallas, productoProveedorOk,
+  inputStyle, valueChipStyle, ETAPA_COSTEO_COLORS, etapaCosteoSelectStyle, getLineWarnings, needsConfirmarTallas, productoProveedorOk,
   ETAPA_COSTEO_COL, SUGERIDO_COL, MARGEN_COL,
   PRODUCTO_COL, PRODUCTO_TXT_COL, PRODUCTO_REL_COL, COLOR_COL,
   EMB_STATUS_COL, EMB_LABEL_CON, EMB_LABEL_SIN,
@@ -151,10 +151,12 @@ function MobileQuoteRowInner({
           value={raw}
           disabled={!!state.saving[ETAPA_COSTEO_COL]}
           onChange={(e) => onStatusChange(p, ETAPA_COSTEO_COL, e.target.value)}
-          style={{ ...inputStyle, textAlign: 'left' }}
+          style={{ ...inputStyle, textAlign: 'left', ...etapaCosteoSelectStyle(raw) }}
         >
           <option value="">Elegir etapa…</option>
-          {Object.keys(ETAPA_COSTEO_COLORS).map((k) => <option key={k} value={k}>{k}</option>)}
+          {Object.keys(ETAPA_COSTEO_COLORS).map((k) => (
+            <option key={k} value={k} style={{ color: ETAPA_COSTEO_COLORS[k].color, background: ETAPA_COSTEO_COLORS[k].tint }}>{k}</option>
+          ))}
         </select>
       );
     }
