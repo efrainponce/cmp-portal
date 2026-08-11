@@ -12,6 +12,11 @@
   - `etapaCosteoSelectStyle` nuevo en `gridMeta.tsx`, reusa la misma paleta real de Monday (`ETAPA_COSTEO_COLORS`, ya documentada como no-inventada); pinta el `<select>` cerrado (fondo/tinte + borde) según el valor elegido y cada `<option>` de la lista. Aplicado en `QuoteRow.tsx` y `MobileQuoteRow.tsx` — mismos dos sitios que ya tenían el `<select>` plano.
   - `tsc --noEmit` limpio.
 
+- Cotización: "Historial de Precios" en el panel expandible de la línea (Costeo/Validación)
+  - Elizabeth pidió por WhatsApp poder ver el historial de precios de una línea sin salir del portal — la columna ya existe en Monday (`lookup_mm1tjv9n`, mirror), solo faltaba pintarla.
+  - Agregado a `LineDetailPanel.tsx` (compartido por `QuoteRow` desktop y `MobileQuoteRow`), junto a Proveedor/Embellecimiento, solo en `variant === 'costeo'` — la columna ya estaba whitelisteada para compras/admin (`AC`) en `shared/visibility.ts`, no para vendedor.
+  - `tsc --noEmit` limpio.
+
 - Cotización/Proyecto: label "Dividida"/"Editada" al final de la línea tras usar "Ajustar línea"
   - Efraín pidió poder distinguir a simple vista, en la grid, qué líneas vienen de un split o de una edición vía "Ajustar línea" — antes la línea nueva/editada se veía igual que cualquier otra.
   - `AjusteDTO` (`shared/dto.ts`) ahora expone `lineaId`/`lineaOrigenId` (ya vivían en las tablas `cotizacion_ajustes`/`proyecto_cotizacion_ajustes`, solo no se mandaban al front). En Oportunidades, `CotizacionTab` arma un `Map` por línea a partir de los ajustes de la vigente (`versions.find(v => v.status === 'vigente').ajustes`) y lo pasa a `QuoteRow`/`MobileQuoteRow`; en el Proyecto, `QuoteLineSnapshot.ajusteLabel` se calcula server-side al reproducir el log (`applyAjustesVirtuales`, `worker/lib/proyectoCotizacionVirtual.ts`) — la línea origen y la hermana nueva quedan 'Dividida', una edición en el sitio queda 'Editada'; 'Dividida' siempre gana si la línea participó en ambas.

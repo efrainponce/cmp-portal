@@ -20,7 +20,7 @@ import { SearchInput } from '../../../../components/forms/SearchInput';
 import { EMB_STATUS_COL, EMB_LABEL_CON, explodeEmbellecimiento } from '../../../../lib/embellecimiento';
 import {
   DESCRIPCION_COL, TALLAS_COL, PRODUCTO_CONFIRM_COL, PRODUCTO_PROVEEDOR_COL,
-  CATALOGO_DESCRIPCION_COL, CATALOGO_TALLAS_COL,
+  CATALOGO_DESCRIPCION_COL, CATALOGO_TALLAS_COL, HISTORIAL_PRECIOS_COL,
   linkedProductoId, catalogIndex,
 } from './gridMeta';
 
@@ -226,6 +226,14 @@ export function LineDetailPanel({
               {catalogItem?.cols[PRODUCTO_PROVEEDOR_COL]?.text || '—'}
             </div>
           )}
+        </div>
+      )}
+      {variant === 'costeo' && (
+        <div>
+          <div style={fieldLabel}>Historial de Precios</div>
+          <div style={{ font: 'var(--text-label)', color: 'var(--ink-secondary)', whiteSpace: 'pre-wrap' }}>
+            {product.cols[HISTORIAL_PRECIOS_COL]?.text || '—'}
+          </div>
         </div>
       )}
       {variant === 'costeo' && <EmbellecimientoDetail product={product} />}
