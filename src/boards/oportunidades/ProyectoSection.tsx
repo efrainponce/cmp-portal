@@ -5,8 +5,8 @@
 // muestran desde el mirror (proyectos_sub) — el objetivo es que dejen de vivir
 // solo en el Excel.
 import { useCallback, useEffect, useState } from 'react';
-import { getProyecto, proyectoAction, getItem, type ItemDetailDTO, type ItemDTO, type ProyectoAction, type EstadoHistorialEntryDTO } from '../../lib/api';
-import { patchItem, reportarTallasIncorrectas, getEstadoHistorial, getProductoResumen, patchProductoResumen } from '../../lib/apiClient';
+import { getProyecto, proyectoAction, type ItemDetailDTO, type ItemDTO, type ProyectoAction, type EstadoHistorialEntryDTO } from '../../lib/api';
+import { patchItem, reportarTallasIncorrectas, getEstadoHistorial, getProductoResumen, patchProductoResumen, getCotizacionVirtual, type QuoteLineSnapshot } from '../../lib/apiClient';
 import { useMe } from '../../lib/useMe';
 import { ConfirmButton } from '../../components/core/ConfirmButton';
 import { Button } from '../../components/core/Button';
@@ -252,14 +252,6 @@ function norm(s: string): string {
   return s.trim().toLowerCase();
 }
 
-// Oportunidad — línea de cotización (oportunidades_sub), mismos ids que
-// worker/lib/proyectoTallas.ts: lo cotizado originalmente por producto+color,
-// para el "Cotizado: N" / "Faltan" de cada tarjeta (cruce 100% D1, sin llamada
-// nueva a Monday — Efraín, 2026-08-05).
-const OPP_SUB_SKU = 'lookup_mkzn7x9a';
-const OPP_SUB_COLOR = 'text_mm07s2mg';
-const OPP_SUB_CANTIDAD = 'numeric_mkzm6399';
-
 interface CotizadoMaps {
   byProductoColor: Map<string, number>;
   bySkuColor: Map<string, number>;
@@ -268,18 +260,26 @@ interface CotizadoMaps {
 /** Dos índices sobre las líneas cotizadas: producto+color (nombre del subitem,
  * como lo captura TallaBoxesCapture) y sku+color de respaldo — el "Importar
  * tallas" de cmp-tallas puede reescribir el nombre del producto al copiarlo al
- * Proyecto, y ahí el SKU (más estable) es lo único que sigue cruzando. */
-function cotizadoMapsFrom(oppLineas: ItemDTO[]): CotizadoMaps {
+ * Proyecto, y ahí el SKU (más estable) es lo único que sigue cruzando.
+ *
+ * Lee de la cotización VIRTUAL del Proyecto (getCotizacionVirtual), no de los
+ * subitems crudos de la Oportunidad: un "Editar/Dividir" hecho ya en el
+ * Proyecto (post-venta) solo vive en `proyecto_cotizacion_ajustes` — nunca
+ * toca Monday — así que leer los subitems reales dejaba el "Cotizado" de las
+ * tallas pegado a la línea de antes de dividir (bug reportado por Pam,
+ * 2026-08-11: dividió 150 multicam en 75+75 y el color nuevo salía "sin línea
+ * de cotización para comparar"). Mientras nadie ajusta nada la vista virtual
+ * es idéntica a la real, así que esto no cambia nada para el caso común. */
+function cotizadoMapsFrom(lineas: QuoteLineSnapshot[]): CotizadoMaps {
   const byProductoColor = new Map<string, number>();
   const bySkuColor = new Map<string, number>();
-  for (const l of oppLineas) {
-    const color = norm(l.cols[OPP_SUB_COLOR]?.text || '');
-    const cantidad = Number((l.cols[OPP_SUB_CANTIDAD]?.text || '').replace(/,/g, '')) || 0;
-    const pKey = `${norm(l.name)}|${color}`;
+  for (const l of lineas) {
+    const color = norm(l.color || '');
+    const cantidad = l.cantidad || 0;
+    const pKey = `${norm(l.producto)}|${color}`;
     byProductoColor.set(pKey, (byProductoColor.get(pKey) ?? 0) + cantidad);
-    const sku = l.cols[OPP_SUB_SKU]?.text;
-    if (sku?.trim()) {
-      const sKey = `${norm(sku)}|${color}`;
+    if (l.sku?.trim()) {
+      const sKey = `${norm(l.sku)}|${color}`;
       bySkuColor.set(sKey, (bySkuColor.get(sKey) ?? 0) + cantidad);
     }
   }
@@ -301,6 +301,30 @@ function lookupCotizado(group: TallaGroup, maps: CotizadoMaps): number | null {
 
 interface TallaGroup { producto: string; sku?: string; color: string; rows: ItemDTO[] }
 
+// Orden canónico de tallas alfabéticas — las numéricas (pantalón, etc.) y
+// cualquier talla no reconocida se van al final, en orden alfabético.
+const SIZE_ORDER = ['XXS', 'XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL', 'XXXXL', 'XXXXXL'];
+
+function sizeRank(raw: string): number {
+  const s = raw.trim().toUpperCase();
+  const idx = SIZE_ORDER.indexOf(s);
+  if (idx !== -1) return idx;
+  const nxl = s.match(/^(\d+)\s*X\s*L$/); // "2XL" == XXL, "3XL" == XXXL, ...
+  if (nxl) return SIZE_ORDER.indexOf('XL') + Number(nxl[1]) - 1;
+  return Infinity;
+}
+
+function sortByTalla(rows: ItemDTO[]): ItemDTO[] {
+  return [...rows].sort((a, b) => {
+    const ta = a.cols[S_TALLA]?.text || '';
+    const tb = b.cols[S_TALLA]?.text || '';
+    const ra = sizeRank(ta);
+    const rb = sizeRank(tb);
+    if (ra !== rb) return ra - rb;
+    return ta.localeCompare(tb, 'es', { numeric: true });
+  });
+}
+
 /** Una tarjeta por producto+color (no solo producto): dos colores del mismo
  * producto son dos tarjetas, cada una con sus propias tallas — mismo criterio
  * de agrupado que TallaBoxesCapture (TallasTab.tsx), donde cada card ya es un
@@ -314,7 +338,7 @@ function groupByProductoColor(lineas: ItemDTO[]): TallaGroup[] {
     if (!groups.has(key)) groups.set(key, { producto, sku: l.cols[S_SKU]?.text || undefined, color, rows: [] });
     groups.get(key)!.rows.push(l);
   }
-  return [...groups.values()];
+  return [...groups.values()].map(g => ({ ...g, rows: sortByTalla(g.rows) }));
 }
 
 const boxInputStyle = {
@@ -492,16 +516,17 @@ export function ProyectoTallasSection({ state, oppId }: { state: ProyectoState; 
   const me = useMe();
   const canEditCantidad = me?.role === 'vendedor' || me?.role === 'compras' || me?.role === 'admin';
   const [cotizadoMaps, setCotizadoMaps] = useState<CotizadoMaps>(EMPTY_COTIZADO_MAPS);
+  const proyectoId = state.proyecto?.id ?? null;
 
-  // Lo cotizado por producto+color viene de la Oportunidad ligada — un solo
-  // GET al mirror D1 (sin round-trip a Monday), para el "Cotizado"/"Faltan" de
-  // cada tarjeta (Efraín, 2026-08-05: "que coincida con la opp, todo en D1").
+  // Lo cotizado por producto+color viene de la cotización VIRTUAL del
+  // Proyecto (un solo GET, 100% D1) para que un "Editar/Dividir" post-venta
+  // ya hecho ahí se refleje aquí también — ver cotizadoMapsFrom.
   useEffect(() => {
-    if (!oppId) { setCotizadoMaps(EMPTY_COTIZADO_MAPS); return; }
-    getItem('oportunidades', oppId)
-      .then(d => setCotizadoMaps(cotizadoMapsFrom(d.children ?? [])))
+    if (!proyectoId) { setCotizadoMaps(EMPTY_COTIZADO_MAPS); return; }
+    getCotizacionVirtual(proyectoId)
+      .then(d => setCotizadoMaps(cotizadoMapsFrom(d.lines ?? [])))
       .catch(() => setCotizadoMaps(EMPTY_COTIZADO_MAPS));
-  }, [oppId]);
+  }, [proyectoId]);
 
   if (state.loading) return <Shell hint="Buscando el proyecto ligado…" />;
   if (!state.proyecto) {
