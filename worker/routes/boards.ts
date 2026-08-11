@@ -17,7 +17,7 @@ import { toItemDTO, toColMeta } from '../lib/serialize';
 import { canReadBoard } from '../../shared/visibility';
 import { submitWrite, OutboxError } from '../lib/outbox';
 import { submitCreate, CreateError } from '../lib/createRecord';
-import { fetchUpdates, createUpdate, addFileToUpdate, fetchAssetPublicUrls, deleteItem } from '../lib/monday';
+import { fetchUpdates, createUpdate, addFileToUpdate, fetchAssetPublicUrls, deleteItem, type MentionInput } from '../lib/monday';
 import { cachedFetchUsers } from '../lib/rosterCache';
 import { getBoardAccess } from '../lib/boardAccess';
 import { refetchItem, refetchItemTree } from '../sync';
@@ -314,8 +314,18 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
     if (!text) return c.json({ error: 'body is required' }, 400);
     const mentions = (body.mentions ?? []).filter(m => Number.isFinite(m.id) && typeof m.nombre === 'string' && m.nombre.length > 0);
 
-    const signed = `${text}\n\n— ${viewer.nombre ?? viewer.email} vía Portal CMP`;
-    const u = await createUpdate(c.env, itemId, signed, mentions);
+    // Cuando el autor tiene cuenta real de Monday (monday_user_id > 0), la firma
+    // se manda como @mention de verdad — Monday la renderiza como link clickeable
+    // en vez de solo texto plano. Nativos (id sintético <= 0) no tienen a quién
+    // apuntar el mention, así que se quedan con el texto plano de siempre.
+    const authorName = viewer.nombre ?? viewer.email;
+    const authorMention: MentionInput | null =
+      viewer.monday_user_id > 0 && viewer.nombre ? { id: viewer.monday_user_id, nombre: viewer.nombre } : null;
+    const signed = authorMention
+      ? `${text}\n\n— @${authorMention.nombre} vía Portal CMP`
+      : `${text}\n\n— ${authorName} vía Portal CMP`;
+    const updateMentions = authorMention ? [...mentions, authorMention] : mentions;
+    const u = await createUpdate(c.env, itemId, signed, updateMentions);
 
     // Notifica a cada compañero mencionado (nunca al propio autor). Best-effort:
     // emitNotification ya se traga sus propios errores; aquí solo protegemos el

@@ -2,6 +2,11 @@
 
 ## 2026-08-11
 
+- Actualizaciones: firma del autor como @mention real cuando tiene cuenta Monday
+  - Pam reportó (captura de WhatsApp) que las actualizaciones mandadas desde el portal salían "posteadas por Efraín" en Monday sin importar quién las escribiera — Monday atribuye el `creator` al dueño del `MONDAY_API_KEY` compartido, no hay parámetro en `create_update` para spoofearlo. Ya existía un workaround de texto plano (`— Nombre vía Portal CMP`).
+  - Mejora: cuando `viewer.monday_user_id > 0` (cuenta real de Monday), la firma ahora se manda dentro del arreglo `mentions` de `createUpdate` (`worker/routes/boards.ts`) — se reusa `buildUpdateBody` (`worker/lib/monday.ts`), que ya arma el mismo `<a class="user_mention_editor"...>` que usa el composer para etiquetar compañeros, así que el autor sale como mention clickeable de verdad. Usuarios nativos sin cuenta Monday (id sintético ≤ 0) se quedan con el texto plano de siempre, no hay a quién apuntar el mention.
+  - `tsc -p tsconfig.worker.json --noEmit` limpio (mismos 2 errores preexistentes en `admin.ts`/línea no tocada de `boards.ts`, ya documentados en la entrada del reconcile más abajo, no introducidos aquí).
+
 - Fix: "Ajustar línea" (dividir) perdía Costo Distr. C/U y demás datos de Compras en la línea nueva
   - Pam reportó por WhatsApp que al dividir una línea ya costeada, la línea nueva salía con "Costo Distr. C/U —" en el Proyecto (Órdenes de compra) — `ajustarLinea` (`worker/lib/lineaAjustes.ts`) solo copiaba precio y Etapa Costeo a la línea hermana, nunca `numeric_mm0bph99`/`numeric_mkzn2q51`.
   - En vez de seguir enumerando columnas a mano, `copyRemainingCols` copia genéricamente TODA columna "de captura" (`numbers`/`text`/`long_text`/`status`) de la línea origen salvo las que ya tienen manejo explícito (producto/color/cantidad/embellecimiento, con override de `input`) — cubre Costo Distr., Descuento, Recosteo?, SKU manual, Comentarios Ventas, Gastos %, Techo, IVA, Moneda (línea), etc. sin depender de que alguien recuerde agregar la siguiente columna nueva. Mirror/formula (Moneda, Unidad, los `formula_*`) se saltan a propósito — se recalculan solos. `copyEmbellecimientoImage` agregado también (mismo patrón que `duplicateOportunidad.ts`) para que la imagen de embellecimiento no se quede en la línea origen.
