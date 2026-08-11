@@ -7,6 +7,8 @@
   - `src/lib/projectStages.ts`: `ordenescompra.statuses` pasa de `['0','2']` a `['5','0','4','2']` (Desglose de tallas → En confirmación → Tallas Confirmadas → OC listas) — Compras se queda sin "Documentación y Tallas" así que este board es ahora su única ventana al Proyecto.
   - `shared/boardAccess.ts` (`DEFAULT_BOARD_ACCESS`) + seed de `worker/schema.sql`: vendedor pierde `ordenescompra`/`ejecucion`/`logistica`; compras pierde `doctallas`.
   - Aplicado también en vivo sobre `role_board_access` en D1 de producción (no solo el seed, que no reescribe filas existentes): `DELETE` selectivo de esas 4 filas vía `wrangler d1 execute --remote`.
+  - Fix: a Compras le faltaba `ejecucion` en D1 desde antes de este cambio (no la había quitado yo) — la agregué también vía `wrangler d1 execute --remote`.
+  - Fix: tabs de `ProyectoDrawer.tsx` con padding `12px 4px` vs `9px 4px` de `BoardTabsBar.tsx` (Oportunidades) — mismo `font-size` (11.5px) en ambos pero la barra se veía más alta/con letras más grandes en Proyectos; igualado el padding.
 
 ## 2026-08-10
 

@@ -142,7 +142,7 @@ export function ProyectoDrawer({ id, boardKey, backLabel, defaultTab, onBack, on
         )}
       </div>
 
-      <div style={{ display: 'flex', gap: 6, padding: isMobile ? '0 14px' : '0 32px', borderBottom: '1px solid var(--border)', overflowX: 'auto' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: isMobile ? '0 14px' : '0 32px', borderBottom: '1px solid var(--border)', flex: 'none', overflowX: 'auto' }}>
         {(TABS_BY_BOARD[boardKey] ? TABS.filter((t) => TABS_BY_BOARD[boardKey]!.includes(t.key)) : TABS)
           // Precio de Venta: solo vendedor/compras/admin lo ven (shared/visibility.ts,
           // grupo V) — almacén no debe ver la pestaña de Cotización.
@@ -152,7 +152,7 @@ export function ProyectoDrawer({ id, boardKey, backLabel, defaultTab, onBack, on
             key={t.key}
             onClick={() => setTab(t.key)}
             style={{
-              padding: '12px 4px', marginRight: 14, font: "600 11.5px 'Inter', sans-serif", cursor: 'pointer', whiteSpace: 'nowrap',
+              padding: '9px 4px', marginRight: 14, font: "600 11.5px 'Inter', sans-serif", cursor: 'pointer', whiteSpace: 'nowrap',
               color: tab === t.key ? 'var(--ink)' : 'var(--ink-quiet)',
               borderBottom: '2px solid ' + (tab === t.key ? 'var(--accent)' : 'transparent'),
             }}
