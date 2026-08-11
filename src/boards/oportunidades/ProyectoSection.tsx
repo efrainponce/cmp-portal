@@ -154,6 +154,7 @@ function ProyectoActionBar({ proyecto, reload, actions }: {
   };
 
   const sheetUrl = linkUrl(proyecto, P_SHEET_LINK);
+  const ocCliente = !!proyecto.cols[P_OC_CLIENTE]?.text;
   const canVendedor = role === 'vendedor' || role === 'admin';
   const canCompras = role === 'compras' || role === 'admin';
 
@@ -174,8 +175,8 @@ function ProyectoActionBar({ proyecto, reload, actions }: {
             label="Validar tallas (vendedor)"
             confirmLabel="¿Validar y mandar a firma?"
             busyLabel="Validando… puede tardar unos minutos, no cierres esta pantalla"
-            disabled={!canVendedor || !sheetUrl}
-            title={!canVendedor ? 'Solo el vendedor valida las tallas' : !sheetUrl ? 'Primero crea el archivo de tallas' : 'Valida el desglose y genera el PDF a firma'}
+            disabled={!canVendedor || !sheetUrl || !ocCliente}
+            title={!canVendedor ? 'Solo el vendedor valida las tallas' : !ocCliente ? 'Falta subir la orden de compra / cotización firmada / contrato del cliente (pestaña Documentación)' : !sheetUrl ? 'Primero crea el archivo de tallas' : 'Valida el desglose y genera el PDF a firma'}
             onConfirm={run('tallas-confirmar')}
           />
         )}

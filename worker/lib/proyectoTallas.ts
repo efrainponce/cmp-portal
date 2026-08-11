@@ -12,6 +12,7 @@ import { createSubitem, createUpdate, gql, type MentionInput } from './monday';
 import { emitNotification } from './notify';
 import { upsertItem } from '../sync';
 import { BOARDS } from '../../shared/boards';
+import { PROYECTO_DOCUMENTO_COL } from './portalFiles';
 
 export type { TallaBoxInput };
 
@@ -58,6 +59,19 @@ function colsOf(row: MirrorItem): Map<string, RawCol> {
   } catch {
     return new Map();
   }
+}
+
+/** "Validar tallas (vendedor)" exige que el cliente ya tenga su OC/cotización/
+ * contrato firmado subido en el Proyecto (file_mm0hayh4) — Efraín, 2026-08-10:
+ * "no pueden empezar a enviar a validación de tallas sin el documento del
+ * cliente". Solo lectura, mismo criterio que checkCosteo/checkValidacion
+ * (worker/lib/costeo.ts): se valida ANTES de pegarle a cmp-tallas. */
+export function checkOcCliente(row: MirrorItem): { ok: true } | { ok: false; error: string } {
+  const tiene = !!colsOf(row).get(PROYECTO_DOCUMENTO_COL)?.text;
+  return tiene ? { ok: true } : {
+    ok: false,
+    error: 'Falta subir la orden de compra / cotización firmada / contrato del cliente antes de validar tallas (pestaña Documentación).',
+  };
 }
 
 /** Proyecto → Oportunidad ligada — mismo fallback en vivo que

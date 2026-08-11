@@ -14,6 +14,14 @@ const vendedor = (over: Partial<Identity> = {}): Identity => ({
   ...over,
 });
 
+const compras = (over: Partial<Identity> = {}): Identity => ({
+  email: 'compras@mexicanadeproteccion.com',
+  monday_user_id: 44,
+  role: 'compras',
+  active: true,
+  ...over,
+});
+
 /** Rich lidera una zona con dos vendedores — así lo deja mw/identity.ts. */
 const lider = vendedor({ email: 'rich@mexicanadeproteccion.com', monday_user_id: 10, scope_user_ids: [10, 22, 33] });
 
@@ -55,10 +63,29 @@ describe('leadsOthers', () => {
 });
 
 describe('scopeFor', () => {
-  it('admin y compras no llevan predicado (ven todo)', () => {
-    for (const role of ['admin', 'compras'] as const) {
-      expect(scopeFor('oportunidades', vendedor({ role }))).toEqual({ where: '1=1', binds: [] });
-    }
+  it('admin no lleva predicado (ve todo) en cualquier board', () => {
+    expect(scopeFor('oportunidades', vendedor({ role: 'admin' }))).toEqual({ where: '1=1', binds: [] });
+    expect(scopeFor('proyectos', vendedor({ role: 'admin' }))).toEqual({ where: '1=1', binds: [] });
+  });
+
+  it('compras ve solo lo suyo en Oportunidades/Proyectos (columna Compras)', () => {
+    const scope = scopeFor('oportunidades', compras(), 'read');
+    expect(scope.binds).toEqual(['multiple_person_mm03qyw9', 44]);
+    expect(scope.where).toContain('personsAndTeams');
+
+    const scopeProyectos = scopeFor('proyectos', compras(), 'read');
+    expect(scopeProyectos.binds).toEqual(['project_owner', 44]);
+  });
+
+  it('compras: los subitems se scopean por la columna Compras del PADRE', () => {
+    const scope = scopeFor('oportunidades_sub', compras(), 'read');
+    expect(scope.where).toContain('items.parent_item_id');
+    expect(scope.binds).toEqual([expect.any(Number), 'multiple_person_mm03qyw9', 44]);
+  });
+
+  it('compras sigue viendo todo en boards sin comprasCol (catálogos)', () => {
+    expect(scopeFor('productos', compras(), 'read')).toEqual({ where: '1=1', binds: [] });
+    expect(scopeFor('contactos', compras(), 'read')).toEqual({ where: '1=1', binds: [] });
   });
 
   it('un líder lee las filas de toda su zona', () => {

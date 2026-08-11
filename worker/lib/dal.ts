@@ -1,7 +1,7 @@
 // worker/lib/dal.ts — all reads scoped by viewer. Handlers cannot bypass these predicates.
 import type { Env } from '../env';
 import type { Identity, MirrorItem } from '../../shared/types';
-import type { BoardSlug } from '../../shared/boards';
+import type { BoardDef, BoardSlug } from '../../shared/boards';
 import { BOARDS } from '../../shared/boards';
 
 interface Scope {
@@ -21,15 +21,21 @@ export function ownerIdsFor(viewer: Identity, mode: ScopeMode): number[] {
   return [...new Set([viewer.monday_user_id, ...(viewer.scope_user_ids ?? [])])];
 }
 
-// admin/compras: everything. vendedor/almacen (and any other non-privileged role): rows
-// whose owning board's authzCols include the viewer; subitem boards check the PARENT's
-// owners. Boards without authzCols (productos/instituciones) are open to all
-// (the serializer still strips columns per-role — shared/visibility.ts).
+// admin: everything, always. compras: everything on boards without comprasCol
+// (catálogos como productos/instituciones); en Oportunidades/Proyectos, solo lo
+// propio (comprasScopeFor) — Efraín, 2026-08-10: "el de compras SOLO puede ver
+// sus productos". vendedor/almacen (and any other non-privileged role): rows
+// whose owning board's authzCols include the viewer; subitem boards check the
+// PARENT's owners. Boards without authzCols (productos/instituciones) are open
+// to all (the serializer still strips columns per-role — shared/visibility.ts).
 export function scopeFor(slug: BoardSlug, viewer: Identity, mode: ScopeMode = 'read'): Scope {
-  if (viewer.role === 'admin' || viewer.role === 'compras') return { where: '1=1', binds: [] };
+  if (viewer.role === 'admin') return { where: '1=1', binds: [] };
 
   const board = BOARDS[slug];
   const owningBoard = board.parent ? BOARDS[board.parent] : board;
+
+  if (viewer.role === 'compras') return comprasScopeFor(board, owningBoard, viewer, mode);
+
   if (!owningBoard.authzCols || owningBoard.authzCols.length === 0) return { where: '1=1', binds: [] };
 
   // IN (…) con un placeholder por id: casi siempre es uno solo (nadie lidera zona)
@@ -50,6 +56,41 @@ export function scopeFor(slug: BoardSlug, viewer: Identity, mode: ScopeMode = 'r
     where: `EXISTS (SELECT 1 FROM json_each(items.vendedor_ids) je WHERE je.value IN (${placeholders}))`,
     binds: [...ids],
   };
+}
+
+// Compras no tiene una columna `vendedor_ids` precalculada — esa solo indexa
+// los authzCols de Vendedor (worker/sync/upsert.ts extractVendedorIds), y
+// agregarle una segunda columna a `items` pediría una migración ALTER TABLE
+// que el pipeline de deploy no corre (worker/schema.sql: todo lo nuevo se crea
+// LAZY en runtime, nunca se altera la tabla ya desplegada). En vez de eso se
+// lee directo el JSON crudo de `columns` — mismo patrón de json_each anidado
+// que ya usa SEARCHABLE_COLS más abajo, solo que aquí además se abre
+// `value` (un JSON *encodeado como string* dentro de cada columna, tal cual
+// lo manda Monday) para leer `personsAndTeams`.
+function comprasScopeFor(board: BoardDef, owningBoard: BoardDef, viewer: Identity, mode: ScopeMode): Scope {
+  if (!owningBoard.comprasCol) return { where: '1=1', binds: [] };
+
+  const ids = ownerIdsFor(viewer, mode);
+  const placeholders = ids.map(() => '?').join(',');
+  const personsMatch = (alias: string) => `EXISTS (
+    SELECT 1 FROM json_each(${alias}.columns) jc
+    WHERE json_extract(jc.value, '$.id') = ?
+      AND EXISTS (
+        SELECT 1 FROM json_each(json_extract(jc.value, '$.value'), '$.personsAndTeams') jp
+        WHERE json_extract(jp.value, '$.id') IN (${placeholders})
+      )
+  )`;
+
+  if (board.parent) {
+    return {
+      where: `EXISTS (
+        SELECT 1 FROM items p
+        WHERE p.board_id = ? AND p.item_id = items.parent_item_id AND ${personsMatch('p')}
+      )`,
+      binds: [owningBoard.id, owningBoard.comprasCol, ...ids],
+    };
+  }
+  return { where: personsMatch('items'), binds: [owningBoard.comprasCol, ...ids] };
 }
 
 /** ¿El viewer ve filas de alguien más que él? Solo cierto para un líder con zona
@@ -83,9 +124,9 @@ export function searchTokens(q: string): string[] {
   return q.trim().split(/\s+/).filter(Boolean).slice(0, 6);
 }
 
-export async function listItems(env: Env, slug: BoardSlug, viewer: Identity, q?: string): Promise<MirrorItem[]> {
+export async function listItems(env: Env, slug: BoardSlug, viewer: Identity, q?: string, mode: ScopeMode = 'read'): Promise<MirrorItem[]> {
   const board = BOARDS[slug];
-  const scope = scopeFor(slug, viewer);
+  const scope = scopeFor(slug, viewer, mode);
   const binds: unknown[] = [board.id, ...scope.binds];
   let sql = `SELECT * FROM items WHERE board_id = ? AND (${scope.where})`;
   if (q) {
@@ -191,10 +232,12 @@ export async function proyectoForOportunidad(env: Env, oppItemId: number, viewer
 // the requester (or their browser's own HTTP cache) reuse another viewer's
 // response body. Concretely: any two vendedores with different visible rows
 // would get the same board-only ETag and could 304 off each other's cached
-// list. 'admin'/'compras' share one scope key since scopeFor() gives them the
-// same unrestricted row set.
+// list. 'admin' always shares one scope key (unrestricted everywhere); 'compras'
+// shares it too, but only on boards without comprasCol — on Oportunidades/
+// Proyectos it's scoped same as vendedor, so it needs the per-viewer key too.
 export async function etagFor(env: Env, slug: BoardSlug, viewer: Identity): Promise<string> {
   const board = BOARDS[slug];
+  const owningBoard = board.parent ? BOARDS[board.parent] : board;
   const row = await env.DB
     .prepare('SELECT COUNT(*) as c, MAX(synced_at) as m FROM items WHERE board_id = ?')
     .bind(board.id)
@@ -202,9 +245,8 @@ export async function etagFor(env: Env, slug: BoardSlug, viewer: Identity): Prom
   // La llave lleva el CONJUNTO de ids visibles, no solo el propio: si lleva nada
   // más el del viewer, mover a alguien de zona no invalida el ETag y el líder se
   // queda con la lista vieja (304) hasta que el board cambie por otra razón.
-  const scopeKey = viewer.role === 'admin' || viewer.role === 'compras'
-    ? 'all'
-    : `u${ownerIdsFor(viewer, 'read').sort((a, b) => a - b).join('.')}`;
+  const unrestricted = viewer.role === 'admin' || (viewer.role === 'compras' && !owningBoard.comprasCol);
+  const scopeKey = unrestricted ? 'all' : `u${ownerIdsFor(viewer, 'read').sort((a, b) => a - b).join('.')}`;
   return `"${slug}:${scopeKey}:${row?.c ?? 0}:${row?.m ?? ''}"`;
 }
 

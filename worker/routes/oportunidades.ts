@@ -18,7 +18,7 @@ import {
 import { enviarACosteo, enviarAValidacion, checkCosteo, checkValidacion, CosteoError } from '../lib/costeo';
 import { listVersions, duplicateVersion, restoreVersion, esDraftVigente, recordFirstVersion, QuoteVersionError } from '../lib/quoteVersions';
 import { ajustarLinea, AjusteLineaError } from '../lib/lineaAjustes';
-import { capturarTallas, reportarTallasIncorrectas } from '../lib/proyectoTallas';
+import { capturarTallas, reportarTallasIncorrectas, checkOcCliente } from '../lib/proyectoTallas';
 import { listEstadoHistorial } from '../lib/estadoProducto';
 import { listProductoResumen, upsertProductoResumen } from '../lib/productoResumen';
 import { duplicateOportunidad, DuplicateOportunidadError } from '../lib/duplicateOportunidad';
@@ -819,13 +819,21 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
   app.post('/api/proyectos/:id/:action', async c => {
     const itemId = Number(c.req.param('id'));
     if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
-    const action = PROYECTO_ACTIONS[c.req.param('action')];
+    const actionKey = c.req.param('action');
+    const action = PROYECTO_ACTIONS[actionKey];
     if (!action) return c.json({ error: 'not found' }, 404);
     const viewer = c.get('viewer');
 
     if (!action.roles.includes(viewer.role)) return c.json({ error: 'forbidden' }, 403);
     const row = await getItem(c.env, 'proyectos', itemId, viewer, 'own');
     if (!row) return c.json({ error: 'not found' }, 404);
+
+    // El botón del cliente ya se deshabilita sin el documento (ProyectoActionBar) —
+    // esto es el gate real: la API se puede llamar directo sin pasar por la UI.
+    if (actionKey === 'tallas-confirmar') {
+      const pre = checkOcCliente(row);
+      if (!pre.ok) return jsonStatus({ ok: false, reason: pre.error }, 400);
+    }
 
     // Body opcional — solo 'generar-oc' lo usa (onlyProveedor/metodoPago/condPago);
     // las otras 3 acciones siguen llamándose sin body, por eso el .catch cubre el JSON vacío.

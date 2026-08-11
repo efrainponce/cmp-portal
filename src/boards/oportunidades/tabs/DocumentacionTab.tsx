@@ -300,15 +300,21 @@ export function OcContratoSection({ proyecto, oppId }: { proyecto?: ProyectoStat
   const hint = !proyecto || proyecto.loading ? 'Buscando el proyecto ligado…'
     : !p ? 'Esta oportunidad aún no tiene Proyecto en Monday — se crea al GANAR la oportunidad.'
     : null;
+  // Obligatorio antes de "Validar tallas (vendedor)" — el server ya lo bloquea
+  // (worker/lib/proyectoTallas.ts checkOcCliente), esto es el warning en el
+  // board mismo para que no se descubra hasta que el botón truene (Efraín, 2026-08-10).
+  const isMissing = !!p && files.length === 0;
 
   return (
     <div>
-      <SectionTitle>Órdenes de compra / contrato firmado</SectionTitle>
+      <SectionTitle>
+        Órdenes de compra / contrato firmado{isMissing && <span style={{ color: 'var(--status-perdida)' }}> *</span>}
+      </SectionTitle>
       <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)', marginTop: 2, marginBottom: 4 }}>
         Orden de compra, cotización firmada por el cliente o contrato firmado.
       </div>
       <label style={{
-        display: 'flex', alignItems: 'center', gap: 10, border: `1px dashed ${error ? 'var(--status-perdida)' : 'var(--ink-faint)'}`,
+        display: 'flex', alignItems: 'center', gap: 10, border: `1px dashed ${error || isMissing ? 'var(--status-perdida)' : 'var(--ink-faint)'}`,
         borderRadius: 'var(--radius-lg)', padding: '10px 12px', marginTop: 6, marginBottom: 10, background: 'var(--bg)',
         cursor: canUpload && !uploading ? 'pointer' : 'default', opacity: canUpload ? 1 : .6,
       }}>
@@ -318,6 +324,14 @@ export function OcContratoSection({ proyecto, oppId }: { proyecto?: ProyectoStat
         <input type="file" onChange={handleFile} style={{ display: 'none' }} disabled={!canUpload || uploading} />
       </label>
       <FileListOrEmpty files={files} />
+      {isMissing && (
+        <div style={{
+          marginTop: 8, padding: '8px 10px', border: '1px solid var(--status-perdida)', borderRadius: 'var(--radius-lg)',
+          background: 'var(--status-perdida-tint)', font: 'var(--text-caption-strong)', color: 'var(--status-perdida)',
+        }}>
+          Obligatorio: sin este documento no se puede enviar a validación de tallas.
+        </div>
+      )}
     </div>
   );
 }

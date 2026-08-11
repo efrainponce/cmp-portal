@@ -10,15 +10,17 @@ export interface BoardDef {
   title: string;
   parent?: BoardSlug;          // set on subitem boards
   authzCols?: string[];        // people columns whose user-ids scope role 'vendedor'
+  comprasCol?: string;         // people column whose user-ids scope role 'compras' (worker/lib/dal.ts)
 }
 
 export const BOARDS: Record<BoardSlug, BoardDef> = {
+  // comprasCol: Efraín, 2026-08-10 — "el de compras SOLO puede ver sus productos".
   oportunidades:     { id: 18395657596, slug: 'oportunidades', title: 'Oportunidades',
-                       authzCols: ['deal_owner', 'multiple_person_mm0wt53c'] },
+                       authzCols: ['deal_owner', 'multiple_person_mm0wt53c'], comprasCol: 'multiple_person_mm03qyw9' },
   oportunidades_sub: { id: 18395657607, slug: 'oportunidades_sub', title: 'Líneas de Oportunidad',
                        parent: 'oportunidades' },
   proyectos:         { id: 18395657594, slug: 'proyectos', title: 'Post-venta (Proyectos)',
-                       authzCols: ['multiple_person_mm0hrnqq'] },
+                       authzCols: ['multiple_person_mm0hrnqq'], comprasCol: 'project_owner' },
   proyectos_sub:     { id: 18395657609, slug: 'proyectos_sub', title: 'Subelementos de Proyectos',
                        parent: 'proyectos' },
   productos:         { id: 18395657591, slug: 'productos', title: 'Productos' },

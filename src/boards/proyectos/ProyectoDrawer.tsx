@@ -37,10 +37,12 @@ const TABS: { key: ProyectoTabKey; label: string }[] = [
 // Cada acceso del sidebar solo necesita ver sus propios tabs, no los 6
 // (Efraín, 2026-08-05): "Documentación y Tallas" -> doc+tallas; "Órdenes de
 // Compra" -> doc+tallas+ordenes. Ejecución/Logística se quedan con el set
-// completo hasta que se pida lo mismo para esos accesos.
+// completo hasta que se pida lo mismo para esos accesos. Actualizaciones va
+// en TODOS los accesos (Efraín, 2026-08-10: "no todos los boards tienen
+// actualizaciones" — se había quedado fuera de estos dos por error, no a propósito).
 const TABS_BY_BOARD: Partial<Record<ProjectBoardKey, ProyectoTabKey[]>> = {
-  doctallas: ['documentacion', 'tallas'],
-  ordenescompra: ['documentacion', 'tallas', 'ordenes'],
+  doctallas: ['actualizaciones', 'documentacion', 'tallas'],
+  ordenescompra: ['actualizaciones', 'documentacion', 'tallas', 'ordenes'],
 };
 
 interface Props {
@@ -141,7 +143,7 @@ export function ProyectoDrawer({ id, boardKey, backLabel, defaultTab, onBack, on
             key={t.key}
             onClick={() => setTab(t.key)}
             style={{
-              padding: '12px 4px', marginRight: 14, font: "600 13px 'Inter', sans-serif", cursor: 'pointer', whiteSpace: 'nowrap',
+              padding: '12px 4px', marginRight: 14, font: "600 11.5px 'Inter', sans-serif", cursor: 'pointer', whiteSpace: 'nowrap',
               color: tab === t.key ? 'var(--ink)' : 'var(--ink-quiet)',
               borderBottom: '2px solid ' + (tab === t.key ? 'var(--accent)' : 'transparent'),
             }}
