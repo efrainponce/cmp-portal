@@ -89,6 +89,7 @@ export function applyAjustesVirtuales(base: QuoteLineSnapshot[], rows: AjusteRow
       const origen = map.get(row.linea_origen_id);
       if (!origen) continue; // línea origen ya no existe (borrada de Monday mientras tanto) — ajuste huérfano, se ignora
       origen.cantidad = Math.max(0, origen.cantidad - campos.cantidad);
+      origen.ajusteLabel = 'Dividida';
       map.set(row.linea_id, {
         subitemId: row.linea_id,
         productoItemId: campos.productoItemId ?? origen.productoItemId,
@@ -100,6 +101,7 @@ export function applyAjustesVirtuales(base: QuoteLineSnapshot[], rows: AjusteRow
         descripcionEmbellecimiento: campos.descripcionEmbellecimiento ?? origen.descripcionEmbellecimiento,
         precioUnitario: origen.precioUnitario,
         etapaCosteo: origen.etapaCosteo,
+        ajusteLabel: 'Dividida',
       });
     } else {
       const target = map.get(row.linea_id);
@@ -110,6 +112,7 @@ export function applyAjustesVirtuales(base: QuoteLineSnapshot[], rows: AjusteRow
       target.cantidad = campos.cantidad;
       if (campos.embellecimiento !== undefined) target.embellecimiento = campos.embellecimiento;
       if (campos.descripcionEmbellecimiento !== undefined) target.descripcionEmbellecimiento = campos.descripcionEmbellecimiento;
+      if (target.ajusteLabel !== 'Dividida') target.ajusteLabel = 'Editada';
     }
   }
 
@@ -163,7 +166,10 @@ export async function getVirtualLines(env: Env, oportunidadId: number, viewer: I
   const rows = results ?? [];
 
   const lines = applyAjustesVirtuales(base, rows);
-  const ajustes: AjusteDTO[] = rows.map(r => ({ subversion: r.subversion, resumen: r.resumen, viewerEmail: r.viewer_email, createdAt: r.created_at }));
+  const ajustes: AjusteDTO[] = rows.map(r => ({
+    subversion: r.subversion, resumen: r.resumen, viewerEmail: r.viewer_email, createdAt: r.created_at,
+    lineaId: r.linea_id, lineaOrigenId: r.linea_origen_id ?? undefined,
+  }));
   return { lines, ajustes };
 }
 

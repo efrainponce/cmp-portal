@@ -21,6 +21,25 @@ export function StatusBadge({ label, color, tint, style }: StatusBadgeProps) {
   );
 }
 
+/** Label al final de una línea de cotización tocada por "Ajustar línea"
+ * (worker/lib/lineaAjustes.ts / proyectoCotizacionVirtual.ts, Efraín
+ * 2026-08-11) — 'Dividida' para la línea origen y su hermana nueva, 'Editada'
+ * para un retoque en el sitio sin versión. */
+export function AjusteLabelBadge({ label }: { label: 'Dividida' | 'Editada' }) {
+  const dividida = label === 'Dividida';
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', marginLeft: 6, flexShrink: 0,
+      font: 'var(--text-caption)', fontWeight: 600, whiteSpace: 'nowrap',
+      color: dividida ? '#8a5cf6' : '#b5860b',
+      background: dividida ? '#efe7fe' : '#fdf1d6',
+      padding: '2px 7px', borderRadius: 999,
+    }}>
+      {label}
+    </span>
+  );
+}
+
 interface MonoTagProps {
   children: ReactNode;
   style?: CSSProperties;

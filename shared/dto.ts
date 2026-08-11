@@ -92,6 +92,10 @@ export interface QuoteLineSnapshot {
    * vacío si Compras todavía no la toca; usado por submitVersion para saber
    * si debe resetearla al editar la línea. */
   etapaCosteo?: string;
+  /** Marca visual de "Ajustar línea" (lineaAjustes.ts / proyectoCotizacionVirtual.ts,
+   * Efraín 2026-08-11): solo la arma el server al reproducir ajustes de la
+   * cotización virtual del Proyecto — 'Dividida' tiene prioridad sobre 'Editada'. */
+  ajusteLabel?: 'Dividida' | 'Editada';
 }
 
 // "Ajustar línea" (worker/lib/lineaAjustes.ts, Efraín 2026-07-31): retoques a
@@ -103,6 +107,12 @@ export interface AjusteDTO {
   resumen: string;
   viewerEmail: string;
   createdAt: string;
+  /** Línea afectada (la editada, o la nueva línea hermana en 'dividir'). Usado
+   * por el front para pintar el label "Dividida"/"Editada" al final de la fila. */
+  lineaId: number;
+  /** Solo en 'dividir': línea de la que se partió — esa línea origen también
+   * se pinta como "Dividida" aunque no tenga su propio registro de ajuste. */
+  lineaOrigenId?: number;
 }
 
 export interface QuoteVersionDTO {

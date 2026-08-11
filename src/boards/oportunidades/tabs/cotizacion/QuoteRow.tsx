@@ -13,7 +13,7 @@
 import { memo } from 'react';
 import type { ItemDTO } from '../../../../lib/api';
 import { fmtMoney } from '../../../../lib/format';
-import { MonoTag, StatusBadge } from '../../../../components/core/Badges';
+import { AjusteLabelBadge, MonoTag, StatusBadge } from '../../../../components/core/Badges';
 import { COL } from '../../../../lib/costeoCalc';
 import { LineDetailPanel } from './LineDetailPanel';
 import { ProductPicker, type ProductoChoice } from '../../../../components/forms/ProductPicker';
@@ -72,6 +72,8 @@ export interface QuoteRowProps {
    * (stage 4/borrador), incluida la Oportunidad Ganada. */
   canAjustar: boolean;
   onAjustarLinea: (product: ItemDTO) => void;
+  /** "Dividida"/"Editada" al final del nombre — ver CotizacionTab.tsx (ajusteLabels). */
+  ajusteLabel?: 'Dividida' | 'Editada';
 }
 
 function QuoteRowInner({
@@ -81,7 +83,7 @@ function QuoteRowInner({
   expanded, onToggleExpand, canConfirm, confirmSaving, confirmError, onToggleConfirm,
   tallasSaving, tallasError, onEditTallas,
   proveedorSaving, proveedorError, onEditProveedor,
-  canDelete, deleting, onDeleteLine, canAjustar, onAjustarLinea,
+  canDelete, deleting, onDeleteLine, canAjustar, onAjustarLinea, ajusteLabel,
 }: QuoteRowProps) {
   const lineWarnings = getLineWarnings(p, state, variant, catalog, precioOnly);
   // Un solo banner arriba del nombre del producto con TODOS los avisos de la
@@ -339,6 +341,7 @@ function QuoteRowInner({
                   {displayProducto(p, state.preview) || '—'}
                 </span>
               )}
+              {c.id === PRODUCTO_COL && ajusteLabel && <AjusteLabelBadge label={ajusteLabel} />}
               {c.id === 'lookup_mkzn7x9a' && (
                 <MonoTag style={{ display: 'inline-block' }}>{cellValue(c, displayVal)}</MonoTag>
               )}

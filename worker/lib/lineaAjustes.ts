@@ -280,7 +280,10 @@ export async function ajustarLinea(
 export async function listAjustes(env: Env, itemId: number, version: number): Promise<AjusteDTO[]> {
   await ensureAjustesTable(env);
   const { results } = await env.DB.prepare(
-    'SELECT subversion, resumen, viewer_email, created_at FROM cotizacion_ajustes WHERE item_id = ? AND version = ? ORDER BY subversion',
-  ).bind(itemId, version).all<{ subversion: number; resumen: string; viewer_email: string; created_at: string }>();
-  return (results ?? []).map(r => ({ subversion: r.subversion, resumen: r.resumen, viewerEmail: r.viewer_email, createdAt: r.created_at }));
+    'SELECT subversion, resumen, viewer_email, created_at, linea_id, linea_origen_id FROM cotizacion_ajustes WHERE item_id = ? AND version = ? ORDER BY subversion',
+  ).bind(itemId, version).all<{ subversion: number; resumen: string; viewer_email: string; created_at: string; linea_id: number; linea_origen_id: number | null }>();
+  return (results ?? []).map(r => ({
+    subversion: r.subversion, resumen: r.resumen, viewerEmail: r.viewer_email, createdAt: r.created_at,
+    lineaId: r.linea_id, lineaOrigenId: r.linea_origen_id ?? undefined,
+  }));
 }

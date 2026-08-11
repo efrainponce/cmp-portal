@@ -2,6 +2,12 @@
 
 ## 2026-08-11
 
+- Cotización/Proyecto: label "Dividida"/"Editada" al final de la línea tras usar "Ajustar línea"
+  - Efraín pidió poder distinguir a simple vista, en la grid, qué líneas vienen de un split o de una edición vía "Ajustar línea" — antes la línea nueva/editada se veía igual que cualquier otra.
+  - `AjusteDTO` (`shared/dto.ts`) ahora expone `lineaId`/`lineaOrigenId` (ya vivían en las tablas `cotizacion_ajustes`/`proyecto_cotizacion_ajustes`, solo no se mandaban al front). En Oportunidades, `CotizacionTab` arma un `Map` por línea a partir de los ajustes de la vigente (`versions.find(v => v.status === 'vigente').ajustes`) y lo pasa a `QuoteRow`/`MobileQuoteRow`; en el Proyecto, `QuoteLineSnapshot.ajusteLabel` se calcula server-side al reproducir el log (`applyAjustesVirtuales`, `worker/lib/proyectoCotizacionVirtual.ts`) — la línea origen y la hermana nueva quedan 'Dividida', una edición en el sitio queda 'Editada'; 'Dividida' siempre gana si la línea participó en ambas.
+  - Badge nuevo y compartido `AjusteLabelBadge` (`src/components/core/Badges.tsx`), usado en `QuoteRow`, `MobileQuoteRow` y `CotizacionVirtualTab`.
+  - `tsc --noEmit`, `npm test` (140 tests) y `npm run lint` limpios.
+
 - Fix: tallas del Proyecto — orden de las cajitas por talla + "Cotizado" desactualizado tras dividir una línea
   - Pam reportó por WhatsApp que las tallas salían en orden aleatorio en las tarjetas de `ProyectoSection.tsx` (en vez de S, M, L, XL…) y que, tras dividir una línea de la cotización virtual del Proyecto (multicam 150 → 75 multicam + 75 Ranger Green), el color nuevo salía "sin línea de cotización para comparar" y el original seguía mostrando el total de antes de dividir.
   - Orden: `groupByProductoColor` ahora ordena `group.rows` por un catálogo canónico de tallas (`SIZE_ORDER` + soporte `NXL`, ej. "2XL" == XXL); tallas fuera del catálogo (numéricas u otras) caen al final, alfabético.

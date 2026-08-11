@@ -6,7 +6,7 @@
 import { memo } from 'react';
 import type { ItemDTO } from '../../../../lib/api';
 import { fmtMoney } from '../../../../lib/format';
-import { MonoTag, StatusBadge } from '../../../../components/core/Badges';
+import { AjusteLabelBadge, MonoTag, StatusBadge } from '../../../../components/core/Badges';
 import { COL } from '../../../../lib/costeoCalc';
 import { LineDetailPanel } from './LineDetailPanel';
 import { ProductPicker, type ProductoChoice } from '../../../../components/forms/ProductPicker';
@@ -31,7 +31,7 @@ function MobileQuoteRowInner({
   expanded, onToggleExpand, canConfirm, confirmSaving, confirmError, onToggleConfirm,
   tallasSaving, tallasError, onEditTallas,
   proveedorSaving, proveedorError, onEditProveedor,
-  canDelete, deleting, onDeleteLine, canAjustar, onAjustarLinea,
+  canDelete, deleting, onDeleteLine, canAjustar, onAjustarLinea, ajusteLabel,
 }: {
   product: ItemDTO;
   /** Número 1-based de la línea en la grid — mismo orden que usan los mensajes
@@ -71,6 +71,8 @@ function MobileQuoteRowInner({
   /** "Ajustar línea" (Efraín, 2026-07-31) — ver QuoteRow.tsx. */
   canAjustar: boolean;
   onAjustarLinea: (product: ItemDTO) => void;
+  /** "Dividida"/"Editada" al final del nombre — ver CotizacionTab.tsx (ajusteLabels). */
+  ajusteLabel?: 'Dividida' | 'Editada';
 }) {
   const titleCol = visibleCols[0];
   const restCols = visibleCols.slice(1);
@@ -296,8 +298,9 @@ function MobileQuoteRowInner({
               style={{ ...inputStyle, textAlign: 'left', font: 'var(--text-body-strong)' }}
             />
           ) : (
-            <div style={{ font: 'var(--text-body-strong)', color: 'var(--ink)' }}>
+            <div style={{ font: 'var(--text-body-strong)', color: 'var(--ink)', display: 'flex', alignItems: 'center', flexWrap: 'wrap' }}>
               {displayProducto(p, state.preview) || '—'}
+              {ajusteLabel && <AjusteLabelBadge label={ajusteLabel} />}
             </div>
           )}
         </div>

@@ -137,6 +137,24 @@ export function CotizacionTab({
   const [ajustarLineaTarget, setAjustarLineaTarget] = useState<ItemDTO | null>(null);
   const [divergenciaNotice, setDivergenciaNotice] = useState<string | null>(null);
 
+  // Label "Dividida"/"Editada" al final de la línea (Efraín, 2026-08-11): solo
+  // la vigente trae `ajustes` (shared/dto.ts) — una línea nacida de un
+  // 'dividir' o que fue su origen se marca 'Dividida' aunque la línea origen
+  // no tenga su propio registro; 'Dividida' siempre gana sobre 'Editada'.
+  const ajusteLabels = useMemo(() => {
+    const vigenteAjustes = versions.find((v) => v.status === 'vigente')?.ajustes ?? [];
+    const map = new Map<number, 'Dividida' | 'Editada'>();
+    for (const a of vigenteAjustes) {
+      if (a.lineaOrigenId != null) {
+        map.set(a.lineaOrigenId, 'Dividida');
+        map.set(a.lineaId, 'Dividida');
+      } else if (map.get(a.lineaId) !== 'Dividida') {
+        map.set(a.lineaId, 'Editada');
+      }
+    }
+    return map;
+  }, [versions]);
+
   const [rows, setRows] = useState<Record<string, RowEditState>>({});
   const [creatingLine, setCreatingLine] = useState(false);
   const [catalog, setCatalog] = useState<ItemDTO[]>([]);
@@ -617,6 +635,7 @@ export function CotizacionTab({
               onDeleteLine={sDeleteLine}
               canAjustar={canAjustar}
               onAjustarLinea={sAjustarLinea}
+              ajusteLabel={ajusteLabels.get(Number(p.id))}
             />
           ))}
           {addingLineRow}
@@ -692,6 +711,7 @@ export function CotizacionTab({
               onDeleteLine={sDeleteLine}
               canAjustar={canAjustar}
               onAjustarLinea={sAjustarLinea}
+              ajusteLabel={ajusteLabels.get(Number(p.id))}
             />
           ))}
           {addingLineRow}

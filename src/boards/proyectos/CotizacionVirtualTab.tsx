@@ -11,6 +11,7 @@ import type { AjusteDTO, CostoDivergenciaDTO, ItemDTO, QuoteLineSnapshot } from 
 import { getCotizacionVirtual, listItems } from '../../lib/apiClient';
 import { useMe } from '../../lib/useMe';
 import { fmtMoney } from '../../lib/format';
+import { AjusteLabelBadge } from '../../components/core/Badges';
 import { AjustarLineaVirtualModal } from './AjustarLineaVirtualModal';
 
 function rowStyle(kind: 'header' | 'body' | 'footer'): React.CSSProperties {
@@ -91,6 +92,7 @@ export function CotizacionVirtualTab({ proyectoId }: { proyectoId: string }) {
               <div style={cellStyle}>
                 {l.producto}
                 {l.sku ? <span style={{ color: 'var(--ink-quiet)' }}> · {l.sku}</span> : null}
+                {l.ajusteLabel && <AjusteLabelBadge label={l.ajusteLabel} />}
               </div>
               <div style={cellStyle}>{l.color || '—'}</div>
               <div style={cellStyle}>{l.cantidad}</div>
