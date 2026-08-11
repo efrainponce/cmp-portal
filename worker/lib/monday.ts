@@ -48,6 +48,28 @@ function rateLimitWaitMs(errors: Array<{ extensions?: { status_code?: number; co
   return Math.min((hit.extensions?.retry_in_seconds ?? 10) * 1000 + 250, 30_000);
 }
 
+// Contador de calls a Monday por día (Efraín preguntó si el reconcile+delta
+// nuevos se comen el tope diario del plan — antes no había ni un solo número
+// real, puro estimado). Best-effort: nunca debe tumbar la call real de Monday
+// si D1 falla. `tableReady` cachea el CREATE TABLE por isolate (evita pagarlo
+// en cada una de las miles de calls que hace un full reconcile).
+let tableReady = false;
+async function trackApiCall(env: Env): Promise<void> {
+  try {
+    if (!tableReady) {
+      await env.DB.prepare(
+        `CREATE TABLE IF NOT EXISTS monday_api_usage (day TEXT PRIMARY KEY, count INTEGER NOT NULL DEFAULT 0)`,
+      ).run();
+      tableReady = true;
+    }
+    const day = new Date().toISOString().slice(0, 10);
+    await env.DB.prepare(
+      `INSERT INTO monday_api_usage (day, count) VALUES (?, 1)
+       ON CONFLICT(day) DO UPDATE SET count = count + 1`,
+    ).bind(day).run();
+  } catch { /* nunca bloquear la call real por esto */ }
+}
+
 /** POST a GraphQL query to Monday. Retries on 429/5xx (transport or field-level
  * rate limit) with backoff; throws on any other errors[]. */
 export async function gql(
@@ -67,6 +89,7 @@ export async function gql(
       },
       body: JSON.stringify({ query, variables: variables ?? {} }),
     });
+    await trackApiCall(env);
     if ((res.status === 429 || res.status >= 500) && attempt < maxRetries) {
       await new Promise(r => setTimeout(r, 400 * 2 ** attempt));
       continue;
@@ -94,6 +117,28 @@ export async function fetchBoardsUpdatedAt(env: Env, boardIds: number[]): Promis
   const data = await gql(env, query, { ids: boardIds.map(String) });
   const out = new Map<number, string>();
   for (const b of data?.boards ?? []) out.set(Number(b.id), String(b.updated_at ?? ''));
+  return out;
+}
+
+export interface ActivityLogEntry { boardId: number; entity: string; data: string }
+
+/** Eventos de actividad de todas las boards dadas, en UNA sola call (cada Board
+ * trae sus propios activity_logs ya filtrados por rango) — usado por el delta
+ * sync (worker/sync/delta.ts) para saber qué items tocar sin pagear un full
+ * reconcile. `from`/`to` van en ISO8601; el campo `created_at` de la respuesta
+ * es un timestamp propietario de Monday (NO epoch), así que no se parsea —
+ * solo se usa `data.pulse_id` de cada evento. */
+export async function fetchActivityLogs(
+  env: Env, boardIds: number[], from: string, to: string,
+): Promise<ActivityLogEntry[]> {
+  const query = `query($ids:[ID!],$from:ISO8601DateTime,$to:ISO8601DateTime){
+    boards(ids:$ids){ id activity_logs(from:$from,to:$to,limit:200){ entity data } } }`;
+  const data = await gql(env, query, { ids: boardIds.map(String), from, to });
+  const out: ActivityLogEntry[] = [];
+  for (const b of data?.boards ?? []) {
+    const boardId = Number(b.id);
+    for (const log of b.activity_logs ?? []) out.push({ boardId, entity: log.entity, data: log.data });
+  }
   return out;
 }
 

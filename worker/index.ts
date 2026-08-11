@@ -6,7 +6,7 @@ import { Hono } from 'hono';
 import type { Env } from './env';
 import { access } from './mw/access';
 import { identity } from './mw/identity';
-import { syncRoutes, reconcileAll } from './sync';
+import { syncRoutes, reconcileAll, deltaSync } from './sync';
 import { BOARDS, type BoardSlug } from '../shared/boards';
 import { waRoutes } from './wa/routes';
 import { assistantRoutes } from './assistant/routes';
@@ -61,21 +61,25 @@ app.onError(async (err, c) => {
 });
 
 // Los 8 boards no caben en una sola invocación de reconcile (ver comentario en
-// reconcileAll): dos cron triggers a las 3h uno del otro, cada uno con su propio
-// grupo. El tercer cron (cada 15 min) no es un board group — revisa sync_log y avisa
-// por WhatsApp (worker/lib/errorAlerts.ts) — wrangler.jsonc debe declarar exactamente
-// estos tres strings de cron.
+// reconcileBoard): dos cron triggers a las 12h uno del otro, cada uno con su propio
+// grupo — bajado de 6h a 12h el 2026-08-11 porque el delta sync (abajo) ya cubre
+// lo reciente en minutos, así que el full reconcile es ahora red de seguridad, no
+// la única fuente de verdad; corre la mitad de veces = la mitad de calls a Monday.
+// El tercer cron (cada 15 min) hace dos cosas SIN ser un board group: revisa
+// sync_log y avisa por WhatsApp (worker/lib/errorAlerts.ts), y corre el delta sync
+// (worker/sync/delta.ts) — wrangler.jsonc debe declarar exactamente estos tres
+// strings de cron.
 const ALERT_CRON = '*/15 * * * *';
 const CRON_GROUPS: Record<string, BoardSlug[]> = {
-  '0 */6 * * *': ['oportunidades', 'oportunidades_sub', 'proyectos', 'proyectos_sub'],
-  '0 3,9,15,21 * * *': ['productos', 'instituciones', 'contactos', 'proveedores'],
+  '0 0,12 * * *': ['oportunidades', 'oportunidades_sub', 'proyectos', 'proyectos_sub'],
+  '0 6,18 * * *': ['productos', 'instituciones', 'contactos', 'proveedores'],
 };
 
 export default {
   fetch: app.fetch,
   scheduled: async (controller: ScheduledController, env: Env, ctx: ExecutionContext) => {
     if (controller.cron === ALERT_CRON) {
-      ctx.waitUntil(checkErrorsAndAlert(env));
+      ctx.waitUntil(Promise.all([checkErrorsAndAlert(env), deltaSync(env)]));
       return;
     }
     const slugs = CRON_GROUPS[controller.cron] ?? (Object.keys(BOARDS) as BoardSlug[]);

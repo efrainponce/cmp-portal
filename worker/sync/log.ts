@@ -3,7 +3,7 @@ import type { Env } from '../env';
 
 export async function logSync(
   env: Env,
-  kind: 'webhook' | 'reconcile' | 'manual' | 'outbox' | 'http',
+  kind: 'webhook' | 'reconcile' | 'delta' | 'manual' | 'outbox' | 'http',
   boardId: number | null,
   itemId: number | null,
   ok: boolean,

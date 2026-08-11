@@ -7,7 +7,7 @@ import { maybeEmitStageChange, maybeEmitProjectStatusChange } from '../lib/notif
 import { maybeLogProductoStatus } from '../lib/estadoProducto';
 
 // authzCols are people columns; value JSON carries personsAndTeams:[{id,kind}].
-function extractVendedorIds(item: MondayItem, authzCols: string[]): number[] {
+export function extractVendedorIds(item: MondayItem, authzCols: string[]): number[] {
   const ids = new Set<number>();
   for (const col of item.column_values) {
     if (!authzCols.includes(col.id) || !col.value) continue;
@@ -25,8 +25,39 @@ function extractVendedorIds(item: MondayItem, authzCols: string[]): number[] {
 export interface UpsertResult { changed: boolean }
 export interface UpsertOpts { skipIfUnchanged?: boolean }
 
+export const toRawColumns = (item: MondayItem): RawColumn[] =>
+  item.column_values.map(c => ({ id: c.id, type: c.type, text: c.text, value: c.value }));
+
+// slugs cuyo mirror necesita el estado ANTERIOR de `columns` para diffear
+// deal_stage/project_status/estado del producto (centro de notificaciones,
+// worker/lib/notify.ts + estadoProducto.ts). El resto de boards no lo paga.
+export const NEEDS_PREV_COLUMNS: ReadonlySet<BoardSlug> =
+  new Set(['oportunidades', 'proyectos', 'proyectos_sub'] satisfies BoardSlug[]);
+
+/** Dispara las notificaciones derivadas de un cambio de columnas — compartido por
+ * el upsert de un solo item (webhook/refresh) y el reconcile por lote (bulk, que
+ * ya trae el `prevColumnsJson` de una SELECT agregada en vez de una por item). */
+export async function emitItemSideEffects(
+  env: Env, slug: BoardSlug, itemId: number, itemName: string,
+  parentItemId: number | null, prevColumnsJson: string | null, newColumnsJson: string, vendedorIds: number[],
+): Promise<void> {
+  const def = BOARDS[slug];
+  if (slug === 'oportunidades') {
+    await maybeEmitStageChange(env, { boardId: def.id, itemId, itemName, prevColumnsJson, newColumnsJson, vendedorIds });
+  } else if (slug === 'proyectos') {
+    await maybeEmitProjectStatusChange(env, { boardId: def.id, itemId, itemName, prevColumnsJson, newColumnsJson, vendedorIds });
+  } else if (slug === 'proyectos_sub' && parentItemId) {
+    await maybeLogProductoStatus(env, {
+      proyectosBoardId: BOARDS.proyectos.id, proyectoId: parentItemId, subItemId: itemId,
+      prevColumnsJson, newColumnsJson,
+    });
+  }
+}
+
 /** Insert or update the mirror row. When `skipIfUnchanged`, a matching content_hash
- * short-circuits the write entirely (used by bulk reconcile to save D1 writes). */
+ * short-circuits the write entirely. Single-item path (webhook/refresh/outbox echo) —
+ * el reconcile por lote NO pasa por aquí, ver reconcile.ts (evita 1-2 round-trips
+ * a D1 por item, que es justo lo que reventaba el límite de subrequests). */
 export async function upsertItem(
   env: Env,
   slug: BoardSlug,
@@ -34,9 +65,7 @@ export async function upsertItem(
   opts: UpsertOpts = {},
 ): Promise<UpsertResult> {
   const def = BOARDS[slug];
-  const columns: RawColumn[] = item.column_values.map(c => ({
-    id: c.id, type: c.type, text: c.text, value: c.value,
-  }));
+  const columns = toRawColumns(item);
   const contentHash = rawHash(columns);
   const itemId = Number(item.id);
 
@@ -50,17 +79,10 @@ export async function upsertItem(
   const vendedorIds = def.parent ? [] : extractVendedorIds(item, def.authzCols ?? []);
   const now = new Date().toISOString();
 
-  // Solo para los boards padre de Oportunidades/Proyectos: captura el estado
-  // previo de `columns` ANTES del write para poder diffear deal_stage /
-  // project_status después (el centro de notificaciones —
-  // worker/lib/notify.ts). Se hace aquí, no antes del skipIfUnchanged, para no
-  // pagar una SELECT extra en el resto de boards ni cuando el contenido no
-  // cambió.
-  const isOportunidades = slug === 'oportunidades';
-  const isProyectos = slug === 'proyectos';
-  const isProyectosSub = slug === 'proyectos_sub';
+  // Captura el estado previo de `columns` ANTES del write, solo para los boards
+  // que lo necesitan (NEEDS_PREV_COLUMNS) — no pagar la SELECT extra en el resto.
   let prevColumnsJson: string | null = null;
-  if (isOportunidades || isProyectos || isProyectosSub) {
+  if (NEEDS_PREV_COLUMNS.has(slug)) {
     const prevRow = await env.DB.prepare(
       `SELECT columns FROM items WHERE board_id = ? AND item_id = ?`,
     ).bind(def.id, itemId).first<{ columns: string }>();
@@ -81,33 +103,11 @@ export async function upsertItem(
     JSON.stringify(vendedorIds), item.updated_at, now, contentHash, JSON.stringify(columns),
   ).run();
 
-  if (isOportunidades) {
-    await maybeEmitStageChange(env, {
-      boardId: def.id,
-      itemId,
-      itemName: item.name,
-      prevColumnsJson,
-      newColumnsJson: JSON.stringify(columns),
-      vendedorIds,
-    });
-  } else if (isProyectos) {
-    await maybeEmitProjectStatusChange(env, {
-      boardId: def.id,
-      itemId,
-      itemName: item.name,
-      prevColumnsJson,
-      newColumnsJson: JSON.stringify(columns),
-      vendedorIds,
-    });
-  } else if (isProyectosSub && item.parent_item?.id) {
-    await maybeLogProductoStatus(env, {
-      proyectosBoardId: BOARDS.proyectos.id,
-      proyectoId: Number(item.parent_item.id),
-      subItemId: itemId,
-      prevColumnsJson,
-      newColumnsJson: JSON.stringify(columns),
-    });
-  }
+  await emitItemSideEffects(
+    env, slug, itemId, item.name,
+    item.parent_item?.id ? Number(item.parent_item.id) : null,
+    prevColumnsJson, JSON.stringify(columns), vendedorIds,
+  );
 
   return { changed: true };
 }

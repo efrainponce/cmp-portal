@@ -1,44 +1,112 @@
 // Full-board and full-mirror reconciliation (cron + manual trigger).
 import type { Env } from '../env';
-import { fetchItems, fetchBoardsUpdatedAt } from '../lib/monday';
+import { fetchItems, fetchBoardsUpdatedAt, type MondayItem } from '../lib/monday';
+import { rawHash } from '../lib/canon';
 import { BOARDS, type BoardSlug } from '../../shared/boards';
-import { upsertItem } from './upsert';
+import { extractVendedorIds, toRawColumns, emitItemSideEffects, NEEDS_PREV_COLUMNS } from './upsert';
 import { logSync } from './log';
 
 // Even if a board's updated_at never moves, force a full pass this often —
 // bounds any staleness the light check could theoretically miss.
 const FORCE_FULL_MS = 24 * 60 * 60 * 1000;
 
+// D1 statements per env.DB.batch() call — cada llamada ES un solo subrequest
+// sin importar cuántos statements traiga, pero se acota igual para no armar
+// un payload gigante en boards con miles de filas cambiadas de un jalón
+// (primer reconcile después de un hueco largo, como el que motivó este fix).
+const BATCH_CHUNK = 100;
+
+function chunk<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
+/** Full board sweep. Antes hacía 1-2 queries D1 POR ITEM (SELECT de skip-check +
+ * SELECT de prevColumns), lo que reventaba el límite de ~1000 subrequests por
+ * invocación de Workers en cualquier board de más de ~500 items — moría a medias
+ * sin excepción ni log (visto en prod: 12 días sin un reconcile completo en
+ * oportunidades_sub/proyectos/proyectos_sub/productos/instituciones). Ahora: UNA
+ * SELECT de content_hash para todo el board, comparación en memoria, y los
+ * writes van por env.DB.batch() en lotes — de miles de subrequests a un puñado. */
 export async function reconcileBoard(env: Env, slug: BoardSlug): Promise<{ upserts: number; deletes: number }> {
   const def = BOARDS[slug];
+  const needsPrev = NEEDS_PREV_COLUMNS.has(slug);
+
+  const existingRows = await env.DB.prepare(
+    `SELECT item_id, content_hash FROM items WHERE board_id = ?`,
+  ).bind(def.id).all<{ item_id: number; content_hash: string }>();
+  const existingHash = new Map((existingRows.results ?? []).map(r => [r.item_id, r.content_hash]));
+
   const seen = new Set<number>();
-  let upserts = 0;
+  const changed: Array<{ item: MondayItem; itemId: number; columns: ReturnType<typeof toRawColumns>; contentHash: string; vendedorIds: number[] }> = [];
   let cursor: string | null | undefined;
 
   do {
     const page = await fetchItems(env, def.id, cursor);
     for (const item of page.items) {
-      seen.add(Number(item.id));
-      const r = await upsertItem(env, slug, item, { skipIfUnchanged: true });
-      if (r.changed) upserts++;
+      const itemId = Number(item.id);
+      seen.add(itemId);
+      const columns = toRawColumns(item);
+      const contentHash = rawHash(columns);
+      if (existingHash.get(itemId) === contentHash) continue;
+      const vendedorIds = def.parent ? [] : extractVendedorIds(item, def.authzCols ?? []);
+      changed.push({ item, itemId, columns, contentHash, vendedorIds });
     }
     cursor = page.cursor;
   } while (cursor);
 
-  const existing = await env.DB.prepare(
-    `SELECT item_id FROM items WHERE board_id = ?`,
-  ).bind(def.id).all<{ item_id: number }>();
-
-  let deletes = 0;
-  for (const row of existing.results ?? []) {
-    if (seen.has(row.item_id)) continue;
-    await env.DB.prepare(`DELETE FROM items WHERE board_id = ? AND item_id = ?`)
-      .bind(def.id, row.item_id).run();
-    deletes++;
+  // Prev-columns solo para los boards que las necesitan, y solo para items que
+  // YA existían (los nuevos no tienen "antes" — mismo semantics que upsertItem).
+  const prevColumns = new Map<number, string>();
+  if (needsPrev && changed.length) {
+    const needPrevIds = changed.filter(c => existingHash.has(c.itemId)).map(c => c.itemId);
+    for (const ids of chunk(needPrevIds, BATCH_CHUNK)) {
+      if (!ids.length) continue;
+      const placeholders = ids.map(() => '?').join(',');
+      const rows = await env.DB.prepare(
+        `SELECT item_id, columns FROM items WHERE board_id = ? AND item_id IN (${placeholders})`,
+      ).bind(def.id, ...ids).all<{ item_id: number; columns: string }>();
+      for (const r of rows.results ?? []) prevColumns.set(r.item_id, r.columns);
+    }
   }
 
-  await logSync(env, 'reconcile', def.id, null, true, `upserts=${upserts} deletes=${deletes}`);
-  return { upserts, deletes };
+  const now = new Date().toISOString();
+  for (const rowsChunk of chunk(changed, BATCH_CHUNK)) {
+    const statements = rowsChunk.map(c => env.DB.prepare(
+      `INSERT INTO items (board_id, item_id, parent_item_id, name, group_id, vendedor_ids, monday_updated_at, synced_at, content_hash, columns)
+       VALUES (?,?,?,?,?,?,?,?,?,?)
+       ON CONFLICT(board_id, item_id) DO UPDATE SET
+         parent_item_id = excluded.parent_item_id, name = excluded.name, group_id = excluded.group_id,
+         vendedor_ids = excluded.vendedor_ids, monday_updated_at = excluded.monday_updated_at,
+         synced_at = excluded.synced_at, content_hash = excluded.content_hash, columns = excluded.columns`,
+    ).bind(
+      def.id, c.itemId,
+      c.item.parent_item?.id ? Number(c.item.parent_item.id) : null,
+      c.item.name, c.item.group?.id ?? null,
+      JSON.stringify(c.vendedorIds), c.item.updated_at, now, c.contentHash, JSON.stringify(c.columns),
+    ));
+    await env.DB.batch(statements);
+  }
+
+  if (needsPrev) {
+    for (const c of changed) {
+      const newColumnsJson = JSON.stringify(c.columns);
+      await emitItemSideEffects(
+        env, slug, c.itemId, c.item.name,
+        c.item.parent_item?.id ? Number(c.item.parent_item.id) : null,
+        prevColumns.get(c.itemId) ?? null, newColumnsJson, c.vendedorIds,
+      );
+    }
+  }
+
+  const toDelete = [...existingHash.keys()].filter(id => !seen.has(id));
+  for (const ids of chunk(toDelete, BATCH_CHUNK)) {
+    await env.DB.batch(ids.map(id => env.DB.prepare(`DELETE FROM items WHERE board_id = ? AND item_id = ?`).bind(def.id, id)));
+  }
+
+  await logSync(env, 'reconcile', def.id, null, true, `upserts=${changed.length} deletes=${toDelete.length}`);
+  return { upserts: changed.length, deletes: toDelete.length };
 }
 
 interface BoardState { board_id: number; monday_updated_at: string; reconciled_at: string }

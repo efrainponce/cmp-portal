@@ -64,9 +64,25 @@ CREATE TABLE IF NOT EXISTS board_state (  -- reconcile gate: skip boards whose u
 
 CREATE TABLE IF NOT EXISTS sync_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  kind TEXT NOT NULL,                 -- webhook|reconcile|manual|outbox|http
+  kind TEXT NOT NULL,                 -- webhook|reconcile|delta|manual|outbox|http
   board_id INTEGER, item_id INTEGER,
   ok INTEGER NOT NULL, detail TEXT, at TEXT NOT NULL
+);
+
+-- Checkpoint genérico key/value para procesos de sync. Hoy solo lo usa el delta
+-- sync (worker/sync/delta.ts) para `delta_last_polled_at`. Lazy en runtime,
+-- mismo patrón que board_state — está aquí solo como documentación.
+CREATE TABLE IF NOT EXISTS sync_state (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+
+-- Contador de calls a Monday por día (worker/lib/monday.ts gql()) — Efraín
+-- preguntó si el delta sync + reconcile más frecuente se comen el tope diario
+-- del plan; antes no había ni un número real. Lazy en runtime.
+CREATE TABLE IF NOT EXISTS monday_api_usage (
+  day   TEXT PRIMARY KEY,   -- YYYY-MM-DD (UTC)
+  count INTEGER NOT NULL DEFAULT 0
 );
 
 -- Inventario (2026-07-15): native D1 feature, no Monday board behind it — quantity-based,

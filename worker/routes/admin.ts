@@ -173,7 +173,18 @@ export function adminRoutes(app: Hono<{ Bindings: Env }>) {
     return c.json({ ok: true });
   });
 
-  // Fuerza un full-sync de un board contra Monday sin esperar al cron (cada 6h,
+  // Contador real de calls a Monday por día (worker/lib/monday.ts gql()) — antes
+  // de esto, "¿nos comemos el tope diario del plan?" solo se podía estimar
+  // (Efraín, 2026-08-11, a raíz del fix de reconcile+delta sync).
+  app.get('/api/admin/monday-usage', async c => {
+    if (c.get('viewer').role !== 'admin') return c.json({ error: 'forbidden' }, 403);
+    const rows = await c.env.DB.prepare(
+      `SELECT day, count FROM monday_api_usage ORDER BY day DESC LIMIT 14`,
+    ).all<{ day: string; count: number }>().catch(() => ({ results: [] as { day: string; count: number }[] }));
+    return c.json(rows.results ?? []);
+  });
+
+  // Fuerza un full-sync de un board contra Monday sin esperar al cron (cada 12h,
   // worker/index.ts). Existía la función (reconcileBoard) pero ningún trigger
   // manual — encontrado 2026-08-04 al diagnosticar el board Proveedores vacío.
   app.post('/api/admin/sync/:slug', async c => {
