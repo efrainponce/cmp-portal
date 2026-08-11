@@ -2,6 +2,14 @@
 
 ## 2026-08-10
 
+- Corrección: el upload de Inventario va junto a los PDFs de cotización (Costeo/Sin firmar/Firmada), no en Documentación
+  - Efraín mandó captura: buscaba el archivo de Inventario en la fila de miniaturas PDF (`CotizacionPdfRow.tsx`, arriba del tab Cotización — "Costeo · Sin firmar · Firmada") y no en la pestaña Documentación, donde lo había puesto en el commit anterior. "El mismo template" del pedido original se refería a esa fila de miniaturas, no a las secciones de `DocSection`.
+  - Movido: `InventarioSection`/upload de `DocumentacionTab.tsx` → nuevo `InventarioThumb` en `CotizacionPdfRow.tsx`, mismo cuadro 108×92 que los otros 3 (`PdfThumb`), pero es upload real (no preview de pdf.js — Inventario no siempre es PDF) y el cuadro vacío ES el dropzone para compras/admin. Nuevo helper `inventarioFiles(item)` (`DocumentacionTab.tsx`, exportado) para no duplicar el parseo de la columna.
+  - La fila entera solo se ocultaba cuando no había NINGÚN PDF (`!hasSolicitud && !hasSinFirmar && !hasFirmada`) — eso escondía el cuadro de Inventario en una oportunidad recién creada, exactamente el caso que Efraín reportó. Ahora también se muestra si el viewer puede subir inventario (compras/admin) o si ya hay un archivo.
+  - `tsc --noEmit`, `npm test` (129 tests) y `npm run lint` limpios.
+  - Compras pidió aparte "Costeo filtrado a solo mis costeos como comprador" — Efraín aclaró que ya se está resolviendo en otra sesión (terminó siendo el mismo `comprasScopeFor` de la entrada de abajo), así que no se tocó nada aquí.
+  - Mismo working tree con la sesión activa de "Home" (ver detalle de aislamiento en la entrada de abajo) — se REDESCUBRIÓ el mismo problema (un `git add`/escritura de la otra sesión pisó una edición ya aplicada de este commit sobre `DocumentacionTab.tsx` a media edición, visible como reversión momentánea); se re-aplicó y se verificó con un `Read` fresco antes de continuar. Se stageó únicamente `OpportunityDrawer.tsx`, `tabs/CotizacionTab.tsx`, `tabs/DocumentacionTab.tsx`, `tabs/cotizacion/CotizacionPdfRow.tsx` + este log; `worker/routes/oportunidades.ts` (endpoint `/seguimiento` ajeno, sin tocar por mí en este commit) se dejó fuera por completo.
+
 - Feedback sección Proyectos: tab Actualizaciones, scoping de Compras, font-size de tabs, OC del cliente obligatoria
   - Efraín reportó 4 puntos de feedback sobre la sección Proyectos (Documentación/Tallas, Órdenes de Compra, Ejecución, Logística):
   - **Actualizaciones faltante en Documentación/Tallas y Órdenes de Compra**: `TABS_BY_BOARD` (`ProyectoDrawer.tsx`) whitelisteaba los tabs de cada acceso del sidebar (2026-08-05) y se quedó fuera por error, no a propósito — se agregó `'actualizaciones'` a ambos.

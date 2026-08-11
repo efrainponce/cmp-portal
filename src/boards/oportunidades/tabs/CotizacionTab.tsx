@@ -514,7 +514,7 @@ export function CotizacionTab({
             </span>
           </div>
         )}
-        <CotizacionPdfRow oppId={oppId} hasSolicitud={hasSolicitud} hasSinFirmar={hasSinFirmar} hasFirmada={hasFirmada} />
+        <CotizacionPdfRow oppId={oppId} item={item} hasSolicitud={hasSolicitud} hasSinFirmar={hasSinFirmar} hasFirmada={hasFirmada} onInventarioUploaded={onSaved} />
         <SnapshotTable version={selectedVersion} />
       </div>
     );
@@ -538,7 +538,7 @@ export function CotizacionTab({
     return (
       <div style={{ padding: tabPadding, width: '100%', boxSizing: 'border-box' }}>
         <VersionChips versions={versions} selected={selectedVersionId} onSelect={setSelectedVersionId} onNuevaVersion={onNuevaVersion} />
-        <CotizacionPdfRow oppId={oppId} hasSolicitud={hasSolicitud} hasSinFirmar={hasSinFirmar} hasFirmada={hasFirmada} />
+        <CotizacionPdfRow oppId={oppId} item={item} hasSolicitud={hasSolicitud} hasSinFirmar={hasSinFirmar} hasFirmada={hasFirmada} onInventarioUploaded={onSaved} />
         <div style={{ font: 'var(--text-label)', color: 'var(--ink-quiet)', marginBottom: 16 }}>
           Sin líneas de producto registradas.
         </div>
@@ -567,7 +567,7 @@ export function CotizacionTab({
           <ColumnVisibilityPicker columns={gridCols.slice(1)} hidden={hiddenCols} onToggle={onToggleColumn} />
         )}
       </div>
-      <CotizacionPdfRow oppId={oppId} hasSolicitud={hasSolicitud} hasSinFirmar={hasSinFirmar} hasFirmada={hasFirmada} />
+      <CotizacionPdfRow oppId={oppId} item={item} hasSolicitud={hasSolicitud} hasSinFirmar={hasSinFirmar} hasFirmada={hasFirmada} onInventarioUploaded={onSaved} />
       {isMobile ? (
         <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-xl)', overflow: 'hidden' }}>
           {products.map((p, lineIdx) => (

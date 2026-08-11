@@ -9,8 +9,12 @@
 // useEffect de abajo dispara la descarga del chunk + worker + bytes del PDF en
 // cuanto se sabe que hay PDF que ver, no al clic — misma latencia percibida
 // (~500 ms) que cuando era import estático.
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState, type ChangeEvent } from 'react';
 import { Modal } from '../../../../components/core/Modal';
+import { useMe } from '../../../../lib/useMe';
+import { uploadOportunidadInventario } from '../../../../lib/api';
+import { inventarioFiles } from '../DocumentacionTab';
+import type { ItemDetailDTO } from '../../../../lib/api';
 
 const PdfCanvasPreview = lazy(() =>
   import('../../../../components/core/PdfCanvasPreview').then((m) => ({ default: m.PdfCanvasPreview })),
@@ -87,12 +91,99 @@ function PdfThumb({ oppId, kind, available, label, accentColor, onPreview }: {
   );
 }
 
-/** Solicitud de costeo, y cotización sin firmar / firmada por el vendedor, lado a lado. */
-export function CotizacionPdfRow({ oppId, hasSolicitud, hasSinFirmar, hasFirmada }: {
-  oppId?: string; hasSolicitud: boolean; hasSinFirmar: boolean; hasFirmada: boolean;
+/** "Inventario Actual (Imagen)" — mismo cuadro que los PdfThumb de al lado,
+ * pero es un upload real (Compras/admin, `w: WAC` en shared/visibility.ts):
+ * el cuadro vacío ES el dropzone; con archivo ya subido, se ve como link
+ * directo (no siempre es PDF, así que sin el preview de pdf.js). */
+function InventarioThumb({ oppId, item, onUploaded }: { oppId: string; item: ItemDetailDTO; onUploaded?: () => void }) {
+  const me = useMe();
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const canUpload = me?.role === 'compras' || me?.role === 'admin';
+  const files = inventarioFiles(item);
+  const latest = files[files.length - 1];
+
+  const handleFile = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setUploading(true);
+    setError(null);
+    const res = await uploadOportunidadInventario(oppId, file);
+    setUploading(false);
+    if (!res.ok) { setError(res.error ?? 'No se pudo subir.'); return; }
+    onUploaded?.();
+  };
+
+  return (
+    <div style={{ width: 108 }}>
+      <div style={{ font: '600 10px \'Inter\', sans-serif', color: 'var(--status-en-coste)', textTransform: 'uppercase', letterSpacing: '.3px', marginBottom: 6 }}>
+        Inventario
+      </div>
+      {latest ? (
+        <>
+          <a
+            href={latest.url}
+            target="_blank"
+            rel="noreferrer"
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center', width: 108, height: 92,
+              border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', background: 'var(--bg-sunken)',
+            }}
+          >
+            <PdfIcon color="var(--status-en-coste)" />
+          </a>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: 6, marginTop: 4 }}>
+            <a href={latest.url} target="_blank" rel="noreferrer" style={{ font: 'var(--text-caption)', color: 'var(--accent)', textDecoration: 'none' }}>Ver</a>
+            {canUpload && (
+              <>
+                <span style={{ font: 'var(--text-caption)', color: 'var(--ink-faint)' }}>·</span>
+                <label style={{ font: 'var(--text-caption)', color: 'var(--accent)', cursor: uploading ? 'default' : 'pointer' }}>
+                  {uploading ? 'Subiendo…' : 'Reemplazar'}
+                  <input type="file" onChange={handleFile} style={{ display: 'none' }} disabled={uploading} />
+                </label>
+              </>
+            )}
+          </div>
+        </>
+      ) : canUpload ? (
+        <label style={{
+          cursor: uploading ? 'default' : 'pointer', width: 108, height: 92, display: 'flex', alignItems: 'center',
+          justifyContent: 'center', textAlign: 'center', padding: 8,
+          border: `1px dashed ${error ? 'var(--status-perdida)' : 'var(--ink-faint)'}`, borderRadius: 'var(--radius-lg)',
+        }}>
+          <span style={{ font: 'var(--text-caption)', color: error ? 'var(--status-perdida)' : 'var(--accent)' }}>
+            {uploading ? 'Subiendo…' : error ? `Error — reintentar` : '+ Subir inventario'}
+          </span>
+          <input type="file" onChange={handleFile} style={{ display: 'none' }} disabled={uploading} />
+        </label>
+      ) : (
+        <div style={{
+          width: 108, height: 92, border: '1px dashed var(--ink-faint)', borderRadius: 'var(--radius-lg)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: 8,
+        }}>
+          <span style={{ font: 'var(--text-caption)', color: 'var(--ink-faint)' }}>Sin archivo</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Solicitud de costeo, y cotización sin firmar / firmada por el vendedor, lado a lado
+ * + Inventario (Efraín, 2026-08-10). */
+export function CotizacionPdfRow({ oppId, item, hasSolicitud, hasSinFirmar, hasFirmada, onInventarioUploaded }: {
+  oppId?: string; item?: ItemDetailDTO; hasSolicitud: boolean; hasSinFirmar: boolean; hasFirmada: boolean;
+  onInventarioUploaded?: () => void;
 }) {
+  const me = useMe();
   const [preview, setPreview] = useState<PdfKind | null>(null);
   const [bytes, setBytes] = useState<Partial<Record<PdfKind, ArrayBuffer>>>({});
+  const hasInventario = !!item && inventarioFiles(item).length > 0;
+  // Compras siempre ve su cuadro de upload aunque todavía no exista ningún PDF
+  // de cotización — si no, no tiene dónde subir el inventario en una
+  // oportunidad recién creada (Efraín reportó "no veo donde subir el inventario").
+  const canUploadInventario = me?.role === 'compras' || me?.role === 'admin';
+  const showInventario = !!(item && (hasInventario || canUploadInventario));
 
   // Precarga en cuanto se sabe que hay PDF que ver — no espera al clic en
   // "Ver". Así, cuando el usuario abre el modal, el chunk de pdf.js, su worker
@@ -115,13 +206,14 @@ export function CotizacionPdfRow({ oppId, hasSolicitud, hasSinFirmar, hasFirmada
     return () => { cancelled = true; };
   }, [oppId, hasSolicitud, hasSinFirmar, hasFirmada]);
 
-  if (!oppId || (!hasSolicitud && !hasSinFirmar && !hasFirmada)) return null;
+  if (!oppId || (!hasSolicitud && !hasSinFirmar && !hasFirmada && !showInventario)) return null;
   return (
     <>
       <div style={{ display: 'flex', gap: 16, marginBottom: 16 }}>
         <PdfThumb oppId={oppId} kind="solicitud_costeo" available={hasSolicitud} label="Costeo" accentColor="var(--status-en-coste)" onPreview={() => setPreview('solicitud_costeo')} />
         <PdfThumb oppId={oppId} kind="sin_firmar" available={hasSinFirmar} label="Sin firmar" accentColor="var(--status-esperando)" onPreview={() => setPreview('sin_firmar')} />
         <PdfThumb oppId={oppId} kind="firmada" available={hasFirmada} label="Firmada" accentColor="var(--status-ganada)" onPreview={() => setPreview('firmada')} />
+        {showInventario && item && <InventarioThumb oppId={oppId} item={item} onUploaded={onInventarioUploaded} />}
       </div>
       {preview && (
         <Modal
