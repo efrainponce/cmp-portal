@@ -84,7 +84,7 @@ export function CotizacionVirtualTab({ proyectoId }: { proyectoId: string }) {
             <div style={{ ...cellStyle, fontWeight: 700 }}>Embellecimiento</div>
             <div style={{ ...cellStyle, fontWeight: 700 }}>Precio</div>
             <div style={{ ...cellStyle, fontWeight: 700 }}>Subtotal</div>
-            <div style={{ ...cellStyle, flex: '0 0 28px' }} />
+            <div style={{ ...cellStyle, flex: '0 0 110px' }} />
           </div>
           {lines.map((l) => (
             <div key={l.subitemId} style={rowStyle('body')}>
@@ -97,15 +97,15 @@ export function CotizacionVirtualTab({ proyectoId }: { proyectoId: string }) {
               <div style={cellStyle}>{l.embellecimiento ? 'Con' : 'Sin'}</div>
               <div style={cellStyle}>{fmtMoney(l.precioUnitario ?? 0)}</div>
               <div style={cellStyle}>{fmtMoney((l.precioUnitario ?? 0) * l.cantidad)}</div>
-              <div style={{ ...cellStyle, flex: '0 0 28px' }}>
+              <div style={{ ...cellStyle, flex: '0 0 110px', textAlign: 'right' }}>
                 {canAjustar && l.subitemId != null && (
                   <button
                     type="button"
                     onClick={() => setTarget({ lineaId: l.subitemId!, linea: l })}
                     title="Cambiar producto, color, embellecimiento o cantidad"
-                    style={{ border: 'none', background: 'transparent', color: 'var(--accent)', cursor: 'pointer', font: 'var(--text-label-strong)' }}
+                    style={{ border: 'none', background: 'transparent', color: 'var(--accent)', cursor: 'pointer', font: 'var(--text-label-strong)', textDecoration: 'underline' }}
                   >
-                    ✎
+                    Editar/Dividir
                   </button>
                 )}
               </div>
@@ -118,7 +118,7 @@ export function CotizacionVirtualTab({ proyectoId }: { proyectoId: string }) {
             <div style={cellStyle} />
             <div style={cellStyle} />
             <div style={{ ...cellStyle, fontWeight: 700 }}>{fmtMoney(total)}</div>
-            <div style={{ ...cellStyle, flex: '0 0 28px' }} />
+            <div style={{ ...cellStyle, flex: '0 0 110px' }} />
           </div>
         </div>
       )}
