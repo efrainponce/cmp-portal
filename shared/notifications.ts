@@ -4,13 +4,21 @@ import type { Role } from './types';
 
 // Un "selector" resuelve a un conjunto de emails destinatarios en runtime:
 //  - 'owner'        → vendedor(es) asignado(s) al item (vendedor_ids del mirror)
+//  - 'comprador'    → persona(s) de Compras asignada(s) AL ITEM (columna "Compras"
+//    de Oportunidades / "Compras" `project_owner` de Proyectos — NO todo el equipo,
+//    ver worker/lib/notify.ts personIdsFromColumns). Requiere que esa columna esté
+//    llena; por eso es `required: true` en CREATE_FIELDS.oportunidades desde
+//    2026-08-10 (Efraín: antes 'role:compras' le llegaba a TODO el equipo de
+//    Compras aunque el item no fuera suyo — se reemplazó por este selector en
+//    todas las entradas de abajo que antes decían 'role:compras').
 //  - 'actor'        → quien disparó la acción (menciones/costeo)
 //  - 'mentioned'    → los usuarios etiquetados (menciones)
-//  - `role:<rol>`   → todas las identidades activas de ese rol
+//  - `role:<rol>`   → todas las identidades activas de ese rol (usar solo para
+//    roles sin dueño por item, ej. 'role:admin' — ya NO para Compras)
 //  - `email:<addr>` → un destinatario fijo por email (no depende de su rol —
 //    ej. Elisa/administración es role='vendedor' pero recibe ciertas alertas
 //    igual, Efraín 2026-08-06)
-export type RecipientSelector = 'owner' | 'actor' | 'mentioned' | `role:${Role}` | `email:${string}`;
+export type RecipientSelector = 'owner' | 'comprador' | 'actor' | 'mentioned' | `role:${Role}` | `email:${string}`;
 
 // Severidad de un cambio de etapa: 'actualizacion' (default, solo Centro de
 // Notificaciones del portal) o 'importante' (además dispara WhatsApp, ver
@@ -24,11 +32,16 @@ export interface StageNotifyEntry {
 // Llaves = labels canon EXACTOS de shared/dealStages.ts DEAL_STAGE_LABELS.
 // Etapa sin entrada aquí = sin notificación de cambio de etapa.
 export const STAGE_NOTIFY: Record<string, StageNotifyEntry> = {
-  // Compras necesita enterarse de inmediato, no solo al revisar el portal
-  // (Efraín, 2026-08-05).
-  'En costeo': { selectors: ['role:compras'], severity: 'importante' },
-  'Costeo en validación': { selectors: ['role:compras', 'role:admin'] },
-  'Costeo Confirmado': { selectors: ['owner'] },    // Compras confirmó → el vendedor puede seguir
+  // El comprador asignado necesita enterarse de inmediato, no solo al revisar
+  // el portal (Efraín, 2026-08-05). Antes 'role:compras' (todo el equipo);
+  // acotado a 'comprador' (solo el/los asignado(s) a ESTA oportunidad) el
+  // 2026-08-10 — Compras se quejó de recibir WhatsApp de oportunidades ajenas.
+  'En costeo': { selectors: ['comprador'], severity: 'importante' },
+  'Costeo en validación': { selectors: ['comprador', 'role:admin'] },
+  // Compras confirmó → avisar también al resto de compradores asignados (no
+  // solo el que confirmó) + al vendedor, que ya puede seguir. WhatsApp de
+  // inmediato — pedido explícito de Efraín 2026-08-10.
+  'Costeo Confirmado': { selectors: ['owner', 'comprador'], severity: 'importante' },
   // Cotización generada (botón "Generar Cotización") → el vendedor ya la puede
   // mandar al cliente, avisarle por WhatsApp de inmediato (Efraín, 2026-08-06).
   'Cotización': { selectors: ['owner'], severity: 'importante' },
@@ -56,10 +69,13 @@ export const PROJECT_STATUS_LABELS: Record<string, string> = {
 // Compras reportó que no les llegan (WhatsApp 2026-08-04) — primer corte,
 // pendiente de que Efraín tune destinatarios.
 export const PROJECT_STATUS_NOTIFY: Record<string, StageNotifyEntry> = {
-  'Tallas Confirmadas': { selectors: ['role:compras'] },  // vendedor validó → Compras arma las OC
+  // 'role:compras' → 'comprador' (solo el comprador asignado al Proyecto,
+  // columna "Compras" `project_owner`, copiada de la Oportunidad al ganar) —
+  // mismo cambio de acotamiento 2026-08-10 que STAGE_NOTIFY, ver ahí.
+  'Tallas Confirmadas': { selectors: ['comprador'] },  // vendedor validó → Compras arma las OC
   'Ordenes de compra listas': { selectors: ['owner'] },   // el vendedor puede avisar a su cliente
   'Ejecución': { selectors: ['owner'] },
-  'Proyecto Terminado': { selectors: ['owner', 'role:compras'] },
+  'Proyecto Terminado': { selectors: ['owner', 'comprador'] },
 };
 
 // project_status → acceso del sidebar que lo lista (para el deep-link de la
@@ -94,5 +110,7 @@ export const PRODUCT_STATUS_LABELS: Record<string, string> = {
 // el resto de transiciones solo alimenta el historial (worker/lib/estadoProducto.ts),
 // no el centro de notificaciones (serían demasiadas por línea+talla).
 export const PRODUCT_STATUS_NOTIFY: Record<string, StageNotifyEntry> = {
-  'Incidencia/Retraso': { selectors: ['owner', 'role:compras'], severity: 'importante' },
+  // 'role:compras' → 'comprador' (2026-08-10, ver STAGE_NOTIFY arriba) — el
+  // comprador asignado al Proyecto padre de esta línea, no todo el equipo.
+  'Incidencia/Retraso': { selectors: ['owner', 'comprador'], severity: 'importante' },
 };

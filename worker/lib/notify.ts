@@ -73,6 +73,7 @@ async function emailsByRole(env: Env, role: Role): Promise<string[]> {
 
 export interface ResolveContext {
   vendedorIds?: number[];      // para selector 'owner'
+  compradorIds?: number[];     // para selector 'comprador'
   actorEmail?: string;         // para selector 'actor'; SIEMPRE se excluye del set final
   mentionedEmails?: string[];  // para selector 'mentioned'
 }
@@ -91,6 +92,11 @@ export async function resolveRecipients(
           const email = await emailByMondayUserId(env, id);
           if (email) set.add(email);
         }
+      } else if (sel === 'comprador') {
+        for (const id of ctx.compradorIds ?? []) {
+          const email = await emailByMondayUserId(env, id);
+          if (email) set.add(email);
+        }
       } else if (sel === 'actor') {
         if (ctx.actorEmail) set.add(ctx.actorEmail);
       } else if (sel === 'mentioned') {
@@ -106,6 +112,25 @@ export async function resolveRecipients(
     return [...set];
   } catch (err) {
     await logSync(env, 'manual', null, null, false, 'notify: resolveRecipients ' + err);
+    return [];
+  }
+}
+
+/** monday_user_ids de una columna people/multiple_person dentro de un blob de
+ * columnas crudo (mismo shape que `columns` del mirror). Usada para resolver el
+ * selector 'comprador' sin depender de una columna dedicada en `items` (a
+ * diferencia de vendedor_ids, que sí se persiste — ver worker/sync/upsert.ts). */
+export function personIdsFromColumns(columnsJson: string, colId: string): number[] {
+  try {
+    const cols: RawCol[] = JSON.parse(columnsJson || '[]');
+    const col = cols.find(c => c.id === colId);
+    if (!col?.value) return [];
+    const parsed = JSON.parse(col.value) as { personsAndTeams?: Array<{ id: number | string; kind?: string }> };
+    return (parsed.personsAndTeams ?? [])
+      .filter(p => (p.kind ?? 'person') === 'person')
+      .map(p => Number(p.id))
+      .filter(n => !Number.isNaN(n));
+  } catch {
     return [];
   }
 }
@@ -136,6 +161,7 @@ async function maybeEmitStatusChange(env: Env, args: {
   prevColumnsJson: string | null;
   newColumnsJson: string;
   vendedorIds: number[];
+  compradorColId?: string;   // columna people del comprador asignado a ESTE item, para el selector 'comprador'
   colId: string;
   labels: Record<string, string>;
   notifyMap: Record<string, StageNotifyEntry>;
@@ -157,7 +183,8 @@ async function maybeEmitStatusChange(env: Env, args: {
     if (!entry || entry.selectors.length === 0) return;
 
     const boardKey = typeof args.boardKey === 'function' ? args.boardKey(newIndex) : args.boardKey;
-    const recipients = await resolveRecipients(env, entry.selectors, { vendedorIds: args.vendedorIds });
+    const compradorIds = args.compradorColId ? personIdsFromColumns(args.newColumnsJson, args.compradorColId) : [];
+    const recipients = await resolveRecipients(env, entry.selectors, { vendedorIds: args.vendedorIds, compradorIds });
     for (const recipientEmail of recipients) {
       await emitNotification(env, {
         recipientEmail,
@@ -194,6 +221,7 @@ export function maybeEmitStageChange(env: Env, args: {
   return maybeEmitStatusChange(env, {
     ...args,
     colId: 'deal_stage',
+    compradorColId: 'multiple_person_mm03qyw9',   // "Compras" de Oportunidades
     labels: DEAL_STAGE_LABELS,
     notifyMap: STAGE_NOTIFY,
     boardKey: 'oportunidades',
@@ -217,6 +245,7 @@ export function maybeEmitProjectStatusChange(env: Env, args: {
   return maybeEmitStatusChange(env, {
     ...args,
     colId: 'project_status',
+    compradorColId: 'project_owner',   // "Compras" de Proyectos (copiada de la Oportunidad al ganar)
     labels: PROJECT_STATUS_LABELS,
     notifyMap: PROJECT_STATUS_NOTIFY,
     boardKey: (newIndex) => PROJECT_STATUS_BOARD_KEY[newIndex] ?? 'doctallas',

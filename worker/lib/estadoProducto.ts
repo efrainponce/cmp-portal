@@ -20,7 +20,7 @@
 // contra el código real de canon.ts/outbox.ts, no asumido.
 import type { Env } from '../env';
 import { PRODUCT_STATUS_LABELS, PRODUCT_STATUS_NOTIFY } from '../../shared/notifications';
-import { statusIndex, emitNotification, resolveRecipients } from './notify';
+import { statusIndex, emitNotification, resolveRecipients, personIdsFromColumns } from './notify';
 import { logSync } from '../sync/log';
 
 const COL_ESTADO = 'color_mm0hqf79';
@@ -60,6 +60,21 @@ async function vendedorIdsOfProyecto(env: Env, proyectosBoardId: number, proyect
   }
 }
 
+/** monday_user_ids de la columna "Compras" (`project_owner`) del Proyecto padre —
+ * para el selector 'comprador' (ver shared/notifications.ts, 2026-08-10). No hay
+ * columna comprador_ids dedicada en el mirror (a diferencia de vendedor_ids), así
+ * que se parsea del blob `columns` completo, igual que maybeEmitProjectStatusChange. */
+async function compradorIdsOfProyecto(env: Env, proyectosBoardId: number, proyectoId: number): Promise<number[]> {
+  try {
+    const row = await env.DB.prepare(
+      `SELECT columns FROM items WHERE board_id = ? AND item_id = ?`,
+    ).bind(proyectosBoardId, proyectoId).first<{ columns: string }>();
+    return row ? personIdsFromColumns(row.columns, 'project_owner') : [];
+  } catch {
+    return [];
+  }
+}
+
 interface TransitionArgs {
   proyectosBoardId: number;
   proyectoId: number;
@@ -86,8 +101,11 @@ async function recordTransition(env: Env, args: TransitionArgs): Promise<void> {
 
   const entry = PRODUCT_STATUS_NOTIFY[args.newLabel];
   if (!entry || entry.selectors.length === 0) return;
-  const vendedorIds = await vendedorIdsOfProyecto(env, args.proyectosBoardId, args.proyectoId);
-  const recipients = await resolveRecipients(env, entry.selectors, { vendedorIds, actorEmail: args.actorEmail });
+  const [vendedorIds, compradorIds] = await Promise.all([
+    vendedorIdsOfProyecto(env, args.proyectosBoardId, args.proyectoId),
+    compradorIdsOfProyecto(env, args.proyectosBoardId, args.proyectoId),
+  ]);
+  const recipients = await resolveRecipients(env, entry.selectors, { vendedorIds, compradorIds, actorEmail: args.actorEmail });
   for (const recipientEmail of recipients) {
     await emitNotification(env, {
       recipientEmail,

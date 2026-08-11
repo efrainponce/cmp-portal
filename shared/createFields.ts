@@ -14,7 +14,10 @@ export const CREATE_FIELDS: Record<'instituciones' | 'contactos' | 'oportunidade
     { id: 'name', required: true },
     { id: 'deal_owner', required: true },       // Vendedor (authz key)
     { id: 'multiple_person_mm0wt53c' },         // Vendedor secundario (authz key también)
-    { id: 'multiple_person_mm03qyw9' },         // Compras
+    // required desde 2026-08-10 (Efraín): STAGE_NOTIFY ahora notifica SOLO al
+    // comprador asignado aquí (antes 'role:compras' avisaba a todo el equipo),
+    // así que una oportunidad sin Compras se queda sin avisar a nadie.
+    { id: 'multiple_person_mm03qyw9', required: true }, // Compras
     { id: 'deal_contact' },                     // Contacto (cliente) → Contactos
     { id: 'dropdown_mm03g067' },                // Zona
     { id: 'color_mm47f0ca' },                   // Tipo de cotización
