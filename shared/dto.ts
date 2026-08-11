@@ -132,11 +132,36 @@ export interface AjustarLineaRequest {
   embellecimiento?: { estado?: 'con' | 'sin'; descripcion?: string };
 }
 
+// Costo Distribuidor del catálogo (Productos) divergió entre el SKU anterior y
+// el nuevo al ajustar una línea (worker/lib/costoDivergencia.ts, Efraín
+// 2026-08-10) — no bloquea el ajuste, solo avisa (mención a Compras en Monday +
+// notificación del portal). Se adjunta a la respuesta de "Ajustar línea", tanto
+// en Oportunidades (real) como en la cotización virtual del Proyecto.
+export interface CostoDivergenciaDTO {
+  productoAnterior: string;
+  productoNuevo: string;
+  costoAnterior: number;
+  costoNuevo: number;
+  pctDiff: number;
+}
+
 export interface AjustarLineaResponse {
   ok: boolean;
   error?: string;
   lineaId?: number;
   nuevaLineaId?: number;
+  costoDivergente?: CostoDivergenciaDTO;
+}
+
+// GET /api/proyectos/:id/cotizacion-virtual (worker/lib/proyectoCotizacionVirtual.ts,
+// Efraín 2026-08-10) — mismas líneas vigentes de la Oportunidad ligada, con
+// ajustes (editar/dividir) aplicados encima en una capa 100% D1 que NUNCA toca
+// Monday (a diferencia de "Ajustar línea" en Oportunidades). `ajustes` es el
+// mismo shape que AjusteDTO pero vive en su propia tabla — no hay versión mayor
+// aquí, solo retoques V{n}.{m}; "+ Nueva versión" no existe desde el Proyecto.
+export interface CotizacionVirtualDTO {
+  lines: QuoteLineSnapshot[];
+  ajustes: AjusteDTO[];
 }
 
 // POST /api/oportunidades/:id/version/duplicar — "+ Nueva versión" es un duplicado

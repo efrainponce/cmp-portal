@@ -69,7 +69,10 @@ function linkedProductoId(col?: RawCol): number | undefined {
   }
 }
 
-function snapshotLine(row: MirrorItem): QuoteLineSnapshot {
+// Exportado para worker/lib/proyectoCotizacionVirtual.ts — la cotización virtual
+// del Proyecto arma su vista base a partir de las MISMAS líneas vigentes que
+// listVersions, sin duplicar este parseo.
+export function snapshotLine(row: MirrorItem): QuoteLineSnapshot {
   const cols = colsOf(row);
   const embStatus = (cols.get(SUB_EMB_STATUS)?.text ?? '').trim();
   return {

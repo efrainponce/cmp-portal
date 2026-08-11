@@ -25,12 +25,13 @@
 import type { ExecutionContext } from 'hono';
 import type { Env } from '../env';
 import type { Identity, MirrorItem } from '../../shared/types';
-import type { AjusteDTO, AjustarLineaRequest } from '../../shared/dto';
+import type { AjusteDTO, AjustarLineaRequest, CostoDivergenciaDTO } from '../../shared/dto';
 import { getItem } from './dal';
 import { submitWrite, flushOutbox } from './outbox';
 import { createSubitem } from './monday';
 import { upsertItem } from '../sync';
 import type { RawCol } from './serialize';
+import { checkCostoDivergente } from './costoDivergencia';
 
 export class AjusteLineaError extends Error {
   status: number;
@@ -169,7 +170,7 @@ async function registrarAjuste(
   ).run();
 }
 
-export interface AjustarLineaResult { itemId: number; lineaId: number; nuevaLineaId?: number }
+export interface AjustarLineaResult { itemId: number; lineaId: number; nuevaLineaId?: number; costoDivergente?: CostoDivergenciaDTO }
 
 /** "Ajustar línea": ver comentario de archivo. `productoNombre` en el input es
  * solo para el resumen legible del historial — el mirror real (lookup) lo
@@ -235,7 +236,11 @@ export async function ajustarLinea(
     const nuevaLineaId = Number(nuevaLinea.id);
     const despues: LineaSnapshot = { producto: nombreNueva, color, cantidad: cantidadInput, embellecimiento: embLabel, descripcionEmbellecimiento: embDesc };
     await registrarAjuste(env, itemId, nuevaLineaId, lineaId, antes, despues, viewer);
-    return { itemId, lineaId, nuevaLineaId };
+
+    const costoDivergente = input.productoId != null
+      ? await checkCostoDivergente(env, itemId, viewer, linkedProductoId(cols.get(SUB_PRODUCTO_REL)), input.productoId, antes.producto)
+      : undefined;
+    return { itemId, lineaId, nuevaLineaId, costoDivergente };
   }
 
   // modo 'editar': PATCH en el sitio, misma línea.
@@ -263,7 +268,11 @@ export async function ajustarLinea(
     descripcionEmbellecimiento: input.embellecimiento?.descripcion ?? antes.descripcionEmbellecimiento,
   };
   await registrarAjuste(env, itemId, lineaId, undefined, antes, despues, viewer);
-  return { itemId, lineaId };
+
+  const costoDivergente = input.productoId != null
+    ? await checkCostoDivergente(env, itemId, viewer, linkedProductoId(cols.get(SUB_PRODUCTO_REL)), input.productoId, antes.producto)
+    : undefined;
+  return { itemId, lineaId, costoDivergente };
 }
 
 /** Ajustes (subversiones V{version}.{n}) de la versión mayor indicada — usado

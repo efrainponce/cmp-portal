@@ -166,6 +166,28 @@ CREATE TABLE IF NOT EXISTS cotizacion_ajustes (
 );
 CREATE INDEX IF NOT EXISTS idx_cotajustes_item_version ON cotizacion_ajustes(item_id, version);
 
+-- Cotización virtual del Proyecto (2026-08-10, worker/lib/proyectoCotizacionVirtual.ts):
+-- mismo espíritu que cotizacion_ajustes de arriba, pero para el drawer del
+-- Proyecto (post-venta) — a diferencia de esa, esto NUNCA escribe a Monday. Es
+-- un log de operaciones (editar/dividir) que se reproduce en caliente sobre las
+-- líneas vigentes de la Oportunidad ligada; linea_id positivo = subitem real,
+-- negativo = línea virtual (nació de un 'dividir' hecho aquí). Se crea lazy en
+-- runtime, mismo patrón que cotizacion_ajustes/producto_propuesto — está aquí
+-- solo como documentación.
+CREATE TABLE IF NOT EXISTS proyecto_cotizacion_ajustes (
+  id               INTEGER PRIMARY KEY AUTOINCREMENT,
+  oportunidad_id   INTEGER NOT NULL,
+  linea_id         INTEGER NOT NULL,
+  linea_origen_id  INTEGER,
+  modo             TEXT NOT NULL,
+  subversion       INTEGER NOT NULL,
+  campos           TEXT NOT NULL,
+  resumen          TEXT NOT NULL,
+  viewer_email     TEXT NOT NULL,
+  created_at       TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_proycot_opp ON proyecto_cotizacion_ajustes(oportunidad_id);
+
 -- Seed: sales team members who carry samples, as "person" warehouses (confirmed against
 -- active identity rows 2026-07-15: Nicolas Rosas Gonzalez, Ray Rodriguez, RUBEN ZEUS
 -- CORDERO NUÑEZ, César Emilio Díaz Trujillo, Livia A. Val Rguez). Idempotent re-run guard
@@ -204,11 +226,11 @@ CREATE TABLE IF NOT EXISTS role_board_access (
 -- Seed inicial — ver shared/boardAccess.ts DEFAULT_BOARD_ACCESS para el criterio.
 INSERT OR IGNORE INTO role_board_access (role, board_key) VALUES
   ('vendedor', 'oportunidades'), ('vendedor', 'oportunidades_web'),
-  ('vendedor', 'doctallas'), ('vendedor', 'ordenescompra'), ('vendedor', 'ejecucion'), ('vendedor', 'logistica'),
+  ('vendedor', 'doctallas'),
   ('vendedor', 'productos'), ('vendedor', 'instituciones'), ('vendedor', 'contactos'),
   ('compras', 'oportunidades'), ('compras', 'oportunidades_web'),
   ('compras', 'costeo'), ('compras', 'validacion'),
-  ('compras', 'doctallas'), ('compras', 'ordenescompra'), ('compras', 'ejecucion'), ('compras', 'logistica'),
+  ('compras', 'ordenescompra'), ('compras', 'ejecucion'), ('compras', 'logistica'),
   ('compras', 'productos'), ('compras', 'instituciones'), ('compras', 'contactos'),
   ('compras', 'proveedores'), ('compras', 'inventario'),
   ('almacen', 'inventario');

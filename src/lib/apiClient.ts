@@ -1,9 +1,9 @@
 // Plain (non-hook) typed client for the worker API — see docs/dev-contracts.md.
 import type { BoardSlug } from '../../shared/boards';
 import type {
-  AjustarLineaRequest, AjustarLineaResponse,
+  AjusteDTO, AjustarLineaRequest, AjustarLineaResponse,
   AssistantChatRequest, AssistantChatResponse, AssistantHistoryResponse, AssistantMessage,
-  BoardAccessDTO, ColMeta, ColVal, CreateResponse, DuplicarOportunidadResponse, DuplicarVersionResponse, EnviarCosteoResponse, IdentityDTO, ItemDTO, ItemDetailDTO,
+  BoardAccessDTO, ColMeta, ColVal, CostoDivergenciaDTO, CotizacionVirtualDTO, CreateResponse, DuplicarOportunidadResponse, DuplicarVersionResponse, EnviarCosteoResponse, IdentityDTO, ItemDTO, ItemDetailDTO,
   ListResponse, MeDTO, MentionUserDTO, MondayUserDTO, ProyectoActionResponse, ProyectoResponse,
   QuoteLineSnapshot, QuoteVersionDTO, QuoteVersionsResponse,
   TallaBoxInput, CapturarTallasResponse, EstadoHistorialEntryDTO, EstadoHistorialResponse,
@@ -16,7 +16,7 @@ import { getImpersonateTarget } from './impersonation';
 import { markSessionExpired } from './sessionState';
 
 export type {
-  BoardAccessDTO, BoardSlug, ColMeta, ColVal, IdentityDTO, ItemDTO, ItemDetailDTO, ListResponse, MeDTO, MentionUserDTO,
+  AjusteDTO, BoardAccessDTO, BoardSlug, ColMeta, ColVal, CostoDivergenciaDTO, CotizacionVirtualDTO, IdentityDTO, ItemDTO, ItemDetailDTO, ListResponse, MeDTO, MentionUserDTO,
   MondayUserDTO, ProposedProductDTO, QuoteLineSnapshot, QuoteVersionDTO, TallaBoxInput, CapturarTallasResponse,
   EstadoHistorialEntryDTO, ProductoResumenDTO,
   UpdateAttachmentDTO, UpdateDTO, VendedorDTO, ZonaDTO,
@@ -273,6 +273,31 @@ export async function ajustarLinea(lineaId: string, input: AjustarLineaRequest):
   });
   const body: AjustarLineaResponse = await res.json();
   if (!res.ok && !body.error) throw new Error('ajustar línea failed: ' + res.status);
+  return body;
+}
+
+/** Cotización virtual del Proyecto (Efraín, 2026-08-10) — mismas líneas de la
+ * Oportunidad ligada, con ajustes de división/edición encima que viven SOLO en
+ * D1 (worker/lib/proyectoCotizacionVirtual.ts), nunca escriben a Monday. */
+export async function getCotizacionVirtual(proyectoId: string): Promise<CotizacionVirtualDTO> {
+  const res = await apiFetch(`/proyectos/${proyectoId}/cotizacion-virtual`);
+  if (!res.ok) throw new Error('GET cotizacion-virtual failed: ' + res.status);
+  return res.json();
+}
+
+/** "Ajustar línea" virtual (Proyecto) — mismo contrato que ajustarLinea, pero
+ * nunca crea ni edita nada en Monday. `lineaId` puede ser un subitem real
+ * (positivo) o una línea virtual nacida de un 'dividir' anterior (negativo). */
+export async function ajustarLineaVirtual(
+  proyectoId: string, lineaId: number, input: AjustarLineaRequest,
+): Promise<AjustarLineaResponse> {
+  const res = await apiFetch(`/proyectos/${proyectoId}/cotizacion-virtual/lineas/${lineaId}/ajustar`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  const body: AjustarLineaResponse = await res.json();
+  if (!res.ok && !body.error) throw new Error('ajustar línea virtual failed: ' + res.status);
   return body;
 }
 

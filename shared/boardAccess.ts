@@ -27,11 +27,16 @@ export const TEAM_ROLES: Role[] = ['vendedor', 'compras', 'almacen'];
 // Inventario; el resto de equipos conserva el acceso que ya tenía implícitamente
 // (todo abierto salvo Proveedores, ya restringido a compras/admin en Sidebar).
 // Editable después desde el admin — esto es solo el punto de partida.
+// 2026-08-11: cada equipo su propio board dentro de Proyectos, mismo patrón que
+// Oportunidades/Costeo — vendedor solo "Documentación y Tallas" (es el único
+// tramo que le toca: subir OC/cotización firmada y confirmar tallas); compras
+// pierde ese acceso y ve el funnel completo en "Órdenes de Compra" (statuses
+// ampliados en src/lib/projectStages.ts).
 export const DEFAULT_BOARD_ACCESS: Record<Role, readonly ConfigurableBoardKey[]> = {
-  vendedor: ['oportunidades', 'oportunidades_web', 'doctallas', 'ordenescompra', 'ejecucion', 'logistica',
+  vendedor: ['oportunidades', 'oportunidades_web', 'doctallas',
     'productos', 'instituciones', 'contactos'],
   compras: ['oportunidades', 'oportunidades_web', 'costeo', 'validacion',
-    'doctallas', 'ordenescompra', 'ejecucion', 'logistica',
+    'ordenescompra', 'ejecucion', 'logistica',
     'productos', 'instituciones', 'contactos', 'proveedores', 'inventario'],
   almacen: ['inventario'],
   admin: BOARD_KEYS,

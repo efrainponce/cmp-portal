@@ -2,23 +2,26 @@
 // depende del board_relation hacia la Oportunidad (ver worker/lib/dal.ts).
 // Reusa ProyectoTallasSection/ProyectoOrdenesSection/OcContratoSection tal
 // cual (mismo contrato ProyectoState, solo que aquí se construye directo del
-// item ya cargado, sin pasar por la Oportunidad). Cotización/Embellecimientos
-// se quedan del lado de la Oportunidad — solo un link cruzado, para no
-// duplicar el estado de versiones (Efraín, 2026-07-17: "solo trae la info de
-// los proyectos y listo").
+// item ya cargado, sin pasar por la Oportunidad). Embellecimiento se queda del
+// lado de la Oportunidad (link cruzado abajo). La Cotización SÍ vive también
+// aquí desde 2026-08-10 (Efraín) — pero como capa D1-only (CotizacionVirtualTab,
+// worker/lib/proyectoCotizacionVirtual.ts) que nunca toca Monday ni el estado de
+// versiones real de la Oportunidad (eso solo vive en su propio drawer).
 import { useEffect, useState } from 'react';
 import { Button } from '../../components/core/Button';
 import { IconBack } from '../../components/icons';
 import { SyncIndicator } from '../../components/board/SyncIndicator';
 import { getItemDetail, refreshItem, getProyectoOportunidad, type ItemDetailDTO } from '../../lib/api';
 import { useIsMobile } from '../../lib/useIsMobile';
+import { useMe } from '../../lib/useMe';
 import { ActualizacionesTab } from '../oportunidades/tabs/ActualizacionesTab';
 import { EmptyDocTab } from '../oportunidades/tabs/EmptyDocTab';
 import { FechaEntregaField, OcContratoSection } from '../oportunidades/tabs/DocumentacionTab';
 import { ProyectoTallasSection, ProyectoOrdenesSection, EjecucionSection, type ProyectoState } from '../oportunidades/ProyectoSection';
+import { CotizacionVirtualTab } from './CotizacionVirtualTab';
 import type { ProjectBoardKey } from '../../lib/projectStages';
 
-type ProyectoTabKey = 'actualizaciones' | 'documentacion' | 'tallas' | 'ordenes' | 'ejecucion' | 'logistica';
+type ProyectoTabKey = 'actualizaciones' | 'cotizacion' | 'documentacion' | 'tallas' | 'ordenes' | 'ejecucion' | 'logistica';
 
 const FOLIO_COL = 'pulse_id_mm1a12gy';
 const INSTITUCION_COL = 'lookup_mm1dwn6';
@@ -27,6 +30,7 @@ const VENDEDOR_COL = 'multiple_person_mm0hrnqq';
 
 const TABS: { key: ProyectoTabKey; label: string }[] = [
   { key: 'actualizaciones', label: 'Actualizaciones' },
+  { key: 'cotizacion', label: 'Cotización' },
   { key: 'documentacion', label: 'Documentación' },
   { key: 'tallas', label: 'Tallas' },
   { key: 'ordenes', label: 'Órdenes de compra' },
@@ -34,15 +38,15 @@ const TABS: { key: ProyectoTabKey; label: string }[] = [
   { key: 'logistica', label: 'Logística' },
 ];
 
-// Cada acceso del sidebar solo necesita ver sus propios tabs, no los 6
+// Cada acceso del sidebar solo necesita ver sus propios tabs, no los 7
 // (Efraín, 2026-08-05): "Documentación y Tallas" -> doc+tallas; "Órdenes de
 // Compra" -> doc+tallas+ordenes. Ejecución/Logística se quedan con el set
 // completo hasta que se pida lo mismo para esos accesos. Actualizaciones va
 // en TODOS los accesos (Efraín, 2026-08-10: "no todos los boards tienen
 // actualizaciones" — se había quedado fuera de estos dos por error, no a propósito).
 const TABS_BY_BOARD: Partial<Record<ProjectBoardKey, ProyectoTabKey[]>> = {
-  doctallas: ['actualizaciones', 'documentacion', 'tallas'],
-  ordenescompra: ['actualizaciones', 'documentacion', 'tallas', 'ordenes'],
+  doctallas: ['actualizaciones', 'cotizacion', 'documentacion', 'tallas'],
+  ordenescompra: ['actualizaciones', 'cotizacion', 'documentacion', 'tallas', 'ordenes'],
 };
 
 interface Props {
@@ -60,6 +64,7 @@ const detailCache = new Map<string, ItemDetailDTO>();
 
 export function ProyectoDrawer({ id, boardKey, backLabel, defaultTab, onBack, onOpenOportunidad }: Props) {
   const isMobile = useIsMobile();
+  const me = useMe();
   const [item, setItem] = useState<ItemDetailDTO | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -138,7 +143,11 @@ export function ProyectoDrawer({ id, boardKey, backLabel, defaultTab, onBack, on
       </div>
 
       <div style={{ display: 'flex', gap: 6, padding: isMobile ? '0 14px' : '0 32px', borderBottom: '1px solid var(--border)', overflowX: 'auto' }}>
-        {(TABS_BY_BOARD[boardKey] ? TABS.filter((t) => TABS_BY_BOARD[boardKey]!.includes(t.key)) : TABS).map((t) => (
+        {(TABS_BY_BOARD[boardKey] ? TABS.filter((t) => TABS_BY_BOARD[boardKey]!.includes(t.key)) : TABS)
+          // Precio de Venta: solo vendedor/compras/admin lo ven (shared/visibility.ts,
+          // grupo V) — almacén no debe ver la pestaña de Cotización.
+          .filter((t) => t.key !== 'cotizacion' || me?.role !== 'almacen')
+          .map((t) => (
           <div
             key={t.key}
             onClick={() => setTab(t.key)}
@@ -154,6 +163,7 @@ export function ProyectoDrawer({ id, boardKey, backLabel, defaultTab, onBack, on
       </div>
 
       {tab === 'actualizaciones' && <ActualizacionesTab slug="proyectos" itemId={id} />}
+      {tab === 'cotizacion' && <CotizacionVirtualTab proyectoId={id} />}
       {tab === 'documentacion' && (
         <div style={{ padding: '24px 32px 40px', maxWidth: 920, width: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 20 }}>
           <FechaEntregaField proyecto={proyectoState} />

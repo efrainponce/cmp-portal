@@ -6,7 +6,7 @@ import type { Context, Hono } from 'hono';
 import type { Env } from '../env';
 import type { Identity } from '../../shared/types';
 import { BOARDS } from '../../shared/boards';
-import type { AjustarLineaRequest, AjustarLineaResponse, DuplicarOportunidadResponse, DuplicarVersionResponse, ItemDetailDTO, QuoteVersionsResponse, TallaBoxInput, CapturarTallasResponse, EstadoHistorialResponse, ProductoResumenResponse } from '../../shared/dto';
+import type { AjustarLineaRequest, AjustarLineaResponse, CotizacionVirtualDTO, DuplicarOportunidadResponse, DuplicarVersionResponse, ItemDetailDTO, QuoteVersionsResponse, TallaBoxInput, CapturarTallasResponse, EstadoHistorialResponse, ProductoResumenResponse } from '../../shared/dto';
 import type { ProposedProductsResponse, AddProposedProductResponse } from '../../shared/productosPropuestos';
 import { getItem, childrenOf, pendingItemIds, proyectoForOportunidad, linkedItemId, PROYECTO_OPP_REL } from '../lib/dal';
 import { toItemDTO } from '../lib/serialize';
@@ -18,6 +18,7 @@ import {
 import { enviarACosteo, enviarAValidacion, checkCosteo, checkValidacion, CosteoError } from '../lib/costeo';
 import { listVersions, duplicateVersion, restoreVersion, esDraftVigente, recordFirstVersion, QuoteVersionError } from '../lib/quoteVersions';
 import { ajustarLinea, AjusteLineaError } from '../lib/lineaAjustes';
+import { listCotizacionVirtual, ajustarLineaVirtual, ProyectoCotizacionError } from '../lib/proyectoCotizacionVirtual';
 import { capturarTallas, reportarTallasIncorrectas, checkOcCliente } from '../lib/proyectoTallas';
 import { listEstadoHistorial } from '../lib/estadoProducto';
 import { listProductoResumen, upsertProductoResumen } from '../lib/productoResumen';
@@ -412,7 +413,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     try {
       const result = await ajustarLinea(c.env, c.executionCtx, lineaId, viewer, body);
       await refetchItemTree(c.env, BOARDS.oportunidades.id, result.itemId);
-      return c.json({ ok: true, lineaId: result.lineaId, nuevaLineaId: result.nuevaLineaId } satisfies AjustarLineaResponse);
+      return c.json({ ok: true, lineaId: result.lineaId, nuevaLineaId: result.nuevaLineaId, costoDivergente: result.costoDivergente } satisfies AjustarLineaResponse);
     } catch (err) {
       if (err instanceof AjusteLineaError) return jsonStatus({ ok: false, error: err.message } satisfies AjustarLineaResponse, err.status);
       return jsonStatus({ ok: false, error: 'internal error' } satisfies AjustarLineaResponse, 500);
@@ -652,6 +653,43 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     // Proyecto sea visible no implica que la Oportunidad también lo sea.
     const opp = await getItem(c.env, 'oportunidades', oppId, viewer);
     return c.json({ oportunidadId: opp ? String(oppId) : null });
+  });
+
+  // Cotización virtual del Proyecto (Efraín, 2026-08-10): mismas líneas de la
+  // Oportunidad ligada, con ajustes de división/edición encima que viven SOLO en
+  // D1 (worker/lib/proyectoCotizacionVirtual.ts) — a diferencia de "Ajustar
+  // línea" en Oportunidades, esto nunca toca Monday. Solo versiones intermedias
+  // (V{n}.{m}); no existe "+ Nueva versión" desde el Proyecto.
+  app.get('/api/proyectos/:id/cotizacion-virtual', async c => {
+    const proyectoId = Number(c.req.param('id'));
+    if (!Number.isFinite(proyectoId)) return c.json({ error: 'not found' }, 404);
+    const viewer = c.get('viewer');
+    try {
+      const data = await listCotizacionVirtual(c.env, proyectoId, viewer);
+      return c.json(data satisfies CotizacionVirtualDTO);
+    } catch (err) {
+      if (err instanceof ProyectoCotizacionError) return jsonStatus({ error: err.message }, err.status);
+      return jsonStatus({ error: 'internal error' }, 500);
+    }
+  });
+
+  // :lineaId puede ser un subitem real (positivo, de la Oportunidad) o una
+  // línea virtual nacida de un 'dividir' anterior (negativa).
+  app.post('/api/proyectos/:id/cotizacion-virtual/lineas/:lineaId/ajustar', async c => {
+    const proyectoId = Number(c.req.param('id'));
+    const lineaId = Number(c.req.param('lineaId'));
+    if (!Number.isFinite(proyectoId) || !Number.isFinite(lineaId)) return c.json({ error: 'not found' }, 404);
+    const viewer = c.get('viewer');
+    const body = await c.req.json<AjustarLineaRequest>();
+    if (body.modo !== 'editar' && body.modo !== 'dividir') return c.json({ error: 'modo inválido' }, 400);
+
+    try {
+      const result = await ajustarLineaVirtual(c.env, proyectoId, lineaId, viewer, body);
+      return c.json(result satisfies AjustarLineaResponse);
+    } catch (err) {
+      if (err instanceof ProyectoCotizacionError) return jsonStatus({ ok: false, error: err.message } satisfies AjustarLineaResponse, err.status);
+      return jsonStatus({ ok: false, error: 'internal error' } satisfies AjustarLineaResponse, 500);
+    }
   });
 
   // Timeline de "Estado del producto" por línea (tab Ejecución) — historial vive en

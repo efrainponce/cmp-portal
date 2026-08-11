@@ -19,10 +19,12 @@ export const PROJECT_STATUS_ORDER = ['5', '0', '4', '2', '3', '1'];
 
 export const PROJECT_BOARDS: Record<ProjectBoardKey, ProjectBoardConfig> = {
   doctallas: { key: 'doctallas', title: 'Documentación y Tallas', statuses: ['5', '0', '4'], defaultTab: 'documentacion' },
-  // '0' (En confirmación de tallas) también aparece aquí, duplicado con doctallas:
-  // Compras necesita verlo desde que entra a tallas, no solo cuando ya está listo
-  // para generar la OC (Efraín, 2026-08-10).
-  ordenescompra: { key: 'ordenescompra', title: 'Órdenes de Compra', statuses: ['0', '2'], defaultTab: 'ordenes' },
+  // Todas las etapas antes de (e incluyendo) "Órdenes de compra listas": Compras
+  // perdió el acceso a "Documentación y Tallas" (Efraín, 2026-08-11 — cada equipo
+  // su propio board, mismo patrón que Oportunidades/Costeo), así que este board
+  // es ahora su única ventana al Proyecto y necesita ver el funnel completo, no
+  // solo el tramo final.
+  ordenescompra: { key: 'ordenescompra', title: 'Órdenes de Compra', statuses: ['5', '0', '4', '2'], defaultTab: 'ordenes' },
   // Acceso propio (2026-08-05, Efraín): antes vivía junto con "Proyecto Terminado"
   // dentro de "logistica" — separado para que el seguimiento operativo (batería +
   // estado por producto/talla, tab "ejecucion") no se mezcle con proyectos ya

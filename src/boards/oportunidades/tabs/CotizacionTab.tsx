@@ -135,6 +135,7 @@ export function CotizacionTab({
   const me = useMe();
   const canAjustar = !canAddLines && (me?.role === 'vendedor' || me?.role === 'compras' || me?.role === 'admin');
   const [ajustarLineaTarget, setAjustarLineaTarget] = useState<ItemDTO | null>(null);
+  const [divergenciaNotice, setDivergenciaNotice] = useState<string | null>(null);
 
   const [rows, setRows] = useState<Record<string, RowEditState>>({});
   const [creatingLine, setCreatingLine] = useState(false);
@@ -567,6 +568,15 @@ export function CotizacionTab({
           <ColumnVisibilityPicker columns={gridCols.slice(1)} hidden={hiddenCols} onToggle={onToggleColumn} />
         )}
       </div>
+      {divergenciaNotice && (
+        <div style={{
+          margin: '10px 0', padding: '10px 14px', border: '1px solid var(--accent)',
+          borderRadius: 'var(--radius-lg)', background: 'var(--bg-raised)',
+          font: 'var(--text-label)', color: 'var(--ink-secondary)',
+        }}>
+          {divergenciaNotice}
+        </div>
+      )}
       <CotizacionPdfRow oppId={oppId} item={item} hasSolicitud={hasSolicitud} hasSinFirmar={hasSinFirmar} hasFirmada={hasFirmada} onInventarioUploaded={onSaved} />
       {isMobile ? (
         <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-xl)', overflow: 'hidden' }}>
@@ -709,7 +719,12 @@ export function CotizacionTab({
           catalog={catalog}
           catalogLoading={catalogLoading}
           onClose={() => setAjustarLineaTarget(null)}
-          onSaved={() => onSaved?.()}
+          onSaved={(divergencia) => {
+            setDivergenciaNotice(divergencia
+              ? `Costo distribuidor cambió ${Math.round(divergencia.pctDiff * 100)}% — se avisó a Compras.`
+              : null);
+            onSaved?.();
+          }}
         />
       )}
     </div>

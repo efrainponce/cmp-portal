@@ -1,18 +1,17 @@
-// "Ajustar línea" (Efraín, 2026-07-31, WhatsApp con Ricardo/Pam): modal para
-// cambiar producto (género)/color/embellecimiento/cantidad de una línea sin
-// crear una versión nueva ni volver a costear — funciona incluso con la
-// Oportunidad Ganada (worker/lib/lineaAjustes.ts). El precio de venta NUNCA se
-// toca aquí, por eso ni siquiera se muestra el campo.
+// "Ajustar línea" — versión virtual del Proyecto (Efraín, 2026-08-10). Calcado
+// de AjustarLineaModal.tsx (Oportunidades) pero sobre datos planos
+// (QuoteLineSnapshot) en vez de columnas de Monday (ItemDTO), y guardando vía
+// ajustarLineaVirtual — nunca toca Monday (worker/lib/proyectoCotizacionVirtual.ts).
+// El precio de venta NUNCA se toca aquí, por eso ni siquiera se muestra el campo.
 import { useState } from 'react';
-import type { CostoDivergenciaDTO, ItemDTO } from '../../../../lib/api';
-import { ajustarLinea } from '../../../../lib/apiClient';
-import { Button } from '../../../../components/core/Button';
-import { Modal } from '../../../../components/core/Modal';
-import { ProductPicker, type ProductoChoice } from '../../../../components/forms/ProductPicker';
-import { displayProducto, COLOR_COL, EMB_STATUS_COL, EMB_LABEL_CON, EMB_LABEL_SIN } from './gridMeta';
-import { COL } from '../../../../lib/costeoCalc';
+import type { CostoDivergenciaDTO, ItemDTO, QuoteLineSnapshot } from '../../lib/api';
+import { ajustarLineaVirtual } from '../../lib/apiClient';
+import { Button } from '../../components/core/Button';
+import { Modal } from '../../components/core/Modal';
+import { ProductPicker, type ProductoChoice } from '../../components/forms/ProductPicker';
 
-const EMB_DESC_COL = 'long_text_mm1bj4pt'; // Descripción Embellecimientos (oportunidades_sub)
+const EMB_LABEL_CON = 'Con Embellecimiento';
+const EMB_LABEL_SIN = 'Sin Embellecimiento';
 
 const fieldInputStyle: React.CSSProperties = {
   width: '100%', font: 'var(--text-label)', color: 'var(--ink)',
@@ -52,22 +51,24 @@ function ModeButton({ active, onClick, children }: { active: boolean; onClick: (
   );
 }
 
-export function AjustarLineaModal({
-  linea, catalog, catalogLoading, onClose, onSaved,
+export function AjustarLineaVirtualModal({
+  proyectoId, lineaId, linea, catalog, catalogLoading, onClose, onSaved,
 }: {
-  linea: ItemDTO;
+  proyectoId: string;
+  lineaId: number;
+  linea: QuoteLineSnapshot;
   catalog: ItemDTO[];
   catalogLoading: boolean;
   onClose: () => void;
   onSaved: (divergencia?: CostoDivergenciaDTO) => void;
 }) {
-  const cantidadActual = Number(linea.cols[COL.cantidad]?.text ?? 0) || 0;
+  const cantidadActual = linea.cantidad;
   const [modo, setModo] = useState<'editar' | 'dividir'>('editar');
   const [cantidad, setCantidad] = useState(String(cantidadActual || ''));
   const [producto, setProducto] = useState<ProductoChoice | null>(null);
-  const [color, setColor] = useState(linea.cols[COLOR_COL]?.text ?? '');
-  const [conEmbellecimiento, setConEmbellecimiento] = useState(linea.cols[EMB_STATUS_COL]?.text === EMB_LABEL_CON);
-  const [descripcion, setDescripcion] = useState(linea.cols[EMB_DESC_COL]?.text ?? '');
+  const [color, setColor] = useState(linea.color ?? '');
+  const [conEmbellecimiento, setConEmbellecimiento] = useState(linea.embellecimiento);
+  const [descripcion, setDescripcion] = useState(linea.descripcionEmbellecimiento ?? '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
 
@@ -80,7 +81,7 @@ export function AjustarLineaModal({
     setSaving(true);
     setError(undefined);
     try {
-      const res = await ajustarLinea(linea.id, {
+      const res = await ajustarLineaVirtual(proyectoId, lineaId, {
         modo,
         cantidad: cantidadNum,
         productoId: producto && 'item' in producto ? Number(producto.item.id) : undefined,
@@ -113,8 +114,8 @@ export function AjustarLineaModal({
       )}
     >
       <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)', marginBottom: 16 }}>
-        Cambia producto, color, embellecimiento o cantidad sin crear una versión
-        nueva ni volver a costear — el precio de venta no se toca.
+        Cambia producto, color, embellecimiento o cantidad — vive solo en el
+        Proyecto, nunca escribe a Monday ni afecta la cotización de la Oportunidad.
       </div>
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
@@ -124,7 +125,7 @@ export function AjustarLineaModal({
 
       <Field label="Producto (SKU)">
         <ProductPicker
-          value={producto ? ('item' in producto ? producto.item.name : producto.freeText) : displayProducto(linea)}
+          value={producto ? ('item' in producto ? producto.item.name : producto.freeText) : linea.producto}
           catalog={catalog}
           catalogLoading={catalogLoading}
           allowFreeText={false}
