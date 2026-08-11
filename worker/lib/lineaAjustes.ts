@@ -15,8 +15,9 @@
 // Dos modos:
 //   - 'editar':  PATCH en el sitio, la misma línea.
 //   - 'dividir': crea una línea hermana con una parte de la cantidad actual;
-//     copia producto/color/embellecimiento/precio/Etapa Costeo de la línea
-//     origen salvo lo que vino en el body, y resta esa cantidad de la origen.
+//     copia TODA la línea origen (precio, Etapa Costeo, costeo de Compras,
+//     imagen de embellecimiento, etc. — ver copyRemainingCols) salvo lo que
+//     vino en el body, y resta esa cantidad de la origen.
 //
 // Cada ajuste queda registrado en cotizacion_ajustes como V{mayor}.{n} — no es
 // una versión real (no pasa por costeo), solo trazabilidad de que la vigente
@@ -28,10 +29,11 @@ import type { Identity, MirrorItem } from '../../shared/types';
 import type { AjusteDTO, AjustarLineaRequest, CostoDivergenciaDTO } from '../../shared/dto';
 import { getItem } from './dal';
 import { submitWrite, flushOutbox } from './outbox';
-import { createSubitem } from './monday';
+import { createSubitem, addFileToColumn, fetchAssetPublicUrls } from './monday';
 import { upsertItem } from '../sync';
 import type { RawCol } from './serialize';
 import { checkCostoDivergente } from './costoDivergencia';
+import { COLUMN_META } from '../../shared/column-meta.gen';
 
 export class AjusteLineaError extends Error {
   status: number;
@@ -54,6 +56,69 @@ const SUB_EMB_STATUS = 'color_mm1b34bg';
 const SUB_EMB_DESC = 'long_text_mm1bj4pt';
 const SUB_PRECIO = 'numeric_mkzneg3d';
 const SUB_ETAPA_COSTEO = 'color_mm084gvf';
+const SUB_FILE = 'file_mm5akjy5'; // Imagen embellecimiento
+
+// "dividir" clona la línea entera, no solo producto/color/cantidad/embellecimiento
+// (Pam, 2026-08-11: Costo Distr. C/U y demás campos de Compras salían vacíos en
+// la línea nueva). COPY_COL_TYPES = tipos que sí son datos capturados a mano
+// (numeric/text/status) — todo lo demás en oportunidades_sub es mirror/formula
+// (se recalcula solo) o metadata de Monday (creation_log, item_id, button…),
+// nunca algo que tenga sentido copiar.
+const COPY_COL_TYPES = new Set(['numbers', 'text', 'long_text', 'status']);
+// Ya tienen su propio manejo explícito abajo (con override de `input` o lógica
+// especial) — el copiado genérico no debe pisarlos.
+const DIVIDIR_EXPLICIT_IDS = new Set([
+  'name', SUB_PRODUCTO_REL, SUB_PRODUCTO_TXT, SUB_PRODUCTO_NOMBRE,
+  SUB_COLOR, SUB_CANTIDAD, SUB_EMB_STATUS, SUB_EMB_DESC, SUB_FILE,
+]);
+
+/** Copia genérica de cols "de captura" (numeric/text/status) de la línea
+ * origen a la nueva, saltando las que ya tienen manejo explícito — así
+ * Recosteo?, SKU manual, Comentarios Ventas, Costo Distr., Descuento,
+ * Gastos %, Techo, IVA, Moneda (línea), etc. no se quedan vacíos al dividir,
+ * sin tener que enumerar cada columna del board a mano. Exportada para test
+ * unitario puro (sin red/D1). */
+export function copyRemainingCols(cols: Map<string, RawCol>): Record<string, unknown> {
+  const meta = COLUMN_META.oportunidades_sub;
+  const out: Record<string, unknown> = {};
+  for (const [id, col] of cols) {
+    if (DIVIDIR_EXPLICIT_IDS.has(id)) continue;
+    const type = meta[id]?.type;
+    if (!type || !COPY_COL_TYPES.has(type)) continue;
+    const text = col.text?.trim();
+    if (!text) continue;
+    out[id] = type === 'status' ? { label: text } : type === 'numbers' ? text.replace(/,/g, '') : text;
+  }
+  return out;
+}
+
+/** Descarga+resube la imagen de embellecimiento de la línea origen a la
+ * nueva (mismo patrón que duplicateOportunidad.ts copyZoneImages) — best
+ * effort por archivo, una imagen que falla no aborta la línea. */
+async function copyEmbellecimientoImage(env: Env, sourceCols: Map<string, RawCol>, newSubitemId: number): Promise<void> {
+  const raw = sourceCols.get(SUB_FILE)?.value;
+  if (!raw) return;
+  let files: { name: string; assetId: number }[];
+  try {
+    files = (JSON.parse(raw) as { files?: { name: string; assetId: number }[] }).files ?? [];
+  } catch {
+    return;
+  }
+  if (files.length === 0) return;
+  const urls = await fetchAssetPublicUrls(env, files.map(f => String(f.assetId)));
+  for (const f of files) {
+    const url = urls.get(String(f.assetId));
+    if (!url) continue;
+    try {
+      const res = await fetch(url);
+      if (!res.ok) continue;
+      const blob = await res.blob();
+      await addFileToColumn(env, newSubitemId, SUB_FILE, blob, f.name);
+    } catch {
+      // imagen individual falla -> se omite, el resto de la línea sigue
+    }
+  }
+}
 
 const EMB_LABEL_CON = 'Con Embellecimiento';
 const EMB_LABEL_SIN = 'Sin Embellecimiento';
@@ -205,15 +270,12 @@ export async function ajustarLinea(
     const color = input.color ?? antes.color;
 
     const subCols: Record<string, unknown> = {
+      ...copyRemainingCols(cols),
       [SUB_CANTIDAD]: String(cantidadInput),
       [SUB_COLOR]: color,
       [SUB_EMB_STATUS]: { label: embLabel },
     };
     if (embDesc) subCols[SUB_EMB_DESC] = embDesc;
-    const precioText = cols.get(SUB_PRECIO)?.text;
-    if (precioText) subCols[SUB_PRECIO] = precioText;
-    const etapaCosteo = cols.get(SUB_ETAPA_COSTEO)?.text;
-    if (etapaCosteo) subCols[SUB_ETAPA_COSTEO] = { label: etapaCosteo };
 
     if (input.productoId != null) {
       subCols[SUB_PRODUCTO_REL] = { item_ids: [input.productoId] };
@@ -226,6 +288,7 @@ export async function ajustarLinea(
     const nombreNueva = (input.productoId != null ? input.productoNombre : antes.producto) || antes.producto || 'Producto';
     const nuevaLinea = await createSubitem(env, itemId, nombreNueva, subCols);
     await upsertItem(env, 'oportunidades_sub', nuevaLinea);
+    await copyEmbellecimientoImage(env, cols, Number(nuevaLinea.id));
 
     // Resta de la línea origen la cantidad que se movió a la nueva — trusted:
     // esto es parte de la misma operación compuesta, no un PATCH suelto del

@@ -2,6 +2,11 @@
 
 ## 2026-08-11
 
+- Fix: "Ajustar línea" (dividir) perdía Costo Distr. C/U y demás datos de Compras en la línea nueva
+  - Pam reportó por WhatsApp que al dividir una línea ya costeada, la línea nueva salía con "Costo Distr. C/U —" en el Proyecto (Órdenes de compra) — `ajustarLinea` (`worker/lib/lineaAjustes.ts`) solo copiaba precio y Etapa Costeo a la línea hermana, nunca `numeric_mm0bph99`/`numeric_mkzn2q51`.
+  - En vez de seguir enumerando columnas a mano, `copyRemainingCols` copia genéricamente TODA columna "de captura" (`numbers`/`text`/`long_text`/`status`) de la línea origen salvo las que ya tienen manejo explícito (producto/color/cantidad/embellecimiento, con override de `input`) — cubre Costo Distr., Descuento, Recosteo?, SKU manual, Comentarios Ventas, Gastos %, Techo, IVA, Moneda (línea), etc. sin depender de que alguien recuerde agregar la siguiente columna nueva. Mirror/formula (Moneda, Unidad, los `formula_*`) se saltan a propósito — se recalculan solos. `copyEmbellecimientoImage` agregado también (mismo patrón que `duplicateOportunidad.ts`) para que la imagen de embellecimiento no se quede en la línea origen.
+  - `tsc --noEmit` y `npm test` (140 tests) limpios.
+
 - Cotización/Proyecto: label "Dividida"/"Editada" al final de la línea tras usar "Ajustar línea"
   - Efraín pidió poder distinguir a simple vista, en la grid, qué líneas vienen de un split o de una edición vía "Ajustar línea" — antes la línea nueva/editada se veía igual que cualquier otra.
   - `AjusteDTO` (`shared/dto.ts`) ahora expone `lineaId`/`lineaOrigenId` (ya vivían en las tablas `cotizacion_ajustes`/`proyecto_cotizacion_ajustes`, solo no se mandaban al front). En Oportunidades, `CotizacionTab` arma un `Map` por línea a partir de los ajustes de la vigente (`versions.find(v => v.status === 'vigente').ajustes`) y lo pasa a `QuoteRow`/`MobileQuoteRow`; en el Proyecto, `QuoteLineSnapshot.ajusteLabel` se calcula server-side al reproducir el log (`applyAjustesVirtuales`, `worker/lib/proyectoCotizacionVirtual.ts`) — la línea origen y la hermana nueva quedan 'Dividida', una edición en el sitio queda 'Editada'; 'Dividida' siempre gana si la línea participó en ambas.
