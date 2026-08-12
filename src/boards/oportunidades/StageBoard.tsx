@@ -25,12 +25,14 @@ interface Props {
  * lo repite aquí (Efraín, 2026-08-10: Compras perdió el board Oportunidades
  * del sidebar pero sigue pudiendo crear oportunidades y elegir cualquier
  * vendedor, mismo modal sin restricción). El resto de los boards de etapa no
- * lo necesitan: solo llegan ahí oportunidades que ya avanzaron. */
+ * lo necesitan: solo llegan ahí oportunidades que ya avanzaron. 'zona_efrain'
+ * también lo necesita — es como llega Elisa crea una oportunidad para el CEO
+ * sin salir de esa pestaña (Efraín, 2026-08-12). */
 export function StageBoard({ boardKey, openId, onOpenChange, onDuplicated }: Props) {
   const config = STAGE_BOARDS[boardKey];
   const [q, setQ] = useState('');
   const [creating, setCreating] = useState(false);
-  const canCreate = boardKey === 'costeo';
+  const canCreate = boardKey === 'costeo' || boardKey === 'zona_efrain';
 
   return (
     <div style={{ position: 'relative', height: '100%', width: '100%' }}>

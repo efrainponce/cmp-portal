@@ -47,6 +47,12 @@ export interface MeDTO {
   // BoardKeys del sidebar visibles para el rol del viewer (shared/boardAccess.ts) —
   // solo declutter de nav, no es la protección real de datos.
   boardAccess: string[];
+  // ¿Este viewer ve el tab "Zona Efrain" en el sidebar? Por-USUARIO, no por rol
+  // (a diferencia de boardAccess) — los tres son role='admin' pero solo dos
+  // están en la whitelist (worker/lib/zonas.ts isZonaPrivadaAdminPermitido).
+  // Igual que boardAccess, solo declutter: la protección real de los datos ya
+  // la hace dal.ts hidden_owner_ids sin importar este flag.
+  zonaEfrainAccess: boolean;
 }
 
 export interface WriteRequest { cols: Record<string, string> }  // colId -> new raw value

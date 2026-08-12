@@ -27,6 +27,12 @@ export const IconOportunidades = (p: IconProps) => (
   </svg>
 );
 
+export const IconLock = (p: IconProps) => (
+  <svg {...base} {...p}>
+    <rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" />
+  </svg>
+);
+
 export const IconGlobe = (p: IconProps) => (
   <svg {...base} {...p}>
     <circle cx="12" cy="12" r="10" /><path d="M2 12h20" />

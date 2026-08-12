@@ -2,6 +2,15 @@
 
 ## 2026-08-12
 
+- Feat: tab "Zona Efrain" en el sidebar (branch `feat/zona-efrain-board`)
+  - Efraín pidió un board en el sidebar "igual a Costeo" pero llamado "Zona Efrain", con TODAS las etapas del pipeline (no una sola, a diferencia de Costeo/Validación) y visible solo para la misma whitelist de 3 personas de la zona privada (ver entrada de abajo) — responde también a "¿cómo crea Elisa una oportunidad para mi papá?": desde este tab, con el botón "Nueva oportunidad" (mismo modal de siempre, Vendedor = "Efrain Ponce" ya aparece en el picker por ser admin).
+  - Evalué construirla 100% portal-only (sin tocar Monday) — investigué la capa nativa dormida (branch `native/salir-de-monday`, nunca mergeada a main, ~30-40% de un flujo mínimo, sin motor de cálculo de totales ni UI) y confirmé que "Mandar a costeo"/cotización/tallas/OC son automatizaciones EXTERNAS de cmp-tallas (Vercel) que dependen del ID real de Monday — no hay forma de que "funcionen igual" sin que la oportunidad exista en Monday. Efraín decidió: sigue siendo un item real de Monday (conserva todo el flujo), la privacidad ya la da el portal (ver zona privada abajo); restringirla también dentro de Monday.com mismo queda pendiente, fuera de este repo.
+  - `src/lib/dealStages.ts`: nuevo `StageBoardKey` `'zona_efrain'`, sin `stages` (pipeline completo) y `vendedorNames: ['Efrain Ponce', 'Elisa Vallado']` (config nueva `vendedorNames` en `StageBoardConfig`). `StageBoardList.tsx` filtra con `vendedorNamesMatch` contra Vendedor Y Vendedor secundario (mismas dos columnas que cuentan como "dueño" en `shared/boards.ts authzCols`/`dal.ts`) — filtro de conveniencia en el cliente, la protección real ya la hace el server sin importar esto.
+  - Visibilidad del tab es POR-USUARIO, no por rol (a diferencia de `shared/boardAccess.ts`, donde admin siempre ve todo): `MeDTO.zonaEfrainAccess` nuevo (`worker/routes/boards.ts /api/me`, vía `isZonaPrivadaAdminPermitido`), `Sidebar.tsx` solo agrega el nav item (ícono `IconLock` nuevo) cuando `me.zonaEfrainAccess` es cierto.
+  - `StageBoard.tsx`: `canCreate` ahora también `boardKey === 'zona_efrain'` (mismo patrón que Costeo) para el botón "Nueva oportunidad" ahí. `App.tsx`/`routing.ts` wireados para el nuevo `boardKey`.
+  - Verificado con Playwright contra dev local (`X-Dev-Email`): Elisa ve el tab con candado, la lista filtrada y el picker de Vendedor con "Efrain Ponce"/"Efrain Ponce Salinas" disponibles; `/api/me` de Pam confirma `zonaEfrainAccess:false`.
+  - `tsc --noEmit` y `npm test` (145 tests) limpios. **No mergeado a main** — feature grande, a petición de Efraín queda en su branch.
+
 - Fix: zona privada "Efrain" — agregar a Efrain Ponce Salinas a la whitelist
   - Efraín (el usuario, hijo del CEO, mantiene el portal) pidió poder ver la zona "Efrain" también, "por si hay errores" — la whitelist original solo tenía a su papá (CEO) y a Elisa.
   - `ZONA_PRIVADA_ADMINS_PERMITIDOS` (`worker/lib/zonas.ts`) suma su monday_user_id (98389537, `efrain.ponces@gmail.com`). Solo whitelist de lectura — no se agregó como miembro/dueño de la zona.

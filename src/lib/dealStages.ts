@@ -2,7 +2,7 @@
 // assistant tools use the same source of truth; re-exported here for the UI.
 export { DEAL_STAGE_LABELS, DEAL_STAGE_ORDER, stageAtOrAfter } from '../../shared/dealStages';
 
-export type StageBoardKey = 'oportunidades' | 'oportunidades_web' | 'costeo' | 'validacion' | 'doctallas' | 'ordenescompra' | 'logistica';
+export type StageBoardKey = 'oportunidades' | 'oportunidades_web' | 'costeo' | 'validacion' | 'doctallas' | 'ordenescompra' | 'logistica' | 'zona_efrain';
 
 export interface StageBoardConfig {
   key: StageBoardKey;
@@ -16,6 +16,13 @@ export interface StageBoardConfig {
   /** Solo items cuyo nombre empieza con este prefijo (case-insensitive) — mismo
    * board/data que 'oportunidades', filtrado por origen (Efraín, 2026-07-18). */
   namePrefix?: string;
+  /** Solo items cuyo Vendedor (o Vendedor secundario) sea uno de estos nombres
+   * (case-insensitive) — usado por 'zona_efrain' para acotar el pipeline
+   * completo a los miembros de la zona privada (worker/lib/zonas.ts). Filtro
+   * de conveniencia en el cliente: la protección real ya la hace el server
+   * (dal.ts hidden_owner_ids) — a quien no le toca ver estos items, el fetch
+   * de 'oportunidades' mismo ya se los quita antes de llegar aquí. */
+  vendedorNames?: string[];
   defaultTab: string;
 }
 
@@ -38,4 +45,10 @@ export const STAGE_BOARDS: Record<StageBoardKey, StageBoardConfig> = {
   doctallas: { key: 'doctallas', title: 'Documentación y Tallas', subtitleSuffix: '', stages: ['1'], defaultTab: 'documentacion' },
   ordenescompra: { key: 'ordenescompra', title: 'Órdenes de Compra', subtitleSuffix: '', stages: ['8'], defaultTab: 'ordenes' },
   logistica: { key: 'logistica', title: 'Logística', subtitleSuffix: '', stages: ['1'], defaultTab: 'logistica' },
+  // Zona privada "Efrain" (Efraín, 2026-08-12): pipeline COMPLETO (sin filtro de
+  // etapa, a diferencia de Costeo/Validación) acotado a los dos miembros de esa
+  // zona — mismos nombres que sus filas de identity en D1 (worker/lib/zonas.ts
+  // ZONA_PRIVADA_ADMINS_PERMITIDOS/zona_miembros). Sidebar solo la muestra a la
+  // whitelist (me.zonaEfrainAccess) — ver src/app/Sidebar.tsx.
+  zona_efrain: { key: 'zona_efrain', title: 'Zona Efrain', subtitleSuffix: '', vendedorNames: ['Efrain Ponce', 'Elisa Vallado'], defaultTab: 'cotizacion' },
 };

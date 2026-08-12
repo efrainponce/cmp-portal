@@ -5,13 +5,14 @@ import { useMe } from '../lib/useMe';
 import logo from '../assets/logo.webp';
 import {
   IconHome, IconOportunidades, IconGlobe, IconCosteo, IconValidacion, IconDocTallas, IconOrdenesCompra, IconEjecucion, IconLogistica,
-  IconProductos, IconCuentas, IconClientes, IconInventario, IconChevronLeft, IconChevronRight, IconSettings,
+  IconProductos, IconCuentas, IconClientes, IconInventario, IconChevronLeft, IconChevronRight, IconSettings, IconLock,
 } from '../components/icons';
 
 export type BoardKey =
   | 'home'
   | 'oportunidades' | 'oportunidades_web' | 'costeo' | 'validacion' | 'doctallas' | 'ordenescompra' | 'ejecucion' | 'logistica'
-  | 'productos' | 'instituciones' | 'contactos' | 'proveedores' | 'inventario' | 'settings';
+  | 'productos' | 'instituciones' | 'contactos' | 'proveedores' | 'inventario' | 'settings'
+  | 'zona_efrain';
 
 type NavIcon = (p: { style?: React.CSSProperties }) => React.ReactElement;
 interface NavItemConfig { key: BoardKey; label: string; icon: NavIcon }
@@ -22,6 +23,12 @@ const VENTAS_ITEMS: NavItemConfig[] = [
   { key: 'costeo', label: 'Costeo', icon: IconCosteo },
   { key: 'validacion', label: 'Validación Costeo', icon: IconValidacion },
 ];
+
+// Zona privada "Efrain" (worker/lib/zonas.ts, Efraín 2026-08-12): NO vive en
+// shared/boardAccess.ts porque esa matriz es por ROL (admin siempre ve todo
+// ahí) — este tab es por-USUARIO (me.zonaEfrainAccess, la misma whitelist de 3
+// personas del backend), así que se agrega aparte, condicionalmente, abajo.
+const ZONA_EFRAIN_ITEM: NavItemConfig = { key: 'zona_efrain', label: 'Zona Efrain', icon: IconLock };
 
 // Un solo grupo: post-venta es el flujo del Proyecto — subir documentación y
 // tallas, generar las órdenes de compra y hacer el fulfillment (Efraín, 2026-07-17).
@@ -46,7 +53,7 @@ const INVENTARIO_ITEMS: NavItemConfig[] = [
 /** Label por board para headers fuera del sidebar (p.ej. la barra superior móvil). */
 export const BOARD_LABELS: Record<BoardKey, string> = {
   ...Object.fromEntries(
-    [...VENTAS_ITEMS, ...PROYECTOS_ITEMS, ...CATALOG_ITEMS, ...INVENTARIO_ITEMS]
+    [...VENTAS_ITEMS, ...PROYECTOS_ITEMS, ...CATALOG_ITEMS, ...INVENTARIO_ITEMS, ZONA_EFRAIN_ITEM]
       .map((i) => [i.key, i.label]),
   ),
   home: 'Inicio',
@@ -68,7 +75,7 @@ interface SidebarProps {
 export function Sidebar({ activeBoard, onSelectBoard, collapsed, onToggleCollapsed, hideCollapse, onOpenNotification }: SidebarProps) {
   const me = useMe();
   const visible = (items: NavItemConfig[]) => items.filter((item) => me?.boardAccess.includes(item.key));
-  const ventasItems = visible(VENTAS_ITEMS);
+  const ventasItems = me?.zonaEfrainAccess ? [...visible(VENTAS_ITEMS), ZONA_EFRAIN_ITEM] : visible(VENTAS_ITEMS);
   const proyectosItems = visible(PROYECTOS_ITEMS);
   const inventarioItems = visible(INVENTARIO_ITEMS);
   const catalogItems = visible(CATALOG_ITEMS);

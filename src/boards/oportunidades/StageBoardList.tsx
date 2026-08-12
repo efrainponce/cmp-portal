@@ -52,6 +52,17 @@ function isSecondaryFor(item: ItemDTO, viewerNombre: string | undefined): boolea
   return secundarios.includes(viewerNombre);
 }
 
+/** ¿El Vendedor o Vendedor secundario del item es uno de estos nombres? Usado
+ * por 'zona_efrain' (config.vendedorNames) — mismo criterio de "dueño" que
+ * shared/boards.ts authzCols/dal.ts vendedor_ids (ambas columnas cuentan). */
+function vendedorNamesMatch(item: ItemDTO, names: string[]): boolean {
+  const wanted = names.map((n) => n.toUpperCase());
+  const owner = item.cols[VENDEDOR_COL]?.text?.trim().toUpperCase();
+  if (owner && wanted.includes(owner)) return true;
+  const secundarios = (item.cols[VENDEDOR_SECUNDARIO_COL]?.text || '').split(',').map((s) => s.trim().toUpperCase());
+  return secundarios.some((s) => wanted.includes(s));
+}
+
 /** Distinct, sorted option list for a filter select, built from the text of
  * one column across the loaded items (skips blanks). */
 function optionsFromCol(items: ItemDTO[], colId: string): FilterOption[] {
@@ -111,7 +122,8 @@ export function StageBoardList({ config, groupColId = 'deal_stage', q, onSearch,
   const stageItems = allItems
     .filter((it) => !config.stages || config.stages.includes(statusIndex(it.cols.deal_stage)))
     .filter((it) => !config.excludeStages || !config.excludeStages.includes(statusIndex(it.cols.deal_stage)))
-    .filter((it) => !config.namePrefix || it.name.trim().toUpperCase().startsWith(config.namePrefix.toUpperCase()));
+    .filter((it) => !config.namePrefix || it.name.trim().toUpperCase().startsWith(config.namePrefix.toUpperCase()))
+    .filter((it) => !config.vendedorNames || vendedorNamesMatch(it, config.vendedorNames));
   const sync = lastMondayUpdateFromItems(stageItems);
 
   // Filter + collapsed-etapa state lives here, not in the wrapper — these

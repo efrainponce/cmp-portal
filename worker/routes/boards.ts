@@ -20,6 +20,7 @@ import { submitCreate, CreateError } from '../lib/createRecord';
 import { fetchUpdates, createUpdate, addFileToUpdate, fetchAssetPublicUrls, deleteItem, type MentionInput } from '../lib/monday';
 import { cachedFetchUsers } from '../lib/rosterCache';
 import { getBoardAccess } from '../lib/boardAccess';
+import { isZonaPrivadaAdminPermitido } from '../lib/zonas';
 import { refetchItem, refetchItemTree } from '../sync';
 import { jsonStatus } from '../lib/http';
 import { emitNotification } from '../lib/notify';
@@ -83,6 +84,7 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
       phone: viewer.phone ?? null,
       impersonatedBy: admin ? { email: admin.email, nombre: admin.nombre ?? admin.email } : null,
       boardAccess: await getBoardAccess(c.env, viewer.role),
+      zonaEfrainAccess: isZonaPrivadaAdminPermitido(viewer.monday_user_id),
     };
     return c.json(dto);
   });

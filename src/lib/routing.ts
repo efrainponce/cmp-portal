@@ -9,7 +9,7 @@ import type { BoardKey } from '../app/Sidebar';
 const VALID_BOARDS = new Set<BoardKey>([
   'home',
   'oportunidades', 'oportunidades_web', 'costeo', 'validacion', 'doctallas', 'ordenescompra', 'ejecucion', 'logistica',
-  'productos', 'instituciones', 'contactos', 'proveedores', 'inventario', 'settings',
+  'productos', 'instituciones', 'contactos', 'proveedores', 'inventario', 'settings', 'zona_efrain',
 ]);
 
 interface Route {
