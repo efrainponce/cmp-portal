@@ -122,7 +122,7 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
 
   app.get('/api/vendedores', async c => {
     const rows = await listVendedores(c.env, c.req.query('role') ?? 'vendedor');
-    const dto: VendedorDTO[] = rows.map(r => ({ id: r.monday_user_id, nombre: r.nombre }));
+    const dto: VendedorDTO[] = rows.map(r => ({ id: r.monday_user_id, nombre: r.nombre, email: r.email }));
     return c.json(dto);
   });
 

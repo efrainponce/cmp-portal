@@ -8,7 +8,10 @@ import { FormField } from '../../components/forms/FormField';
 import { SearchInput } from '../../components/forms/SearchInput';
 import { PickerRow } from '../../components/forms/PickerRow';
 import { IconBack } from '../../components/icons';
-import { useBoards, usePoll, colForBoard, createItem, getVendedores, type BoardSlug, type VendedorDTO } from '../../lib/api';
+import {
+  useBoards, usePoll, colForBoard, createItem, getVendedores, vendedorKey, vendedorIdFromKey,
+  type BoardSlug, type VendedorDTO,
+} from '../../lib/api';
 import { useMe } from '../../lib/useMe';
 import { CREATE_FIELDS } from '../../../shared/createFields';
 
@@ -69,10 +72,13 @@ export function CreateRecordModal({ slug, title, onClose, onCreated }: Props) {
   // Contactos se leen scopeados por Vendedor (shared/boards.ts): un contacto sin
   // vendedor no lo vería ni quien lo creó. El server estampa al creador cuando el
   // campo va vacío — aquí se prellena para que el form muestre lo que va a pasar.
+  // Empareja por email (no solo por id) para no autoseleccionar a la persona
+  // equivocada cuando dos comparten monday_user_id ("Actuar en Monday como" —
+  // ver vendedorKey en lib/apiClient.ts).
   useEffect(() => {
-    if (slug === 'contactos' && me?.mondayUserId && !cols[CONTACTO_VENDEDOR]
-        && vendedores.some((v) => v.id === me.mondayUserId)) {
-      setCols((c) => ({ ...c, [CONTACTO_VENDEDOR]: String(me.mondayUserId) }));
+    const propio = vendedores.find((v) => v.id === me?.mondayUserId && v.email === me?.email);
+    if (slug === 'contactos' && propio && !cols[CONTACTO_VENDEDOR]) {
+      setCols((c) => ({ ...c, [CONTACTO_VENDEDOR]: vendedorKey(propio) }));
     }
   }, [me, vendedores]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -96,6 +102,13 @@ export function CreateRecordModal({ slug, title, onClose, onCreated }: Props) {
     setError(null);
     try {
       const nonEmpty = Object.fromEntries(Object.entries(cols).filter(([, v]) => v.trim() !== ''));
+      // Los campos tipo 'people' viajan como `id::email` en el estado del form
+      // (FormField + vendedorKey) — Monday solo entiende el id numérico.
+      for (const f of allFields) {
+        if (nonEmpty[f.id] && allCols.find((c) => c.id === f.id)?.type === 'people') {
+          nonEmpty[f.id] = vendedorIdFromKey(nonEmpty[f.id]);
+        }
+      }
       const res = await createItem(slug, name.trim(), nonEmpty);
       onCreated(res.id ? { id: res.id, name: name.trim() } : undefined);
       onClose();

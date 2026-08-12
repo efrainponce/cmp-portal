@@ -2,6 +2,38 @@
 
 ## 2026-08-12
 
+- Fix: "elegir vendedor" no mostraba a Rodrigo (picker de Contacto y contacto huérfano)
+  - Ricardo Rivera reportó por WhatsApp (captura) que un vendedor nuevo, Rodrigo (sin
+    cuenta propia en Monday), no aparecía en "elegir vendedor" al crear una oportunidad;
+    en la misma sesión dieron de alta un contacto ("GEMA") que tampoco apareció en el
+    picker de Contacto (cliente).
+  - El caso del contacto no era bug: quedó sin columna Vendedor asignada (creado directo
+    en Monday, no desde el portal, donde ese campo es obligatorio) — dato huérfano, el
+    portal esconde cualquier contacto sin Vendedor a todo vendedor. El segundo intento
+    ("Gema Rivera") sí quedó tageado a Ricardo y ya funciona.
+  - Causa raíz del vendedor: `identity` de Rodrigo comparte `monday_user_id` con Efraín
+    (98389537) vía "Actuar en Monday como" (`createNativeIdentity` — Rodrigo no tiene
+    asiento propio en Monday; intencional, sus oportunidades se escriben a nombre de
+    Efraín ahí). `listVendedores` (`worker/lib/dal.ts`) agrupaba solo por
+    `monday_user_id` (pensado para colapsar el caso "mismo login, dos cuentas de
+    portal"), así que las dos identidades se fusionaban en una sola fila y "Rodrigo"
+    nunca sobrevivía al `GROUP BY`.
+  - Fix: `listVendedores` agrupa por `(monday_user_id, nombre)` — colapsa duplicados
+    reales (mismo nombre, dos logins) pero mantiene separadas a personas distintas que
+    comparten id por proxy. `VendedorDTO` suma `email` (único por fila de identity);
+    nuevo `vendedorKey`/`vendedorIdFromKey` (`src/lib/apiClient.ts`) codifica `id::email`
+    como `value` del picker (único por persona) y lo decodifica a solo el id numérico
+    justo antes del write a Monday. Aplicado en los 3 pickers de Vendedor:
+    `CreateOportunidadModal.tsx` (Vendedor + Vendedor secundario), `FormField.tsx` /
+    `CreateRecordModal.tsx` (columna Vendedor de Contactos/Instituciones),
+    `EditPersonaModal.tsx` (reasignar Vendedor/Comprador de una oportunidad existente).
+  - Verificado con Playwright contra dev local (sembrando una identity de prueba que
+    comparte id con otra existente): aparece como opción distinta y seleccionarla no
+    recae visualmente en el otro nombre (el bug que tenía el `value` compartido).
+  - Pendiente, a decisión de Efraín: qué hacer con el contacto huérfano "GEMA" original
+    (duplicado de "Gema Rivera", sin vendedor) — no se tocó en este cambio.
+  - `tsc --noEmit`, `npm test` (145 tests) y `npm run lint` limpios.
+
 - Fix: Embellecimientos ya no se bloquea en Ganada/Perdida
   - Efraín y Elisa (ambos admin, en la whitelist de la zona privada) reportaron "no podemos modificar nada" en Embellecimientos, en ambos boards (Oportunidades y Costeo) — descartado por permisos de rol (server ya confirma `w:true` para admin en `long_text_mm1bj4pt`/`file_mm5akjy5`/`color_mm1b34bg`, verificado en vivo) y por la zona privada (ambos están en la whitelist). La causa real: `editable` en `EmbellecimientosTab` heredaba el mismo candado que `CotizacionTab` (`stage !== '1' && stage !== '2'`), así que en Ganada/Perdida se apagaba para TODOS los roles, no solo admin.
   - A diferencia de Cotización (que sí debe congelarse al cerrar), Efraín pidió que Embellecimientos siga editable después de Ganada/Perdida — la captura de posiciones/imágenes de zona es trabajo de producción que sigue después del cierre comercial. `OpportunityDrawer.tsx`: `editable={!ajena}` (ya no depende de `stage`) al pasarlo a `EmbellecimientosTab`; sigue de solo lectura en Validación Costeo y oportunidad ajena (`embellReadOnly` sin cambios).

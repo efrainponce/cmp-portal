@@ -168,6 +168,19 @@ export async function getVendedores(role: 'vendedor' | 'compras' = 'vendedor'): 
   return res.json();
 }
 
+// "Actuar en Monday como" (worker/lib/dal.ts createNativeIdentity) puede dejar a
+// dos personas DISTINTAS compartiendo un mismo monday_user_id (alguien sin
+// asiento propio escribe bajo la cuenta de otra) — los pickers de Vendedor
+// necesitan un `value` único por persona para no perder cuál de las dos quedó
+// elegida, aunque ambas terminen escribiendo el mismo id a Monday (Efraín,
+// 2026-08-12, caso Rodrigo). `email` es único por fila de identity.
+export function vendedorKey(v: VendedorDTO): string {
+  return `${v.id}::${v.email}`;
+}
+export function vendedorIdFromKey(key: string): string {
+  return key.split('::')[0] ?? '';
+}
+
 /** Pre-chequeo de solo lectura: deshabilita el botón "Mandar a costeo" y lista
  * lo que falta antes de que alguien pueda dar click. */
 export async function checkCosteo(id: string): Promise<EnviarCosteoResponse> {

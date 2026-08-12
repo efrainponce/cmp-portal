@@ -10,7 +10,7 @@ import { SearchableSelect, type SearchableOption } from '../../components/forms/
 import { ChipSelect } from '../../components/forms/ChipSelect';
 import { useMe } from '../../lib/useMe';
 import {
-  apiFetch, useBoards, colForBoard, createItem, getVendedores,
+  apiFetch, useBoards, colForBoard, createItem, getVendedores, vendedorKey, vendedorIdFromKey,
   type ColMeta, type ItemDTO, type ListResponse, type VendedorDTO,
 } from '../../lib/api';
 
@@ -86,10 +86,13 @@ export default function CreateOportunidadModal({
   // El vendedor que crea es el dueño por default (igual que el bot de WhatsApp).
   // Se checa contra `vendedores` (no contra el role del viewer) porque admins
   // también pueden ser dueños de una oportunidad — worker/lib/dal.ts los
-  // incluye en la lista (pedido de Efraín, 2026-07-20).
+  // incluye en la lista (pedido de Efraín, 2026-07-20). Empareja por email (no
+  // solo por id) para no autoseleccionar a la persona equivocada cuando dos
+  // comparten monday_user_id (ver vendedorKey arriba).
   useEffect(() => {
-    if (me?.mondayUserId && !cols[COL_VENDEDOR] && vendedores.some((v) => v.id === me.mondayUserId)) {
-      setCols((c) => ({ ...c, [COL_VENDEDOR]: String(me.mondayUserId) }));
+    const propio = vendedores.find((v) => v.id === me?.mondayUserId && v.email === me?.email);
+    if (propio && !cols[COL_VENDEDOR]) {
+      setCols((c) => ({ ...c, [COL_VENDEDOR]: vendedorKey(propio) }));
     }
   }, [me, vendedores]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -97,14 +100,14 @@ export default function CreateOportunidadModal({
   // incluirlo. Filtra la lista al vendedor elegido en el form (pedido de Efraín,
   // 2026-07-17: "un vendedor solo puede poner un contacto SUYO") y limpia el
   // contacto ya elegido si deja de pertenecer al vendedor recién seleccionado.
-  const selectedVendedorId = cols[COL_VENDEDOR];
+  const selectedVendedorKey = cols[COL_VENDEDOR];
   const contactOptions: SearchableOption[] = useMemo(() => {
-    if (!selectedVendedorId) return [];
-    const vid = Number(selectedVendedorId);
+    if (!selectedVendedorKey) return [];
+    const vid = Number(vendedorIdFromKey(selectedVendedorKey));
     return contactos
       .filter((it) => personIds(it, COL_CONTACTO_VENDEDOR).includes(vid))
       .map((it) => ({ value: it.id, label: it.name }));
-  }, [contactos, selectedVendedorId]);
+  }, [contactos, selectedVendedorKey]);
 
   useEffect(() => {
     if (cols[COL_CONTACTO] && !contactOptions.some((o) => o.value === cols[COL_CONTACTO])) {
@@ -121,6 +124,10 @@ export default function CreateOportunidadModal({
     setError(null);
     try {
       const nonEmpty = Object.fromEntries(Object.entries(cols).filter(([, v]) => v.trim() !== ''));
+      // Vendedor/Vendedor secundario viajan como `id::email` en el estado del form
+      // (ver vendedorKey) — Monday solo entiende el id numérico.
+      if (nonEmpty[COL_VENDEDOR]) nonEmpty[COL_VENDEDOR] = vendedorIdFromKey(nonEmpty[COL_VENDEDOR]);
+      if (nonEmpty[COL_VENDEDOR_SECUNDARIO]) nonEmpty[COL_VENDEDOR_SECUNDARIO] = vendedorIdFromKey(nonEmpty[COL_VENDEDOR_SECUNDARIO]);
       const result = await createItem('oportunidades', name.trim(), nonEmpty);
       if (!result.ok || !result.id) throw new Error('No se asignó ID a la oportunidad.');
 
@@ -150,14 +157,14 @@ export default function CreateOportunidadModal({
         <Field label="Vendedor" required>
           <SearchableSelect
             value={cols[COL_VENDEDOR] ?? ''} onChange={set(COL_VENDEDOR)}
-            options={vendedores.map((v) => ({ value: String(v.id), label: v.nombre }))}
+            options={vendedores.map((v) => ({ value: vendedorKey(v), label: v.nombre }))}
             placeholder="Buscar vendedor…"
           />
         </Field>
         <Field label="Vendedor secundario">
           <SearchableSelect
             value={cols[COL_VENDEDOR_SECUNDARIO] ?? ''} onChange={set(COL_VENDEDOR_SECUNDARIO)}
-            options={vendedores.map((v) => ({ value: String(v.id), label: v.nombre }))}
+            options={vendedores.map((v) => ({ value: vendedorKey(v), label: v.nombre }))}
             placeholder="Buscar vendedor secundario…"
           />
         </Field>
@@ -172,7 +179,7 @@ export default function CreateOportunidadModal({
           <SearchableSelect
             value={cols[COL_CONTACTO] ?? ''} onChange={set(COL_CONTACTO)} options={contactOptions}
             placeholder="Buscar contacto…"
-            disabled={!selectedVendedorId}
+            disabled={!selectedVendedorKey}
             disabledMessage="Elige primero un vendedor…"
             emptyMessage="Este vendedor no tiene contactos asignados."
           />

@@ -60,7 +60,12 @@ export interface CreateResponse { ok: boolean; id?: string; error?: string }
 // arrastra versiones de cotización, PDFs ni otros documentos.
 export interface DuplicarOportunidadResponse { ok: boolean; id?: string; error?: string }
 
-export interface VendedorDTO { id: number; nombre: string }
+// `email` distingue dos entradas que comparten `id` (mismo monday_user_id) pero
+// son personas distintas — "Actuar en Monday como" (worker/lib/dal.ts
+// createNativeIdentity) deja a alguien sin asiento propio escribiendo bajo la
+// cuenta de otra persona; los pickers de Vendedor lo usan como key/value único
+// para no perder cuál de las dos se seleccionó (Efraín, 2026-08-12).
+export interface VendedorDTO { id: number; nombre: string; email: string }
 
 // GET /api/oportunidades/:id/costeo-check (solo lectura, deshabilita el botón) y
 // POST /api/oportunidades/:id/enviar-costeo (dispara validar_costeo de cmp-tallas) —
