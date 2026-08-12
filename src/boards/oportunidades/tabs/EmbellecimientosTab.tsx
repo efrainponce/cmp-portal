@@ -177,7 +177,9 @@ export function EmbellecimientosTab({
   subCols: ColMeta[]; products: ItemDTO[];
   versions?: QuoteVersionDTO[]; onNuevaVersion?: () => void;
   onSaved?: () => void;
-  /** false en Ganada/Perdida — sin nuevas posiciones ni imágenes, igual que Cotización. */
+  /** A diferencia de Cotización, aquí NO se apaga en Ganada/Perdida — la
+   * captura de posiciones/imágenes de embellecimiento sigue abierta después de
+   * cerrada la oportunidad (Efraín, 2026-08-12). Solo `!ajena` la apaga. */
   editable?: boolean;
   /** true en Validación Costeo o en una oportunidad ajena — en el board Costeo
    * SÍ es editable: Compras también captura zonas/imágenes ahí (Efraín, 2026-08-12). */

@@ -2,6 +2,11 @@
 
 ## 2026-08-12
 
+- Fix: Embellecimientos ya no se bloquea en Ganada/Perdida
+  - Efraín y Elisa (ambos admin, en la whitelist de la zona privada) reportaron "no podemos modificar nada" en Embellecimientos, en ambos boards (Oportunidades y Costeo) — descartado por permisos de rol (server ya confirma `w:true` para admin en `long_text_mm1bj4pt`/`file_mm5akjy5`/`color_mm1b34bg`, verificado en vivo) y por la zona privada (ambos están en la whitelist). La causa real: `editable` en `EmbellecimientosTab` heredaba el mismo candado que `CotizacionTab` (`stage !== '1' && stage !== '2'`), así que en Ganada/Perdida se apagaba para TODOS los roles, no solo admin.
+  - A diferencia de Cotización (que sí debe congelarse al cerrar), Efraín pidió que Embellecimientos siga editable después de Ganada/Perdida — la captura de posiciones/imágenes de zona es trabajo de producción que sigue después del cierre comercial. `OpportunityDrawer.tsx`: `editable={!ajena}` (ya no depende de `stage`) al pasarlo a `EmbellecimientosTab`; sigue de solo lectura en Validación Costeo y oportunidad ajena (`embellReadOnly` sin cambios).
+  - `tsc --noEmit` limpio.
+
 - Fix: zona privada "Efrain" — agregar a Efrain Ponce Salinas a la whitelist
   - Efraín (el usuario, hijo del CEO, mantiene el portal) pidió poder ver la zona "Efrain" también, "por si hay errores" — la whitelist original solo tenía a su papá (CEO) y a Elisa.
   - `ZONA_PRIVADA_ADMINS_PERMITIDOS` (`worker/lib/zonas.ts`) suma su monday_user_id (98389537, `efrain.ponces@gmail.com`). Solo whitelist de lectura — no se agregó como miembro/dueño de la zona.
