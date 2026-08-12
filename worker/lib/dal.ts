@@ -3,6 +3,7 @@ import type { Env } from '../env';
 import type { Identity, MirrorItem } from '../../shared/types';
 import type { BoardDef, BoardSlug } from '../../shared/boards';
 import { BOARDS } from '../../shared/boards';
+import { ZONA_PRIVADA_BOARDS } from './zonas';
 
 interface Scope {
   where: string;
@@ -21,18 +22,38 @@ export function ownerIdsFor(viewer: Identity, mode: ScopeMode): number[] {
   return [...new Set([viewer.monday_user_id, ...(viewer.scope_user_ids ?? [])])];
 }
 
-// admin: everything, always. compras: everything on boards without comprasCol
-// (catálogos como productos/instituciones); en Oportunidades/Proyectos, solo lo
-// propio (comprasScopeFor) — Efraín, 2026-08-10: "el de compras SOLO puede ver
-// sus productos". vendedor/almacen (and any other non-privileged role): rows
-// whose owning board's authzCols include the viewer; subitem boards check the
+// admin: everything, always — EXCEPTO la zona privada 'Efrain' (worker/lib/zonas.ts):
+// un admin fuera de su whitelist no ve las filas de sus miembros en
+// Oportunidades/Proyectos, vía viewer.hidden_owner_ids (resuelto en
+// mw/identity.ts). compras: everything on boards without comprasCol (catálogos
+// como productos/instituciones); en Oportunidades/Proyectos, solo lo propio
+// (comprasScopeFor) — Efraín, 2026-08-10: "el de compras SOLO puede ver sus
+// productos". vendedor/almacen (and any other non-privileged role): rows whose
+// owning board's authzCols include the viewer; subitem boards check the
 // PARENT's owners. Boards without authzCols (productos/instituciones) are open
 // to all (the serializer still strips columns per-role — shared/visibility.ts).
 export function scopeFor(slug: BoardSlug, viewer: Identity, mode: ScopeMode = 'read'): Scope {
-  if (viewer.role === 'admin') return { where: '1=1', binds: [] };
-
   const board = BOARDS[slug];
   const owningBoard = board.parent ? BOARDS[board.parent] : board;
+
+  if (viewer.role === 'admin') {
+    const hiddenOwners = viewer.hidden_owner_ids ?? [];
+    if (hiddenOwners.length === 0 || !ZONA_PRIVADA_BOARDS.has(slug)) return { where: '1=1', binds: [] };
+    const placeholders = hiddenOwners.map(() => '?').join(',');
+    if (board.parent) {
+      return {
+        where: `NOT EXISTS (
+          SELECT 1 FROM items p, json_each(p.vendedor_ids) je
+          WHERE p.board_id = ? AND p.item_id = items.parent_item_id AND je.value IN (${placeholders})
+        )`,
+        binds: [owningBoard.id, ...hiddenOwners],
+      };
+    }
+    return {
+      where: `NOT EXISTS (SELECT 1 FROM json_each(items.vendedor_ids) je WHERE je.value IN (${placeholders}))`,
+      binds: [...hiddenOwners],
+    };
+  }
 
   if (viewer.role === 'compras') return comprasScopeFor(board, owningBoard, viewer, mode);
 
@@ -245,8 +266,18 @@ export async function etagFor(env: Env, slug: BoardSlug, viewer: Identity): Prom
   // La llave lleva el CONJUNTO de ids visibles, no solo el propio: si lleva nada
   // más el del viewer, mover a alguien de zona no invalida el ETag y el líder se
   // queda con la lista vieja (304) hasta que el board cambie por otra razón.
-  const unrestricted = viewer.role === 'admin' || (viewer.role === 'compras' && !owningBoard.comprasCol);
-  const scopeKey = unrestricted ? 'all' : `u${ownerIdsFor(viewer, 'read').sort((a, b) => a - b).join('.')}`;
+  // Mismo motivo aplica a un admin fuera de la whitelist de la zona privada
+  // 'Efrain' (worker/lib/zonas.ts): su scope YA no es "todo", así que no puede
+  // compartir la llave 'all' con un admin sin restricción — colisionarían y uno
+  // de los dos vería (por 304) la respuesta cacheada del otro.
+  const hiddenOwners = viewer.role === 'admin' ? (viewer.hidden_owner_ids ?? []) : [];
+  const zonaPrivadaRestringe = hiddenOwners.length > 0 && ZONA_PRIVADA_BOARDS.has(slug);
+  const unrestricted = !zonaPrivadaRestringe && (viewer.role === 'admin' || (viewer.role === 'compras' && !owningBoard.comprasCol));
+  const scopeKey = unrestricted
+    ? 'all'
+    : zonaPrivadaRestringe
+      ? `h${hiddenOwners.sort((a, b) => a - b).join('.')}`
+      : `u${ownerIdsFor(viewer, 'read').sort((a, b) => a - b).join('.')}`;
   return `"${slug}:${scopeKey}:${row?.c ?? 0}:${row?.m ?? ''}"`;
 }
 

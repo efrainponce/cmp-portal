@@ -6,7 +6,7 @@
 import type { MiddlewareHandler } from 'hono';
 import type { Env } from '../env';
 import type { Identity } from '../../shared/types';
-import { readableUserIds } from '../lib/zonas';
+import { readableUserIds, hiddenOwnerIdsFor } from '../lib/zonas';
 
 declare module 'hono' {
   interface ContextVariableMap {
@@ -28,6 +28,7 @@ export const identity: MiddlewareHandler<{ Bindings: Env }> = async (c, next) =>
   const withScope = async (identity: Identity): Promise<Identity> => ({
     ...identity,
     scope_user_ids: await readableUserIds(c.env, identity),
+    hidden_owner_ids: await hiddenOwnerIdsFor(c.env, identity),
   });
 
   const impersonateEmail = c.req.header('X-Impersonate-Email');

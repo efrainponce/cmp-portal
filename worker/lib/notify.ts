@@ -10,6 +10,7 @@ import { DEAL_STAGE_LABELS } from '../../shared/dealStages';
 import { logSync } from '../sync/log';
 import { notifyPortalWa } from '../wa/notify';
 import type { RawCol } from './serialize';
+import { zonaPrivadaMemberIds, isZonaPrivadaAdminPermitido } from './zonas';
 
 export type Severity = 'importante' | 'actualizacion';
 
@@ -64,11 +65,22 @@ async function emailByMondayUserId(env: Env, id: number): Promise<string | null>
   return row?.email ?? null;
 }
 
-async function emailsByRole(env: Env, role: Role): Promise<string[]> {
+// Para 'role:admin' hay que respetar la zona privada 'Efrain' (worker/lib/zonas.ts,
+// Efraín 2026-08-12): si el item cambia de etapa y su vendedor es miembro de esa
+// zona, el selector 'role:admin' NO debe alcanzar a un admin fuera de su
+// whitelist — si no, "nadie puede verla salvo estos dos" se rompe justo por
+// notificaciones (única entrada de STAGE_NOTIFY con 'role:admin' hoy: 'Costeo
+// en validación'). Cualquier otro rol se resuelve igual que antes.
+async function emailsByRole(env: Env, role: Role, vendedorIds: number[] = []): Promise<string[]> {
   const { results } = await env.DB.prepare(
-    `SELECT email FROM identity WHERE role = ? AND active = 1`,
-  ).bind(role).all<{ email: string }>();
-  return (results ?? []).map(r => r.email);
+    `SELECT email, monday_user_id FROM identity WHERE role = ? AND active = 1`,
+  ).bind(role).all<{ email: string; monday_user_id: number }>();
+  const rows = results ?? [];
+  if (role !== 'admin' || vendedorIds.length === 0) return rows.map(r => r.email);
+  const zonaPrivadaMembers = await zonaPrivadaMemberIds(env);
+  const esZonaPrivada = vendedorIds.some(id => zonaPrivadaMembers.includes(id));
+  if (!esZonaPrivada) return rows.map(r => r.email);
+  return rows.filter(r => isZonaPrivadaAdminPermitido(r.monday_user_id)).map(r => r.email);
 }
 
 export interface ResolveContext {
@@ -103,7 +115,7 @@ export async function resolveRecipients(
         for (const email of ctx.mentionedEmails ?? []) set.add(email);
       } else if (sel.startsWith('role:')) {
         const role = sel.slice('role:'.length) as Role;
-        for (const email of await emailsByRole(env, role)) set.add(email);
+        for (const email of await emailsByRole(env, role, ctx.vendedorIds ?? [])) set.add(email);
       } else if (sel.startsWith('email:')) {
         set.add(sel.slice('email:'.length));
       }

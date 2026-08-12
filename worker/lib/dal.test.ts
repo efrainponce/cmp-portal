@@ -114,3 +114,38 @@ describe('scopeFor', () => {
     expect(scopeFor('productos', lider, 'read')).toEqual({ where: '1=1', binds: [] });
   });
 });
+
+// Zona privada 'Efrain' (worker/lib/zonas.ts) — la única excepción a "admin ve
+// todo". viewer.hidden_owner_ids lo resuelve mw/identity.ts; scopeFor solo lo
+// consume.
+describe('scopeFor: zona privada (hidden_owner_ids)', () => {
+  const adminBloqueado = (over: Partial<Identity> = {}): Identity =>
+    vendedor({ email: 'pam@mexicanadeproteccion.com', monday_user_id: 99, role: 'admin', hidden_owner_ids: [77], ...over });
+
+  it('un admin sin hidden_owner_ids sigue viendo todo', () => {
+    expect(scopeFor('oportunidades', adminBloqueado({ hidden_owner_ids: [] }))).toEqual({ where: '1=1', binds: [] });
+  });
+
+  it('excluye del board de Oportunidades las filas del dueño oculto', () => {
+    const scope = scopeFor('oportunidades', adminBloqueado());
+    expect(scope.where).toContain('NOT EXISTS');
+    expect(scope.binds).toEqual([77]);
+  });
+
+  it('excluye también en el subitem, por el dueño del PADRE', () => {
+    const scope = scopeFor('oportunidades_sub', adminBloqueado());
+    expect(scope.where).toContain('NOT EXISTS');
+    expect(scope.where).toContain('items.parent_item_id');
+    expect(scope.binds).toEqual([expect.any(Number), 77]);
+  });
+
+  it('no aplica en boards fuera de la zona privada (ej. productos)', () => {
+    expect(scopeFor('productos', adminBloqueado())).toEqual({ where: '1=1', binds: [] });
+  });
+
+  it('el mismo bloqueo aplica en modo own (escritura): 404, no acceso', () => {
+    const scope = scopeFor('oportunidades', adminBloqueado(), 'own');
+    expect(scope.where).toContain('NOT EXISTS');
+    expect(scope.binds).toEqual([77]);
+  });
+});

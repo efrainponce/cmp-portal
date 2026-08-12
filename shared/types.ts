@@ -12,6 +12,12 @@ export interface Identity {
    * request; ausente = solo el propio, que es el scope de siempre. La escritura
    * NUNCA lo usa — ver dal.getItem({ scope: 'own' }). */
   scope_user_ids?: number[];
+  /** monday_user_ids que este viewer admin NO debe ver — zona privada 'Efrain'
+   * (worker/lib/zonas.ts, caso especial de Efraín 2026-08-12: ni siquiera un
+   * admin ve estas filas salvo que esté en la whitelist de esa zona). Vacío o
+   * ausente para todo viewer no-admin y para los dos admins permitidos —
+   * dal.ts solo aplica el filtro cuando esta lista trae algo. */
+  hidden_owner_ids?: number[];
 }
 
 // One row of the D1 mirror (table `items`).

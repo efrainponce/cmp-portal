@@ -11,6 +11,26 @@
 // su líder lo ve a él pero no a su equipo — no hay cadena que recorrer.
 import type { Env } from '../env';
 import type { Identity } from '../../shared/types';
+import type { BoardSlug } from '../../shared/boards';
+
+// Zona privada "Efrain" (Efraín, 2026-08-12): caso especial, NO un mecanismo
+// genérico de "zona privada" — solo esta zona por nombre queda oculta a todo
+// admin salvo los dos de abajo. Sus miembros viven en zona_miembros como
+// cualquier otra zona (son las personas dueñas de las filas que se ocultan);
+// lo especial es a quién SÍ se le muestra pese a ser admin. Antes de esto
+// "admin: everything, always" (worker/lib/dal.ts) no tenía excepciones — esta
+// es la única, y solo alcanza a Oportunidades/Proyectos.
+const ZONA_PRIVADA_NOMBRE = 'Efrain';
+// efrainponce@mexicanadeproteccion.com / efrain.ponce@mexicanadeproteccion.com
+// (CEO, mismo monday_user_id — dos filas de identity) + Elisa Vallado
+// (administracion@mexicanadeproteccion.com). Únicos admins que ven la zona.
+const ZONA_PRIVADA_ADMINS_PERMITIDOS = new Set<number>([98635534, 98389580]);
+export const ZONA_PRIVADA_BOARDS: ReadonlySet<BoardSlug> =
+  new Set<BoardSlug>(['oportunidades', 'oportunidades_sub', 'proyectos', 'proyectos_sub']);
+
+export function isZonaPrivadaAdminPermitido(mondayUserId: number): boolean {
+  return ZONA_PRIVADA_ADMINS_PERMITIDOS.has(mondayUserId);
+}
 
 export interface Zona {
   id: number;
@@ -74,6 +94,34 @@ export async function readableUserIds(env: Env, viewer: Identity): Promise<numbe
   } catch {
     return own;
   }
+}
+
+/** monday_user_ids de los miembros de la zona privada 'Efrain' (sea cual sea el
+ * viewer) — las personas cuyas oportunidades/proyectos se ocultan. Falla
+ * cerrado: sin tablas todavía, no hay nadie que ocultar. */
+export async function zonaPrivadaMemberIds(env: Env): Promise<number[]> {
+  try {
+    const res = await env.DB
+      .prepare(`SELECT DISTINCT m.monday_user_id AS id
+                FROM zonas z
+                JOIN zona_miembros zm ON zm.zona_id = z.id
+                JOIN identity m ON m.email = zm.email AND m.active = 1
+                WHERE z.nombre = ? COLLATE NOCASE`)
+      .bind(ZONA_PRIVADA_NOMBRE)
+      .all<{ id: number }>();
+    return (res.results ?? []).map(r => r.id).filter(Number.isFinite);
+  } catch {
+    return [];
+  }
+}
+
+/** monday_user_ids que ESTE viewer admin no debe ver (worker/lib/dal.ts los
+ * excluye de scopeFor/etagFor). [] para todo no-admin y para los dos admins
+ * permitidos — la mayoría de los requests, así que no le pega a D1 sin
+ * necesidad. */
+export async function hiddenOwnerIdsFor(env: Env, viewer: Identity): Promise<number[]> {
+  if (viewer.role !== 'admin' || isZonaPrivadaAdminPermitido(viewer.monday_user_id)) return [];
+  return zonaPrivadaMemberIds(env);
 }
 
 export async function listZonas(env: Env): Promise<Zona[]> {
