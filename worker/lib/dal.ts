@@ -286,19 +286,25 @@ export async function etagFor(env: Env, slug: BoardSlug, viewer: Identity): Prom
 // siempre se incluyen en ambas listas (pueden ser dueños de una oportunidad o
 // responsables de compras aunque su fila de identity sea role='admin' — pedido
 // de Efraín, 2026-07-20).
-export async function listVendedores(env: Env, role: string = 'vendedor'): Promise<{ monday_user_id: number; nombre: string }[]> {
+export async function listVendedores(env: Env, role: string = 'vendedor'): Promise<{ monday_user_id: number; nombre: string; email: string }[]> {
   const safeRole = role === 'compras' ? 'compras' : 'vendedor';
-  // GROUP BY monday_user_id: una misma persona puede tener más de una fila de
-  // identity (ej. login de trabajo + gmail personal, mismo monday_user_id) —
-  // sin esto salían duplicados en los selects de Vendedor/Compras (mismo id
-  // dos veces => key duplicada de React), encontrado en el stress test 2026-07-21.
+  // GROUP BY monday_user_id, nombre: una misma persona puede tener más de una
+  // fila de identity con el MISMO nombre (ej. login de trabajo + gmail personal)
+  // — esas sí se colapsan, evitando duplicados en los selects (stress test
+  // 2026-07-21). Pero "Actuar en Monday como" (createNativeIdentity con
+  // mondayUserId explícito) también puede dejar a dos personas DISTINTAS
+  // compartiendo un monday_user_id a propósito (un vendedor sin asiento propio
+  // que escribe bajo la cuenta de otro) — agrupar solo por id las fusionaba en
+  // una sola fila y el nombre que sobrevivía era arbitrario, así que la persona
+  // sin asiento propio nunca aparecía seleccionable (Efraín, 2026-08-12, caso
+  // Rodrigo). Agrupar también por nombre las mantiene separadas.
   // monday_user_id > 0: saca a los usuarios dados de alta desde el portal (sin
   // asiento real en Monday, ver createNativeIdentity) — asignarlos aquí
   // terminaría escribiendo un id inventado en la columna de personas de Monday.
   const res = await env.DB
-    .prepare(`SELECT monday_user_id, nombre FROM identity WHERE (role = ? OR role = 'admin') AND active = 1 AND monday_user_id > 0 GROUP BY monday_user_id ORDER BY nombre`)
+    .prepare(`SELECT monday_user_id, nombre, MIN(email) AS email FROM identity WHERE (role = ? OR role = 'admin') AND active = 1 AND monday_user_id > 0 GROUP BY monday_user_id, nombre ORDER BY nombre`)
     .bind(safeRole)
-    .all<{ monday_user_id: number; nombre: string }>();
+    .all<{ monday_user_id: number; nombre: string; email: string }>();
   return res.results ?? [];
 }
 

@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { Modal } from '../../components/core/Modal';
 import { Button } from '../../components/core/Button';
 import { Select } from '../../components/forms/Select';
-import { getVendedores, patchItem, type VendedorDTO } from '../../lib/api';
+import { getVendedores, patchItem, vendedorKey, vendedorIdFromKey, type VendedorDTO } from '../../lib/api';
 import { useSaveState } from '../../lib/useSaveState';
 
 interface Props {
@@ -29,7 +29,8 @@ export function EditPersonaModal({ oppId, oppName, colId, role, label, currentNa
   const save = () => {
     if (!value) { setError(`Falta elegir ${label.toLowerCase()}.`); return; }
     run(async () => {
-      await patchItem('oportunidades', oppId, { [colId]: value });
+      // value viaja como `id::email` (vendedorKey) — Monday solo entiende el id.
+      await patchItem('oportunidades', oppId, { [colId]: vendedorIdFromKey(value) });
       onSaved();
       onClose();
     });
@@ -52,7 +53,7 @@ export function EditPersonaModal({ oppId, oppName, colId, role, label, currentNa
         </div>
         <Select
           value={value} onChange={setValue}
-          options={options.map((v) => ({ value: String(v.id), label: v.nombre }))}
+          options={options.map((v) => ({ value: vendedorKey(v), label: v.nombre }))}
           placeholder={`Elegir ${label.toLowerCase()}…`}
         />
         {error && <div style={{ color: 'var(--status-perdida)', font: 'var(--text-label)' }}>{error}</div>}

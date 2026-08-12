@@ -2,6 +2,7 @@
 // CellContent does for reading (src/components/board/cells.tsx).
 import type { CSSProperties } from 'react';
 import type { ColMeta } from '../../lib/api';
+import { vendedorKey } from '../../lib/api';
 import type { VendedorDTO } from '../../../shared/dto';
 import { Select } from './Select';
 
@@ -48,7 +49,10 @@ export function FormField({ col, value, onChange, vendedores }: FormFieldProps) 
     return <input type="date" value={value} onChange={(e) => onChange(e.target.value)} style={fieldStyle} />;
   }
   if (col.type === 'people') {
-    const options = (vendedores ?? []).map((v) => ({ value: String(v.id), label: v.nombre }));
+    // value viaja como `id::email` (vendedorKey) — dos personas distintas pueden
+    // compartir el mismo id de Monday ("Actuar en Monday como"); el caller
+    // decodifica a solo el id antes de mandar el write (ver vendedorIdFromKey).
+    const options = (vendedores ?? []).map((v) => ({ value: vendedorKey(v), label: v.nombre }));
     return <Select value={value} onChange={onChange} options={options} placeholder="Elegir vendedor…" />;
   }
   if (col.type === 'email') {

@@ -2,6 +2,38 @@
 
 ## 2026-08-12
 
+- Fix: "elegir vendedor" no mostraba a Rodrigo (picker de Contacto y contacto huérfano)
+  - Ricardo Rivera reportó por WhatsApp (captura) que un vendedor nuevo, Rodrigo (sin
+    cuenta propia en Monday), no aparecía en "elegir vendedor" al crear una oportunidad;
+    en la misma sesión dieron de alta un contacto ("GEMA") que tampoco apareció en el
+    picker de Contacto (cliente).
+  - El caso del contacto no era bug: quedó sin columna Vendedor asignada (creado directo
+    en Monday, no desde el portal, donde ese campo es obligatorio) — dato huérfano, el
+    portal esconde cualquier contacto sin Vendedor a todo vendedor. El segundo intento
+    ("Gema Rivera") sí quedó tageado a Ricardo y ya funciona.
+  - Causa raíz del vendedor: `identity` de Rodrigo comparte `monday_user_id` con Efraín
+    (98389537) vía "Actuar en Monday como" (`createNativeIdentity` — Rodrigo no tiene
+    asiento propio en Monday; intencional, sus oportunidades se escriben a nombre de
+    Efraín ahí). `listVendedores` (`worker/lib/dal.ts`) agrupaba solo por
+    `monday_user_id` (pensado para colapsar el caso "mismo login, dos cuentas de
+    portal"), así que las dos identidades se fusionaban en una sola fila y "Rodrigo"
+    nunca sobrevivía al `GROUP BY`.
+  - Fix: `listVendedores` agrupa por `(monday_user_id, nombre)` — colapsa duplicados
+    reales (mismo nombre, dos logins) pero mantiene separadas a personas distintas que
+    comparten id por proxy. `VendedorDTO` suma `email` (único por fila de identity);
+    nuevo `vendedorKey`/`vendedorIdFromKey` (`src/lib/apiClient.ts`) codifica `id::email`
+    como `value` del picker (único por persona) y lo decodifica a solo el id numérico
+    justo antes del write a Monday. Aplicado en los 3 pickers de Vendedor:
+    `CreateOportunidadModal.tsx` (Vendedor + Vendedor secundario), `FormField.tsx` /
+    `CreateRecordModal.tsx` (columna Vendedor de Contactos/Instituciones),
+    `EditPersonaModal.tsx` (reasignar Vendedor/Comprador de una oportunidad existente).
+  - Verificado con Playwright contra dev local (sembrando una identity de prueba que
+    comparte id con otra existente): aparece como opción distinta y seleccionarla no
+    recae visualmente en el otro nombre (el bug que tenía el `value` compartido).
+  - Pendiente, a decisión de Efraín: qué hacer con el contacto huérfano "GEMA" original
+    (duplicado de "Gema Rivera", sin vendedor) — no se tocó en este cambio.
+  - `tsc --noEmit`, `npm test` (145 tests) y `npm run lint` limpios.
+
 - Feat: tab "Zona Efrain" en el sidebar (branch `feat/zona-efrain-board`)
   - Efraín pidió un board en el sidebar "igual a Costeo" pero llamado "Zona Efrain", con TODAS las etapas del pipeline (no una sola, a diferencia de Costeo/Validación) y visible solo para la misma whitelist de 3 personas de la zona privada (ver entrada de abajo) — responde también a "¿cómo crea Elisa una oportunidad para mi papá?": desde este tab, con el botón "Nueva oportunidad" (mismo modal de siempre, Vendedor = "Efrain Ponce" ya aparece en el picker por ser admin).
   - Evalué construirla 100% portal-only (sin tocar Monday) — investigué la capa nativa dormida (branch `native/salir-de-monday`, nunca mergeada a main, ~30-40% de un flujo mínimo, sin motor de cálculo de totales ni UI) y confirmé que "Mandar a costeo"/cotización/tallas/OC son automatizaciones EXTERNAS de cmp-tallas (Vercel) que dependen del ID real de Monday — no hay forma de que "funcionen igual" sin que la oportunidad exista en Monday. Efraín decidió: sigue siendo un item real de Monday (conserva todo el flujo), la privacidad ya la da el portal (ver zona privada abajo); restringirla también dentro de Monday.com mismo queda pendiente, fuera de este repo.
