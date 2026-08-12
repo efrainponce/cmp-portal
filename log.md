@@ -2,6 +2,11 @@
 
 ## 2026-08-12
 
+- Fix: zona privada "Efrain" — agregar a Efrain Ponce Salinas a la whitelist
+  - Efraín (el usuario, hijo del CEO, mantiene el portal) pidió poder ver la zona "Efrain" también, "por si hay errores" — la whitelist original solo tenía a su papá (CEO) y a Elisa.
+  - `ZONA_PRIVADA_ADMINS_PERMITIDOS` (`worker/lib/zonas.ts`) suma su monday_user_id (98389537, `efrain.ponces@gmail.com`). Solo whitelist de lectura — no se agregó como miembro/dueño de la zona.
+  - `tsc --noEmit` y `npm test` (145 tests) limpios.
+
 - Feat: zona privada "Efrain" — invisible para todo admin salvo dos
   - Efraín pidió una zona "Efrain" que NADIE pueda ver, ni siquiera Pam (admin, Compras) — solo Elisa (administración) y su papá (CEO). Hasta ahora `admin: everything, always` (`worker/lib/dal.ts scopeFor`) era una regla sin excepciones; los tres son `role='admin'` en el roster, así que hacía falta un mecanismo nuevo, no solo una zona más.
   - Caso especial hardcodeado (no un flag genérico de "zona privada" — decisión explícita de Efraín): `worker/lib/zonas.ts` fija por nombre `'Efrain'` y una whitelist de 2 `monday_user_id` (papá — mismo id en sus dos filas de identity, `efrainponce@` / `efrain.ponce@mexicanadeproteccion.com` — y Elisa `administracion@mexicanadeproteccion.com`). `hiddenOwnerIdsFor(env, viewer)` resuelve, una vez por request en `mw/identity.ts` (y en `wa/store.ts` para el bot), qué `monday_user_id` debe ocultar ESTE viewer si es admin fuera de la whitelist — lo cuelga de `Identity.hidden_owner_ids` (`shared/types.ts`).

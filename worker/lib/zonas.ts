@@ -23,8 +23,10 @@ import type { BoardSlug } from '../../shared/boards';
 const ZONA_PRIVADA_NOMBRE = 'Efrain';
 // efrainponce@mexicanadeproteccion.com / efrain.ponce@mexicanadeproteccion.com
 // (CEO, mismo monday_user_id — dos filas de identity) + Elisa Vallado
-// (administracion@mexicanadeproteccion.com). Únicos admins que ven la zona.
-const ZONA_PRIVADA_ADMINS_PERMITIDOS = new Set<number>([98635534, 98389580]);
+// (administracion@mexicanadeproteccion.com) + Efrain Ponce Salinas
+// (efrain.ponces@gmail.com, hijo del CEO, mantiene el portal — pidió verla él
+// mismo por si hay errores, 2026-08-12). Únicos admins que ven la zona.
+const ZONA_PRIVADA_ADMINS_PERMITIDOS = new Set<number>([98635534, 98389580, 98389537]);
 export const ZONA_PRIVADA_BOARDS: ReadonlySet<BoardSlug> =
   new Set<BoardSlug>(['oportunidades', 'oportunidades_sub', 'proyectos', 'proyectos_sub']);
 
