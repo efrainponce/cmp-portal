@@ -2,6 +2,11 @@
 
 ## 2026-08-12
 
+- Feat: Compras puede editar Embellecimientos desde el board Costeo
+  - Efraín pidió que Compras también pudiera modificar embellecimientos en Costeo — hasta ahora la tab Embellecimientos (agregar posición/descripción de zona + subir imagen de referencia) era de solo lectura ahí ("trabajo de Ventas en Oportunidades", 2026-07-16) y `shared/visibility.ts` solo dejaba escribir `long_text_mm1bj4pt`/`file_mm5akjy5` a vendedor/admin.
+  - `long_text_mm1bj4pt` y `file_mm5akjy5` pasan de `w: WV` a `w: V` (suma compras). En `OpportunityDrawer.tsx`, la tab Embellecimientos ya no hereda `readOnlyCosteo` (nuevo `embellReadOnly = isValidacion || ajena`) — sigue de solo lectura en Validación Costeo y en oportunidad ajena, igual que antes.
+  - `tsc -b` y `npm test` (140 tests) limpios.
+
 - Fix: Actualizaciones no mostraba las respuestas a un comentario
   - Elizabeth reportó (captura de WhatsApp) que Jose Iván había respondido su comentario en OPP-0870 pero no se reflejaba en el portal — `fetchUpdates` (`worker/lib/monday.ts`) solo pedía `updates(limit:50){...}` sin `replies`, y Monday anida las respuestas dentro de su comentario padre en vez de mandarlas como updates de primer nivel, así que nunca llegaban al feed.
   - `fetchUpdates` ahora también pide `replies{...}` (mismos campos que un update, confirmado contra el schema real de Monday — `Reply` trae `id text_body created_at creator assets`, igual que `Update`). El endpoint GET `/api/boards/:slug/items/:id/updates` (`worker/routes/boards.ts`) aplana updates + replies en una sola lista y la reordena por fecha, así las respuestas salen como comentario normal (sin UI de hilo), tal como pidió Efraín.

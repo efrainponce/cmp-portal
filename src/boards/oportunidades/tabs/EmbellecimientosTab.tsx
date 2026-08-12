@@ -179,7 +179,8 @@ export function EmbellecimientosTab({
   onSaved?: () => void;
   /** false en Ganada/Perdida — sin nuevas posiciones ni imágenes, igual que Cotización. */
   editable?: boolean;
-  /** true en el board Costeo — solo lectura, agregar posiciones/imágenes es trabajo de Ventas. */
+  /** true en Validación Costeo o en una oportunidad ajena — en el board Costeo
+   * SÍ es editable: Compras también captura zonas/imágenes ahí (Efraín, 2026-08-12). */
   readOnly?: boolean;
 }) {
   const statusCol = subCols.find((c) => c.id === STATUS_COL);

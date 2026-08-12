@@ -472,6 +472,11 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
   // server responde 404 a cualquier write sobre una oportunidad ajena.
   const ajena = item.ownedByViewer === false;
   const noLineEdits = readOnlyCosteo || isValidacion || ajena;
+  // Embellecimientos (tab aparte): a diferencia del resto de la línea, Compras
+  // SÍ captura/edita zonas e imágenes desde el board Costeo (Efraín, 2026-08-12)
+  // — por eso no hereda readOnlyCosteo. Validación y oportunidad ajena se
+  // mantienen de solo lectura igual que el resto de la línea.
+  const embellReadOnly = isValidacion || ajena;
 
   // checkCosteo mete primero los errores de la oportunidad (institución, sin
   // líneas) y luego los de cada línea (prefijo "#1 ..." — ver validateLinea en
@@ -711,7 +716,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
           subCols={subCols} products={products} versions={versions} onSaved={load}
           editable={stage !== '1' && stage !== '2' && !ajena}
           onNuevaVersion={stage !== '1' && stage !== '2' && stage !== '4' && !noLineEdits && !draftVigente ? () => setShowNuevaVersion(true) : undefined}
-          readOnly={noLineEdits}
+          readOnly={embellReadOnly}
         />
       )}
       {activeTab === 'nuevosproductos' && <NuevosProductosTab oppId={id} readOnly={noLineEdits} />}
