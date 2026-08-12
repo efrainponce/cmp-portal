@@ -19,6 +19,7 @@ import { documentRoutes } from './routes/documents';
 import { homeRoutes } from './routes/home';
 import { flushOutbox } from './lib/outbox';
 import { checkErrorsAndAlert } from './lib/errorAlerts';
+import { backupD1ToR2 } from './lib/backup';
 import { logSync } from './sync/log';
 import { jsonStatus } from './lib/http';
 
@@ -67,9 +68,12 @@ app.onError(async (err, c) => {
 // la única fuente de verdad; corre la mitad de veces = la mitad de calls a Monday.
 // El tercer cron (cada 15 min) hace dos cosas SIN ser un board group: revisa
 // sync_log y avisa por WhatsApp (worker/lib/errorAlerts.ts), y corre el delta sync
-// (worker/sync/delta.ts) — wrangler.jsonc debe declarar exactamente estos tres
-// strings de cron.
+// (worker/sync/delta.ts). El cuarto (domingo 3am UTC) exporta el mirror D1 completo
+// a R2 (worker/lib/backup.ts) — retención larga más allá de los 30 días de D1 Time
+// Travel, no recovery del día a día. wrangler.jsonc debe declarar exactamente estos
+// cuatro strings de cron.
 const ALERT_CRON = '*/15 * * * *';
+const BACKUP_CRON = '0 3 * * 0';
 const CRON_GROUPS: Record<string, BoardSlug[]> = {
   '0 0,12 * * *': ['oportunidades', 'oportunidades_sub', 'proyectos', 'proyectos_sub'],
   '0 6,18 * * *': ['productos', 'instituciones', 'contactos', 'proveedores'],
@@ -80,6 +84,10 @@ export default {
   scheduled: async (controller: ScheduledController, env: Env, ctx: ExecutionContext) => {
     if (controller.cron === ALERT_CRON) {
       ctx.waitUntil(Promise.all([checkErrorsAndAlert(env), deltaSync(env)]));
+      return;
+    }
+    if (controller.cron === BACKUP_CRON) {
+      ctx.waitUntil(backupD1ToR2(env));
       return;
     }
     const slugs = CRON_GROUPS[controller.cron] ?? (Object.keys(BOARDS) as BoardSlug[]);

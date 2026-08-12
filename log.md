@@ -2,6 +2,12 @@
 
 ## 2026-08-12
 
+- Feat: backup semanal del mirror D1 a R2
+  - Efraín preguntó cómo recuperar oportunidades borradas por error una vez que Monday ya no exista — D1 Time Travel (30 días, gratis) ya cubre el "oops" del día a día, pero no retención más larga ni el desastre de perder D1 mismo.
+  - `worker/lib/backup.ts` nuevo: cron domingo 3am UTC (`BACKUP_CRON` en `worker/index.ts`, 4to string agregado a `triggers.crons` en `wrangler.jsonc`) vuelca TODAS las tablas vía `sqlite_master` (no lista hardcodeada, así no se desincroniza de las que se crean lazy en runtime) a un `.sql` plano subido a `FILES` bajo `backups/d1/YYYY-MM-DD.sql`. Filas paginadas (500/página) para no pegarle a límites de tamaño de respuesta de D1.
+  - Nuevo kind `'backup'` en `sync_log` (`worker/sync/log.ts`) — si el export falla, el cron de alertas cada 15 min (`errorAlerts.ts`) ya lo detecta y avisa por WhatsApp sin código nuevo.
+  - `tsc --noEmit` y `npm test` (140 tests) limpios.
+
 - Feat: Compras puede editar Embellecimientos desde el board Costeo
   - Efraín pidió que Compras también pudiera modificar embellecimientos en Costeo — hasta ahora la tab Embellecimientos (agregar posición/descripción de zona + subir imagen de referencia) era de solo lectura ahí ("trabajo de Ventas en Oportunidades", 2026-07-16) y `shared/visibility.ts` solo dejaba escribir `long_text_mm1bj4pt`/`file_mm5akjy5` a vendedor/admin.
   - `long_text_mm1bj4pt` y `file_mm5akjy5` pasan de `w: WV` a `w: V` (suma compras). En `OpportunityDrawer.tsx`, la tab Embellecimientos ya no hereda `readOnlyCosteo` (nuevo `embellReadOnly = isValidacion || ajena`) — sigue de solo lectura en Validación Costeo y en oportunidad ajena, igual que antes.
