@@ -214,11 +214,17 @@ export interface MondayUpdate {
   created_at: string;
   creator: { name: string } | null;
   assets: MondayUpdateAsset[];
+  // Threaded replies (e.g. a Monday-native "responder" on someone else's comment)
+  // — same shape as a top-level update, so callers can flatten them into one feed.
+  replies?: MondayUpdate[];
 }
 
-/** Updates (comments) on an item, newest first. */
+const UPDATE_FIELDS = `id text_body created_at creator{name} assets{id name file_extension}`;
+
+/** Updates (comments) on an item, newest first, each with its own replies thread
+ * (Monday keeps replies nested under their parent update, not as siblings). */
 export async function fetchUpdates(env: Env, itemId: number): Promise<MondayUpdate[]> {
-  const query = `query($id:[ID!]){ items(ids:$id){ updates(limit:50){ id text_body created_at creator{name} assets{id name file_extension} } } }`;
+  const query = `query($id:[ID!]){ items(ids:$id){ updates(limit:50){ ${UPDATE_FIELDS} replies{ ${UPDATE_FIELDS} } } } }`;
   const data = await gql(env, query, { id: [String(itemId)] });
   return data?.items?.[0]?.updates ?? [];
 }

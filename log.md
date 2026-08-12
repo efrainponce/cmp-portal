@@ -1,5 +1,12 @@
 # Log de commits
 
+## 2026-08-12
+
+- Fix: Actualizaciones no mostraba las respuestas a un comentario
+  - Elizabeth reportó (captura de WhatsApp) que Jose Iván había respondido su comentario en OPP-0870 pero no se reflejaba en el portal — `fetchUpdates` (`worker/lib/monday.ts`) solo pedía `updates(limit:50){...}` sin `replies`, y Monday anida las respuestas dentro de su comentario padre en vez de mandarlas como updates de primer nivel, así que nunca llegaban al feed.
+  - `fetchUpdates` ahora también pide `replies{...}` (mismos campos que un update, confirmado contra el schema real de Monday — `Reply` trae `id text_body created_at creator assets`, igual que `Update`). El endpoint GET `/api/boards/:slug/items/:id/updates` (`worker/routes/boards.ts`) aplana updates + replies en una sola lista y la reordena por fecha, así las respuestas salen como comentario normal (sin UI de hilo), tal como pidió Efraín.
+  - `tsc --noEmit` y `npm test` (140 tests) limpios.
+
 ## 2026-08-11
 
 - Actualizaciones: firma del autor como @mention real cuando tiene cuenta Monday

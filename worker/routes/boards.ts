@@ -289,7 +289,12 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
     if (!row) return c.json({ error: 'not found' }, 404);
 
     const updates = await fetchUpdates(c.env, itemId);
-    const dto: UpdateDTO[] = updates.map(u => ({
+    // Monday nests replies under their parent update; the feed shows them as
+    // plain comments (no threading UI), so flatten and re-sort newest first.
+    const flat = updates
+      .flatMap(u => [u, ...(u.replies ?? [])])
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    const dto: UpdateDTO[] = flat.map(u => ({
       id: u.id, body: u.text_body ?? '', author: u.creator?.name ?? 'Monday', createdAt: u.created_at,
       attachments: (u.assets ?? []).map(a => ({ id: a.id, name: a.name, ext: a.file_extension.replace(/^\./, '').toLowerCase() })),
     }));
