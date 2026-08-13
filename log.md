@@ -34,6 +34,21 @@
     (duplicado de "Gema Rivera", sin vendedor) — no se tocó en este cambio.
   - `tsc --noEmit`, `npm test` (145 tests) y `npm run lint` limpios.
 
+- Feat: editar/borrar posiciones ya capturadas en Embellecimientos
+  - Efraín (admin) reportó que en `EmbellecimientosTab` solo se podía AGREGAR una
+    zona vacía (Espalda, Frente, etc.) — una vez que ya tenía texto, no había forma
+    de editarla ni borrarla, solo se veía como texto plano. El servidor ya permitía
+    escribir esa columna (`shared/visibility.ts`, `w` incluye vendedor/compras/admin);
+    el candado era puramente de UI.
+  - Click en el texto de una zona llenada abre el mismo form de captura con la
+    descripción precargada y la zona fija (sin selector) — "Guardar cambios"
+    sobreescribe solo esa zona vía `upsertEmbellZone` (`shared/embellecimiento.ts`,
+    ya soportaba overwrite, solo no se usaba para editar). Ícono de basura junto a
+    cada zona borra la posición (con `window.confirm`) dejando las demás intactas.
+  - Mismos permisos que ya existían para posición/imagen (vendedor/compras/admin) —
+    sin gate nuevo de rol, a pedido explícito de Efraín.
+  - `tsc --noEmit` y `npm run lint` limpios.
+
 - Fix: Embellecimientos ya no se bloquea en Ganada/Perdida
   - Efraín y Elisa (ambos admin, en la whitelist de la zona privada) reportaron "no podemos modificar nada" en Embellecimientos, en ambos boards (Oportunidades y Costeo) — descartado por permisos de rol (server ya confirma `w:true` para admin en `long_text_mm1bj4pt`/`file_mm5akjy5`/`color_mm1b34bg`, verificado en vivo) y por la zona privada (ambos están en la whitelist). La causa real: `editable` en `EmbellecimientosTab` heredaba el mismo candado que `CotizacionTab` (`stage !== '1' && stage !== '2'`), así que en Ganada/Perdida se apagaba para TODOS los roles, no solo admin.
   - A diferencia de Cotización (que sí debe congelarse al cerrar), Efraín pidió que Embellecimientos siga editable después de Ganada/Perdida — la captura de posiciones/imágenes de zona es trabajo de producción que sigue después del cierre comercial. `OpportunityDrawer.tsx`: `editable={!ajena}` (ya no depende de `stage`) al pasarlo a `EmbellecimientosTab`; sigue de solo lectura en Validación Costeo y oportunidad ajena (`embellReadOnly` sin cambios).

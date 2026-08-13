@@ -169,6 +169,10 @@ interface AddPositionState {
   desc: string;
   saving: boolean;
   error?: string;
+  /** true cuando el form edita una zona ya llenada — la zona queda fija (no
+   * hay selector) y el textarea arranca con el valor actual (Efraín, 2026-08-12:
+   * hoy solo se podía agregar zonas vacías, no editar/borrar una ya capturada). */
+  isEdit?: boolean;
 }
 
 export function EmbellecimientosTab({
@@ -200,6 +204,17 @@ export function EmbellecimientosTab({
   const [addForm, setAddForm] = useState<AddPositionState | null>(null);
 
   const onStartAdd = (productId: string, zone: string) => setAddForm({ productId, zone, desc: '', saving: false });
+  const onStartEdit = (productId: string, zone: string, currentValue: string) =>
+    setAddForm({ productId, zone, desc: currentValue, saving: false, isEdit: true });
+
+  const writeZone = async (productId: string, zone: string, value: string) => {
+    const product = products.find((p) => p.id === productId);
+    const currentRaw = descPreview[productId] ?? product?.cols[DESC_COL]?.text;
+    const newRaw = upsertEmbellZone(currentRaw, zone, value);
+    await patchItem('oportunidades_sub', productId, { [DESC_COL]: newRaw });
+    setDescPreview((cur) => ({ ...cur, [productId]: newRaw }));
+    onSaved?.();
+  };
 
   const onSaveZone = async () => {
     if (!addForm) return;
@@ -207,18 +222,27 @@ export function EmbellecimientosTab({
     const desc = addForm.desc.trim();
     if (!desc) { setAddForm({ ...addForm, error: 'Escribe una descripción para la posición.' }); return; }
     setAddForm({ ...addForm, saving: true, error: undefined });
-    const product = products.find((p) => p.id === productId);
-    const currentRaw = descPreview[productId] ?? product?.cols[DESC_COL]?.text;
-    const newRaw = upsertEmbellZone(currentRaw, zone, desc);
     try {
-      await patchItem('oportunidades_sub', productId, { [DESC_COL]: newRaw });
+      await writeZone(productId, zone, desc);
     } catch (e) {
-      setAddForm({ productId, zone, desc, saving: false, error: e instanceof Error ? e.message : 'No se pudo guardar.' });
+      setAddForm({ ...addForm, saving: false, error: e instanceof Error ? e.message : 'No se pudo guardar.' });
       return;
     }
-    setDescPreview((cur) => ({ ...cur, [productId]: newRaw }));
     setAddForm(null);
-    onSaved?.();
+  };
+
+  const [deleting, setDeleting] = useState<Record<string, boolean>>({});
+  const onDeleteZone = async (productId: string, zone: string) => {
+    if (!window.confirm(`¿Borrar la posición "${zone}"?`)) return;
+    const key = `${productId}:${zone}`;
+    setDeleting((cur) => ({ ...cur, [key]: true }));
+    try {
+      await writeZone(productId, zone, '');
+    } catch {
+      // el error se ignora — la zona sigue mostrando su valor previo, el
+      // usuario puede reintentar (mismo trato que onSaveZone da a errores).
+    }
+    setDeleting((cur) => ({ ...cur, [key]: false }));
   };
 
   // Solo las líneas marcadas "Con Embellecimiento" en Cotización aparecen aquí
@@ -305,7 +329,14 @@ export function EmbellecimientosTab({
                   const key = `${p.id}:${z.label}`;
                   return (
                     <div key={z.label} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <div style={{ font: 'var(--text-body)', color: 'var(--ink-secondary)', flex: 1 }}>
+                      <div
+                        onClick={descWritable ? () => onStartEdit(p.id, z.label, z.value) : undefined}
+                        style={{
+                          font: 'var(--text-body)', color: 'var(--ink-secondary)', flex: 1,
+                          cursor: descWritable ? 'pointer' : undefined,
+                        }}
+                        title={descWritable ? 'Editar posición' : undefined}
+                      >
                         <span style={{ color: 'var(--ink)' }}>{z.label}:</span> {z.value}
                       </div>
                       <ZoneImage
@@ -315,6 +346,23 @@ export function EmbellecimientosTab({
                         onUpload={(file) => handleUpload(p.id, z.label, file)}
                         canUpload={fileWritable}
                       />
+                      {descWritable && (
+                        <button
+                          type="button"
+                          title="Borrar posición"
+                          disabled={!!deleting[key]}
+                          onClick={() => onDeleteZone(p.id, z.label)}
+                          style={{
+                            flex: 'none', border: 'none', background: 'none', cursor: deleting[key] ? 'default' : 'pointer',
+                            color: 'var(--ink-faint)', opacity: deleting[key] ? 0.5 : 1, padding: 2, display: 'flex',
+                          }}
+                        >
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M3 6h18" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+                          </svg>
+                        </button>
+                      )}
                     </div>
                   );
                 })}
@@ -327,13 +375,17 @@ export function EmbellecimientosTab({
 
             {isAdding ? (
               <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6, padding: 10, borderRadius: 'var(--radius-lg)', background: 'var(--bg-sunken)' }}>
-                <select
-                  value={addForm.zone}
-                  onChange={(e) => setAddForm({ ...addForm, zone: e.target.value })}
-                  style={{ font: 'var(--text-label)', color: 'var(--ink)', border: '1px solid var(--border)', borderRadius: 6, padding: '5px 7px' }}
-                >
-                  {availableZones.map((z) => <option key={z} value={z}>{z}</option>)}
-                </select>
+                {addForm.isEdit ? (
+                  <div style={{ font: 'var(--text-label-strong)', color: 'var(--ink)' }}>{addForm.zone}</div>
+                ) : (
+                  <select
+                    value={addForm.zone}
+                    onChange={(e) => setAddForm({ ...addForm, zone: e.target.value })}
+                    style={{ font: 'var(--text-label)', color: 'var(--ink)', border: '1px solid var(--border)', borderRadius: 6, padding: '5px 7px' }}
+                  >
+                    {availableZones.map((z) => <option key={z} value={z}>{z}</option>)}
+                  </select>
+                )}
                 <textarea
                   value={addForm.desc}
                   onChange={(e) => setAddForm({ ...addForm, desc: e.target.value })}
@@ -345,7 +397,7 @@ export function EmbellecimientosTab({
                 {addForm.error && <div style={{ font: 'var(--text-caption)', color: 'var(--status-perdida)' }}>{addForm.error}</div>}
                 <div style={{ display: 'flex', gap: 8 }}>
                   <Button variant="primary" onClick={addForm.saving ? undefined : onSaveZone} style={addForm.saving ? { opacity: 0.6 } : undefined}>
-                    {addForm.saving ? 'Guardando…' : 'Guardar posición'}
+                    {addForm.saving ? 'Guardando…' : addForm.isEdit ? 'Guardar cambios' : 'Guardar posición'}
                   </Button>
                   <Button variant="ghost" onClick={() => setAddForm(null)}>Cancelar</Button>
                 </div>
