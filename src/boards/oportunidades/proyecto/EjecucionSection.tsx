@@ -60,15 +60,25 @@ function EstadoChip({ row, canEdit, onSaved, isOpen, onOpen, onClose }: {
     <div style={{ position: 'relative' }}>
       <div
         onClick={abrir}
-        title={row.cols[S_COMENTARIO]?.text || estado}
+        title={canEdit ? `${estado} — toca para cambiar el estado` : (row.cols[S_COMENTARIO]?.text || estado)}
         style={{
-          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, minWidth: 50,
+          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, minWidth: 50, maxWidth: 96,
           padding: '6px 10px', borderRadius: 'var(--radius-lg)', background: color + '22',
-          border: `1px solid ${color}66`, cursor: canEdit ? 'pointer' : 'default',
+          border: `1px solid ${color}66`, cursor: canEdit ? 'pointer' : 'default', position: 'relative',
         }}
       >
         <span style={{ font: 'var(--text-label-strong)', color: 'var(--ink)' }}>{row.cols[S_TALLA]?.text || '—'}</span>
         <span style={{ font: 'var(--text-caption-strong)', color }}>{row.cols[S_CANTIDAD]?.text || '0'}</span>
+        <span style={{ font: 'var(--text-caption)', color, opacity: 0.85, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}>{estado}</span>
+        {canEdit && (
+          <span style={{
+            position: 'absolute', bottom: -6, right: -6, width: 16, height: 16, borderRadius: '50%',
+            background: 'var(--bg-sunken)', border: '1px solid var(--border)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', font: '9px sans-serif', color: 'var(--ink-tertiary)',
+          }}>
+            ✎
+          </span>
+        )}
       </div>
       {isOpen && edit && (
         <div style={{
@@ -340,6 +350,11 @@ export function EjecucionSection({ state, oppId: _oppId }: { state: ProyectoStat
   return (
     <div style={{ marginTop: 16 }}>
       <ProgressBattery data={battery} size="full" />
+      {canEdit && lineas.length > 0 && (
+        <div style={{ marginTop: 10, font: 'var(--text-caption)', color: 'var(--ink-quiet)' }}>
+          Toca la talla (el recuadro con el número) para cambiar su estado — el color y el texto debajo muestran el estado actual.
+        </div>
+      )}
       {lineas.length === 0 ? (
         <div style={{ marginTop: 14, font: 'var(--text-label)', color: 'var(--ink-quiet)' }}>
           Aún no hay líneas en el proyecto — importa las tallas primero.

@@ -2,6 +2,15 @@
 
 ## 2026-08-13
 
+- Fix: chip de talla en Ejecución ahora deja claro que ahí se modifica el
+  estado (`EjecucionSection.tsx`)
+  - Pam (compras) no lograba cambiar el color/estatus de una talla porque el
+    chip solo mostraba color + talla + cantidad, sin ningún indicio de que
+    era clickeable ni de qué estado tenía. Se agregó el texto del estado
+    dentro del chip, un ícono de lápiz cuando el usuario puede editar, tooltip
+    explícito ("toca para cambiar el estado") y un hint arriba de las
+    tarjetas para quien tiene permiso de edición.
+
 - Feat: Solicitud de costeo y Cotización (vista previa) usan el template de la
   OC a Proveedor + fix de PDFs multipágina que solo mostraban la página 1
   - Efraín: el PDF de la OC a Proveedor (`worker/lib/pdf/ordenCompraProveedor.ts`,
