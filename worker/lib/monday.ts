@@ -248,11 +248,13 @@ export interface MondayUpdate {
 }
 
 const UPDATE_FIELDS = `id text_body created_at creator{name} assets{id name file_extension}`;
+// Monday's `Reply` type (unlike `Update`) has no `assets` field in API 2025-04 — replies can't carry attachments.
+const REPLY_FIELDS = `id text_body created_at creator{name}`;
 
 /** Updates (comments) on an item, newest first, each with its own replies thread
  * (Monday keeps replies nested under their parent update, not as siblings). */
 export async function fetchUpdates(env: Env, itemId: number): Promise<MondayUpdate[]> {
-  const query = `query($id:[ID!]){ items(ids:$id){ updates(limit:50){ ${UPDATE_FIELDS} replies{ ${UPDATE_FIELDS} } } } }`;
+  const query = `query($id:[ID!]){ items(ids:$id){ updates(limit:50){ ${UPDATE_FIELDS} replies{ ${REPLY_FIELDS} } } } }`;
   const data = await gql(env, query, { id: [String(itemId)] });
   return data?.items?.[0]?.updates ?? [];
 }

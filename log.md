@@ -2,6 +2,28 @@
 
 ## 2026-08-13
 
+- Feat: "Eliminar línea" en cotizaciones — Costeo y Oportunidad post-costeo
+  - Efraín pidió poder borrar una línea completa al editar la cotización en
+    Costeo y en Oportunidades (no solo cambiar SKU/color/cantidad). Se agregó
+    como tercer modo del modal "Ajustar línea" (`AjustarLineaModal.tsx`) junto
+    a "Editar"/"Dividir" — mismo acceso (Costeo compras/admin, Oportunidades
+    post-stage-4 vendedor/compras/admin), mismo endpoint
+    `POST /api/oportunidades/lineas/:id/ajustar` con `modo: 'eliminar'`
+    (`worker/lib/lineaAjustes.ts`): llama `deleteItem` de Monday y registra el
+    ajuste en `cotizacion_ajustes` con resumen "Línea eliminada"; el mirror D1
+    se limpia solo vía el webhook `subitem_deleted` (mismo camino que borrar
+    directo en Monday, commit `b98f823`).
+  - De paso, encontré y arreglé un bug real preexistente: el botón "✕" de
+    eliminar línea en Nueva oportunidad/borrador (`CotizacionTab.tsx`,
+    commit `d739b3d`) llamaba a `/oportunidades_sub/${id}` con DELETE, una
+    ruta que nunca existió — la ruta real es
+    `/api/boards/oportunidades_sub/items/:id`. El botón llevaba desde el 18 de
+    julio devolviendo 404 en silencio (el catch solo hace `console.error`).
+  - `tsc --noEmit` (3 tsconfigs), `npm test` (219 tests) y `npm run lint`
+    limpios. No se pudo probar en vivo contra Monday en esta sesión (sin
+    credenciales de Access a mano); pendiente que Efraín lo pruebe en Costeo
+    y en una Oportunidad ya costeada.
+
 - Chore: limpieza de código muerto/duplicado en `worker/` (auditoría, "clean
   old code") + mensaje de error más claro al crear un registro.
   - `shared/quoteTerms.ts` (`QUOTE_TERMS_BOARD`) y `shared/documents.ts`
@@ -1655,3 +1677,29 @@ Sesión de optimización pedida por Efraín (rama `optimizacion/tokens-y-writes`
   - A petición de Efraín, `EditInstitucionModal.tsx` se renombra a `EditContactoModal.tsx` y gana un segundo picker con buscador para reasignar Vendedor (antes solo tenía el de Institución) — se quita el prefijo "Institución —" del título del modal, ahora solo el nombre del contacto.
   - `multiple_person_mm03vqwx` (Vendedor, Contactos) no era escribible en `shared/visibility.ts` — se le preguntó a Efraín antes de tocar el whitelist (regla dura del repo); confirmó el mismo set `vendedor+admin` que ya tiene Institución.
   - Verificado en vivo con Playwright contra Monday real: PATCH 200 al reasignar el vendedor de un contacto real (Alan Mancilla Contreras), confirmado en el modal y en la fila con el ícono de sincronizando; revertido al vendedor original al terminar la verificación. `tsc --noEmit` y `oxlint` limpios.
+
+- Fix: no cargaban las actualizaciones de ninguna oportunidad (reporte de Efraín)
+  - Causa raíz: el commit de ayer (`8e2846b`, "Actualizaciones no reflejaba las
+    respuestas") reutilizó `UPDATE_FIELDS` — que incluye `assets{id name
+    file_extension}` — también para el selection set de `replies` en
+    `fetchUpdates` (`worker/lib/monday.ts`). Pero en el schema de Monday que
+    usa el repo (`API-Version: 2025-04`), el tipo `Reply` no tiene campo
+    `assets` (confirmado con introspección en vivo: `Reply` solo trae `body,
+    created_at, creator, creator_id, id, text_body, updated_at, kind,
+    edited_at, likes, pinned_to_top, viewers`). GraphQL valida el shape de la
+    query completa antes de ejecutarla, así que la query fallaba con
+    `"Cannot query field \"assets\" on type \"Reply\""` para CUALQUIER item,
+    tuviera o no replies — de ahí que fuera "ninguna oportunidad", no un dato
+    específico.
+  - Fix: `REPLY_FIELDS` separado (sin `assets`) para el selection set de
+    `replies`; `UPDATE_FIELDS` (con `assets`) se queda igual para los updates
+    de primer nivel. `worker/routes/boards.ts:301` ya usaba `u.assets ?? []`
+    al armar el DTO, así que las respuestas simplemente quedan con
+    `attachments: []` (correcto — Monday no soporta adjuntos en replies en
+    esta versión de API, no es una regresión).
+  - Verificado con `tsc --noEmit` y `npm test` (219 tests), y end-to-end
+    contra Monday real: query exacta confirmada con error de schema antes del
+    fix (`curl` directo con la API key real, `API-Version: 2025-04`) y 200 con
+    datos reales después (oportunidad OPP-0774, updates con replies anidados).
+    También probado contra el worker local (`GET
+    /api/boards/oportunidades/items/:id/updates` → 200).
