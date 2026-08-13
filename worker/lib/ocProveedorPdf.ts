@@ -97,7 +97,7 @@ export async function generarOcProveedorPdf(
     metodoPago: proyecto.cols[P_METODO_PAGO]?.text || '',
     condicionesPago: proyecto.cols[P_COND_PAGO]?.text || '',
     lineas,
-    elaboradoNombre: viewer.nombre || '',
+    elaboradoNombre: proyecto.cols[P_COMPRADOR]?.text || '',
     revisadoNombre: REVISADO_NOMBRE,
     autorizadoNombre: AUTORIZADO_NOMBRE,
   });
