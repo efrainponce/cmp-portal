@@ -2,6 +2,29 @@
 
 ## 2026-08-13
 
+- Fix: pestaña "Actualizaciones" del drawer se quedaba en "Cargando…" para
+  siempre en mobile (`ActualizacionesTab.tsx`)
+  - Efraín reportó que a Ricardo no le cargaba esa pestaña en el celular. Se
+    descartó permisos de fila/rol como causa: si `dal.ts` le niega el item a
+    un viewer, el worker responde 404 limpio y el tab cae al estado de error,
+    no al de loading.
+  - Causa real: `apiFetch` puede devolver una promesa que nunca resuelve ni
+    rechaza cuando la sesión de Cloudflare Access expiró y el redirect de
+    recuperación (`recoverFromAccessSession`, `apiClient.ts`) no completa —
+    fragilidad ya documentada en este repo con el logout de Access/Google.
+    `ActualizacionesTab` no tenía ningún timeout, así que el `then`/`catch`
+    de `getUpdates` nunca disparaba y el "Cargando…" quedaba pegado sin
+    error ni forma de reintentar.
+  - Fix defensivo: timeout de 15s en `load()` — si `getUpdates` no resuelve a
+    tiempo, cae al mismo estado de error que ya existía ("No se pudieron
+    cargar las actualizaciones."). Un `loadTokenRef` descarta una
+    respuesta/timeout tardío si el usuario ya cambió de tab/item mientras
+    tanto.
+  - Nota de concurrencia: el working tree traía cambios sueltos de otra
+    sesión (`CotizacionPdfRow.tsx`, `worker/routes/boards.ts`,
+    `scripts/perf-bench.mjs` + `scripts/perf-results/`) — se dejaron sin
+    commitear, solo se stageó el archivo propio de este fix.
+
 - Feat: botón "Reabrir" para oportunidades Ganada/Perdida/Cancelada
   (`OpportunityDrawer.tsx`)
   - Efraín pidió habilitar "descancelar"/reabrir una oportunidad, disponible

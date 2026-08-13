@@ -97,9 +97,31 @@ export function ActualizacionesTab({ slug, itemId }: Props) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // apiFetch puede colgarse sin resolver ni rechazar si la sesión de Cloudflare
+  // Access expiró y el redirect de recuperación no completa (ver apiClient.ts,
+  // recoverFromAccessSession) — sin este timeout el "Cargando…" se queda
+  // pegado para siempre, sin error, sin forma de reintentar (reportado en
+  // mobile, 2026-08-13). loadToken descarta una respuesta/timeout tardíos si
+  // slug/itemId ya cambiaron.
+  const loadTokenRef = useRef(0);
+
   const load = () => {
     setError(false);
-    getUpdates(slug, itemId).then(setUpdates).catch(() => setError(true));
+    const token = ++loadTokenRef.current;
+    const timeout = window.setTimeout(() => {
+      if (loadTokenRef.current === token) setError(true);
+    }, 15000);
+    getUpdates(slug, itemId)
+      .then((data) => {
+        if (loadTokenRef.current !== token) return;
+        window.clearTimeout(timeout);
+        setUpdates(data);
+      })
+      .catch(() => {
+        if (loadTokenRef.current !== token) return;
+        window.clearTimeout(timeout);
+        setError(true);
+      });
   };
 
   useEffect(load, [slug, itemId]);
