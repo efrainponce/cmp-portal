@@ -36,13 +36,19 @@
     TALLAS", OC→"08. ODC PROVEEDOR" (mapeo confirmado con Efraín; el PDF de
     costeo, Fase 1, es interno y no se deposita). Cada depósito es
     best-effort — el PDF ya quedó en Monday aunque Drive falle.
-  - Riesgo conocido, documentado pero no resuelto (no vale la pena una
-    abstracción de lock para un evento de baja frecuencia): si Monday reintenta
-    el webhook `create_item` mientras la primera carpeta todavía se está
-    creando (varias llamadas secuenciales a Drive — token+list+create x13),
-    hay una ventana corta donde dos carpetas raíz duplicadas podrían crearse
-    antes de que la primera se guarde en D1. Vale la pena que Efraín lo
-    observe la primera vez que encienda la flag.
+  - Descarté el riesgo de "reintento de Monday duplica la carpeta" que había
+    anotado al terminar: confirmé contra la documentación oficial
+    (developer.monday.com/api-reference/reference/webhooks) que Monday SOLO
+    reintenta cuando la respuesta NO es 200 (timeout de 3 min, luego 1
+    reintento/min por 30 min) — nunca por lentitud si ya respondiste 200. El
+    bloque de Drive en `webhook.ts` está en `try/catch` y SIEMPRE deja que el
+    handler responda 200 así falle Drive, así que Monday nunca tiene motivo
+    para reintentar este evento. El único riesgo real de carpeta raíz
+    duplicada sería que Monday entregara el mismo `create_item` dos veces
+    simultáneas (bug de entrega a nivel plataforma) — genérico de cualquier
+    webhook "at-least-once", no algo que esta implementación empeore. Las 12
+    subcarpetas ya son autocurables ante cualquier reintento parcial
+    (`ensureOportunidadFolder` lista las existentes antes de crear).
   - **Pendiente antes de encender `DRIVE_NATIVE`:** Efraín debe desactivar el
     escenario 100 de Make, si no cada Oportunidad nueva termina con DOS
     carpetas raíz (una de Make, una nativa).
