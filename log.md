@@ -2,6 +2,16 @@
 
 ## 2026-08-12
 
+- Fix: cron del backup semanal a R2 (`worker/index.ts`, `wrangler.jsonc`) nunca
+  se registraba en Cloudflare — el commit de "backup semanal del mirror D1 a
+  R2" usó `"0 3 * * 0"` para domingo, pero la API de Workers rechaza `0` como
+  día-de-semana (a diferencia del cron estándar de Unix): quiere `1-7` (o
+  `SUN`...`SAT`). Cada deploy desde entonces subía bien el Worker+assets pero
+  fallaba en silencio al actualizar los cron triggers (Action en rojo, sin
+  bloquear producción) y el backup nunca corrió ni una vez. Cambiado a `7`.
+  Corregido también en vivo vía API contra la cuenta real mientras se
+  investigaba (Efraín preguntó "¿está en prod?" tras un push en rojo).
+
 - Fix: el board Costeo (`src/lib/dealStages.ts`) ya no oculta ninguna etapa —
   antes traía un `excludeStages` (Seguimiento/Negociación/Ganada/Perdida,
   decisión de Efraín de 2026-07-20) que dejaba fuera oportunidades que él
