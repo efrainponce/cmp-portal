@@ -232,7 +232,16 @@ export const gridWrapStyle: React.CSSProperties = { width: 'fit-content' };
 // usan esto) estira la celda sobre ese hueco entre columnas — sin esto, la
 // rendija del gap no tiene fondo propio y se ve la caja de la columna
 // siguiente asomando al hacer scroll (Efraín, 2026-08-10: "se ve raro").
-export const STICKY_PRODUCTO_STYLE: React.CSSProperties = { position: 'sticky', left: 0, zIndex: 1, marginRight: -6 };
+// `alignSelf: 'stretch'` + `height: '100%'`: el grid de la fila usa
+// `alignItems: 'center'`, así que sin esto la celda sticky solo mide el alto
+// de su propio texto (una línea) mientras celdas vecinas más altas (p.ej. el
+// <select> de Etapa Costeo, con padding) quedan centradas en la fila y se
+// asoman por arriba/abajo de la celda sticky al hacer scroll horizontal — se
+// ve como una franja translúcida del color/borde de esa otra celda rodeando
+// el nombre del producto (Efraín, 2026-08-13: "tiene transparencia").
+export const STICKY_PRODUCTO_STYLE: React.CSSProperties = {
+  position: 'sticky', left: 0, zIndex: 1, marginRight: -6, alignSelf: 'stretch', height: '100%',
+};
 
 export const PRECIO_VENTA_COL = 'numeric_mkzneg3d';
 

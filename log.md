@@ -2,6 +2,16 @@
 
 ## 2026-08-13
 
+- Fix: columna Producto (sticky) del grid de cotización/costeo dejaba ver una
+  franja del <select> vecino al hacer scroll horizontal (`gridMeta.tsx`)
+  - El grid de cada fila usa `alignItems: 'center'`, así que la celda sticky de
+    Producto solo medía el alto de su texto (una línea) mientras celdas vecinas
+    más altas (el `<select>` de Etapa Costeo, con padding) quedaban centradas en
+    la fila y se asomaban por arriba/abajo de la celda sticky al scrollear —
+    se veía como una franja translúcida/rosa rodeando el nombre del producto.
+    `STICKY_PRODUCTO_STYLE` ahora fuerza `alignSelf: 'stretch'` + `height: 100%`
+    para que la celda cubra todo el alto de la fila.
+
 - Fix: tab "Zona Efrain" solo muestra líneas del CEO (`dealStages.ts`)
   - `vendedorNames` filtraba por 'Efrain Ponce' y 'Elisa Vallado'; Elisa solo
     tiene acceso de whitelist a la zona (crea oportunidades ahí para el CEO)
