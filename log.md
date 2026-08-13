@@ -10,6 +10,15 @@
   misma versión quitó el listado plano de respaldo, el resultado era que
   ninguna OC generada se veía en el portal (reportado por Efraín).
 
+- Fix: previews de PDF borrosos en pantallas retina (`PdfCanvasPreview.tsx`) —
+  el canvas se dibujaba a resolución CSS sin multiplicar por
+  `devicePixelRatio`, así que el navegador estiraba esos píxeles al mostrarlo.
+  Ahora el backing store del canvas se escala por `devicePixelRatio` (capado
+  a 3x) mientras el tamaño CSS se fija aparte, mismo patrón que ya usaba
+  `SignaturePad.tsx`. Afecta a los 4 puntos que comparten el componente:
+  OC, cotizaciones, documentos de firma y adjuntos de Actualizaciones
+  (reportado por Efraín).
+
 - Fix: tab Embellecimientos ahora muestra el Color de la línea junto al SKU, y
   agrega un ícono de lápiz junto a cada posición capturada (`EmbellecimientosTab.tsx`)
   - Efraín pidió mostrar el color (no solo SKU) y hacer obvio que las posiciones
