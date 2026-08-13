@@ -35,7 +35,7 @@ import { refetchItem, refetchItemTree, upsertItem } from '../sync';
 import { jsonStatus } from '../lib/http';
 import { canWrite } from '../../shared/visibility';
 import { emitNotification } from '../lib/notify';
-import { createDocument } from '../lib/documents';
+import { createDocument, documentPdf } from '../lib/documents';
 import { md5 } from '../lib/canon';
 
 // Acciones de cmp-tallas sobre el Proyecto. Cada una exige que el viewer pueda
@@ -100,19 +100,32 @@ async function notifyCosteoIncompleto(env: Env, viewer: Identity, itemId: number
   } catch { /* best-effort — no bloquea la respuesta 422 */ }
 }
 
+// "Solicitud Costeo" (docs/monday-column-map.md) — antes la llenaba el PDF de Eledo
+// que subía cmp-tallas; en modo nativo (COSTEO_NATIVE=1) el PDF propio del portal
+// pasa a ser el oficial también ahí.
+const OPP_FILE_COSTEO = 'file_mm10k65a';
+
 /** Genera (o regenera) la solicitud de costeo del portal y la deja acusada por
  * quien apretó el botón. Best-effort a propósito: si algo falla aquí, "Mandar a
- * costeo" ya se ejecutó en cmp-tallas y no se puede deshacer — el documento se
- * puede volver a generar a mano desde la pestaña Documentación. */
+ * costeo" ya se ejecutó (nativo o cmp-tallas) y no se puede deshacer — el
+ * documento se puede volver a generar a mano desde la pestaña Documentación.
+ * `folioCosteo`: cuando viene (modo nativo), los mismos bytes se suben además a
+ * Monday (file_mm10k65a) con el folio de worker/lib/costeo.ts's nextCosteoSeq —
+ * en modo cmp-tallas esa columna ya la llena Eledo, así que aquí no se toca. */
 async function generarSolicitudCosteo(
-  c: Context<{ Bindings: Env }>, itemId: number, viewer: Identity,
+  c: Context<{ Bindings: Env }>, itemId: number, viewer: Identity, folioCosteo?: string,
 ): Promise<void> {
   try {
-    await createDocument(c.env, viewer, {
+    const doc = await createDocument(c.env, viewer, {
       templateId: 'solicitud-costeo',
       sourceId: String(itemId),
       acuse: { ip: c.req.header('CF-Connecting-IP') ?? null, userAgent: c.req.header('User-Agent') ?? null },
     });
+    if (c.env.COSTEO_NATIVE === '1' && folioCosteo) {
+      const { bytes } = await documentPdf(c.env, doc.id, viewer, false);
+      const filename = `costeo_${folioCosteo.replace(/[^\w.-]+/g, '_')}.pdf`;
+      await addFileToColumn(c.env, itemId, OPP_FILE_COSTEO, new Blob([bytes], { type: 'application/pdf' }), filename);
+    }
   } catch (err) {
     console.log('[solicitud-costeo] ' + String(err));
   }
@@ -158,13 +171,17 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
 
     try {
       const result = await enviarACosteo(c.env, itemId, viewer);
-      // El stage, el PDF y los snapshots de subitems los escribió cmp-tallas
-      // directo en Monday — refresca el árbol completo en el mirror.
-      if (result.ok) await refetchItemTree(c.env, BOARDS.oportunidades.id, itemId);
+      // El stage (y, si ok, los snapshots de subitems) se escribió directo en
+      // Monday — cmp-tallas o el flujo nativo (COSTEO_NATIVE=1), ambos mutan
+      // incluso al rechazar (revierten a "Nueva oportunidad" + update). Un
+      // rechazo del pre-chequeo LOCAL (checkCosteo) nunca toca Monday — de ahí
+      // `mutated`, para no gastar una lectura de más en ese caso, con mucho el
+      // más frecuente.
+      if (result.ok || result.mutated) await refetchItemTree(c.env, BOARDS.oportunidades.id, itemId);
       // Solicitud de costeo del portal: el click ya viene autenticado, así que
       // vale como acuse — se genera y se asienta sola, sin pedirle firma a nadie
       // (Efraín, 2026-07-26). Best-effort: nunca tumba el "Mandar a costeo".
-      if (result.ok) await generarSolicitudCosteo(c, itemId, viewer);
+      if (result.ok) await generarSolicitudCosteo(c, itemId, viewer, result.folio);
       if (!result.ok) await notifyCosteoIncompleto(c.env, viewer, itemId, result.errors ?? []);
       return result.ok ? c.json(result) : jsonStatus(result, 422);
     } catch (err) {

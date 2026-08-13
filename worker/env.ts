@@ -10,6 +10,11 @@ export interface Env {
   ACCESS_AUD?: string;            // Access application AUD tag (prod)
   CMP_TALLAS_BASE?: string;       // Vercel automations base URL
   CMP_SECRET?: string;            // X-CMP-Secret header for cmp-tallas
+  // Plan "salir de Monday" Fase 1 (2026-08-12): '1' prende el validar_costeo nativo
+  // (worker/lib/costeo.ts) en vez de llamar a cmp-tallas — fallback vivo mientras se
+  // corre en paralelo contra oportunidades reales y se compara el resultado. Sin
+  // definir o distinto de '1' = comportamiento de siempre (cmp-tallas).
+  COSTEO_NATIVE?: string;
 
   // Claude agent, shared by two channels: WhatsApp bot (worker/wa/) and the
   // portal chat bubble (worker/assistant/). Both reply politely when unset.

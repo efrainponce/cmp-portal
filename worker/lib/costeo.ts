@@ -11,8 +11,13 @@ import type { Identity, MirrorItem } from '../../shared/types';
 import { getItem, childrenOf, linkedItemId, ownsItem } from './dal';
 import { validarCosteo } from './automations';
 import { submitWrite } from './outbox';
+import { gql, moveItemToGroup, createUpdate, fetchItemWithSubitems, type MondayCol } from './monday';
+import { BOARDS } from '../../shared/boards';
 import type { RawCol } from './serialize';
-import { EMB_STATUS_COL, EMB_LABEL_CON, explodeEmbellecimiento } from '../../shared/embellecimiento';
+import {
+  EMB_STATUS_COL, EMB_LABEL_CON, explodeEmbellecimiento,
+  repairEmbellecimiento, embellecimientoTemplateError,
+} from '../../shared/embellecimiento';
 
 // Oportunidades subitems (18395657607) — ids de docs/monday-column-map.md.
 const SUB_CANTIDAD = 'numeric_mkzm6399';
@@ -26,6 +31,31 @@ const SUB_EMB_DESC = 'long_text_mm1bj4pt';        // descripción de posiciones 
 
 // Oportunidad
 const OPP_INSTITUCION = 'lookup_mm1bs976';        // validar_costeo rechaza sin institución
+
+// Snapshot nativo de costeo (Fase 1, plan "salir de Monday" 2026-08-12) — mismos ids
+// que validar_costeo.py, verificados contra shared/column-meta.gen.ts (sección
+// "oportunidades_sub"). SCOL_* = lecturas (lookup/mirror del catálogo/línea); SNAP_* =
+// columnas EDITABLES donde se congela el valor al momento de costear.
+const SCOL_COSTO = 'lookup_mm5ck4b3';            // Costo (auto)
+const SCOL_MONEDA = 'lookup_mm11t8gj';           // Moneda
+const SCOL_DESCUENTO = 'lookup_mm0bdwb5';        // Descuento (auto) — fracción 0-1
+const SCOL_GASTOS = 'lookup_mm0bbz02';           // Gastos % (auto) — fracción 0-1
+const SCOL_PRODUCTO_NOMBRE = 'lookup_mm0x4kda';  // Nombre del Producto (mirror)
+const SCOL_SKU = 'lookup_mkzn7x9a';              // SKU (auto)
+const SNAP_NOMBRE = SUB_PRODUCTO_TXT;            // 'text_mm0bkm1j' — mismo id, doble uso
+const SNAP_SKU = 'text_mm0bxy39';
+const SNAP_COSTO = 'numeric_mm0bph99';
+const SNAP_DESC_PCT = 'numeric_mkzn2q51';
+const SNAP_GAST_PCT = 'numeric_mkzngs9x';
+const SNAP_IVA = 'numeric_mm0cg0bm';
+const SNAP_TC = 'numeric_mm0rvhgs';
+const SNAP_PRECIO = 'numeric_mm2qzzbe';          // "Precio de Venta (formula)" — DISTINTO
+                                                  // de numeric_mkzneg3d (Precio de Venta
+                                                  // C/U, solo-admin, shared/visibility.ts).
+
+// Oportunidad — reject/accept del flujo nativo.
+const OPP_FOLIO = 'pulse_id_mm0qcq0m';
+const GROUP_EN_COSTEO = 'group_mkzmdg9c'; // "Oportunidades en Costeo" (validar_costeo.py)
 
 // Productos (18395657591) — checkbox creada 2026-07-18, docs/monday-column-map.md.
 const PRODUCTO_CONFIRM_COL = 'boolean_mm5cqtjs';  // "Descripción y tallas confirmadas"
@@ -137,6 +167,12 @@ export interface EnviarCosteoResult {
   errors?: string[];
   /** Folio del PDF de costeo generado, cuando ok. */
   folio?: string;
+  /** true cuando el flujo real (nativo o cmp-tallas) llegó a correr y escribió en
+   * Monday, incluso si rechazó (revierte deal_stage + postea el update) — a
+   * diferencia de un rechazo del pre-chequeo LOCAL (checkCosteo), que nunca toca
+   * Monday. El caller (worker/routes/oportunidades.ts) lo usa para decidir si
+   * vale la pena refrescar el mirror. */
+  mutated?: boolean;
 }
 
 /** Validación de solo lectura (sin ningún efecto): la UI la usa para deshabilitar
@@ -192,6 +228,219 @@ function checksToErrors(checks: unknown): string[] {
   return checks.split('\n').filter(line => line.includes('⚠️'));
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Flujo nativo de "Mandar a costeo" (Fase 1, plan "salir de Monday",
+// 2026-08-12) — reimplementa validar_costeo.py 1:1: snapshot de costos,
+// reparación+validación de embellecimiento, reject/accept, mueve
+// deal_stage+grupo. Ya NO llama a Eledo para el PDF (ver
+// worker/routes/oportunidades.ts::generarSolicitudCosteo — el PDF propio del
+// portal, worker/lib/documents.ts, pasa a ser el oficial). Gateado por
+// env.COSTEO_NATIVE mientras corre en paralelo contra oportunidades reales.
+// ═══════════════════════════════════════════════════════════════════════════
+
+function cvText(cols: MondayCol[], id: string): string {
+  return cols.find(c => c.id === id)?.text?.trim() ?? '';
+}
+
+function cvNum(cols: MondayCol[], id: string): number {
+  const n = Number(cvText(cols, id).replace(/,/g, ''));
+  return Number.isFinite(n) ? n : 0;
+}
+
+interface SnapshotValues {
+  nombre: string;
+  sku: string;
+  costo: number;
+  descPct: number;
+  gastPct: number;
+  tc: number;
+  precio: number;
+}
+
+/** precio = (1+gastos%)·(costo·(1-desc%))·TC·1.3 — TC=18 si Moneda es USD, 1 si no.
+ * Mirror 1:1 de validar_costeo.py's compute_snapshot_values. */
+export function computeSnapshot(cols: MondayCol[]): SnapshotValues {
+  const costo = cvNum(cols, SCOL_COSTO);
+  const descFrac = cvNum(cols, SCOL_DESCUENTO);
+  const gastosFrac = cvNum(cols, SCOL_GASTOS);
+  const tc = cvText(cols, SCOL_MONEDA).toUpperCase() === 'USD' ? 18 : 1;
+  const precio = Math.round((1 + gastosFrac) * (costo * (1 - descFrac)) * tc * 1.3 * 100) / 100;
+  return {
+    nombre: cvText(cols, SCOL_PRODUCTO_NOMBRE),
+    sku: cvText(cols, SCOL_SKU),
+    costo, descPct: Math.round(descFrac * 100), gastPct: Math.round(gastosFrac * 100), tc, precio,
+  };
+}
+
+async function writeSubitemCols(env: Env, subId: string, cols: Record<string, string>): Promise<void> {
+  await gql(
+    env,
+    `mutation($b:ID!,$i:ID!,$cv:JSON!){ change_multiple_column_values(board_id:$b,item_id:$i,column_values:$cv){ id } }`,
+    { b: String(BOARDS.oportunidades_sub.id), i: subId, cv: JSON.stringify(cols) },
+  );
+}
+
+function writeSnapshot(env: Env, subId: string, snap: SnapshotValues): Promise<void> {
+  return writeSubitemCols(env, subId, {
+    [SNAP_NOMBRE]: snap.nombre,
+    [SNAP_SKU]: snap.sku,
+    [SNAP_COSTO]: String(snap.costo),
+    [SNAP_DESC_PCT]: String(snap.descPct),
+    [SNAP_GAST_PCT]: String(snap.gastPct),
+    [SNAP_IVA]: '16',
+    [SNAP_TC]: String(snap.tc),
+    [SNAP_PRECIO]: String(snap.precio),
+  });
+}
+
+interface SubitemCheck {
+  ok: boolean;
+  line: string;
+  embellRepairedText?: string;
+}
+
+/** Valida una línea contra las mismas 4 reglas que validar_costeo.py's
+ * validate_subitems: cantidad>0, color en la lista del producto, ficha comercial
+ * presente, embellecimiento (con auto-reparación) completo. `nombre` ya resuelto
+ * por el caller (snapshot recién escrito o, si la línea ya estaba costeada, el
+ * nombre ya congelado en SNAP_NOMBRE). */
+export function checkSubitemNative(cols: MondayCol[], nombre: string): SubitemCheck {
+  const errs: string[] = [];
+
+  if (cvNum(cols, SUB_CANTIDAD) <= 0) errs.push('⚠️ Cantidad incorrecta.');
+
+  const disponibles = cvText(cols, SUB_COLORES_DISP);
+  const color = cvText(cols, SUB_COLOR).toLowerCase();
+  if (disponibles) {
+    const opciones = disponibles.split(',').map(s => s.trim().toLowerCase());
+    if (!color) errs.push('⚠️ Color no especificado.');
+    else if (!opciones.includes(color)) errs.push('⚠️ Verificar color.');
+  }
+
+  if (!cvText(cols, SUB_FICHA)) errs.push('⚠️ Falta la ficha comercial (Compras debe subirla al catálogo).');
+
+  let embellText = cvText(cols, SUB_EMB_DESC);
+  const repair = repairEmbellecimiento(embellText);
+  if (repair.repaired) embellText = repair.text;
+  const embellErr = embellecimientoTemplateError(embellText);
+  if (embellErr) errs.push(`⚠️ ${embellErr}`);
+
+  const repairedNote = repair.repaired && errs.length === 0 ? ' (embellecimiento reparado ✅)' : '';
+  return {
+    ok: errs.length === 0,
+    line: errs.length ? `${nombre}: ${errs.join(' ')}` : `${nombre}: ✅ OK${repairedNote}`,
+    embellRepairedText: repair.repaired ? repair.text : undefined,
+  };
+}
+
+async function rejectCosteoNative(env: Env, itemId: number, body: string): Promise<void> {
+  await gql(
+    env,
+    `mutation($b:ID!,$i:ID!,$cv:JSON!){ change_multiple_column_values(board_id:$b,item_id:$i,column_values:$cv){ id } }`,
+    { b: String(BOARDS.oportunidades.id), i: String(itemId), cv: JSON.stringify({ deal_stage: { label: 'Nueva oportunidad' } }) },
+  );
+  await createUpdate(env, itemId, `⛔ Solicitud de costeo rechazada.\n\n${body}`);
+}
+
+// Folio propio del costeo nativo — reemplaza el conteo de archivos en
+// file_mm10k65a que hacía validar_costeo.py (frágil/racy): un contador por
+// oportunidad en D1, incrementado en cada envío exitoso. Lazy, mismo patrón
+// que ensureDocumentTables (worker/lib/documents.ts).
+let costeoFolioTableReady = false;
+async function nextCosteoSeq(env: Env, itemId: number): Promise<number> {
+  if (!costeoFolioTableReady) {
+    await env.DB.prepare(
+      `CREATE TABLE IF NOT EXISTS costeo_folios (item_id INTEGER PRIMARY KEY, seq INTEGER NOT NULL DEFAULT 0)`,
+    ).run();
+    costeoFolioTableReady = true;
+  }
+  await env.DB.prepare(
+    `INSERT INTO costeo_folios (item_id, seq) VALUES (?, 1)
+     ON CONFLICT(item_id) DO UPDATE SET seq = seq + 1`,
+  ).bind(itemId).run();
+  const row = await env.DB.prepare(`SELECT seq FROM costeo_folios WHERE item_id = ?`).bind(itemId).first<{ seq: number }>();
+  return row?.seq ?? 1;
+}
+
+async function runCosteoNative(env: Env, itemId: number): Promise<EnviarCosteoResult> {
+  const fetched = await fetchItemWithSubitems(env, itemId);
+  if (!fetched) throw new CosteoError(404, 'not found');
+  const { item, subitems } = fetched;
+
+  if (subitems.length === 0) {
+    await rejectCosteoNative(env, itemId, 'La oportunidad no tiene productos.');
+    return { ok: false, errors: ['La oportunidad no tiene productos.'], mutated: true };
+  }
+
+  // 1) Snapshot de costos — solo líneas todavía "No iniciado" (una vez costeada,
+  // el valor queda congelado aunque el catálogo/costo cambien después).
+  const toSnapshot = subitems.filter(s => cvText(s.column_values, SUB_ETAPA_COSTEO) === ETAPA_NO_INICIADO);
+  const snapOverrides = new Map<string, SnapshotValues>();
+  for (const s of toSnapshot) snapOverrides.set(s.id, computeSnapshot(s.column_values));
+  if (toSnapshot.length > 0) {
+    const results = await Promise.allSettled(toSnapshot.map(s => writeSnapshot(env, s.id, snapOverrides.get(s.id)!)));
+    const failed = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
+    if (failed.length > 0) {
+      throw new CosteoError(502, `No se pudieron guardar ${failed.length} snapshot(s) de subitems: ${String(failed[0].reason)}`);
+    }
+  }
+
+  // 2) Validar cada línea (con auto-reparación de embellecimiento detectada, no
+  // escrita todavía — se escribe en el paso 3, en paralelo).
+  const lines: string[] = [];
+  let hasErrors = false;
+  const embellRepairs: { id: string; text: string; nombre: string }[] = [];
+  for (const sub of subitems) {
+    const override = snapOverrides.get(sub.id);
+    const nombre = override?.nombre || cvText(sub.column_values, SNAP_NOMBRE) || sub.name;
+    const check = checkSubitemNative(sub.column_values, nombre);
+    lines.push(check.line);
+    if (!check.ok) hasErrors = true;
+    if (check.embellRepairedText !== undefined) embellRepairs.push({ id: sub.id, text: check.embellRepairedText, nombre });
+  }
+
+  // 3) Escribir las reparaciones de embellecimiento detectadas — un fallo aquí
+  // también rechaza el envío (mismo criterio que validar_costeo.py).
+  if (embellRepairs.length > 0) {
+    const results = await Promise.allSettled(embellRepairs.map(r => writeSubitemCols(env, r.id, { [SUB_EMB_DESC]: r.text })));
+    results.forEach((r, i) => {
+      if (r.status === 'rejected') {
+        hasErrors = true;
+        lines.push(`⚠️ No se pudo reparar el embellecimiento del subitem ${embellRepairs[i].id}: ${String(r.reason)}`);
+      }
+    });
+  }
+
+  // 4) Reject o accept.
+  const institucion = cvText(item.column_values, OPP_INSTITUCION);
+  const shouldReject = hasErrors || !institucion;
+  if (shouldReject) {
+    const checksText = lines.join('\n');
+    await rejectCosteoNative(env, itemId, hasErrors ? checksText : '⚠️ Asigna una institución.');
+    const errors = hasErrors ? checksToErrors(checksText) : ['Asigna una institución.'];
+    return { ok: false, errors: errors.length ? errors : ['La solicitud de costeo fue rechazada.'], mutated: true };
+  }
+
+  const seq = await nextCosteoSeq(env, itemId);
+  const folioBase = cvText(item.column_values, OPP_FOLIO) || String(itemId);
+  const folio = `${folioBase} : Costeo ${seq}`;
+
+  await gql(
+    env,
+    `mutation($b:ID!,$i:ID!,$cv:JSON!){ change_multiple_column_values(board_id:$b,item_id:$i,column_values:$cv){ id } }`,
+    { b: String(BOARDS.oportunidades.id), i: String(itemId), cv: JSON.stringify({ deal_stage: { label: 'En costeo' } }) },
+  );
+  // Best-effort: mover de grupo es organización visual, nunca debe tumbar el envío.
+  try { await moveItemToGroup(env, itemId, GROUP_EN_COSTEO); } catch { /* best-effort */ }
+  if (embellRepairs.length > 0) {
+    try {
+      await createUpdate(env, itemId, `✅ Se corrigió el embellecimiento de: ${embellRepairs.map(r => r.nombre).join(', ')}.`);
+    } catch { /* best-effort */ }
+  }
+
+  return { ok: true, folio };
+}
+
 export async function enviarACosteo(
   env: Env,
   itemId: number,
@@ -206,6 +455,8 @@ export async function enviarACosteo(
   const pre = await checkCosteo(env, itemId, viewer);
   if (!pre.ok) return pre;
 
+  if (env.COSTEO_NATIVE === '1') return runCosteoNative(env, itemId);
+
   // Flujo real de cmp-tallas — snapshotea, genera el PDF de costeo y mueve el stage.
   // Si rechaza, el endpoint mismo revierte a "Nueva oportunidad" y postea el update.
   const res = await validarCosteo(env, itemId, false);
@@ -216,7 +467,9 @@ export async function enviarACosteo(
 
   const errors = checksToErrors(res.checks);
   if (typeof res.reason === 'string' && res.reason) errors.push(res.reason);
-  return { ok: false, errors: errors.length ? errors : ['La solicitud de costeo fue rechazada. Revisa el update en Monday.'] };
+  // cmp-tallas ya revirtió deal_stage + posteó el update aunque haya rechazado
+  // (validar_costeo.py's reject_costeo) — no es un skip sin efecto.
+  return { ok: false, errors: errors.length ? errors : ['La solicitud de costeo fue rechazada. Revisa el update en Monday.'], mutated: true };
 }
 
 /** Solo lectura: cada línea debe tener su producto de catálogo ligado y ese

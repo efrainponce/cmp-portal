@@ -72,3 +72,35 @@ export function upsertEmbellZone(raw: string | undefined | null, zone: string, v
   current[zone] = value;
   return serializeEmbellecimiento(current);
 }
+
+/** Repara embellecimiento agregando las claves de plantilla que falten, preservando
+ * las que ya tienen valor — solo si al menos una clave reconocida ya trae algo (si
+ * no, no hay nada que preservar y se deja tal cual). Mirror 1:1 de
+ * validar_costeo.py's `_try_repair_embellecimiento` (worker/lib/costeo.ts la usa en
+ * el flujo nativo de "Mandar a costeo"): separador "\n,," y TODAS las claves de
+ * plantilla, aunque queden vacías — a propósito distinto de serializeEmbellecimiento
+ * (",," y solo zonas con valor), que sirve para el flujo de edición manual. */
+export function repairEmbellecimiento(raw: string | undefined | null): { text: string; repaired: boolean } {
+  if (!raw || !raw.trim()) return { text: raw ?? '', repaired: false };
+  const parsed = parseEmbellecimiento(raw);
+  const hasKnownValue = EMBELL_TEMPLATE_KEYS.some((k) => parsed[k]);
+  if (!hasKnownValue) return { text: raw, repaired: false };
+  const missing = EMBELL_TEMPLATE_KEYS.filter((k) => !(k in parsed));
+  if (missing.length === 0) return { text: raw, repaired: false };
+  const repaired = EMBELL_TEMPLATE_KEYS.map((k) => `${k}:${parsed[k] ?? ''}`).join('\n,,');
+  return { text: repaired, repaired: true };
+}
+
+/** Error legible si el embellecimiento no cumple la plantilla completa; `null` si
+ * está OK (incluye "vacío", que no bloquea — la línea sin texto de embellecimiento
+ * no es un error de por sí). Mirror 1:1 de validar_costeo.py's
+ * `_validate_embellecimiento`, corrida sobre el texto YA reparado por
+ * repairEmbellecimiento. */
+export function embellecimientoTemplateError(raw: string | undefined | null): string | null {
+  if (!raw || !raw.trim()) return null;
+  const parsed = parseEmbellecimiento(raw);
+  const missing = EMBELL_TEMPLATE_KEYS.filter((k) => !(k in parsed));
+  if (missing.length > 0) return `Embellecimiento incompleto (faltan: ${missing.slice(0, 2).join(', ')}).`;
+  if (!Object.values(parsed).some((v) => v)) return 'Embellecimiento debe tener al menos un valor.';
+  return null;
+}

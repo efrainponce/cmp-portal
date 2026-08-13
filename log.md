@@ -2,6 +2,50 @@
 
 ## 2026-08-12
 
+- Feat: "salir de Monday" Fase 1 — validar_costeo nativo (branch `feat/zona-efrain-board`)
+  - Arranque del plan grande que reemplaza, fase por fase, las 7 automatizaciones de
+    cmp-tallas (Vercel/Python) por lógica nativa del Worker sin perder funcionalidad ni
+    dejar de escribir a Monday. Leí `validar_costeo.py` completo (repo hermano
+    `cmp-tallas`) como fuente de verdad y reimplementé su flujo 1:1 en
+    `worker/lib/costeo.ts`: snapshot de costo/descuento/gastos/TC/precio por línea
+    (precio = (1+gastos%)·(costo·(1-desc%))·TC·1.3, TC=18 si Moneda=USD, 1 si no),
+    reparación automática de embellecimiento cuando falta alguna de las 8 zonas de
+    plantilla pero ya hay al menos una capturada, validación por línea (cantidad, color
+    contra la lista del producto, ficha comercial, embellecimiento), reject (revierte
+    deal_stage a "Nueva oportunidad" + postea el update) o accept (deal_stage="En
+    costeo" + mueve de grupo). Todos los ids de columna verificados contra
+    `shared/column-meta.gen.ts` antes de usarlos (regla dura del repo) — ninguno
+    inventado.
+  - Ya NO se llama a Eledo para el PDF: el PDF propio del portal
+    (`worker/lib/documents.ts`, plantilla `solicitud-costeo`, ya existía desde
+    2026-07-26) pasa a ser el oficial también en Monday — `generarSolicitudCosteo`
+    (`worker/routes/oportunidades.ts`) ahora, en modo nativo, sube esos mismos bytes a
+    `file_mm10k65a` con el folio de `nextCosteoSeq` (contador propio en D1,
+    `costeo_folios`, reemplaza el conteo-de-archivos-en-Monday frágil/racy que hacía
+    cmp-tallas).
+  - Reparé de paso una inconsistencia preexistente: el mirror solo se refrescaba
+    (`refetchItemTree`) cuando "Mandar a costeo" quedaba `ok:true`, pero un rechazo
+    (nativo o cmp-tallas) también escribe a Monday (revierte stage) — nuevo campo
+    `EnviarCosteoResult.mutated` distingue "el pre-chequeo local bloqueó, nunca tocó
+    Monday" (no refresca, caso más frecuente) de "sí se mutó" (sí refresca), en vez de
+    volver el refetch incondicional.
+  - Fallback vivo a propósito, como pidió Efraín para todo este plan: gateado por
+    `env.COSTEO_NATIVE` (sin definir = cmp-tallas de siempre, sin cambios). Se enciende
+    cuando se quiera correr en paralelo contra oportunidades reales y comparar
+    resultado/PDF antes de cortar el cable a cmp-tallas — nadie lo prendió todavía en
+    ningún ambiente.
+  - Nuevos tests: `worker/lib/costeo.test.ts` (fórmula de precio con MXN/USD, las 4
+    reglas de validación por línea, acumulación de varios errores) y
+    `shared/embellecimiento.test.ts` (repairEmbellecimiento/embellecimientoTemplateError
+    — separador `"\n,,"` exacto, distinto del serializador de edición manual). `tsc -b`,
+    `npm test` (165 tests) y `npm run lint` limpios.
+  - Pendiente (mismo plan, fases siguientes): cotización/tallas/OC/Drive/catálogo
+    siguen en cmp-tallas — Fase 0 (clientes delgados Eledo/DocuSeal/Drive/Airtable +
+    contadores D1) es el siguiente paso, sin secrets nuevos configurados todavía
+    (`ELEDO_API_KEY`/`DOCUSEAL_API_KEY`/`AIRTABLE_API_KEY`/cuenta de servicio de Google
+    no están en `.dev.vars` ni en producción — hacen falta antes de poder probar esas
+    fases en vivo).
+
 - Fix: "elegir vendedor" no mostraba a Rodrigo (picker de Contacto y contacto huérfano)
   - Ricardo Rivera reportó por WhatsApp (captura) que un vendedor nuevo, Rodrigo (sin
     cuenta propia en Monday), no aparecía en "elegir vendedor" al crear una oportunidad;

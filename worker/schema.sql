@@ -413,3 +413,14 @@ CREATE TABLE IF NOT EXISTS seguimientos (
   created_at        TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_seguimientos_item ON seguimientos(item_id);
+
+-- Folio del costeo nativo (Fase 1, plan "salir de Monday", 2026-08-12,
+-- worker/lib/costeo.ts nextCosteoSeq). Reemplaza el conteo de archivos en
+-- file_mm10k65a que hacía cmp-tallas (frágil/racy): un contador por oportunidad,
+-- incrementado en cada "Mandar a costeo" exitoso cuando COSTEO_NATIVE=1. Se crea
+-- LAZY en runtime (mismo patrón que documents/seguimientos) — está aquí solo
+-- como documentación.
+CREATE TABLE IF NOT EXISTS costeo_folios (
+  item_id  INTEGER PRIMARY KEY,     -- oportunidades item id
+  seq      INTEGER NOT NULL DEFAULT 0
+);
