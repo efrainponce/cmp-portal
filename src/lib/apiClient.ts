@@ -446,7 +446,7 @@ export async function addProyectoLinea(
  * tallas" de Compras siguen intactos, esto es una alta alternativa más rápida. */
 export async function capturarTallas(
   proyectoId: string, rows: TallaBoxInput[],
-): Promise<{ ok: boolean; created?: number; omitted?: number; error?: string }> {
+): Promise<{ ok: boolean; created?: number; updated?: number; omitted?: number; error?: string }> {
   const res = await apiFetch(`/proyectos/${proyectoId}/tallas-capturar`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

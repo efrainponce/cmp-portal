@@ -3,8 +3,9 @@
 // duplicar al reenviar el mismo box) y qué columnas se arman por subitem. Todo
 // lo demás en ese archivo es I/O contra D1/Monday.
 import { describe, it, expect } from 'vitest';
-import { identityKey, filterWanted, buildTallaColumns, type CosteoEnrichment } from './proyectoTallas';
+import { identityKey, filterWanted, buildTallaColumns, needsUpdate, type CosteoEnrichment } from './proyectoTallas';
 import type { TallaBoxInput } from '../../shared/dto';
+import type { RawCol } from './serialize';
 
 const row = (over: Partial<TallaBoxInput> = {}): TallaBoxInput => ({
   subitemId: 1, producto: 'Kepi Transito', sku: 'KEP-01', color: 'Azul Media Noche', talla: 'XL', cantidad: 8,
@@ -97,5 +98,52 @@ describe('buildTallaColumns', () => {
   it('sin proveedor en el catálogo no manda la columna — nunca inventa un default', () => {
     const cols = buildTallaColumns(row(), undefined);
     expect(cols.board_relation_mm1cfgv5).toBeUndefined();
+  });
+});
+
+// Reconciliación real por identidad (Fase 3, plan "salir de Monday", 2026-08-12,
+// mirror de import_tallas.py's _needs_update/_norm): decide si una fila que ya
+// existe en el Proyecto se actualiza o se deja tal cual.
+describe('needsUpdate', () => {
+  const raw = (id: string, text: string | null, value: string | null = null): RawCol => ({ id, type: 'text', text, value });
+
+  it('sin diferencias: no hace falta actualizar', () => {
+    const cols = new Map([['numeric_mm0hj2q4', raw('numeric_mm0hj2q4', '8')]]);
+    expect(needsUpdate(cols, { numeric_mm0hj2q4: 8 })).toBe(false);
+  });
+
+  it('cantidad distinta: sí hace falta actualizar', () => {
+    const cols = new Map([['numeric_mm0hj2q4', raw('numeric_mm0hj2q4', '8')]]);
+    expect(needsUpdate(cols, { numeric_mm0hj2q4: 12 })).toBe(true);
+  });
+
+  it('"8" (texto) == 8 (número) == "8.0" — no cuenta como cambio (ruido de formato)', () => {
+    const cols = new Map([['numeric_mm0hj2q4', raw('numeric_mm0hj2q4', '8.0')]]);
+    expect(needsUpdate(cols, { numeric_mm0hj2q4: 8 })).toBe(false);
+    expect(needsUpdate(cols, { numeric_mm0hj2q4: '8' })).toBe(false);
+  });
+
+  it('board_relation: mismo id, no cambia aunque el orden del array difiera', () => {
+    const cols = new Map([
+      ['board_relation_mm1cfgv5', raw('board_relation_mm1cfgv5', null, JSON.stringify({ linked_item_ids: ['2', '1'] }))],
+    ]);
+    expect(needsUpdate(cols, { board_relation_mm1cfgv5: { item_ids: [1, 2] } })).toBe(false);
+  });
+
+  it('board_relation: id distinto sí es cambio', () => {
+    const cols = new Map([
+      ['board_relation_mm1cfgv5', raw('board_relation_mm1cfgv5', null, JSON.stringify({ linked_item_ids: ['1'] }))],
+    ]);
+    expect(needsUpdate(cols, { board_relation_mm1cfgv5: { item_ids: [2] } })).toBe(true);
+  });
+
+  it('columna ausente en el mirror vs. valor deseado vacío: no es cambio', () => {
+    const cols = new Map<string, RawCol>();
+    expect(needsUpdate(cols, { text_mm0hyrfs: '' })).toBe(false);
+  });
+
+  it('columna ausente en el mirror vs. valor deseado con contenido: sí es cambio', () => {
+    const cols = new Map<string, RawCol>();
+    expect(needsUpdate(cols, { text_mm0hyrfs: 'KEP-01' })).toBe(true);
   });
 });

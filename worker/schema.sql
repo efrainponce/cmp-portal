@@ -432,3 +432,11 @@ CREATE TABLE IF NOT EXISTS cotizacion_folios (
   item_id  INTEGER PRIMARY KEY,     -- oportunidades item id
   seq      INTEGER NOT NULL DEFAULT 0
 );
+
+-- Folio de la relación de tallas nativa (Fase 3, plan "salir de Monday",
+-- 2026-08-12, worker/lib/proyectoTallas.ts nextTallasSeq). Mismo patrón que
+-- costeo_folios/cotizacion_folios. Lazy en runtime.
+CREATE TABLE IF NOT EXISTS tallas_folios (
+  item_id  INTEGER PRIMARY KEY,     -- proyectos item id
+  seq      INTEGER NOT NULL DEFAULT 0
+);

@@ -19,6 +19,10 @@ export interface Env {
   // directo) en vez de cmp-tallas' /api/generate_cotizacion. Mismo criterio de
   // fallback vivo que COSTEO_NATIVE.
   COTIZACION_NATIVE?: string;
+  // Fase 3 (2026-08-12): '1' prende "Confirmar tallas" nativo (worker/lib/
+  // proyectoTallas.ts confirmTallasNative — gate TODO CUADRA 100% D1, PDF propio
+  // del portal, DocuSeal directo) en vez de cmp-tallas' /api/confirm_tallas.
+  TALLAS_NATIVE?: string;
   // Fase 0 (cimientos, 2026-08-12) — clientes delgados para las fases siguientes
   // (cotización/OC vía Eledo+DocuSeal, imagen de producto vía Airtable).
   ELEDO_API_KEY?: string;         // worker/lib/eledo.ts

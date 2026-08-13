@@ -218,6 +218,10 @@ export interface TallaBoxInput {
 export interface CapturarTallasResponse {
   ok: true;
   created: number;
+  /** Fase 3 (plan "salir de Monday", 2026-08-12): reconciliación real por
+   * identidad (producto+sku+color+talla) — una fila que ya existía pero con
+   * cantidad/costeo distinto se actualiza en vez de omitirse. */
+  updated: number;
   omitted: number;
 }
 

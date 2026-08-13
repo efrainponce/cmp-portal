@@ -2,6 +2,42 @@
 
 ## 2026-08-12
 
+- Feat: "salir de Monday" Fase 3 — "Confirmar tallas" nativo, sin Google Sheet
+  - Efraín: "quizás en D1 no necesitamos el Excel, no lo intentes generar" — cambió
+    el alcance de esta fase respecto al plan original: en vez de portar el Google
+    Sheet de cmp-tallas (con sus fórmulas y el gate "TODO CUADRA" en una celda),
+    ese Sheet se retira por completo y la fuente de verdad pasa a ser 100%
+    D1/mirror de Monday.
+  - `checkTodoCuadra` (nuevo, `worker/lib/proyectoTallas.ts`): agrega, por
+    producto+color, lo cotizado en la Oportunidad contra lo asignado en el
+    Proyecto y exige coincidencia EXACTA en ambas direcciones (falta o sobra
+    cuentan) — generaliza a TODAS las líneas a la vez el mismo cruce que ya hacía
+    `reportarTallasIncorrectas` (2026-08-05) para una sola.
+  - `capturarTallas` pasó de solo-alta a reconciliación real por identidad
+    (producto+sku+color+talla), mirror del criterio de `import_tallas.py`: una
+    fila que ya existe pero con cantidad/costeo distinto se ACTUALIZA en vez de
+    omitirse (`needsUpdate`/`normValue`, mismo criterio de normalización que
+    `_needs_update`/`_norm` del Python — "20"≠"20.0" no cuenta como cambio, ids de
+    board_relation se comparan sin importar el orden). No borra: a diferencia de
+    `import_tallas.py` esto es siempre aditivo/correctivo, nunca una fuente que
+    reemplaza el Proyecto completo. `CapturarTallasResponse` suma `updated`
+    (`shared/dto.ts`, `TallasTab.tsx` ya lo muestra).
+  - `confirmTallasNative`: corre el gate; si no cuadra revierte
+    `project_status`→"Desglose de tallas" + postea el mismo mensaje que
+    cmp-tallas (`NO_CUADRA_MSG`, con el detalle de qué no cuadró). Si cuadra,
+    genera el PDF de "Relación de tallas" con el escritor propio del portal
+    (`worker/lib/pdf`, ya no Eledo), lo sube a Monday (`file_mm0hcrtz` — verificado
+    en vivo contra Proyectos reales: aunque Monday hoy lo titula "OC interna", los
+    archivos ahí se llaman literalmente `tallas_PRO-0054_2.pdf`, confirmando que
+    es la columna real que usa cmp-tallas en producción) y pide firma del
+    vendedor vía DocuSeal directo — la firma SIGUE siendo DocuSeal, no se migra a
+    la electrónica propia del portal (decisión ya tomada). Folio propio en D1
+    (`tallas_folios`, mismo patrón que costeo/cotización).
+  - Gateado por `TALLAS_NATIVE` (sin definir = cmp-tallas de siempre). Nuevos
+    tests: `needsUpdate` (8 casos: ruido de formato numérico, comparación de
+    board_relation por conjunto de ids, columna ausente vs. valor vacío).
+    `tsc -b`, `npm test` (209 tests) y `npm run lint` limpios.
+
 - Feat: "salir de Monday" Fase 2 — cotización nativa (Eledo/DocuSeal directo)
   - Efraín agregó `ELEDO_API_KEY`/`DOCUSEAL_API_KEY`/`AIRTABLE_API_KEY` (+ service
     account de Google, para fases futuras) a `.env`; los copié a `.dev.vars` (nunca

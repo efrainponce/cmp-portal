@@ -20,7 +20,7 @@ import { generarCotizacionNative, CotizacionError } from '../lib/cotizacion';
 import { listVersions, duplicateVersion, restoreVersion, esDraftVigente, recordFirstVersion, QuoteVersionError } from '../lib/quoteVersions';
 import { ajustarLinea, AjusteLineaError } from '../lib/lineaAjustes';
 import { listCotizacionVirtual, ajustarLineaVirtual, ProyectoCotizacionError } from '../lib/proyectoCotizacionVirtual';
-import { capturarTallas, reportarTallasIncorrectas, checkOcCliente } from '../lib/proyectoTallas';
+import { capturarTallas, reportarTallasIncorrectas, checkOcCliente, confirmTallasNative } from '../lib/proyectoTallas';
 import { listEstadoHistorial } from '../lib/estadoProducto';
 import { listProductoResumen, upsertProductoResumen } from '../lib/productoResumen';
 import { duplicateOportunidad, DuplicateOportunidadError } from '../lib/duplicateOportunidad';
@@ -937,8 +937,15 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     };
 
     try {
-      const result = await action.run(c.env, itemId, opts);
-      // cmp-tallas escribe directo en Monday (links, archivos, subitems) — refresca el mirror.
+      // Fase 3 (plan "salir de Monday", 2026-08-12): mismo gate que COSTEO_NATIVE/
+      // COTIZACION_NATIVE — fallback vivo a cmp-tallas mientras se corre en
+      // paralelo contra Proyectos reales antes de cortar el cable. Solo
+      // "tallas-confirmar" tiene versión nativa por ahora (regenerar/importar/oc
+      // siguen en cmp-tallas).
+      const result = actionKey === 'tallas-confirmar' && c.env.TALLAS_NATIVE === '1'
+        ? await confirmTallasNative(c.env, viewer, itemId)
+        : await action.run(c.env, itemId, opts);
+      // cmp-tallas (o el flujo nativo) escribe directo en Monday — refresca el mirror.
       await refetchItemTree(c.env, BOARDS.proyectos.id, itemId);
       return c.json(result);
     } catch (err) {

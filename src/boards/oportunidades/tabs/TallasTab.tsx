@@ -130,7 +130,12 @@ function TallaBoxesCapture({ proyectoId, products, onSaved }: {
     const res = await capturarTallas(proyectoId, rows);
     setSaving(false);
     if (!res.ok) { setResult({ kind: 'error', text: res.error ?? 'No se pudo guardar.' }); return; }
-    setResult({ kind: 'ok', text: `${res.created ?? 0} tallas guardadas${res.omitted ? `, ${res.omitted} ya existían` : ''}.` });
+    setResult({
+      kind: 'ok',
+      text: `${res.created ?? 0} tallas guardadas`
+        + (res.updated ? `, ${res.updated} actualizadas` : '')
+        + (res.omitted ? `, ${res.omitted} sin cambios` : '') + '.',
+    });
     setState({});
     onSaved();
   };

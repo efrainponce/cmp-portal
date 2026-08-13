@@ -7,12 +7,18 @@ import type { Env } from '../env';
 import type { Identity, MirrorItem } from '../../shared/types';
 import type { TallaBoxInput, CapturarTallasResponse } from '../../shared/dto';
 import type { RawCol } from './serialize';
-import { getItem, childrenOf, linkedItemId, PROYECTO_OPP_REL } from './dal';
-import { createSubitem, createUpdate, gql, type MentionInput } from './monday';
+import { getItem, childrenOf, linkedItemId, ownsItem, PROYECTO_OPP_REL } from './dal';
+import {
+  createSubitem, createUpdate, gql, fetchItemWithSubitems, addFileToColumn, fetchUserById,
+  type MentionInput, type MondayCol,
+} from './monday';
 import { emitNotification } from './notify';
-import { upsertItem } from '../sync';
+import { upsertItem, refetchItem } from '../sync';
 import { BOARDS } from '../../shared/boards';
 import { PROYECTO_DOCUMENTO_COL } from './portalFiles';
+import { renderDocument, type Block } from './pdf/layout';
+import { fechaLarga } from './pdf/templates';
+import { createDocuSealSubmission } from './docuseal';
 
 export type { TallaBoxInput };
 
@@ -51,6 +57,47 @@ const SUB_PROVEEDOR = 'board_relation_mm1cfgv5';
 const OPP_SUB_SKU = 'lookup_mkzn7x9a';
 const OPP_SUB_COLOR = 'text_mm07s2mg';
 const OPP_SUB_CANTIDAD_COTIZADA = 'numeric_mkzm6399';
+
+// Proyecto (18395657594) — "Confirmar tallas" nativo (Fase 3). Ids verificados
+// contra shared/column-meta.gen.ts, mismos que cmp-tallas api/confirm_tallas.py.
+const PROYECTO_STATUS = 'project_status';
+const PROYECTO_STATUS_REVERT = 'Desglose de tallas';
+// Título actual en Monday: "OC interna" — el nombre quedó desactualizado en
+// algún momento, pero el id es el que confirm_tallas.py usa en producción para
+// subir el PDF de relación de tallas; los ids de Monday no cambian con el título.
+const PROYECTO_PDF_TALLAS = 'file_mm0hcrtz';
+const PROYECTO_FOLIO = 'pulse_id_mm1a12gy';
+const PROYECTO_FOLIO_OPP = 'lookup_mm1d56mp';
+const PROYECTO_CARGO = 'lookup_mm1d1546';
+const PROYECTO_CLIENTE = 'board_relation_mm0hb0gy';
+const PROYECTO_INSTITUCION = 'lookup_mm1dwn6';
+const PROYECTO_VENDEDOR = 'multiple_person_mm0hrnqq';
+
+const NO_CUADRA_MSG =
+  '⚠️ El desglose de tallas no cuadra con las cantidades de la oportunidad.\n' +
+  'Por favor revisa el documento y asegúrate de que la suma de cada producto\n' +
+  'coincida exactamente con la cantidad requerida antes de volver a solicitar validación.';
+
+function cvText(cols: MondayCol[], id: string): string {
+  return cols.find(c => c.id === id)?.text?.trim() ?? '';
+}
+
+function cvNum(cols: MondayCol[], id: string): number {
+  const n = Number(cvText(cols, id).replace(/,/g, ''));
+  return Number.isFinite(n) ? n : 0;
+}
+
+function firstPersonId(cols: MondayCol[], id: string): number | null {
+  const raw = cols.find(c => c.id === id)?.value;
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as { personsAndTeams?: Array<{ id: number | string; kind?: string }> };
+    const person = (parsed.personsAndTeams ?? []).find(p => (p.kind ?? 'person') === 'person');
+    return person ? Number(person.id) : null;
+  } catch {
+    return null;
+  }
+}
 
 function colsOf(row: MirrorItem): Map<string, RawCol> {
   try {
@@ -163,44 +210,99 @@ export function buildTallaColumns(r: TallaBoxInput, enr: CosteoEnrichment | unde
   return cols;
 }
 
-/** Crea subitems del Proyecto directo desde boxes de talla+cantidad capturados
- * por el vendedor. Solo alta: una fila cuya identidad (producto+sku+color+talla)
- * ya existe en el Proyecto se omite en vez de duplicar o actualizar — a
- * diferencia de "Importar tallas" (cmp-tallas), esto no reconcilia ni borra. */
+/** Normaliza un valor para comparar current-vs-deseado sin que "20" != "20.0" ni
+ * el orden de una board_relation cuenten como cambio — mirror de import_tallas.py's
+ * `_norm`. */
+function normValue(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'object') {
+    const ids = (value as { item_ids?: unknown[] }).item_ids;
+    if (ids) return [...ids].map(String).sort().join(',');
+  }
+  const s = String(value).trim();
+  const f = Number(s.replace(/,/g, ''));
+  return s !== '' && Number.isFinite(f) ? String(f) : s;
+}
+
+/** Valor actual de una columna del mirror, en la misma forma comparable que
+ * normValue espera — board_relation lee `linked_item_ids`, el resto `text`. */
+function currentValue(cols: Map<string, RawCol>, colId: string): unknown {
+  const col = cols.get(colId);
+  if (!col) return '';
+  if (col.value) {
+    try {
+      const parsed = JSON.parse(col.value) as { linked_item_ids?: unknown[] };
+      if (parsed.linked_item_ids) return { item_ids: parsed.linked_item_ids };
+    } catch { /* no era JSON de board_relation — sigue a .text */ }
+  }
+  return col.text ?? '';
+}
+
+export function needsUpdate(cols: Map<string, RawCol>, desired: Record<string, unknown>): boolean {
+  return Object.entries(desired).some(([colId, value]) => normValue(currentValue(cols, colId)) !== normValue(value));
+}
+
+/** Crea o actualiza subitems del Proyecto desde boxes de talla+cantidad
+ * capturados por vendedor/compras — reconciliación real por identidad
+ * (producto+sku+color+talla), mirror del criterio de import_tallas.py (Fase 3,
+ * plan "salir de Monday", 2026-08-12: sin Google Sheet — la fuente "deseada" es
+ * el propio request, no una hoja). Una fila cuya identidad ya existe pero con
+ * cantidad/costeo distinto se ACTUALIZA en vez de omitirse; solo se omite si de
+ * verdad no cambió nada. No borra: a diferencia de import_tallas.py esto es
+ * siempre aditivo/correctivo, nunca una fuente de verdad que reemplaza al
+ * Proyecto completo. */
 export async function capturarTallas(
   env: Env, viewer: Identity, proyectoId: number, rows: TallaBoxInput[],
 ): Promise<CapturarTallasResponse> {
   const wanted = filterWanted(rows);
-  if (wanted.length === 0) return { ok: true, created: 0, omitted: 0 };
+  if (wanted.length === 0) return { ok: true, created: 0, updated: 0, omitted: 0 };
 
   const oppId = await resolveOportunidadId(env, viewer, proyectoId);
   const enrichment = oppId !== null ? await fetchCosteoEnrichment(env, oppId, viewer) : new Map<number, CosteoEnrichment>();
 
   const existing = await childrenOf(env, 'proyectos', proyectoId, viewer);
-  const seenKeys = new Set(existing.map(row => {
+  // El id más chico (más viejo) sobrevive si hay duplicados — mismo criterio que
+  // build_plan de import_tallas.py, para que reconciliaciones concurrentes converjan.
+  const byKey = new Map<string, MirrorItem>();
+  for (const row of [...existing].sort((a, b) => a.item_id - b.item_id)) {
     const cols = colsOf(row);
-    return identityKey(
+    const key = identityKey(
       cols.get(SUB_PRODUCTO)?.text || '',
       cols.get(SUB_SKU)?.text || '',
       cols.get(SUB_COLOR)?.text || '',
       cols.get(SUB_TALLA)?.text || '',
     );
-  }));
-
-  let created = 0;
-  let omitted = 0;
-  for (const r of wanted) {
-    const key = identityKey(r.producto, r.sku, r.color, r.talla);
-    if (seenKeys.has(key)) { omitted++; continue; }
-    seenKeys.add(key); // también evita duplicar dentro del mismo request
-
-    const cols = buildTallaColumns(r, enrichment.get(r.subitemId));
-    const subitem = await createSubitem(env, proyectoId, r.producto.trim(), cols);
-    await upsertItem(env, 'proyectos_sub', subitem);
-    created++;
+    if (!byKey.has(key)) byKey.set(key, row);
   }
 
-  return { ok: true, created, omitted };
+  let created = 0;
+  let updated = 0;
+  let omitted = 0;
+  const seenThisRequest = new Set<string>();
+  for (const r of wanted) {
+    const key = identityKey(r.producto, r.sku, r.color, r.talla);
+    if (seenThisRequest.has(key)) { omitted++; continue; } // duplicado dentro del mismo request
+    seenThisRequest.add(key);
+
+    const desired = buildTallaColumns(r, enrichment.get(r.subitemId));
+    const match = byKey.get(key);
+    if (!match) {
+      const subitem = await createSubitem(env, proyectoId, r.producto.trim(), desired);
+      await upsertItem(env, 'proyectos_sub', subitem);
+      created++;
+      continue;
+    }
+    if (!needsUpdate(colsOf(match), desired)) { omitted++; continue; }
+    await gql(
+      env,
+      `mutation($b:ID!,$i:ID!,$cv:JSON!){ change_multiple_column_values(board_id:$b,item_id:$i,column_values:$cv){ id } }`,
+      { b: String(BOARDS.proyectos_sub.id), i: String(match.item_id), cv: JSON.stringify(desired) },
+    );
+    await refetchItem(env, BOARDS.proyectos_sub.id, match.item_id);
+    updated++;
+  }
+
+  return { ok: true, created, updated, omitted };
 }
 
 export interface ReportarTallasResult { ok: true; notificados: number }
@@ -286,4 +388,208 @@ export async function reportarTallasIncorrectas(
     notificados++;
   }
   return { ok: true, notificados };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// "Confirmar tallas" nativo (Fase 3, plan "salir de Monday", 2026-08-12) —
+// reimplementa cmp-tallas' api/confirm_tallas.py SIN Google Sheet: el gate
+// "TODO CUADRA" ya no lee una celda de fórmula, se calcula agregando D1/mirror
+// (mismo cruce que reportarTallasIncorrectas, pero sobre TODAS las líneas a la
+// vez). El PDF de relación de tallas ya no usa Eledo — lo genera el escritor
+// propio del portal (worker/lib/pdf) — y se sube a Monday igual que antes para
+// que DocuSeal lo firme (la firma SIGUE siendo DocuSeal, no se migra a la
+// electrónica propia del portal — decisión ya tomada, docs/documentos-firma.md).
+// ═══════════════════════════════════════════════════════════════════════════
+
+export interface TodoCuadraMismatch {
+  producto: string;
+  color: string;
+  cotizado: number;
+  asignado: number;
+}
+
+export interface TodoCuadraResult {
+  ok: boolean;
+  reason?: string;
+  mismatches: TodoCuadraMismatch[];
+}
+
+/** Gate "TODO CUADRA": la suma de cantidades asignadas en el Proyecto por
+ * producto+color debe coincidir EXACTO con lo cotizado en la Oportunidad —
+ * en cualquier dirección (falta o sobra ambas cuentan). 100% D1/mirror, sin
+ * Google Sheet. */
+export async function checkTodoCuadra(env: Env, viewer: Identity, proyectoId: number): Promise<TodoCuadraResult> {
+  const oppId = await resolveOportunidadId(env, viewer, proyectoId);
+  if (oppId === null) {
+    return { ok: false, reason: 'El Proyecto no tiene una Oportunidad ligada — no se puede validar contra lo cotizado.', mismatches: [] };
+  }
+
+  const agg = new Map<string, TodoCuadraMismatch>();
+  const keyOf = (producto: string, color: string): string => `${norm(producto)}|${norm(color)}`;
+
+  for (const row of await childrenOf(env, 'oportunidades', oppId, viewer)) {
+    const cols = colsOf(row);
+    const color = cols.get(OPP_SUB_COLOR)?.text || '';
+    const key = keyOf(row.name, color);
+    const cantidad = Number((cols.get(OPP_SUB_CANTIDAD_COTIZADA)?.text ?? '').replace(/,/g, '')) || 0;
+    const e = agg.get(key) ?? { producto: row.name, color, cotizado: 0, asignado: 0 };
+    e.cotizado += cantidad;
+    agg.set(key, e);
+  }
+  for (const row of await childrenOf(env, 'proyectos', proyectoId, viewer)) {
+    const cols = colsOf(row);
+    const producto = cols.get(SUB_PRODUCTO)?.text || '';
+    const color = cols.get(SUB_COLOR)?.text || '';
+    const key = keyOf(producto, color);
+    const cantidad = Number((cols.get(SUB_CANTIDAD)?.text ?? '').replace(/,/g, '')) || 0;
+    const e = agg.get(key) ?? { producto, color, cotizado: 0, asignado: 0 };
+    e.asignado += cantidad;
+    agg.set(key, e);
+  }
+
+  const mismatches = [...agg.values()].filter(e => e.cotizado !== e.asignado);
+  return { ok: mismatches.length === 0, mismatches };
+}
+
+const NUM = (n: number): string => {
+  try { return new Intl.NumberFormat('es-MX').format(n); } catch { return String(n); }
+};
+
+interface RelacionTallasHeader {
+  proyectoNombre: string;
+  folioOpp: string;
+  cargo: string;
+  cliente: string;
+  institucion: string;
+}
+
+function relacionTallasBlocks(h: RelacionTallasHeader, lineas: { producto: string; sku: string; color: string; talla: string; cantidad: number }[]): Block[] {
+  const total = lineas.reduce((s, l) => s + l.cantidad, 0);
+  return [
+    { kind: 'heading', text: 'Relación de tallas' },
+    {
+      kind: 'kv',
+      rows: [
+        ['Proyecto', h.proyectoNombre],
+        ['Folio oportunidad', h.folioOpp],
+        ['Institución', h.institucion],
+        ['Cliente', h.cliente],
+        ['Cargo', h.cargo],
+      ],
+    },
+    { kind: 'heading', text: 'Tallas' },
+    {
+      kind: 'table',
+      columns: [
+        { header: 'Producto', width: 0.32 },
+        { header: 'SKU', width: 0.16 },
+        { header: 'Color', width: 0.2 },
+        { header: 'Talla', width: 0.14, align: 'right' },
+        { header: 'Cantidad', width: 0.18, align: 'right' },
+      ],
+      rows: lineas.map(l => [l.producto, l.sku, l.color, l.talla, NUM(l.cantidad)]),
+      footer: ['', '', '', `${lineas.length} fila(s)`, NUM(total)],
+    },
+  ];
+}
+
+let tallasFolioTableReady = false;
+async function nextTallasSeq(env: Env, proyectoId: number): Promise<number> {
+  if (!tallasFolioTableReady) {
+    await env.DB.prepare(
+      `CREATE TABLE IF NOT EXISTS tallas_folios (item_id INTEGER PRIMARY KEY, seq INTEGER NOT NULL DEFAULT 0)`,
+    ).run();
+    tallasFolioTableReady = true;
+  }
+  await env.DB.prepare(
+    `INSERT INTO tallas_folios (item_id, seq) VALUES (?, 1)
+     ON CONFLICT(item_id) DO UPDATE SET seq = seq + 1`,
+  ).bind(proyectoId).run();
+  const row = await env.DB.prepare(`SELECT seq FROM tallas_folios WHERE item_id = ?`).bind(proyectoId).first<{ seq: number }>();
+  return row?.seq ?? 1;
+}
+
+export interface ConfirmTallasResult {
+  ok: boolean;
+  errors?: string[];
+  pdfUrl?: string;
+  docusealId?: string;
+}
+
+/** "Validar tallas" del vendedor — flujo completo nativo. `ownsItem`: muta el
+ * Proyecto (status en rechazo, PDF+firma en éxito), mismo criterio que
+ * worker/lib/costeo.ts. */
+export async function confirmTallasNative(env: Env, viewer: Identity, proyectoId: number): Promise<ConfirmTallasResult> {
+  if (!(await ownsItem(env, 'proyectos', proyectoId, viewer))) return { ok: false, errors: ['not found'] };
+
+  const gate = await checkTodoCuadra(env, viewer, proyectoId);
+  if (!gate.ok) {
+    const detalle = gate.mismatches.map(m =>
+      `• ${m.producto}${m.color ? ` (${m.color})` : ''}: cotizado ${m.cotizado}, asignado ${m.asignado}`,
+    ).join('\n');
+    const body = gate.reason ?? (detalle ? `${NO_CUADRA_MSG}\n\n${detalle}` : NO_CUADRA_MSG);
+    try {
+      await gql(
+        env,
+        `mutation($b:ID!,$i:ID!,$cv:JSON!){ change_multiple_column_values(board_id:$b,item_id:$i,column_values:$cv){ id } }`,
+        { b: String(BOARDS.proyectos.id), i: String(proyectoId), cv: JSON.stringify({ [PROYECTO_STATUS]: { label: PROYECTO_STATUS_REVERT } }) },
+      );
+      await createUpdate(env, proyectoId, body);
+    } catch { /* best-effort: el rechazo ya quedó decidido, esto es solo el aviso */ }
+    return { ok: false, errors: gate.reason ? [gate.reason] : gate.mismatches.map(m => `${m.producto}${m.color ? ` (${m.color})` : ''}: cotizado ${m.cotizado}, asignado ${m.asignado}`) };
+  }
+
+  const fetched = await fetchItemWithSubitems(env, proyectoId);
+  if (!fetched) return { ok: false, errors: ['not found'] };
+  const { item, subitems } = fetched;
+  const cols = item.column_values;
+
+  const lineas = subitems.map(s => ({
+    producto: cvText(s.column_values, SUB_PRODUCTO),
+    sku: cvText(s.column_values, SUB_SKU),
+    color: cvText(s.column_values, SUB_COLOR),
+    talla: cvText(s.column_values, SUB_TALLA),
+    cantidad: cvNum(s.column_values, SUB_CANTIDAD),
+  })).filter(l => l.cantidad > 0);
+
+  const seq = await nextTallasSeq(env, proyectoId);
+  const folioProyecto = cvText(cols, PROYECTO_FOLIO) || String(proyectoId);
+  const filename = `tallas_${folioProyecto}_${seq}.pdf`;
+
+  const pdfBytes = renderDocument(
+    { title: 'Relación de tallas', subtitle: item.name, folio: folioProyecto, docId: `tallas-${proyectoId}-${seq}`, generatedAt: fechaLarga(new Date().toISOString()) },
+    relacionTallasBlocks({
+      proyectoNombre: item.name,
+      folioOpp: cvText(cols, PROYECTO_FOLIO_OPP),
+      cargo: cvText(cols, PROYECTO_CARGO),
+      cliente: cvText(cols, PROYECTO_CLIENTE),
+      institucion: cvText(cols, PROYECTO_INSTITUCION),
+    }, lineas),
+  );
+
+  const upload = await addFileToColumn(env, proyectoId, PROYECTO_PDF_TALLAS, new Blob([pdfBytes], { type: 'application/pdf' }), filename);
+
+  const vendedorId = firstPersonId(cols, PROYECTO_VENDEDOR);
+  const vendedorFallback = cvText(cols, PROYECTO_VENDEDOR);
+  let vendedor = { name: vendedorFallback || 'Vendedor', email: '' };
+  if (vendedorId) {
+    try {
+      const user = await fetchUserById(env, vendedorId);
+      if (user) vendedor = { name: user.name, email: user.email };
+    } catch { /* cae al fallback */ }
+  }
+
+  let docusealId = '';
+  try {
+    docusealId = await createDocuSealSubmission(env, {
+      name: String(proyectoId),
+      pdfUrl: upload.publicUrl,
+      filename,
+      signers: [{ role: 'Vendedor', name: vendedor.name, email: vendedor.email }],
+    });
+  } catch (err) {
+    docusealId = `ERROR: ${String(err)}`;
+  }
+
+  return { ok: true, pdfUrl: upload.publicUrl, docusealId };
 }
