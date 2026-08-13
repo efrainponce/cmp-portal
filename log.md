@@ -443,6 +443,36 @@
     `scripts/perf-bench.mjs` + `scripts/perf-results/`) — se dejaron sin
     commitear, solo se stageó el archivo propio de este fix.
 
+- Feat: "salir de Monday" — Paso 4, "Mandar a costeo" nativo simplificado
+  (`worker/lib/costeo.ts`, `worker/routes/oportunidades.ts`)
+  - Efraín: los checks elaborados del flujo real (`runCosteoNative` —
+    reparación automática de embellecimiento, mover de grupo en Monday, posts
+    al feed de "Actualizaciones") compensaban no tener otra forma de validar
+    antes de tener `checkCosteo`; con `checkCosteo` ya validando en D1 antes
+    de llegar aquí, no hace falta repetir esa complejidad para un item
+    nativo. `runCosteoNativeD1` solo hace lo que sí es dato real: congela el
+    snapshot de costo/precio por línea (`computeSnapshot`, función pura
+    reusada tal cual — mismo cálculo, cero cambios) escribiéndolo directo en
+    D1 (`writeNativeLineCols`, read-modify-write simple), y mueve la etapa
+    4→15 reusando el mismo `submitWrite` que ya bypassea Monday para ids
+    nativos (desde el Paso 1+2).
+  - `enviarACosteo` gana un parámetro `ctx: ExecutionContext` (lo necesita
+    `submitWrite`) — mismo patrón que ya tenía `enviarAValidacion`.
+  - La solicitud de costeo en PDF (`generarSolicitudCosteo`,
+    `worker/lib/documents.ts`) YA era 100% D1 (lee el mirror vía `canRead`,
+    renderiza con el motor propio del portal) — funcionó sin ningún cambio;
+    solo se le agregó el guard para saltar el upload extra a la columna de
+    Monday (`file_mm10k65a`, solo aplicaba con `COSTEO_NATIVE=1`) cuando el
+    item es nativo.
+  - `enviarAValidacion` (15→7) ya solo usaba `submitWrite` — funciona sin
+    tocarlo, confirmado en la prueba.
+  - Probado en local end-to-end: pre-chequeo → "Mandar a costeo" → etapa
+    "En costeo" (índice 15) con el snapshot financiero correcto (costo=100,
+    desc=10%, gastos=5%, TC=1, precio=122.85 — fórmula real verificada a
+    mano), cero outbox, PDF generado y asentado en la tabla `documents`.
+    "Enviar a validación" confirmado sin cambios: rechazó por una regla de
+    negocio real (producto de catálogo no vinculado) sin tocar Monday.
+
 - Feat: "salir de Monday" — Paso 3, líneas de cotización nativas
   (`worker/routes/oportunidades.ts`, `worker/routes/boards.ts`,
   `shared/dealStages.ts`, `worker/lib/createRecord.ts`, `worker/lib/outbox.ts`)

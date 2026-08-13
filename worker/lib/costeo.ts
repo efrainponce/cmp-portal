@@ -13,6 +13,7 @@ import { validarCosteo } from './automations';
 import { submitWrite } from './outbox';
 import { gql, moveItemToGroup, createUpdate, fetchItemWithSubitems, cvText, cvNum, type MondayCol } from './monday';
 import { BOARDS } from '../../shared/boards';
+import { isNativeId } from '../../shared/nativeId';
 import type { RawCol } from './serialize';
 import {
   EMB_STATUS_COL, EMB_LABEL_CON, explodeEmbellecimiento,
@@ -432,8 +433,71 @@ async function runCosteoNative(env: Env, itemId: number): Promise<EnviarCosteoRe
   return { ok: true, folio };
 }
 
+/** Escribe varias columnas de una línea nativa directo en D1 (read-modify-write
+ * simple, sin la merge atómica JSON1 de outbox.ts — esto es cómputo interno del
+ * servidor sobre una línea a la vez, no un PATCH de usuario que pueda competir
+ * con otro concurrente). `text` es lo único que le importa a cvNum/cvText
+ * (worker/lib/monday.ts) y a todo lo que lee snapshots después; `value` solo
+ * necesita ser JSON válido. */
+async function writeNativeLineCols(env: Env, lineId: number, patch: Record<string, { type: string; text: string }>): Promise<void> {
+  const row = await env.DB
+    .prepare(`SELECT columns FROM items WHERE board_id = ? AND item_id = ?`)
+    .bind(BOARDS.oportunidades_sub.id, lineId)
+    .first<{ columns: string }>();
+  const existing: RawCol[] = row ? JSON.parse(row.columns || '[]') : [];
+  const byId = new Map(existing.map(c => [c.id, c]));
+  for (const [id, v] of Object.entries(patch)) {
+    byId.set(id, { id, type: v.type, text: v.text, value: JSON.stringify(v.text) });
+  }
+  await env.DB
+    .prepare(`UPDATE items SET columns = ?, synced_at = ? WHERE board_id = ? AND item_id = ?`)
+    .bind(JSON.stringify([...byId.values()]), new Date().toISOString(), BOARDS.oportunidades_sub.id, lineId)
+    .run();
+}
+
+// "Mandar a costeo" para una oportunidad nativa (Zona Efrain, "salir de
+// Monday") — versión simplificada a propósito (Efraín, 2026-08-13: los checks
+// elaborados de runCosteoNative de abajo —reparación de embellecimiento,
+// mover de grupo, posts de update— compensaban no tener otra forma de
+// validar; acá `checkCosteo` YA corrió antes (D1, mismo pre-chequeo que el
+// flujo real) así que no hay que repetirlo). Solo congela el snapshot de
+// costo/precio por línea (dato financiero real) y mueve la etapa.
+async function runCosteoNativeD1(
+  env: Env, ctx: ExecutionContext, itemId: number, viewer: Identity,
+): Promise<EnviarCosteoResult> {
+  const lineas = await childrenOf(env, 'oportunidades', itemId, viewer);
+  if (lineas.length === 0) return { ok: false, errors: ['La oportunidad no tiene productos.'] };
+
+  for (const linea of lineas) {
+    const cols: MondayCol[] = JSON.parse(linea.columns || '[]');
+    const etapa = (cols.find(c => c.id === SUB_ETAPA_COSTEO)?.text ?? '').trim();
+    if (etapa && etapa !== ETAPA_NO_INICIADO) continue; // ya costeada — no recongelar
+    const snap = computeSnapshot(cols);
+    await writeNativeLineCols(env, linea.item_id, {
+      [SNAP_NOMBRE]: { type: 'text', text: snap.nombre },
+      [SNAP_SKU]: { type: 'text', text: snap.sku },
+      [SNAP_COSTO]: { type: 'numeric', text: String(snap.costo) },
+      [SNAP_DESC_PCT]: { type: 'numeric', text: String(snap.descPct) },
+      [SNAP_GAST_PCT]: { type: 'numeric', text: String(snap.gastPct) },
+      [SNAP_IVA]: { type: 'numeric', text: '16' },
+      [SNAP_TC]: { type: 'numeric', text: String(snap.tc) },
+      [SNAP_PRECIO]: { type: 'numeric', text: String(snap.precio) },
+    });
+  }
+
+  const seq = await nextCosteoSeq(env, itemId);
+  const item = await getItem(env, 'oportunidades', itemId, viewer, 'own');
+  const folioBase = colsOf(item!).get(OPP_FOLIO)?.text || String(itemId);
+  const folio = `${folioBase} : Costeo ${seq}`;
+
+  await submitWrite(env, ctx, 'oportunidades', itemId, { deal_stage: 'En costeo' }, viewer, { trusted: true });
+
+  return { ok: true, folio };
+}
+
 export async function enviarACosteo(
   env: Env,
+  ctx: ExecutionContext,
   itemId: number,
   viewer: Identity,
 ): Promise<EnviarCosteoResult> {
@@ -445,6 +509,8 @@ export async function enviarACosteo(
   // Pre-chequeo local: respuesta instantánea y sin tocar Monday cuando falta algo.
   const pre = await checkCosteo(env, itemId, viewer);
   if (!pre.ok) return pre;
+
+  if (isNativeId(itemId)) return runCosteoNativeD1(env, ctx, itemId, viewer);
 
   if (env.COSTEO_NATIVE === '1') return runCosteoNative(env, itemId);
 

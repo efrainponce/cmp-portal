@@ -130,7 +130,7 @@ async function generarSolicitudCosteo(
       sourceId: String(itemId),
       acuse: { ip: c.req.header('CF-Connecting-IP') ?? null, userAgent: c.req.header('User-Agent') ?? null },
     });
-    if (c.env.COSTEO_NATIVE === '1' && folioCosteo) {
+    if (c.env.COSTEO_NATIVE === '1' && folioCosteo && !isNativeId(itemId)) {
       const { bytes } = await documentPdf(c.env, doc.id, viewer, false);
       const filename = `costeo_${folioCosteo.replace(/[^\w.-]+/g, '_')}.pdf`;
       await addFileToColumn(c.env, itemId, OPP_FILE_COSTEO, new Blob([bytes], { type: 'application/pdf' }), filename);
@@ -179,7 +179,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     const viewer = c.get('viewer');
 
     try {
-      const result = await enviarACosteo(c.env, itemId, viewer);
+      const result = await enviarACosteo(c.env, c.executionCtx, itemId, viewer);
       // El stage (y, si ok, los snapshots de subitems) se escribió directo en
       // Monday — cmp-tallas o el flujo nativo (COSTEO_NATIVE=1), ambos mutan
       // incluso al rechazar (revierten a "Nueva oportunidad" + update). Un
