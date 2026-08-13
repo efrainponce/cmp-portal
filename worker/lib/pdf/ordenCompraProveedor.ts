@@ -168,6 +168,16 @@ export function buildOrdenCompraProveedorPdf(input: OcProveedorPdfInput): Uint8A
     { kind: 'spacer', height: 6 },
     { kind: 'text', text: `Método de pago: ${input.metodoPago || '—'}`, size: 9 },
     { kind: 'text', text: `Condiciones de pago: ${input.condicionesPago || '—'}`, size: 9 },
+    { kind: 'spacer', height: 4 },
+    {
+      kind: 'kv',
+      columns: 2,
+      rows: [
+        ['Subtotal', fmtMoney(monto, moneda)],
+        ['IVA (16%)', fmtMoney(monto * 0.16, moneda)],
+        ['Total', fmtMoney(monto * 1.16, moneda)],
+      ],
+    },
     { kind: 'text', text: `Importe con IVA en letras: ${importeEnLetras(monto * 1.16, moneda)}`, size: 9, bold: true },
     { kind: 'spacer', height: 10 },
     firmaBlock('Elaborado por', input.elaboradoNombre),

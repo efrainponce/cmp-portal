@@ -37,6 +37,15 @@
   mientras se prueba en paralelo. Verificado con datos reales end-to-end
   (curl + Playwright contra el dev server).
 
+- Fix: OC a Proveedor (`ordenCompraProveedor.ts`, ver arriba) ahora muestra
+  Subtotal/IVA (16%)/Total en números, no solo el importe en letras — Efraín
+  pidió poder verificar el total contra su hoja de costeo de embellecimientos.
+  De paso: diagnosticado con esa hoja que la OC de GDL Tactical (OPP-0879)
+  cuadra $2,692.00 por debajo de lo esperado porque falta capturar un renglón
+  de 673 piezas (Etiqueta de propiedad + Código de barras, pantalón, color sin
+  identificar) en la pestaña Embellecimientos del Proyecto — dato faltante en
+  Monday, no bug del PDF (el portal suma correctamente lo que existe).
+
 - Fix: cron del backup semanal a R2 (`worker/index.ts`, `wrangler.jsonc`) nunca
   se registraba en Cloudflare — el commit de "backup semanal del mirror D1 a
   R2" usó `"0 3 * * 0"` para domingo, pero la API de Workers rechaza `0` como
