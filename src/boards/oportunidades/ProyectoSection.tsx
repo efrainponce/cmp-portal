@@ -630,7 +630,7 @@ function ProveedorLineaRow({ l }: { l: ItemDTO }) {
   const cellStyle = { font: 'var(--text-label)', color: 'var(--ink-secondary)' } as const;
   return (
     <div style={{ display: 'grid', gridTemplateColumns: PROVEEDOR_GRID_TEMPLATE, gap: 8, padding: '8px 12px', borderTop: '1px solid var(--border-subtle)', alignItems: 'center' }}>
-      <div style={{ ...cellStyle, color: 'var(--ink)' }}>{l.cols[S_PRODUCTO]?.text || l.name}</div>
+      <div style={{ ...cellStyle, color: 'var(--ink)', minWidth: 0, overflowWrap: 'anywhere' }}>{l.cols[S_PRODUCTO]?.text || l.name}</div>
       <div style={cellStyle}>{l.cols[S_SKU]?.text || '—'}</div>
       <div style={cellStyle}>{l.cols[S_COLOR]?.text || '—'}</div>
       <div style={cellStyle}>{l.cols[S_TALLA]?.text || '—'}</div>

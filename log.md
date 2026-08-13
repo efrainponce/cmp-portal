@@ -2,6 +2,15 @@
 
 ## 2026-08-12
 
+- Fix: la columna "Producto" de la tarjeta de proveedor en la tab Órdenes de
+  Compra (`ProveedorLineaRow` en `ProyectoSection.tsx`) rompía el ancho de la
+  tarjeta completa cuando el texto era largo y sin espacios (descripciones de
+  embellecimiento tipo GDL Tactical, todo mayúsculas pegado) — el renglón usa
+  CSS Grid con columnas `fr`, cuyo mínimo implícito es el ancho de contenido
+  (`min-content`) de la celda, no 0. Se agregó `minWidth: 0` +
+  `overflowWrap: 'anywhere'` a esa celda para que el texto envuelva dentro de
+  su columna en vez de forzar el grid a desbordarse.
+
 - Feat: tab "Embellecimientos" en Proyecto (post-venta) — Efraín pidió ver ahí
   lo mismo que en Oportunidades, incluyendo precio. Nuevo
   `EmbellecimientosVirtualTab` (`src/boards/proyectos/`) reusa el mismo
