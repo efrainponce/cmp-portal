@@ -2,6 +2,30 @@
 
 ## 2026-08-12
 
+- Feat: OC a proveedor (`ordenCompraProveedor.ts`, `ocProveedorPdf.ts`) muestra
+  la Zona/Tipo de cada embellecimiento (Frente derecho, Etiqueta nombre,
+  Otros…), tomada del nombre del subitem de Embellecimientos en Monday —
+  Efraín: "no sale que es etiqueta y eso", antes solo se veía la descripción
+  larga sin indicar a qué posición/tipo correspondía. De paso, `wrapTable`
+  (`layout.ts`) ahora soporta envolver varias columnas (`wrapCols: number[]`
+  en vez de `wrapCol: number`) para que Zona/Tipo tampoco se trunque con "…".
+
+- Fix: rediseño de Subtotal/IVA/Total en la OC a proveedor — el encabezado de
+  la tabla ahora usa el naranja de marca de CMP (sacado a pixel del logo,
+  `headerFill`/`headerTextColor` opcional agregado a `wrapTable`) en vez de
+  gris genérico; se quitó el "Subtotal" duplicado/truncado del pie de tabla;
+  Método/Condiciones de pago quedan alineados renglón por renglón con
+  Subtotal/IVA/Total en vez de un cuadro suelto aparte (Efraín: "tiene que
+  quedar todo super claro").
+
+- Fix: "Elaborado por" en la OC a proveedor siempre es el comprador
+  (`project_owner`) del Proyecto, no quien genera el PDF desde el portal.
+
+- Fix: quita la línea "Generado por el portal CMP · fecha · Doc id" del pie
+  de la OC a proveedor (`hideGeneratedByLine` en `DocumentMeta`) — solo para
+  esta plantilla; los documentos con firma electrónica la conservan porque
+  ahí sí es su referencia de auditoría verificable.
+
 - Fix: los controles del header de la tarjeta de proveedor (Método/Condiciones
   de pago, "Ver OC (portal)", "Generar OC") no medían lo mismo de alto —
   `CARD_INPUT_STYLE` (inputs y botón "Ver OC") traía padding vertical 5px +
