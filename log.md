@@ -2,6 +2,37 @@
 
 ## 2026-08-13
 
+- Fix: descuento de Proyecto se guardaba como % entero, `generar-oc` lo leía
+  como fracción — montos de OC negativos
+  - Encontrado corriendo, por pedido de Efraín, una prueba end-to-end real de
+    las 4 fases nativas (Costeo/Cotización/Tallas/OC) contra una Oportunidad y
+    Proyecto de prueba reales (levanté un segundo `wrangler dev` en :8790 con
+    `.dev.vars` propio —flags `*_NATIVE=1`, sin tocar el server que ya corría
+    en :8787 de otra sesión— y un D1 local aparte poblado con `seed-identity.mjs`
+    + `hydrate.mjs` contra Monday real). Costeo, Cotización y Tallas nativos
+    pasaron limpio con matemática verificada a mano en cada paso (incluido un
+    DocuSeal real por cada uno, a Efraín como vendedor de la prueba).
+  - OC nativo dio un monto de **-$151,980**. Causa: `capturarTallas`
+    (`worker/lib/proyectoTallas.ts`, Fase 3) copiaba `OPP_SUB_DESCUENTO`
+    (`numeric_mkzn2q51`, el % ENTERO que escribe `costeo.ts`'s
+    `computeSnapshot` — "18" = 18%) directo a `SUB_DESCUENTO` del Proyecto
+    (`numeric_mm1dmsaz`), que `oc.ts` lee como fracción 0-1
+    (`1 - descuento`): con "18" sin convertir, `(1 - 18) = -17`. El Python
+    real (`import_tallas.py:374`) sí hace `descuento_raw * 0.01` en el punto
+    equivalente — nuestro puerto de Fase 3 se la saltó.
+  - Fix: nueva `pctTextToFraction` en `fetchCosteoEnrichment` (divide entre
+    100 antes de copiar). Test de regresión (`proyectoTallas.test.ts`).
+    `tsc -b`, `npm test` (219 tests) y `npm run lint` limpios.
+  - Costo real: la OC-1 con el monto malo ya había subido su PDF a un
+    Proyecto de prueba real en Monday y creado una submission DocuSeal real
+    (`10164844`) pidiendo firma a Pam (`compras@`) y Elisa
+    (`administracion@mexicanadeproteccion.com`) — Efraín decidió avisarles
+    él directamente en vez de que el portal intente cancelar nada. Con el fix
+    ya aplicado, regeneré la OC (`tallas-capturar` reconcilió el `0.18`
+    correcto en el subitem existente, luego `generar-oc` de nuevo): OC-2 dio
+    **$7,330.80** (3 × 2,980 × 0.82, exacto). El item de prueba
+    ("PRUEBA NATIVA FASE5 - borrar (Claude)") queda marcado para borrar.
+
 - Feat: "salir de Monday" Fase 5 — carpetas de Drive nativas + depósito de PDFs
   - Antes de escribir código, encontré que la creación de carpeta+subcarpetas
     hoy NO la hace cmp-tallas sola: la orquesta el escenario 100 de Make

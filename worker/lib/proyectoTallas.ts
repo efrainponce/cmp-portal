@@ -159,6 +159,19 @@ export interface CosteoEnrichment {
   proveedorId?: number;
 }
 
+/** OPP_SUB_DESCUENTO (numeric_mkzn2q51) es el SNAP_DESC_PCT que escribe
+ * worker/lib/costeo.ts's computeSnapshot — un PORCENTAJE entero (18 = 18%), no
+ * una fracción. SUB_DESCUENTO en el Proyecto (numeric_mm1dmsaz) espera fracción
+ * 0-1 (buildTallaColumns/oc.ts, mismo contrato que el Python real
+ * import_tallas.py línea 374: `descuento_raw * 0.01`) — sin este ×0.01 aquí,
+ * "18" se leía como 1800% y generate_oc.py calculaba subtotales negativos
+ * (encontrado en la prueba end-to-end nativa de Fases 1-4, 2026-08-13). */
+export function pctTextToFraction(text: string | undefined): string | undefined {
+  if (!text) return undefined;
+  const n = Number(text);
+  return Number.isFinite(n) ? String(n / 100) : undefined;
+}
+
 async function fetchCosteoEnrichment(env: Env, oppId: number, viewer: Identity): Promise<Map<number, CosteoEnrichment>> {
   const lineas = await childrenOf(env, 'oportunidades', oppId, viewer);
   const map = new Map<number, CosteoEnrichment>();
@@ -171,7 +184,7 @@ async function fetchCosteoEnrichment(env: Env, oppId: number, viewer: Identity):
     const enr: CosteoEnrichment = {
       costo: cols.get(OPP_SUB_COSTO)?.text || undefined,
       moneda: cols.get(OPP_SUB_MONEDA)?.text || undefined,
-      descuento: cols.get(OPP_SUB_DESCUENTO)?.text || undefined,
+      descuento: pctTextToFraction(cols.get(OPP_SUB_DESCUENTO)?.text || undefined),
       unidad: cols.get(OPP_SUB_UNIDAD)?.text || undefined,
     };
     const productoId = linkedItemId(row, OPP_SUB_PRODUCTO_REL);

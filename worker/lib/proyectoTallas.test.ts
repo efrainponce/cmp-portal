@@ -3,7 +3,7 @@
 // duplicar al reenviar el mismo box) y qué columnas se arman por subitem. Todo
 // lo demás en ese archivo es I/O contra D1/Monday.
 import { describe, it, expect } from 'vitest';
-import { identityKey, filterWanted, buildTallaColumns, needsUpdate, type CosteoEnrichment } from './proyectoTallas';
+import { identityKey, filterWanted, buildTallaColumns, needsUpdate, pctTextToFraction, type CosteoEnrichment } from './proyectoTallas';
 import type { TallaBoxInput } from '../../shared/dto';
 import type { RawCol } from './serialize';
 
@@ -88,6 +88,17 @@ describe('buildTallaColumns', () => {
       numeric_mm1dmsaz: '0.1',
       text_mm56dbkm: 'pieza',
     });
+  });
+
+  it('pctTextToFraction convierte el % entero del snapshot de costeo a fracción 0-1', () => {
+    // Bug real encontrado en la prueba end-to-end nativa (2026-08-13): sin esta
+    // conversión, oc.ts leía "18" como fracción directa (1800%) y calculaba
+    // subtotales negativos — mismo contrato que import_tallas.py línea 374.
+    expect(pctTextToFraction('18')).toBe('0.18');
+    expect(pctTextToFraction('0')).toBe('0');
+    expect(pctTextToFraction(undefined)).toBeUndefined();
+    expect(pctTextToFraction('')).toBeUndefined();
+    expect(pctTextToFraction('no-numero')).toBeUndefined();
   });
 
   it('copia el proveedor del producto de catálogo cuando hay match', () => {
