@@ -2,6 +2,14 @@
 
 ## 2026-08-12
 
+- Fix: la miniatura de la última OC (`ProyectoSection.tsx`, commit `5848fe4`
+  de hoy mismo) nunca matcheaba nada — el regex esperaba nombres de archivo
+  `orden_compra_<proveedor>.pdf`, pero cmp-tallas los sube como
+  `OC_<folio>_<proveedor>.pdf` (confirmado contra datos reales de Monday,
+  item 12707529897: `OC_OC-125_ABRAHAM FARID GORDILLO KANAN.pdf`). Como esa
+  misma versión quitó el listado plano de respaldo, el resultado era que
+  ninguna OC generada se veía en el portal (reportado por Efraín).
+
 - Fix: tab Embellecimientos ahora muestra el Color de la línea junto al SKU, y
   agrega un ícono de lápiz junto a cada posición capturada (`EmbellecimientosTab.tsx`)
   - Efraín pidió mostrar el color (no solo SKU) y hacer obvio que las posiciones

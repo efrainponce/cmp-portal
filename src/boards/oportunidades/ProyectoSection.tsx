@@ -594,17 +594,20 @@ function normalizeProveedorNombre(s: string): string {
 }
 
 /** Empareja el PDF de OC más reciente de un proveedor por nombre de archivo:
- * cmp-tallas los sube a file_mm0hj9pn como `orden_compra_<nombre proveedor>.pdf`
- * (verificado en datos reales — sin id explícito que los ligue). Se prueban
- * nombre e item crudo como candidatos porque `ProveedorGroup.nombre` prioriza
- * la razón social, que puede no ser el texto que cmp-tallas usó. El arreglo
- * conserva orden de subida, así que el último match es el más reciente. */
+ * cmp-tallas los sube a file_mm0hj9pn como `OC_<folio>_<nombre proveedor>.pdf`
+ * (ej. `OC_OC-125_ABRAHAM FARID GORDILLO KANAN.pdf` — confirmado contra datos
+ * reales el 2026-08-12; el patrón `orden_compra_<nombre>.pdf` de la versión
+ * anterior nunca hizo match con nada, así que ninguna miniatura aparecía — sin
+ * id explícito que ligue el archivo al proveedor). Se prueban nombre e item
+ * crudo como candidatos porque `ProveedorGroup.nombre` prioriza la razón
+ * social, que puede no ser el texto que cmp-tallas usó. El arreglo conserva
+ * orden de subida, así que el último match es el más reciente. */
 function findLatestOcFile(files: { url: string; name: string }[], candidatos: string[]): { url: string; name: string } | undefined {
   const wanted = candidatos.filter(Boolean).map(normalizeProveedorNombre);
   if (wanted.length === 0) return undefined;
   let latest: { url: string; name: string } | undefined;
   for (const f of files) {
-    const m = /^orden_compra_(.+)\.pdf$/i.exec(f.name);
+    const m = /^OC_[^_]+_(.+)\.pdf$/i.exec(f.name);
     if (m && wanted.includes(normalizeProveedorNombre(m[1]))) latest = f;
   }
   return latest;
