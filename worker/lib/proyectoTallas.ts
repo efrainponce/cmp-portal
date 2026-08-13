@@ -19,6 +19,7 @@ import { PROYECTO_DOCUMENTO_COL } from './portalFiles';
 import { renderDocument, type Block } from './pdf/layout';
 import { fechaLarga } from './pdf/templates';
 import { createDocuSealSubmission } from './docuseal';
+import { getOrCreateDriveFolderForOportunidad, uploadPdfToDrive } from './drive';
 
 export type { TallaBoxInput };
 
@@ -94,6 +95,18 @@ function firstPersonId(cols: MondayCol[], id: string): number | null {
     const parsed = JSON.parse(raw) as { personsAndTeams?: Array<{ id: number | string; kind?: string }> };
     const person = (parsed.personsAndTeams ?? []).find(p => (p.kind ?? 'person') === 'person');
     return person ? Number(person.id) : null;
+  } catch {
+    return null;
+  }
+}
+
+function firstLinkedId(cols: MondayCol[], id: string): number | null {
+  const raw = cols.find(c => c.id === id)?.value;
+  if (!raw) return null;
+  try {
+    const ids = (JSON.parse(raw) as { linked_item_ids?: unknown[] }).linked_item_ids ?? [];
+    const first = ids.map(Number).find(Number.isFinite);
+    return first ?? null;
   } catch {
     return null;
   }
@@ -568,6 +581,18 @@ export async function confirmTallasNative(env: Env, viewer: Identity, proyectoId
   );
 
   const upload = await addFileToColumn(env, proyectoId, PROYECTO_PDF_TALLAS, new Blob([pdfBytes], { type: 'application/pdf' }), filename);
+
+  // Fase 5 "salir de Monday" (2026-08-13): depositar en "09. RELACION DE
+  // TALLAS" de la carpeta de Drive de la Oportunidad ligada — best-effort.
+  if (env.DRIVE_NATIVE === '1') {
+    const oppId = firstLinkedId(cols, PROYECTO_OPP_REL);
+    if (oppId) {
+      try {
+        const resolved = await getOrCreateDriveFolderForOportunidad(env, oppId);
+        if (resolved) await uploadPdfToDrive(env, resolved.folder.subfolders['09. RELACION DE TALLAS'], filename, pdfBytes);
+      } catch { /* best-effort */ }
+    }
+  }
 
   const vendedorId = firstPersonId(cols, PROYECTO_VENDEDOR);
   const vendedorFallback = cvText(cols, PROYECTO_VENDEDOR);

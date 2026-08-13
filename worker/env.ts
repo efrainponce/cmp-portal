@@ -33,6 +33,18 @@ export interface Env {
   DOCUSEAL_API_KEY?: string;      // worker/lib/docuseal.ts
   AIRTABLE_API_KEY?: string;      // worker/lib/airtable.ts
 
+  // Fase 5 (2026-08-13): '1' prende la creación nativa de la carpeta de Drive +
+  // 12 subcarpetas de licitación al crearse una Oportunidad (worker/sync/
+  // webhook.ts, evento create_item), en vez del escenario 100 de Make
+  // (create_subfolders de cmp-tallas) — y el depósito de los PDFs que ya
+  // generan las Fases 2-4 (cotización/tallas/OC) en su subcarpeta. Requiere que
+  // Efraín desactive el escenario 100 de Make antes de encender esta flag, para
+  // no crear carpetas duplicadas. Mismo criterio de fallback vivo que las fases
+  // anteriores: sin definir = el comportamiento de siempre (Make + cmp-tallas).
+  DRIVE_NATIVE?: string;
+  GOOGLE_SERVICE_ACCOUNT_EMAIL?: string;  // worker/lib/googleAuth.ts (JWT RS256)
+  GOOGLE_PRIVATE_KEY?: string;            // PEM, service account de Drive
+
   // Claude agent, shared by two channels: WhatsApp bot (worker/wa/) and the
   // portal chat bubble (worker/assistant/). Both reply politely when unset.
   ANTHROPIC_API_KEY?: string;     // Claude API key (Haiku agent)

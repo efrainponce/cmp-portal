@@ -1,5 +1,58 @@
 # Log de commits
 
+## 2026-08-13
+
+- Feat: "salir de Monday" Fase 5 — carpetas de Drive nativas + depósito de PDFs
+  - Antes de escribir código, encontré que la creación de carpeta+subcarpetas
+    hoy NO la hace cmp-tallas sola: la orquesta el escenario 100 de Make
+    (crea la carpeta raíz con su propio módulo de Drive, padre
+    `1UuhMjK1HrNaOyC_yhD9zB7FswisZpGff` en la unidad compartida
+    `0ALj_2-Dlrb72Uk9PVA`) y LUEGO llama a `create_subfolders` de cmp-tallas
+    para las 12 subcarpetas — disparado por el webhook nativo `create_item` de
+    Monday, no por ningún botón del portal. Le pregunté a Efraín el alcance:
+    eligió el reemplazo completo (carpeta+subcarpetas+depósito de PDFs), no
+    solo el depósito.
+  - `worker/lib/googleAuth.ts`: primer patrón de firma criptográfica del repo —
+    JWT RS256 con Web Crypto (`crypto.subtle.importKey('pkcs8',...)` +
+    `sign`), sin librería `googleapis` (no existe para Workers). Verificado EN
+    VIVO con el código EXACTO (no una aproximación con `node:crypto`) contra la
+    API real de Google: intercambio de token + GET de la carpeta padre real,
+    ambos 200 antes de construir encima.
+  - `worker/lib/drive.ts`: cliente Drive REST delgado —
+    `ensureOportunidadFolder` (mirror de Make-100 + create_subfolders.py,
+    idempotente: busca por nombre exacto antes de crear, tanto la carpeta raíz
+    como cada subcarpeta), `uploadPdfToDrive` (metadata + PATCH de media, sin
+    construir un body multipart a mano), `getOrCreateDriveFolder`/
+    `getOrCreateDriveFolderForOportunidad` (cache en D1 `drive_folders` —
+    evita relistar Drive en cada depósito). Nombre de carpeta raíz confirmado
+    EN VIVO contra carpetas reales que ya creó Make: `"{FOLIO} - {nombre}"`
+    (ej. `"OPP-0881 - WEB - secretaria de..."`), mismas 12 subcarpetas
+    exactas que `create_subfolders.py`.
+  - Hook en `worker/sync/webhook.ts`: evento `create_item` sobre Oportunidades
+    → `createOportunidadFolderOnCreate` (crea carpeta+subcarpetas, escribe
+    `link_mm468m26`), best-effort (nunca tumba el refetch del mirror), gateado
+    por `DRIVE_NATIVE`. Mejora nueva sobre lo que hacía cmp-tallas (nunca
+    depositaba nada): cotización→"10. COT FINAL", tallas→"09. RELACION DE
+    TALLAS", OC→"08. ODC PROVEEDOR" (mapeo confirmado con Efraín; el PDF de
+    costeo, Fase 1, es interno y no se deposita). Cada depósito es
+    best-effort — el PDF ya quedó en Monday aunque Drive falle.
+  - Riesgo conocido, documentado pero no resuelto (no vale la pena una
+    abstracción de lock para un evento de baja frecuencia): si Monday reintenta
+    el webhook `create_item` mientras la primera carpeta todavía se está
+    creando (varias llamadas secuenciales a Drive — token+list+create x13),
+    hay una ventana corta donde dos carpetas raíz duplicadas podrían crearse
+    antes de que la primera se guarde en D1. Vale la pena que Efraín lo
+    observe la primera vez que encienda la flag.
+  - **Pendiente antes de encender `DRIVE_NATIVE`:** Efraín debe desactivar el
+    escenario 100 de Make, si no cada Oportunidad nueva termina con DOS
+    carpetas raíz (una de Make, una nativa).
+  - `worker/lib/drive.test.ts` (2 tests: nombre de carpeta raíz, las 12
+    subcarpetas exactas — el resto es I/O real, verificado en vivo arriba, no
+    en el suite). `tsc -b`, `npm test` (218 tests) y `npm run lint` limpios.
+  - Con esto quedan nativas 5 de las 7 automatizaciones del plan. Pendiente:
+    Fase 6 (catálogo Airtable↔Monday, integración aparte — decidir con Efraín
+    webhook de Airtable vs. polling por cron antes de construir).
+
 ## 2026-08-12
 
 - Feat: "salir de Monday" Fase 4 — "Generar OC" nativo (Eledo/DocuSeal directo)

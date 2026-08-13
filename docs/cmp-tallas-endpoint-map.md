@@ -53,7 +53,7 @@ Proyecto". Al crearse, Make 200 genera solo el archivo de tallas (+60 s).
 
 | Fase (sidebar) | deal_stage | Acción de usuario | Endpoint | Estado en portal |
 |---|---|---|---|---|
-| Oportunidades | 4 | (automático al crear) carpeta Drive + subcarpetas | create_subfolders vía Make 100 — se dispara solo con el webhook de Monday, incluso para items creados desde el portal/WhatsApp | Nada que llamar; falta mostrar link `link_mm468m26` |
+| Oportunidades | 4 | (automático al crear) carpeta Drive + subcarpetas | create_subfolders vía Make 100 — se dispara solo con el webhook de Monday, incluso para items creados desde el portal/WhatsApp | ⚙️ Nativo listo tras `DRIVE_NATIVE=1` (`worker/lib/drive.ts`, hook en `worker/sync/webhook.ts` sobre el evento `create_item`) — reemplaza Make 100 + create_subfolders.py, y además deposita ahí los PDFs de cotización/tallas/OC. Requiere apagar el escenario 100 de Make antes de encender la flag (evita carpetas duplicadas) |
 | Oportunidades | 4 | "Mandar a costeo" | **validar_costeo** (el flujo real: snapshot + PDF + rechazo automático) | ✅ `worker/lib/costeo.ts` (`enviarACosteo`) llama al endpoint real — snapshotea, genera el PDF y mueve el stage o rechaza |
 | Costeo | 15 | Compras captura costos; pasar a validación | (sin endpoint — cambio de stage manual) | Editable vía columnas; botón "Mandar a Validación de costeo" (`enviar-validacion`) ya existe |
 | Validación Costeo | 7 | "Generar Cotización" | generate_cotizacion | ✅ Ruta + botón en el drawer (`generarCotizacion`, `OpportunityDrawer.tsx`) |

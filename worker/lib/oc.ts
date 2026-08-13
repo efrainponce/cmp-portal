@@ -9,11 +9,12 @@
 // Google Sheets, mismo criterio que costeo/cotización/tallas).
 import type { Env } from '../env';
 import type { Identity } from '../../shared/types';
-import { ownsItem } from './dal';
+import { ownsItem, PROYECTO_OPP_REL } from './dal';
 import { fetchItemWithSubitems, addFileToColumn, createUpdate, fetchUserById, type MondayCol, type MondayItem } from './monday';
 import { renderEledoPdf, ELEDO_TEMPLATE_OC } from './eledo';
 import { createDocuSealSubmission } from './docuseal';
 import { importeEnLetras } from './importeEnLetras';
+import { getOrCreateDriveFolderForOportunidad, uploadPdfToDrive } from './drive';
 
 // Proyecto (18395657594) — ids verificados contra shared/column-meta.gen.ts,
 // mismos que cmp-tallas api/generate_oc.py.
@@ -271,6 +272,20 @@ export async function generarOcNative(
     return { ok: true, skipped: true, reason, ordenes: [] };
   }
 
+  // Fase 5 "salir de Monday" (2026-08-13): carpeta de Drive de la Oportunidad
+  // ligada — resuelta UNA vez, reusada por cada OC de este proyecto. Best-effort:
+  // null cuando falla o no aplica, cada depósito de abajo se salta en silencio.
+  let ocDriveFolderId: string | null = null;
+  if (env.DRIVE_NATIVE === '1') {
+    const oppId = Number(firstLinkedId(cols, PROYECTO_OPP_REL));
+    if (Number.isFinite(oppId) && oppId > 0) {
+      try {
+        const resolved = await getOrCreateDriveFolderForOportunidad(env, oppId);
+        ocDriveFolderId = resolved?.folder.subfolders['08. ODC PROVEEDOR'] ?? null;
+      } catch { /* best-effort */ }
+    }
+  }
+
   const ordenes: OrdenResult[] = [];
   for (const group of groups.values()) {
     const orden: OrdenResult = { proveedorId: group.proveedorId, proveedorNombre: group.proveedorNombre };
@@ -292,6 +307,10 @@ export async function generarOcNative(
       const filename = `OC_${folioOrden}_${safeRZ}.pdf`;
       const upload = await addFileToColumn(env, proyectoId, PROYECTO_OC_PDF, new Blob([pdfBytes], { type: 'application/pdf' }), filename);
       orden.pdfUrl = upload.publicUrl;
+
+      if (ocDriveFolderId) {
+        try { await uploadPdfToDrive(env, ocDriveFolderId, filename, pdfBytes); } catch { /* best-effort */ }
+      }
 
       try {
         orden.docusealId = await createDocuSealSubmission(env, {

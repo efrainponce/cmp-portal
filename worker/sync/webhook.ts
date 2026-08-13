@@ -3,6 +3,8 @@ import type { Hono } from 'hono';
 import type { Env } from '../env';
 import { refetchItem } from './refetch';
 import { logSync } from './log';
+import { createOportunidadFolderOnCreate } from '../lib/drive';
+import { BOARDS } from '../../shared/boards';
 
 const DEBOUNCE_MS = 10_000;
 
@@ -36,6 +38,20 @@ export function syncRoutes(app: Hono<{ Bindings: Env }>): void {
         .bind(boardId, itemId).run();
       await logSync(c.env, 'webhook', boardId, itemId, true, `${type} — mirror row deleted`);
       return c.json({ ok: true });
+    }
+
+    // Fase 5 "salir de Monday" (2026-08-13): item nuevo en Oportunidades ->
+    // carpeta de Drive + 12 subcarpetas (reemplaza el escenario 100 de Make +
+    // create_subfolders.py de cmp-tallas). Best-effort: un fallo aquí nunca debe
+    // tumbar el refetch del mirror de abajo. Gateado por DRIVE_NATIVE — Efraín
+    // debe desactivar el escenario 100 de Make antes de encenderla, para no
+    // crear carpetas duplicadas.
+    if (type === 'create_item' && boardId === BOARDS.oportunidades.id && c.env.DRIVE_NATIVE === '1') {
+      try {
+        await createOportunidadFolderOnCreate(c.env, itemId);
+      } catch (err) {
+        await logSync(c.env, 'webhook', boardId, itemId, false, `Fase 5 Drive folder failed: ${String(err)}`);
+      }
     }
 
     const existing = await c.env.DB.prepare(

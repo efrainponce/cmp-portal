@@ -20,6 +20,7 @@ import { renderEledoPdf, ELEDO_TEMPLATE_COTIZACION } from './eledo';
 import { createDocuSealSubmission } from './docuseal';
 import { fetchAirtableImageUrl } from './airtable';
 import { importeEnLetras } from './importeEnLetras';
+import { getOrCreateDriveFolder, oportunidadRootFolderName, uploadPdfToDrive } from './drive';
 
 export class CotizacionError extends Error {
   status: number;
@@ -286,6 +287,16 @@ export async function generarCotizacionNative(env: Env, itemId: number, viewer: 
   // subir a Monday ni que firmar). Mismo criterio que generate_cotizacion.py.
   const pdfCP = await renderEledoPdf(env, ELEDO_TEMPLATE_COTIZACION, buildEledoFile({ ...baseArgs, conPrecio: true }));
   const uploadCP = await addFileToColumn(env, itemId, OPP_FILE_CON_PRECIO, new Blob([pdfCP], { type: 'application/pdf' }), filenameCP);
+
+  // Fase 5 "salir de Monday" (2026-08-13): depositar el PDF con precio en
+  // "10. COT FINAL" de la carpeta de Drive de la Oportunidad — best-effort,
+  // el PDF ya quedó en Monday aunque esto falle.
+  if (env.DRIVE_NATIVE === '1') {
+    try {
+      const folder = await getOrCreateDriveFolder(env, itemId, oportunidadRootFolderName(folioOpp, item.name));
+      await uploadPdfToDrive(env, folder.subfolders['10. COT FINAL'], filenameCP, pdfCP);
+    } catch { /* best-effort */ }
+  }
 
   // DocuSeal (firma del vendedor) — no fatal: el PDF ya quedó en Monday.
   let docusealId = '';

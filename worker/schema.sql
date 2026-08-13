@@ -449,3 +449,14 @@ CREATE TABLE IF NOT EXISTS oc_folios (
   id   INTEGER PRIMARY KEY CHECK (id = 1),
   seq  INTEGER NOT NULL DEFAULT 0
 );
+
+-- Carpeta de Drive de una Oportunidad (Fase 5, plan "salir de Monday",
+-- 2026-08-13, worker/lib/drive.ts getOrCreateDriveFolder) — cache de la carpeta
+-- raíz + las 12 subcarpetas de licitación creadas en Drive, para que Fases 2-4
+-- depositen sus PDFs sin volver a listar Drive. Lazy en runtime.
+CREATE TABLE IF NOT EXISTS drive_folders (
+  item_id          INTEGER PRIMARY KEY,  -- oportunidades item id
+  root_folder_id   TEXT NOT NULL,
+  subfolders_json  TEXT NOT NULL,        -- {"01. BASES": "id", ...}
+  created_at       TEXT NOT NULL DEFAULT (datetime('now'))
+);
