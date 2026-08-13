@@ -699,6 +699,18 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
           // resetea la selección interna de chips y regresa la vista a la vigente.
           key={`cot-${versions.length}`}
           subCols={subCols} oppCols={oppCols} products={products} variant={cotizacionVariant} onSaved={load} versions={versions}
+          onVersioned={(v) => {
+            versionsCache.set(id, v);
+            setVersions(v);
+            const nueva = v.find((x) => x.status === 'vigente');
+            setNotice({
+              kind: 'ok', title: 'Línea eliminada — nueva versión creada',
+              lines: [
+                `${nueva?.label ?? 'La nueva versión'} es una copia de la anterior sin esa línea — edítala como en Nueva oportunidad.`,
+                'Cuando esté lista, usa "Mandar a costeo" para regresarla a costeo.',
+              ],
+            });
+          }}
           editable={stage !== '1' && stage !== '2' && !ajena}
           onNuevaVersion={stage !== '1' && stage !== '2' && stage !== '4' && !noLineEdits && !draftVigente ? () => setShowNuevaVersion(true) : undefined}
           onRestoreVersion={stage !== '1' && stage !== '2' && !noLineEdits ? (v) => setRestoreTarget(v) : undefined}

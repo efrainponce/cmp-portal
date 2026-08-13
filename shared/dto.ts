@@ -144,8 +144,12 @@ export interface QuoteVersionsResponse { versions: QuoteVersionDTO[] }
 // `productoNombre` es solo para el resumen legible del historial (el mirror
 // real lo puebla Monday de forma asíncrona). `cantidad` en modo 'dividir' es
 // cuánto se mueve a la línea nueva, no el total de la línea origen.
+//
+// 'eliminar' es distinto de editar/dividir: SÍ reinicia el ciclo de costeo
+// (crea una versión nueva primero, como "+ Nueva versión") y por eso lo
+// maneja worker/routes/oportunidades.ts junto con quoteVersions.ts, no
+// lineaAjustes.ts — bloqueado en Ganada/Perdida igual que "+ Nueva versión".
 export interface AjustarLineaRequest {
-  /** 'eliminar' borra la línea de Monday (delete_item) — sin cantidad/producto/color. */
   modo: 'editar' | 'dividir' | 'eliminar';
   cantidad?: number;
   productoId?: number;
@@ -173,6 +177,9 @@ export interface AjustarLineaResponse {
   lineaId?: number;
   nuevaLineaId?: number;
   costoDivergente?: CostoDivergenciaDTO;
+  /** Solo modo 'eliminar': versiones actualizadas (la vigente quedó archivada
+   * como una nueva versión) — mismo shape que DuplicarVersionResponse. */
+  versions?: QuoteVersionDTO[];
 }
 
 // GET /api/proyectos/:id/cotizacion-virtual (worker/lib/proyectoCotizacionVirtual.ts,

@@ -14,9 +14,13 @@ import {
  * aquí solo se agregan); la Utilidad % total es ponderada (utilidad total /
  * subtotal total), no el promedio simple de cada fila. Las columnas sin un
  * total con sentido (SKU, Etapa costeo, Moneda, C/U de costo…) quedan vacías. */
-export function TotalsRow({ variant, visibleCols, products, rows, isMobile = false }: {
+export function TotalsRow({ variant, visibleCols, products, rows, isMobile = false, showActionsCol = false }: {
   variant: 'venta' | 'costeo'; visibleCols: GridCol[]; products: ItemDTO[]; rows: Record<string, RowEditState>;
   isMobile?: boolean;
+  /** Mismo gate que canAddLines en CotizacionTab — agrega la columna final
+   * fija de 32px que QuoteRow usa para el ícono 🗑, así los totales siguen
+   * alineados con el header/filas (Efraín, 2026-08-13). */
+  showActionsCol?: boolean;
 }) {
   let cantidad = 0, subtotal = 0, iva = 0, totalConIva = 0, costoTotal = 0, utilidadTotal = 0, margenGobTotal = 0;
   for (const p of products) {
@@ -97,7 +101,7 @@ export function TotalsRow({ variant, visibleCols, products, rows, isMobile = fal
       // sin ella, cada total quedaba una columna completa a la izquierda de
       // donde debía (Efraín, 2026-07-21: "los totales no cuadran con las
       // columnas").
-      display: 'grid', gridTemplateColumns: `28px ${colsTemplate(visibleCols)}`,
+      display: 'grid', gridTemplateColumns: `28px ${colsTemplate(visibleCols)}${showActionsCol ? ' 32px' : ''}`,
       gap: 6, alignItems: 'center', padding: '10px', background: 'var(--bg-sunken)',
       borderTop: '2px solid var(--border)',
     }}>
@@ -121,6 +125,7 @@ export function TotalsRow({ variant, visibleCols, products, rows, isMobile = fal
           {idx === 0 ? 'TOTAL' : (byCol[c.id]?.value ?? '')}
         </div>
       ))}
+      {showActionsCol && <div />}
     </div>
   );
 }

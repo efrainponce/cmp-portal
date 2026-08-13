@@ -12,15 +12,19 @@
 // línea (el catálogo de Productos no tiene columna de precio), así que nunca
 // hace falta comparar "mismo precio" entre SKUs, basta con no tocar el campo.
 //
-// Tres modos:
-//   - 'editar':   PATCH en el sitio, la misma línea.
-//   - 'dividir':  crea una línea hermana con una parte de la cantidad actual;
+// Dos modos:
+//   - 'editar':  PATCH en el sitio, la misma línea.
+//   - 'dividir': crea una línea hermana con una parte de la cantidad actual;
 //     copia TODA la línea origen (precio, Etapa Costeo, costeo de Compras,
 //     imagen de embellecimiento, etc. — ver copyRemainingCols) salvo lo que
 //     vino en el body, y resta esa cantidad de la origen.
-//   - 'eliminar': borra la línea de Monday (delete_item), 2026-08-13 — mismo
-//     acceso que editar/dividir (Costeo y Oportunidades post-costeo), para el
-//     caso en que una línea completa ya no aplica y no solo cambió de SKU.
+//
+// Un tercer modo, 'eliminar' (borrar la línea completa), NO vive aquí — a
+// diferencia de editar/dividir SÍ reinicia el ciclo de costeo (crea una
+// versión nueva primero, como "+ Nueva versión") y por eso está bloqueado en
+// Ganada/Perdida; se maneja en worker/routes/oportunidades.ts junto con
+// duplicateVersion (2026-08-13, Efraín: "cuando no está en Nueva oportunidad
+// se crea una nueva versión").
 //
 // Cada ajuste queda registrado en cotizacion_ajustes como V{mayor}.{n} — no es
 // una versión real (no pasa por costeo), solo trazabilidad de que la vigente
@@ -32,7 +36,7 @@ import type { Identity, MirrorItem } from '../../shared/types';
 import type { AjusteDTO, AjustarLineaRequest, CostoDivergenciaDTO } from '../../shared/dto';
 import { getItem } from './dal';
 import { submitWrite, flushOutbox } from './outbox';
-import { createSubitem, addFileToColumn, fetchAssetPublicUrls, deleteItem } from './monday';
+import { createSubitem, addFileToColumn, fetchAssetPublicUrls } from './monday';
 import { upsertItem } from '../sync';
 import type { RawCol } from './serialize';
 import { checkCostoDivergente } from './costoDivergencia';
@@ -221,7 +225,7 @@ function resumenDe(antes: LineaSnapshot, despues: LineaSnapshot, dividida: boole
 
 async function registrarAjuste(
   env: Env, itemId: number, lineaId: number, lineaOrigenId: number | undefined,
-  antes: LineaSnapshot, despues: LineaSnapshot, viewer: Identity, resumenOverride?: string,
+  antes: LineaSnapshot, despues: LineaSnapshot, viewer: Identity,
 ): Promise<void> {
   await ensureAjustesTable(env);
   const version = await currentMajorVersion(env, itemId);
@@ -231,7 +235,7 @@ async function registrarAjuste(
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).bind(
     itemId, version, subversion, lineaId, lineaOrigenId ?? null,
-    resumenOverride ?? resumenDe(antes, despues, lineaOrigenId !== undefined),
+    resumenDe(antes, despues, lineaOrigenId !== undefined),
     JSON.stringify(antes), JSON.stringify(despues), viewer.email, new Date().toISOString(),
   ).run();
 }
@@ -256,18 +260,6 @@ export async function ajustarLinea(
 
   const cols = colsOf(linea);
   const antes = snapshot(cols);
-
-  // 'eliminar': borra la línea de Monday (delete_item) — el mirror D1 la
-  // limpia solo vía el webhook subitem_deleted (mismo camino que borrar una
-  // línea directo en Monday, ver commit b98f823). Se registra el ajuste ANTES
-  // de borrar para que el resumen quede aunque algo falle después, pero como
-  // deleteItem no tiene rollback, si el registro fallara la línea igual
-  // quedaría borrada — aceptable, es solo trazabilidad.
-  if (input.modo === 'eliminar') {
-    await deleteItem(env, lineaId);
-    await registrarAjuste(env, itemId, lineaId, undefined, antes, antes, viewer, 'Línea eliminada');
-    return { itemId, lineaId };
-  }
 
   const cantidadInput = input.cantidad != null && Number.isFinite(input.cantidad) ? input.cantidad : undefined;
   if (cantidadInput != null && cantidadInput <= 0) throw new AjusteLineaError(400, 'La cantidad debe ser mayor a cero.');

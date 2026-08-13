@@ -2,6 +2,45 @@
 
 ## 2026-08-13
 
+- Fix: "Eliminar línea" — corrige el diseño del commit anterior (mismo día) tras
+  probarlo en vivo con Efraín
+  - Efraín probó el commit anterior (`cd23558`) y corrigió dos cosas en vivo:
+    (1) el ícono de eliminar debía ir en su propia columna al final de la fila,
+    no pegado al chevron/✎ al inicio — ahora es 🗑 en una columna fija de 32px
+    al final de `QuoteRow`/`MobileQuoteRow` (y el header/`TotalsRow` la
+    replican para que todo siga alineado, gateada por el mismo `canAddLines`).
+    (2) más importante: "cuando NO ESTÁ en Nueva oportunidad se crea una
+    versión nueva" — el diseño original metía 'eliminar' como tercer modo de
+    `ajustarLinea` (worker/lib/lineaAjustes.ts), igual que editar/dividir, es
+    decir SIN versión y funcionando incluso en Ganada. Eso está mal: borrar
+    una línea completa cambia el total de la cotización (a diferencia de
+    editar/dividir, que preservan el mismo valor) y Efraín quiere que eso
+    fuerce un regreso a costeo, igual que "+ Nueva versión".
+  - Revertido el modo 'eliminar' de `lineaAjustes.ts` (queda como estaba,
+    solo editar/dividir, sin versión, funciona en Ganada). El modo 'eliminar'
+    ahora se maneja en la ruta (`worker/routes/oportunidades.ts`,
+    `POST /api/oportunidades/lineas/:id/ajustar`): llama `duplicateVersion`
+    (archiva la vigente como versión nueva, resetea Etapa Costeo — mismo
+    mecanismo y mismo guard de Ganada/Perdida que "+ Nueva versión") y LUEGO
+    `deleteItem` sobre la línea. `AjustarLineaResponse` ahora trae
+    `versions?` para que el modal se lo pase al drawer vía el nuevo prop
+    `onVersioned` (`CotizacionTab`→`OpportunityDrawer`) y el chip "V{n} ·
+    vigente" quede correcto sin depender de que `onSaved` (que solo relee el
+    item) también reincluyera versiones en cada tecla. El modo "Eliminar
+    línea" del modal se oculta cuando `!editable` (Ganada/Perdida) en vez de
+    dejar que el usuario lo intente y se tope con el error del server.
+  - Verificado en vivo contra Monday real (dev local, token real) usando
+    OPP-0842 ("PRUEBA CLAUDE 3 - borrar", oportunidad de prueba desechable):
+    el ✕ directo de Nueva oportunidad (el bug de ruta rota del commit
+    anterior) ya borra la línea correctamente end-to-end — confirmado con
+    Playwright viendo el DELETE devolver 200 y la línea desaparecer. El flujo
+    nuevo (eliminar fuera de Nueva oportunidad → nueva versión) quedó
+    verificado por tipos/tests/lint pero NO probado en vivo contra Monday en
+    esta sesión — las únicas oportunidades de prueba disponibles seguían en
+    Nueva oportunidad; pendiente que Efraín lo prueba en una ya costeada.
+  - `tsc --noEmit` (3 tsconfigs), `npm test` (219 tests) y `npm run lint`
+    limpios.
+
 - Feat: "Eliminar línea" en cotizaciones — Costeo y Oportunidad post-costeo
   - Efraín pidió poder borrar una línea completa al editar la cotización en
     Costeo y en Oportunidades (no solo cambiar SKU/color/cantidad). Se agregó

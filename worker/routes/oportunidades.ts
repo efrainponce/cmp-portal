@@ -26,7 +26,7 @@ import { listEstadoHistorial } from '../lib/estadoProducto';
 import { listProductoResumen, upsertProductoResumen } from '../lib/productoResumen';
 import { duplicateOportunidad, DuplicateOportunidadError } from '../lib/duplicateOportunidad';
 import { ganarOportunidad, GanarOportunidadError } from '../lib/ganarOportunidad';
-import { createSubitem, addFileToColumn, fetchAssetPublicUrls, createUpdate, gql } from '../lib/monday';
+import { createSubitem, addFileToColumn, fetchAssetPublicUrls, createUpdate, gql, deleteItem } from '../lib/monday';
 import { insertSeguimiento } from '../lib/home';
 import { listZoneImages, uploadZoneImage, EmbellImageError } from '../lib/embellecimientoImagenes';
 import { listProposedProducts, addProposedProduct, ProposedProductError } from '../lib/productosPropuestos';
@@ -435,7 +435,30 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     if (!Number.isFinite(lineaId)) return c.json({ error: 'not found' }, 404);
     const viewer = c.get('viewer');
     const body = await c.req.json<AjustarLineaRequest>();
-    if (body.modo !== 'editar' && body.modo !== 'dividir') return c.json({ error: 'modo inválido' }, 400);
+    if (body.modo !== 'editar' && body.modo !== 'dividir' && body.modo !== 'eliminar') {
+      return c.json({ error: 'modo inválido' }, 400);
+    }
+
+    // 'eliminar' (Efraín, 2026-08-13): a diferencia de editar/dividir, borrar
+    // una línea completa cambia el total de la cotización — se maneja aparte,
+    // reusando duplicateVersion (archiva la vigente como versión nueva y
+    // resetea Etapa Costeo) antes de borrar, mismo mecanismo que "+ Nueva
+    // versión" y con el mismo guard de Ganada/Perdida.
+    if (body.modo === 'eliminar') {
+      const linea = await getItem(c.env, 'oportunidades_sub', lineaId, viewer, 'own');
+      if (!linea || linea.parent_item_id == null) return c.json({ error: 'not found' }, 404);
+      const itemId = linea.parent_item_id;
+      try {
+        await duplicateVersion(c.env, c.executionCtx, itemId, viewer);
+        await deleteItem(c.env, lineaId);
+        await refetchItemTree(c.env, BOARDS.oportunidades.id, itemId);
+        const versions = await listVersions(c.env, itemId, viewer);
+        return c.json({ ok: true, lineaId, versions } satisfies AjustarLineaResponse);
+      } catch (err) {
+        if (err instanceof QuoteVersionError) return jsonStatus({ ok: false, error: err.message } satisfies AjustarLineaResponse, err.status);
+        return jsonStatus({ ok: false, error: 'internal error' } satisfies AjustarLineaResponse, 500);
+      }
+    }
 
     try {
       const result = await ajustarLinea(c.env, c.executionCtx, lineaId, viewer, body);

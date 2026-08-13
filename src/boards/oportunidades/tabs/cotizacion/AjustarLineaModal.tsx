@@ -4,7 +4,7 @@
 // Oportunidad Ganada (worker/lib/lineaAjustes.ts). El precio de venta NUNCA se
 // toca aquí, por eso ni siquiera se muestra el campo.
 import { useState } from 'react';
-import type { CostoDivergenciaDTO, ItemDTO } from '../../../../lib/api';
+import type { CostoDivergenciaDTO, ItemDTO, QuoteVersionDTO } from '../../../../lib/api';
 import { ajustarLinea } from '../../../../lib/apiClient';
 import { Button } from '../../../../components/core/Button';
 import { Modal } from '../../../../components/core/Modal';
@@ -53,13 +53,23 @@ function ModeButton({ active, onClick, children }: { active: boolean; onClick: (
 }
 
 export function AjustarLineaModal({
-  linea, catalog, catalogLoading, onClose, onSaved,
+  linea, catalog, catalogLoading, onClose, onSaved, onVersioned, canEliminar = true,
 }: {
   linea: ItemDTO;
   catalog: ItemDTO[];
   catalogLoading: boolean;
   onClose: () => void;
   onSaved: (divergencia?: CostoDivergenciaDTO) => void;
+  /** Solo modo 'eliminar': el server archivó la vigente como versión nueva
+   * antes de borrar la línea — el drawer necesita refrescar `versions`, no
+   * solo el item (onSaved), para que el chip "V{n} · vigente" y el historial
+   * queden correctos (Efraín, 2026-08-13). */
+  onVersioned?: (versions: QuoteVersionDTO[]) => void;
+  /** false en Ganada/Perdida (mismo `editable` de CotizacionTab): a diferencia
+   * de editar/dividir, eliminar SÍ pasa por "+ Nueva versión" y el server la
+   * bloquea ahí — se oculta el modo en vez de dejar que el usuario la elija y
+   * se tope con un error. */
+  canEliminar?: boolean;
 }) {
   const cantidadActual = Number(linea.cols[COL.cantidad]?.text ?? 0) || 0;
   const [modo, setModo] = useState<'editar' | 'dividir' | 'eliminar'>('editar');
@@ -89,6 +99,7 @@ export function AjustarLineaModal({
         embellecimiento: { estado: conEmbellecimiento ? 'con' : 'sin', descripcion },
       });
       if (!res.ok) { setError(res.error ?? 'No se pudo guardar.'); return; }
+      if (res.versions) onVersioned?.(res.versions);
       onSaved(res.costoDivergente);
       onClose();
     } catch (e) {
@@ -117,19 +128,21 @@ export function AjustarLineaModal({
     >
       <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)', marginBottom: 16 }}>
         {modo === 'eliminar'
-          ? 'Elimina la línea por completo, sin crear una versión nueva ni volver a costear.'
+          ? 'Elimina la línea por completo — a diferencia de editar/dividir, esto SÍ crea una versión nueva (la vigente actual queda archivada) y la cotización vuelve a costeo.'
           : 'Cambia producto, color, embellecimiento o cantidad sin crear una versión nueva ni volver a costear — el precio de venta no se toca.'}
       </div>
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
         <ModeButton active={modo === 'editar'} onClick={() => setModo('editar')}>Editar esta línea</ModeButton>
         <ModeButton active={modo === 'dividir'} onClick={() => setModo('dividir')}>Dividir en dos</ModeButton>
-        <ModeButton active={modo === 'eliminar'} onClick={() => setModo('eliminar')}>Eliminar línea</ModeButton>
+        {canEliminar && (
+          <ModeButton active={modo === 'eliminar'} onClick={() => setModo('eliminar')}>Eliminar línea</ModeButton>
+        )}
       </div>
 
       {modo === 'eliminar' ? (
         <div style={{ font: 'var(--text-label)', color: 'var(--ink)', marginBottom: 4 }}>
-          Se eliminará <strong>{displayProducto(linea)}</strong> ({cantidadActual} uds) de la cotización. Esta acción no se puede deshacer.
+          Se eliminará <strong>{displayProducto(linea)}</strong> ({cantidadActual} uds) de la cotización. Esto crea una <strong>versión nueva</strong> sin esa línea y la manda de vuelta a costeo — no se puede deshacer.
         </div>
       ) : (
         <>

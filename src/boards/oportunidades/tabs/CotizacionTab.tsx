@@ -41,7 +41,7 @@ import {
 import type { ProductoChoice } from '../../../components/forms/ProductPicker';
 
 export function CotizacionTab({
-  subCols, oppCols = [], products, variant = 'venta', onSaved, versions = [], onNuevaVersion, onRestoreVersion, editable = true, stage, oppId, item,
+  subCols, oppCols = [], products, variant = 'venta', onSaved, onVersioned, versions = [], onNuevaVersion, onRestoreVersion, editable = true, stage, oppId, item,
   readOnly = false, precioOnly = false, draft = false, showCondiciones = false,
 }: {
   subCols: ColMeta[];
@@ -49,6 +49,10 @@ export function CotizacionTab({
    * (comerciales/entrega/vigencia) son del item, no de las líneas. */
   oppCols?: ColMeta[];
   products: ItemDTO[]; variant?: 'venta' | 'costeo'; onSaved?: () => void;
+  /** "Eliminar línea" fuera de Nueva oportunidad/borrador archiva la vigente
+   * como versión nueva (ver AjustarLineaModal) — el drawer necesita esto
+   * además de onSaved para refrescar el chip de versión (Efraín, 2026-08-13). */
+  onVersioned?: (versions: QuoteVersionDTO[]) => void;
   versions?: QuoteVersionDTO[]; onNuevaVersion?: () => void;
   /** Al ver una versión superada, "Restaurar esta versión" — deja la cotización
    * igual a esa instantánea (la vigente se archiva y todo regresa a costeo). */
@@ -657,7 +661,7 @@ export function CotizacionTab({
         <div>
           <div style={{
             ...gridWrapStyle,
-            display: 'grid', gridTemplateColumns: `28px ${colsTemplate(visibleCols)}`,
+            display: 'grid', gridTemplateColumns: `28px ${colsTemplate(visibleCols)}${canAddLines ? ' 32px' : ''}`,
             gap: 6, padding: '9px 10px', borderBottom: '1px solid var(--border)',
             font: '600 11px \'Inter\', sans-serif', color: 'var(--ink-tertiary)', background: 'var(--bg-raised)',
           }}>
@@ -673,6 +677,7 @@ export function CotizacionTab({
                 {c.label}
               </div>
             ))}
+            {canAddLines && <div />}
           </div>
           {products.map((p, lineIdx) => (
             <QuoteRow
@@ -715,7 +720,7 @@ export function CotizacionTab({
             />
           ))}
           {addingLineRow}
-          <TotalsRow variant={variant} visibleCols={visibleCols} products={products} rows={rows} />
+          <TotalsRow variant={variant} visibleCols={visibleCols} products={products} rows={rows} showActionsCol={canAddLines} />
         </div>
         {canAddLines && (
           <div style={{ padding: '16px', borderTop: '1px solid var(--border)', display: 'flex', gap: 8 }}>
@@ -745,6 +750,8 @@ export function CotizacionTab({
               : null);
             onSaved?.();
           }}
+          onVersioned={onVersioned}
+          canEliminar={editable}
         />
       )}
     </div>

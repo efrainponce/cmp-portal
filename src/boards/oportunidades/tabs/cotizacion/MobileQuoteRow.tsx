@@ -263,21 +263,6 @@ function MobileQuoteRowInner({
             ✎
           </button>
         )}
-        {canDelete && (
-          <button
-            type="button"
-            onClick={() => onDeleteLine(p.id)}
-            disabled={deleting}
-            title="Eliminar línea"
-            style={{
-              background: 'none', border: 'none', cursor: deleting ? 'wait' : 'pointer',
-              font: 'inherit', padding: 0, marginTop: 3, flexShrink: 0,
-              color: 'var(--status-perdida)', opacity: deleting ? 0.6 : 1,
-            }}
-          >
-            ✕
-          </button>
-        )}
         {p.pendingWrite && <span title="guardado, sincronizando…" style={{ color: 'var(--accent)' }}>⏳</span>}
         <div style={{ flex: 1, minWidth: 0 }}>
           {titleWritable ? (
@@ -296,6 +281,21 @@ function MobileQuoteRowInner({
             </div>
           )}
         </div>
+        {canDelete && (
+          <button
+            type="button"
+            onClick={() => onDeleteLine(p.id)}
+            disabled={deleting}
+            title="Eliminar línea"
+            style={{
+              background: 'none', border: 'none', cursor: deleting ? 'wait' : 'pointer',
+              font: '15px', padding: 0, marginTop: 1, flexShrink: 0,
+              color: 'var(--status-perdida)', opacity: deleting ? 0.6 : 1,
+            }}
+          >
+            🗑
+          </button>
+        )}
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 14px', marginTop: 10 }}>
         {restCols.map((c) => (

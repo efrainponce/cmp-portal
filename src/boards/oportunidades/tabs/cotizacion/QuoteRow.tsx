@@ -87,10 +87,11 @@ function QuoteRowInner({
 }: QuoteRowProps) {
   const { lineWarnings, bannerText } = computeLineBanner(p, state, variant, catalog, precioOnly);
 
-  // Chevron + eliminar. Se renderizaban solo en la celda de Producto de solo
+  // Chevron + ajustar. Se renderizaban solo en la celda de Producto de solo
   // lectura, pero en Nueva oportunidad (justo donde canDelete es true) Producto
-  // siempre es <input>, así que el botón de eliminar quedaba invisible en el
-  // único caso donde hace falta (Efraín, 2026-07-20) — por eso va en ambos.
+  // siempre es <input>, así que un botón ahí quedaba invisible en ese caso
+  // (Efraín, 2026-07-20) — por eso va en ambos. El ícono de eliminar 🗑 vive
+  // aparte, en su propia columna al final de la fila (Efraín, 2026-08-13).
   const lineControls = (
     <div style={{ display: 'inline-flex', gap: 4, marginRight: 4 }}>
       <button
@@ -109,25 +110,6 @@ function QuoteRowInner({
           style={{ background: 'none', border: 'none', cursor: 'pointer', font: 'inherit', padding: 0, color: 'var(--accent)' }}
         >
           ✎
-        </button>
-      )}
-      {canDelete && (
-        <button
-          type="button"
-          onClick={() => onDeleteLine(p.id)}
-          disabled={deleting}
-          title="Eliminar línea"
-          style={{
-            background: 'none',
-            border: 'none',
-            cursor: deleting ? 'wait' : 'pointer',
-            font: 'inherit',
-            padding: 0,
-            color: 'var(--status-perdida)',
-            opacity: deleting ? 0.6 : 1,
-          }}
-        >
-          ✕
         </button>
       )}
     </div>
@@ -151,7 +133,7 @@ function QuoteRowInner({
       )}
       <div style={{
         ...gridWrapStyle,
-        display: 'grid', gridTemplateColumns: `28px ${colsTemplate(visibleCols)}`,
+        display: 'grid', gridTemplateColumns: `28px ${colsTemplate(visibleCols)}${canDelete ? ' 32px' : ''}`,
         gap: 6, alignItems: 'center', padding: '8px 10px', background: rowTint,
       }}>
         <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)', fontWeight: 700 }}>{partida}</div>
@@ -375,6 +357,27 @@ function QuoteRowInner({
             </div>
           );
         })}
+        {canDelete && (
+          <div style={{ textAlign: 'center' }}>
+            <button
+              type="button"
+              onClick={() => onDeleteLine(p.id)}
+              disabled={deleting}
+              title="Eliminar línea"
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: deleting ? 'wait' : 'pointer',
+                font: '14px',
+                padding: 0,
+                color: 'var(--status-perdida)',
+                opacity: deleting ? 0.6 : 1,
+              }}
+            >
+              🗑
+            </button>
+          </div>
+        )}
       </div>
       {state.error && (
         <div style={{ padding: '0 14px 8px', font: 'var(--text-caption)', color: 'var(--status-perdida)' }}>
