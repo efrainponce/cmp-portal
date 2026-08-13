@@ -2,6 +2,12 @@
 
 ## 2026-08-13
 
+- Fix: tab "Zona Efrain" solo muestra líneas del CEO (`dealStages.ts`)
+  - `vendedorNames` filtraba por 'Efrain Ponce' y 'Elisa Vallado'; Elisa solo
+    tiene acceso de whitelist a la zona (crea oportunidades ahí para el CEO)
+    pero sus propias líneas no debían contar como parte de la zona. Ahora solo
+    'Efrain Ponce'.
+
 - Feat: acceso "Ejecución" del sidebar renombrado a "Reporte de Proyectos" y
   sin filtro de status (`projectStages.ts`, `Sidebar.tsx`)
   - Antes solo mostraba proyectos con `project_status = Ejecución` (id `3`);

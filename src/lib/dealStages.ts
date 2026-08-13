@@ -46,9 +46,10 @@ export const STAGE_BOARDS: Record<StageBoardKey, StageBoardConfig> = {
   ordenescompra: { key: 'ordenescompra', title: 'Órdenes de Compra', subtitleSuffix: '', stages: ['8'], defaultTab: 'ordenes' },
   logistica: { key: 'logistica', title: 'Logística', subtitleSuffix: '', stages: ['1'], defaultTab: 'logistica' },
   // Zona privada "Efrain" (Efraín, 2026-08-12): pipeline COMPLETO (sin filtro de
-  // etapa, a diferencia de Costeo/Validación) acotado a los dos miembros de esa
-  // zona — mismos nombres que sus filas de identity en D1 (worker/lib/zonas.ts
-  // ZONA_PRIVADA_ADMINS_PERMITIDOS/zona_miembros). Sidebar solo la muestra a la
-  // whitelist (me.zonaEfrainAccess) — ver src/app/Sidebar.tsx.
-  zona_efrain: { key: 'zona_efrain', title: 'Zona Efrain', subtitleSuffix: '', vendedorNames: ['Efrain Ponce', 'Elisa Vallado'], defaultTab: 'cotizacion' },
+  // etapa, a diferencia de Costeo/Validación) acotado SOLO a las oportunidades
+  // del CEO (Efraín, 2026-08-13 — antes incluía también a Elisa Vallado, que
+  // solo tiene acceso de whitelist pero sus propias líneas no pertenecen a esta
+  // zona). Sidebar solo la muestra a la whitelist (me.zonaEfrainAccess) — ver
+  // src/app/Sidebar.tsx; whitelist en worker/lib/zonas.ts ZONA_PRIVADA_ADMINS_PERMITIDOS.
+  zona_efrain: { key: 'zona_efrain', title: 'Zona Efrain', subtitleSuffix: '', vendedorNames: ['Efrain Ponce'], defaultTab: 'cotizacion' },
 };
