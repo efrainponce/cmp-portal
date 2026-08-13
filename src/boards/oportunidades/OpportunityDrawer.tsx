@@ -411,6 +411,26 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
     }
   };
 
+  // Reabrir: sin historial de etapa previa en el mirror (ni D1 ni Monday
+  // guardan de dónde venía al cancelar/perder), así que siempre regresa a
+  // "Nueva oportunidad" — mismo destino para las tres etapas cerradas
+  // (Efraín, 2026-08-13).
+  const onReabrirOportunidad = async () => {
+    setNotice(null);
+    try {
+      const res = await patchItem('oportunidades', id, { deal_stage: DEAL_STAGE_LABELS['4'] });
+      if (res.ok) {
+        applyStageOptimistic('4');
+        setNotice({ kind: 'ok', title: 'Oportunidad reabierta', lines: ['La etapa pasó a "Nueva oportunidad".'] });
+        load();
+      } else {
+        setNotice({ kind: 'error', title: 'No se pudo reabrir la oportunidad:', lines: [res.error ?? 'Verifica tu conexión.'] });
+      }
+    } catch {
+      setNotice({ kind: 'error', title: 'No se pudo reabrir la oportunidad:', lines: ['Verifica tu conexión.'] });
+    }
+  };
+
   const onPerderOportunidad = async () => {
     setNotice(null);
     try {
@@ -630,6 +650,15 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
                 style={{ fontSize: '11px', padding: '6px 11px' }}
               />
             </>
+          )}
+          {stage && ['1', '2', '5'].includes(stage) && !ajena && (
+            <ConfirmButton
+              label="Reabrir"
+              confirmLabel="¿Reabrir esta oportunidad?"
+              busyLabel="Reabriendo…"
+              onConfirm={onReabrirOportunidad}
+              style={{ fontSize: '11px', padding: '6px 11px' }}
+            />
           )}
           <Button variant="secondary" onClick={onCopyLink}>
             <IconLink /> {linkCopied ? 'Copiado' : 'Copiar link'}

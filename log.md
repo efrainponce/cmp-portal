@@ -2,6 +2,20 @@
 
 ## 2026-08-13
 
+- Feat: botón "Reabrir" para oportunidades Ganada/Perdida/Cancelada
+  (`OpportunityDrawer.tsx`)
+  - Efraín pidió habilitar "descancelar"/reabrir una oportunidad, disponible
+    para vendedor, compras y admin (los tres roles con acceso a Oportunidades).
+  - No hace falta endpoint nuevo ni cambio de whitelist: `deal_stage` ya es
+    `w: ['vendedor','compras','admin']` en `shared/visibility.ts`, así que
+    `onReabrirOportunidad` reusa el mismo PATCH genérico que ya usan
+    Cancelar/Perder/Archivar.
+  - No hay historial de la etapa previa en el mirror (ni D1 ni Monday guardan
+    de dónde venía al cerrarse), así que Reabrir siempre manda a "Nueva
+    oportunidad" (stage `4`) — mismo destino sin importar si venía de Ganada,
+    Perdida o Cancelada. El botón aparece cuando `stage` es una de esas tres
+    y la oportunidad no es ajena (mismo guard que el resto de las acciones).
+
 - Fix: "Editar/Dividir" en Proyecto → Cotización no escribía a Monday
   (`proyectoCotizacionVirtual.ts`, `lineaAjustes.ts`, `dal.ts`)
   - Pam reportó (con captura) que al editar cantidades de dos líneas del
