@@ -51,6 +51,11 @@ export interface DocumentMeta {
   /** JPEG del membrete (worker/lib/pdf/logo.ts) — si no se manda, el
    * encabezado cae de vuelta al texto "MEXICANA DE PROTECCIÓN". */
   logo?: Uint8Array;
+  /** Oculta la línea "Generado por el portal CMP · fecha · Doc id" del pie.
+   * Los documentos con firma electrónica la necesitan como referencia
+   * verificable (docs/documentos-firma.md); un documento sin ceremonia de
+   * firma (como la OC a proveedor v1) no la necesita. */
+  hideGeneratedByLine?: boolean;
 }
 
 const CONTENT_LEFT = MARGIN;
@@ -293,7 +298,9 @@ function drawChrome(pdf: PdfWriter, meta: DocumentMeta): void {
 
     // Pie
     pdf.line(page, CONTENT_LEFT, FOOTER_TOP + 8, CONTENT_RIGHT, FOOTER_TOP + 8, { color: RULE, width: 0.6 });
-    pdf.text(page, CONTENT_LEFT, FOOTER_TOP + 22, `Generado por el portal CMP · ${meta.generatedAt} · Doc ${meta.docId}`, { size: 7, color: INK_FAINT });
+    if (!meta.hideGeneratedByLine) {
+      pdf.text(page, CONTENT_LEFT, FOOTER_TOP + 22, `Generado por el portal CMP · ${meta.generatedAt} · Doc ${meta.docId}`, { size: 7, color: INK_FAINT });
+    }
     if (meta.footerNote) {
       pdf.text(page, CONTENT_LEFT, FOOTER_TOP + 32, ellipsize(meta.footerNote, CONTENT_WIDTH - 60, 7), { size: 7, color: INK_FAINT });
     }

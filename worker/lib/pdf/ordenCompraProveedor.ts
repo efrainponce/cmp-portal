@@ -191,6 +191,7 @@ export function buildOrdenCompraProveedorPdf(input: OcProveedorPdfInput): Uint8A
     docId: `${input.folioProyecto}-${input.proveedor}`,
     generatedAt: input.fecha,
     logo: base64ToBytes(LOGO_JPG_BASE64),
+    hideGeneratedByLine: true,
   };
 
   return renderDocument(meta, blocks);
