@@ -289,18 +289,17 @@ export async function ajustarLinea(lineaId: string, input: AjustarLineaRequest):
   return body;
 }
 
-/** Cotización virtual del Proyecto (Efraín, 2026-08-10) — mismas líneas de la
- * Oportunidad ligada, con ajustes de división/edición encima que viven SOLO en
- * D1 (worker/lib/proyectoCotizacionVirtual.ts), nunca escriben a Monday. */
+/** Cotización del Proyecto (Efraín, 2026-08-10) — mismas líneas de la
+ * Oportunidad ligada (worker/lib/proyectoCotizacionVirtual.ts). */
 export async function getCotizacionVirtual(proyectoId: string): Promise<CotizacionVirtualDTO> {
   const res = await apiFetch(`/proyectos/${proyectoId}/cotizacion-virtual`);
   if (!res.ok) throw new Error('GET cotizacion-virtual failed: ' + res.status);
   return res.json();
 }
 
-/** "Ajustar línea" virtual (Proyecto) — mismo contrato que ajustarLinea, pero
- * nunca crea ni edita nada en Monday. `lineaId` puede ser un subitem real
- * (positivo) o una línea virtual nacida de un 'dividir' anterior (negativo). */
+/** "Ajustar línea" desde el Proyecto — mismo contrato que ajustarLinea y, desde
+ * 2026-08-13, la misma escritura real a Monday (solo cambia contra qué se
+ * autoriza al viewer). `lineaId` es siempre un subitem real. */
 export async function ajustarLineaVirtual(
   proyectoId: string, lineaId: number, input: AjustarLineaRequest,
 ): Promise<AjustarLineaResponse> {

@@ -762,11 +762,12 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     return c.json({ oportunidadId: opp ? String(oppId) : null });
   });
 
-  // Cotización virtual del Proyecto (Efraín, 2026-08-10): mismas líneas de la
-  // Oportunidad ligada, con ajustes de división/edición encima que viven SOLO en
-  // D1 (worker/lib/proyectoCotizacionVirtual.ts) — a diferencia de "Ajustar
-  // línea" en Oportunidades, esto nunca toca Monday. Solo versiones intermedias
-  // (V{n}.{m}); no existe "+ Nueva versión" desde el Proyecto.
+  // Cotización del Proyecto (Efraín, 2026-08-10; escritura real desde
+  // 2026-08-13): mismas líneas de la Oportunidad ligada; "Editar/Dividir"
+  // reusa el motor de "Ajustar línea" de Oportunidades (worker/lib/lineaAjustes.ts)
+  // así que SÍ escribe a Monday, pero autoriza contra el dueño del Proyecto,
+  // no de la Oportunidad (ver comentario de worker/lib/proyectoCotizacionVirtual.ts).
+  // Solo versiones intermedias (V{n}.{m}); no existe "+ Nueva versión" desde el Proyecto.
   app.get('/api/proyectos/:id/cotizacion-virtual', async c => {
     const proyectoId = Number(c.req.param('id'));
     if (!Number.isFinite(proyectoId)) return c.json({ error: 'not found' }, 404);
@@ -780,8 +781,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     }
   });
 
-  // :lineaId puede ser un subitem real (positivo, de la Oportunidad) o una
-  // línea virtual nacida de un 'dividir' anterior (negativa).
+  // :lineaId es siempre un subitem real de la Oportunidad ligada.
   app.post('/api/proyectos/:id/cotizacion-virtual/lineas/:lineaId/ajustar', async c => {
     const proyectoId = Number(c.req.param('id'));
     const lineaId = Number(c.req.param('lineaId'));
@@ -791,10 +791,12 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     if (body.modo !== 'editar' && body.modo !== 'dividir') return c.json({ error: 'modo inválido' }, 400);
 
     try {
-      const result = await ajustarLineaVirtual(c.env, proyectoId, lineaId, viewer, body);
-      return c.json(result satisfies AjustarLineaResponse);
+      const result = await ajustarLineaVirtual(c.env, c.executionCtx, proyectoId, lineaId, viewer, body);
+      if (result.itemId != null) await refetchItemTree(c.env, BOARDS.oportunidades.id, result.itemId);
+      return c.json({ ok: result.ok, lineaId: result.lineaId, nuevaLineaId: result.nuevaLineaId, costoDivergente: result.costoDivergente } satisfies AjustarLineaResponse);
     } catch (err) {
       if (err instanceof ProyectoCotizacionError) return jsonStatus({ ok: false, error: err.message } satisfies AjustarLineaResponse, err.status);
+      if (err instanceof AjusteLineaError) return jsonStatus({ ok: false, error: err.message } satisfies AjustarLineaResponse, err.status);
       return jsonStatus({ ok: false, error: 'internal error' } satisfies AjustarLineaResponse, 500);
     }
   });

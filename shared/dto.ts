@@ -183,11 +183,12 @@ export interface AjustarLineaResponse {
 }
 
 // GET /api/proyectos/:id/cotizacion-virtual (worker/lib/proyectoCotizacionVirtual.ts,
-// Efraín 2026-08-10) — mismas líneas vigentes de la Oportunidad ligada, con
-// ajustes (editar/dividir) aplicados encima en una capa 100% D1 que NUNCA toca
-// Monday (a diferencia de "Ajustar línea" en Oportunidades). `ajustes` es el
-// mismo shape que AjusteDTO pero vive en su propia tabla — no hay versión mayor
-// aquí, solo retoques V{n}.{m}; "+ Nueva versión" no existe desde el Proyecto.
+// Efraín 2026-08-10; escritura real desde 2026-08-13) — mismas líneas vigentes
+// de la Oportunidad ligada; "Editar/Dividir" desde aquí SÍ escribe a Monday
+// (reusa el motor de "Ajustar línea" de Oportunidades), pero autoriza contra
+// el dueño del Proyecto, no de la Oportunidad. `ajustes` viene del mismo log
+// que alimenta los pills V{n}.{m} en VersionChips (Oportunidades) — no hay
+// versión mayor propia aquí; "+ Nueva versión" no existe desde el Proyecto.
 export interface CotizacionVirtualDTO {
   lines: QuoteLineSnapshot[];
   ajustes: AjusteDTO[];

@@ -194,6 +194,17 @@ export async function ownsItem(env: Env, slug: BoardSlug, itemId: number, viewer
   return (await getItem(env, slug, itemId, viewer, 'own')) !== null;
 }
 
+/** Sin scope de viewer — SOLO para un llamador que ya autorizó al viewer por
+ * otra vía (ej. worker/lib/proyectoCotizacionVirtual.ts: el dueño del
+ * Proyecto, no de la Oportunidad ligada) y necesita la fila cruda para armar
+ * un write compuesto. Nunca la llames directo desde un handler sin haber
+ * autorizado antes — no hay chequeo de propiedad aquí. */
+export async function getItemTrusted(env: Env, slug: BoardSlug, itemId: number): Promise<MirrorItem | null> {
+  const board = BOARDS[slug];
+  const row = await env.DB.prepare('SELECT * FROM items WHERE board_id = ? AND item_id = ?').bind(board.id, itemId).first<MirrorItem>();
+  return row ?? null;
+}
+
 export async function childrenOf(env: Env, parentSlug: BoardSlug, itemId: number, viewer: Identity): Promise<MirrorItem[]> {
   const childSlug = childSlugOf(parentSlug);
   if (!childSlug) return [];

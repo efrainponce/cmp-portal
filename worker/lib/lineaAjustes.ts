@@ -205,7 +205,7 @@ async function nextSubversion(env: Env, itemId: number, version: number): Promis
 // La versión mayor "vigente" es siempre archivadas.length + 1 (mismo cómputo
 // que listVersions en quoteVersions.ts): mientras no exista ninguna "Nueva
 // versión" archivada, la vigente es la 1.
-async function currentMajorVersion(env: Env, itemId: number): Promise<number> {
+export async function currentMajorVersion(env: Env, itemId: number): Promise<number> {
   const row = await env.DB
     .prepare('SELECT COALESCE(MAX(version), 0) as m FROM cotizacion_versions WHERE item_id = ?')
     .bind(itemId)
@@ -256,8 +256,19 @@ export async function ajustarLinea(
   // excepción explícita para que esto funcione incluso Ganada.
   const linea = await getItem(env, 'oportunidades_sub', lineaId, viewer, 'own');
   if (!linea || linea.parent_item_id == null) throw new AjusteLineaError(404, 'not found');
-  const itemId = linea.parent_item_id;
+  return applyAjusteLinea(env, ctx, linea.parent_item_id, lineaId, linea, viewer, input);
+}
 
+/** El cuerpo real de "Ajustar línea" (editar/dividir), separado de
+ * `ajustarLinea` para que otros llamadores que YA autorizaron al viewer por
+ * otra vía (worker/lib/proyectoCotizacionVirtual.ts: el dueño del Proyecto,
+ * no necesariamente de la Oportunidad) puedan reusar la escritura real a
+ * Monday sin repetir el chequeo de scope de `oportunidades_sub`, que
+ * resolvería contra la columna Compras/Vendedor de la OPORTUNIDAD y podría
+ * rechazar a alguien que sí es dueño del Proyecto (Efraín, 2026-08-13). */
+export async function applyAjusteLinea(
+  env: Env, ctx: ExecutionContext, itemId: number, lineaId: number, linea: MirrorItem, viewer: Identity, input: AjustarLineaRequest,
+): Promise<AjustarLineaResult> {
   const cols = colsOf(linea);
   const antes = snapshot(cols);
 

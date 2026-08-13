@@ -2,6 +2,40 @@
 
 ## 2026-08-13
 
+- Fix: "Editar/Dividir" en Proyecto → Cotización no escribía a Monday
+  (`proyectoCotizacionVirtual.ts`, `lineaAjustes.ts`, `dal.ts`)
+  - Pam reportó (con captura) que al editar cantidades de dos líneas del
+    Proyecto UNIFORMES PC NL - OPP-0487 (12446: 2→4, 12471: 12→10) el guardado
+    "no funcionó" — el tab mostraba los cambios como exitosos ("Editada" +
+    Total recalculado), pero Tallas seguía viendo las cantidades viejas.
+    Causa: esa pestaña (construida 2026-08-10) era una capa 100% D1 a
+    propósito, que nunca tocaba Monday — Tallas importa/genera su desglose de
+    subitems reales, así que la edición nunca llegaba ahí. Efraín pidió
+    explícitamente que sí escriba a Monday.
+  - En vez de reimplementar la escritura, se reusa el motor real de "Ajustar
+    línea" de Oportunidades (`worker/lib/lineaAjustes.ts`, ya diseñado para
+    funcionar incluso con la Oportunidad Ganada): se extrajo `applyAjusteLinea`
+    (la escritura real, ya autorizada) de `ajustarLinea` (el chequeo de scope +
+    la escritura). El endpoint del Proyecto sigue autorizando contra el dueño
+    del PROYECTO (`project_owner`, no la Compras de la Oportunidad
+    `multiple_person_mm03qyw9` — son columnas distintas que solo se copian una
+    vez al Ganar y pueden divergir después) y solo reusa `applyAjusteLinea`
+    para el write real, vía el nuevo `getItemTrusted` en `dal.ts` (fetch sin
+    scope, solo para un llamador que ya autorizó por otra vía).
+  - `getVirtualLines` deja de mantener su propia tabla de merge
+    (`proyecto_cotizacion_ajustes`, ahora sin uso) y en su lugar lee las líneas
+    reales (`childrenOf`) + el log de ajustes compartido con Oportunidades
+    (`cotizacion_ajustes`, el mismo que alimenta los pills "V{n}.{m}" de
+    `VersionChips`) — nueva función pura `labelLines` reconstruye el badge
+    "Editada"/"Dividida" por línea a partir de ese log (reemplaza
+    `proyectoCotizacionVirtual.test.ts`, que testeaba el merge que se elimina).
+  - Verificado en vivo contra Monday real (Monday MCP + `wrangler dev` local):
+    las dos líneas reales de Pam (12613285876/12446, 12460005988/12471) ahora
+    tienen `numeric_mkzm6399` = 4 y 10 en el board real de subitems, confirmado
+    también desde la Oportunidad ligada (Ventas) y desde el tab Cotización del
+    Proyecto (badges "Editada" reconstruidos correctamente desde el log
+    compartido). `tsc --noEmit`, `oxlint` y `npm test` (222 tests) limpios.
+
 - Fix: columna Producto (sticky) del grid de cotización/costeo dejaba ver una
   franja del <select> vecino al hacer scroll horizontal (`gridMeta.tsx`)
   - El grid de cada fila usa `alignItems: 'center'`, así que la celda sticky de

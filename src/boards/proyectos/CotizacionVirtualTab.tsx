@@ -1,11 +1,10 @@
-// Cotización virtual del Proyecto (Efraín, 2026-08-10): mismas líneas vigentes
-// de la Oportunidad ligada, con ajustes de división/edición encima que viven
-// SOLO en D1 (worker/lib/proyectoCotizacionVirtual.ts) — nunca se escribe nada
-// a Monday desde aquí. No hay selector de versión mayor ni "+ Nueva versión":
-// solo retoques V{n}.{m}, mismo espíritu que "Ajustar línea" en Oportunidades
-// pero sin tocar el mirror. No reusa CotizacionTab/QuoteRow (están duros a
-// ItemDTO + escrituras directas a Monday) — grid propio y liviano sobre
-// QuoteLineSnapshot.
+// Cotización del Proyecto (Efraín, 2026-08-10): mismas líneas vigentes de la
+// Oportunidad ligada. "Editar/Dividir" SÍ escribe a Monday desde 2026-08-13
+// (worker/lib/proyectoCotizacionVirtual.ts reusa el motor de "Ajustar línea"
+// de Oportunidades) — Ventas ve el cambio también. No hay selector de versión
+// mayor ni "+ Nueva versión": solo retoques V{n}.{m}. No reusa
+// CotizacionTab/QuoteRow (están duros a ItemDTO) — grid propio y liviano
+// sobre QuoteLineSnapshot.
 import { useEffect, useState } from 'react';
 import type { AjusteDTO, CostoDivergenciaDTO, ItemDTO, QuoteLineSnapshot } from '../../lib/api';
 import { getCotizacionVirtual, listItems } from '../../lib/apiClient';
@@ -59,9 +58,9 @@ export function CotizacionVirtualTab({ proyectoId }: { proyectoId: string }) {
   return (
     <div style={{ padding: '24px 32px 40px', maxWidth: 920, width: '100%', boxSizing: 'border-box' }}>
       <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)', marginBottom: 16 }}>
-        Cotización de la Oportunidad ligada. Dividir o editar una línea aquí vive
-        solo en este Proyecto — nunca se escribe en Monday ni cambia lo que ve
-        Ventas en la Oportunidad.
+        Cotización de la Oportunidad ligada. Dividir o editar una línea aquí
+        escribe en Monday — Ventas también lo ve en la cotización de la
+        Oportunidad.
       </div>
 
       {notice && (

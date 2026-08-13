@@ -1,8 +1,9 @@
-// "Ajustar línea" — versión virtual del Proyecto (Efraín, 2026-08-10). Calcado
-// de AjustarLineaModal.tsx (Oportunidades) pero sobre datos planos
-// (QuoteLineSnapshot) en vez de columnas de Monday (ItemDTO), y guardando vía
-// ajustarLineaVirtual — nunca toca Monday (worker/lib/proyectoCotizacionVirtual.ts).
-// El precio de venta NUNCA se toca aquí, por eso ni siquiera se muestra el campo.
+// "Ajustar línea" desde el Proyecto (Efraín, 2026-08-10). Calcado de
+// AjustarLineaModal.tsx (Oportunidades) pero sobre datos planos
+// (QuoteLineSnapshot) en vez de columnas de Monday (ItemDTO); guarda vía
+// ajustarLineaVirtual, que desde 2026-08-13 SÍ escribe a Monday (reusa el
+// motor de "Ajustar línea" — worker/lib/proyectoCotizacionVirtual.ts). El
+// precio de venta NUNCA se toca aquí, por eso ni siquiera se muestra el campo.
 import { useState } from 'react';
 import type { CostoDivergenciaDTO, ItemDTO, QuoteLineSnapshot } from '../../lib/api';
 import { ajustarLineaVirtual } from '../../lib/apiClient';
@@ -114,8 +115,8 @@ export function AjustarLineaVirtualModal({
       )}
     >
       <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)', marginBottom: 16 }}>
-        Cambia producto, color, embellecimiento o cantidad — vive solo en el
-        Proyecto, nunca escribe a Monday ni afecta la cotización de la Oportunidad.
+        Cambia producto, color, embellecimiento o cantidad — escribe en Monday,
+        igual que "Ajustar línea" en la Oportunidad.
       </div>
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>

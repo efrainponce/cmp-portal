@@ -3,11 +3,11 @@
 // Reusa ProyectoTallasSection/ProyectoOrdenesSection/OcContratoSection tal
 // cual (mismo contrato ProyectoState, solo que aquí se construye directo del
 // item ya cargado, sin pasar por la Oportunidad). Cotización y Embellecimientos
-// viven también aquí desde 2026-08-10/2026-08-12 (Efraín) — pero como capa
-// D1-only de solo lectura (CotizacionVirtualTab/EmbellecimientosVirtualTab,
-// worker/lib/proyectoCotizacionVirtual.ts) que lee las líneas vigentes de la
-// Oportunidad ligada sin tocar Monday; capturar zonas/imágenes de
-// embellecimiento sigue siendo exclusivo de la Oportunidad (link cruzado abajo).
+// viven también aquí desde 2026-08-10/2026-08-12 (Efraín) — leen las líneas
+// vigentes de la Oportunidad ligada (CotizacionVirtualTab/EmbellecimientosVirtualTab,
+// worker/lib/proyectoCotizacionVirtual.ts); "Editar/Dividir" en Cotización SÍ
+// escribe a Monday desde 2026-08-13. Capturar zonas/imágenes de embellecimiento
+// sigue siendo exclusivo de la Oportunidad (link cruzado abajo).
 import { useEffect, useState } from 'react';
 import { Button } from '../../components/core/Button';
 import { IconBack } from '../../components/icons';
