@@ -2,6 +2,16 @@
 
 ## 2026-08-13
 
+- Refactor: divide `ProyectoSection.tsx` (1196 líneas, el archivo más grande
+  del repo) en `src/boards/oportunidades/proyecto/` — `shared.tsx` (consts de
+  columna, `ProyectoState`/`useProyecto`, `ProyectoActionBar`/`ProyectoLinks`/
+  `FileList`/`Shell`), `TallasSection.tsx`, `OrdenesSection.tsx`,
+  `EjecucionSection.tsx` — uno por tab del Proyecto. Pedido de Efraín
+  ("optimize... more modular"): ningún import site tuvo que cambiar,
+  `ProyectoSection.tsx` queda como barrel de 10 líneas que re-exporta lo
+  mismo que ya exportaba. Sin cambios de comportamiento — extracción mecánica,
+  verificada con `tsc -b`, `npm test` (219 tests) y `npm run build`.
+
 - Fix: re-introspección de boards (`scripts/introspect-boards.mjs` contra Monday
   real, pedido de Efraín — "check everything using monday api") reveló que
   `color_mm0hqf79` ("Estado del producto", proyectos_sub) renombró su label
