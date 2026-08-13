@@ -55,11 +55,14 @@ function Field({ label, required, children }: { label: string; required?: boolea
 }
 
 export default function CreateOportunidadModal({
-  onClose, onCreated,
+  onClose, onCreated, native,
 }: {
   onClose: () => void;
   /** Llamado cuando la opp se crea. Pasa el ID Monday (folio se asigna async). */
   onCreated: (itemId: string) => void;
+  /** "Salir de Monday" (Zona Efrain, test): nace y vive 100% en D1, nunca en
+   * Monday — el server re-valida que el viewer esté en la whitelist. */
+  native?: boolean;
 }) {
   const me = useMe();
   const { boards } = useBoards();
@@ -128,7 +131,7 @@ export default function CreateOportunidadModal({
       // (ver vendedorKey) — Monday solo entiende el id numérico.
       if (nonEmpty[COL_VENDEDOR]) nonEmpty[COL_VENDEDOR] = vendedorIdFromKey(nonEmpty[COL_VENDEDOR]);
       if (nonEmpty[COL_VENDEDOR_SECUNDARIO]) nonEmpty[COL_VENDEDOR_SECUNDARIO] = vendedorIdFromKey(nonEmpty[COL_VENDEDOR_SECUNDARIO]);
-      const result = await createItem('oportunidades', name.trim(), nonEmpty);
+      const result = await createItem('oportunidades', name.trim(), nonEmpty, { native });
       if (!result.ok || !result.id) throw new Error('No se asignó ID a la oportunidad.');
 
       onCreated(result.id);
@@ -141,7 +144,7 @@ export default function CreateOportunidadModal({
 
   return (
     <Modal
-      title="Nueva oportunidad"
+      title={native ? 'Nueva oportunidad (Zona Efrain — nativa)' : 'Nueva oportunidad'}
       onClose={onClose}
       footer={
         <>

@@ -443,6 +443,53 @@
     `scripts/perf-bench.mjs` + `scripts/perf-results/`) — se dejaron sin
     commitear, solo se stageó el archivo propio de este fix.
 
+- Feat: "salir de Monday" — Paso 1+2, oportunidades nativas de Zona Efrain
+  (`shared/nativeId.ts`, `worker/lib/nativeSeq.ts`, `worker/lib/createRecord.ts`,
+  `worker/lib/outbox.ts`, `worker/sync/reconcile.ts`, `worker/sync/refetch.ts`,
+  `worker/routes/boards.ts`, `CreateOportunidadModal.tsx`, `StageBoard.tsx`)
+  - Objetivo del branch (Efraín): las oportunidades de Zona Efrain (CEO) siguen
+    siendo items reales de Monday hoy — cualquier admin con acceso directo al
+    board las ve, porque restringir eso a nivel Monday.com no es viable. La
+    única forma de que sean invisibles de verdad es que nunca existan en
+    Monday. Primer corte, chico y probado, no la capa genérica de 8 entidades
+    que se había diseñado antes (Efraín: "no cambio súper drástico", "IDs como
+    hacía Monday", reusar las tablas actuales) — un item nativo es una fila
+    más de `items` (mismo shape de columnas, mismo scoping de `dal.ts`/
+    `visibility.ts`) con un `item_id` sintético (`shared/nativeId.ts`,
+    NATIVE_ID_FLOOR = 900_000_000_000) que nunca se manda a Monday.
+  - Crear (`submitCreateNative`): gateado a la whitelist de Zona Efrain
+    (`isZonaPrivadaAdminPermitido`), solo board Oportunidades. El texto de
+    display de columnas people/contacto (que Monday resuelve del otro lado) se
+    resuelve local con el roster cacheado (`cachedFetchUsers`) o el mirror de
+    Contactos — no hay a quién más preguntarle.
+  - Editar (`submitWrite`/outbox.ts): el merge optimista a D1 YA es la
+    escritura real para un id nativo — se salta el INSERT a `outbox` y el
+    flush a Monday, devuelve `pending:false` de una vez. Gap conocido y
+    aceptado: si el patch toca una authzCol (vendedor), `vendedor_ids` no se
+    recalcula ahí, solo en la creación.
+  - Blindaje crítico encontrado en la investigación: `reconcile.ts` (cron) y
+    `refetch.ts` (lecturas `?fresh=1`) borran de `items` cualquier fila que no
+    encuentran en la respuesta de Monday — sin guard, un item nativo se
+    autodestruye en el próximo reconcile o en la próxima apertura "fresh" del
+    drawer. Ambos ahora ignoran ids >= NATIVE_ID_FLOOR.
+  - Probado en local (`wrangler dev --local`, D1 sqlite local, roster real vía
+    Monday): crear, leer (list+detail, texto/vendedor_ids correctos), editar
+    sin encolar outbox, `?fresh=1` y un reconcile COMPLETO contra Monday real
+    (743 items reales) — la fila nativa sobrevivió los tres.
+  - Incidente durante la prueba: el primer intento pegó por error al
+    `wrangler dev` de OTRO checkout (`~/Documents/dev/cmp-portal`, otra sesión
+    concurrente, código de `main` sin este cambio) y creó un item real de
+    prueba en Monday.com de producción ("TEST NATIVO — no borrar",
+    id 12798144299) — se borró de inmediato vía la integración de Monday.
+    Lección: puertos 5173/8787 pueden pertenecer a OTRO checkout, no solo a
+    otra sesión en el mismo — confirmar `cwd` del proceso antes de dar por
+    buena una prueba local.
+  - Frontend: `CreateOportunidadModal` acepta `native?: boolean`;
+    `StageBoard.tsx` lo prende solo para `boardKey === 'zona_efrain'`. El resto
+    de los flujos de creación (Oportunidades, Costeo) no cambian.
+  - Siguiente paso propuesto (no implementado aún): líneas de cotización
+    nativas (subitems) — pendiente de que Efraín confirme para seguir.
+
 - Feat: botón "Reabrir" para oportunidades Ganada/Perdida/Cancelada
   (`OpportunityDrawer.tsx`)
   - Efraín pidió habilitar "descancelar"/reabrir una oportunidad, disponible

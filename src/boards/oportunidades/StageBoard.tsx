@@ -95,6 +95,7 @@ export function StageBoard({ boardKey, openId, onOpenChange, onDuplicated }: Pro
               setCreating(false);
               onOpenChange(String(itemId)); // Abrir drawer automáticamente
             }}
+            native={boardKey === 'zona_efrain'}
           />
         </Suspense>
       )}

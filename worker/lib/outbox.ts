@@ -5,6 +5,7 @@ import type { Identity } from '../../shared/types';
 import type { BoardSlug } from '../../shared/boards';
 import type { WriteResponse } from '../../shared/dto';
 import { BOARDS, boardById } from '../../shared/boards';
+import { isNativeId } from '../../shared/nativeId';
 import { canWrite } from '../../shared/visibility';
 import { COLUMN_META } from '../../shared/column-meta.gen';
 import { canonValue, writeHash } from './canon';
@@ -130,6 +131,16 @@ export async function submitWrite(
       comentario: cols['text_mm20gzsb'],
     });
   }
+
+  // Item nativo (Zona Efrain, "salir de Monday"): el merge optimista de arriba
+  // YA ES la escritura real — no hay Monday del otro lado que confirme un echo,
+  // así que jamás se encola outbox para estos ids. `pending: false`: a
+  // diferencia del camino normal, esto ya quedó firme en D1.
+  // Gap conocido (aceptado para este primer corte): si el patch toca una
+  // authzCol (deal_owner/vendedor secundario), `vendedor_ids` NO se recalcula
+  // aquí — solo se fija en la creación (submitCreateNative). Zona Efrain nace y
+  // vive con un solo dueño fijo, así que no es una ruta que se ejercite hoy.
+  if (isNativeId(itemId)) return { ok: true, pending: false };
 
   await env.DB
     .prepare(

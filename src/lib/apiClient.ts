@@ -240,9 +240,12 @@ export async function patchItem(slug: BoardSlug, id: string, cols: Record<string
   }
 }
 
-export async function createItem(slug: BoardSlug, name: string, cols: Record<string, string>): Promise<CreateResponse> {
+export async function createItem(
+  slug: BoardSlug, name: string, cols: Record<string, string>, opts: { native?: boolean } = {},
+): Promise<CreateResponse> {
   const res = await apiFetch(`/boards/${slug}/items`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, cols }),
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, cols, native: opts.native }),
   });
   const body: CreateResponse = await res.json();
   if (!res.ok) throw new Error(body.error ?? 'create failed: ' + res.status);

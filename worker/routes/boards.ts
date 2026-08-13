@@ -16,7 +16,7 @@ import {
 import { toItemDTO, toColMeta, itemDetailEtag } from '../lib/serialize';
 import { canReadBoard } from '../../shared/visibility';
 import { submitWrite, OutboxError } from '../lib/outbox';
-import { submitCreate, CreateError } from '../lib/createRecord';
+import { submitCreate, submitCreateNative, CreateError } from '../lib/createRecord';
 import { fetchUpdates, createUpdate, addFileToUpdate, fetchAssetPublicUrls, deleteItem, type MentionInput } from '../lib/monday';
 import { cachedFetchUsers } from '../lib/rosterCache';
 import { getBoardAccess } from '../lib/boardAccess';
@@ -159,7 +159,13 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
     const body = await c.req.json<CreateRequest>();
 
     try {
-      const result = await submitCreate(c.env, slug, body.name, body.cols, viewer);
+      // "Salir de Monday" (Zona Efrain, test): solo honrado para oportunidades —
+      // submitCreateNative valida por su cuenta que el viewer esté en la
+      // whitelist, así que un `native:true` fuera de lugar simplemente 403ea en
+      // vez de crear silenciosamente en Monday.
+      const result = body.native && slug === 'oportunidades'
+        ? await submitCreateNative(c.env, body.name, body.cols, viewer)
+        : await submitCreate(c.env, slug, body.name, body.cols, viewer);
       return c.json(result);
     } catch (err) {
       if (err instanceof CreateError) {

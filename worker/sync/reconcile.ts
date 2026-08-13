@@ -3,6 +3,7 @@ import type { Env } from '../env';
 import { fetchItems, fetchBoardsUpdatedAt, type MondayItem } from '../lib/monday';
 import { rawHash } from '../lib/canon';
 import { BOARDS, type BoardSlug } from '../../shared/boards';
+import { isNativeId } from '../../shared/nativeId';
 import { extractVendedorIds, toRawColumns, emitItemSideEffects, NEEDS_PREV_COLUMNS } from './upsert';
 import { logSync } from './log';
 
@@ -100,7 +101,10 @@ export async function reconcileBoard(env: Env, slug: BoardSlug): Promise<{ upser
     }
   }
 
-  const toDelete = [...existingHash.keys()].filter(id => !seen.has(id));
+  // Items nativos (Zona Efrain, "salir de Monday") nunca existen del lado de
+  // Monday por diseño — sin este filtro, cada reconcile los vería como
+  // "borrados allá" y los purgaría del mirror en la siguiente pasada.
+  const toDelete = [...existingHash.keys()].filter(id => !seen.has(id) && !isNativeId(id));
   for (const ids of chunk(toDelete, BATCH_CHUNK)) {
     await env.DB.batch(ids.map(id => env.DB.prepare(`DELETE FROM items WHERE board_id = ? AND item_id = ?`).bind(def.id, id)));
   }

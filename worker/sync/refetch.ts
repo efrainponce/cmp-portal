@@ -4,10 +4,16 @@ import { fetchItem, fetchItemWithSubitems } from '../lib/monday';
 import { boardById, BOARDS, type BoardSlug } from '../../shared/boards';
 import { upsertItem, toRawColumns } from './upsert';
 import { rawHash } from '../lib/canon';
+import { isNativeId } from '../../shared/nativeId';
 import { confirmOutboxEcho } from './echo';
 import { logSync } from './log';
 
 export async function refetchItem(env: Env, boardId: number, itemId: number): Promise<void> {
+  // Item nativo (Zona Efrain): D1 ya es la fuente de verdad, no existe en Monday
+  // que "refetchear" — y llamar a Monday con este id devolvería not-found, lo
+  // que borraría la fila del mirror (ver rama de abajo). No-op a propósito.
+  if (isNativeId(itemId)) return;
+
   const def = boardById(boardId);
   if (!def) {
     await logSync(env, 'manual', boardId, itemId, false, 'unknown board_id');
@@ -34,6 +40,8 @@ export async function refetchItem(env: Env, boardId: number, itemId: number): Pr
  * flows that rewrite subitems (import_tallas) or snapshot columns on them
  * (validar_costeo). No-op child cleanup for boards without a subitem board. */
 export async function refetchItemTree(env: Env, boardId: number, itemId: number): Promise<void> {
+  if (isNativeId(itemId)) return; // ver comentario en refetchItem
+
   const def = boardById(boardId);
   if (!def) {
     await logSync(env, 'manual', boardId, itemId, false, 'unknown board_id');

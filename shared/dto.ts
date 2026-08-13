@@ -58,7 +58,10 @@ export interface MeDTO {
 export interface WriteRequest { cols: Record<string, string> }  // colId -> new raw value
 export interface WriteResponse { ok: boolean; pending: boolean; error?: string }
 
-export interface CreateRequest { name: string; cols: Record<string, string> }
+// native: "salir de Monday" (Zona Efrain) — solo lo honra el server para
+// slug 'oportunidades' y viewers de la whitelist de zona privada; cualquier
+// otro caso lo ignora y crea normal (worker/routes/boards.ts).
+export interface CreateRequest { name: string; cols: Record<string, string>; native?: boolean }
 export interface CreateResponse { ok: boolean; id?: string; error?: string }
 
 // POST /api/oportunidades/:id/duplicar — clona cabecera + líneas vigentes +
