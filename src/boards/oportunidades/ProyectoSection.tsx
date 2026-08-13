@@ -646,7 +646,9 @@ function ProveedorLineaRow({ l }: { l: ItemDTO }) {
 }
 
 const CARD_INPUT_STYLE = {
-  font: 'var(--text-label)', padding: '5px 8px', borderRadius: 'var(--radius-md)',
+  // Padding vertical (8) + borde (1+1) = 18, para igualar la altura del botón
+  // "Generar OC" (Button primario: padding 9 vertical, sin borde = 18 también).
+  font: 'var(--text-label)', padding: '8px', borderRadius: 'var(--radius-md)',
   border: '1px solid var(--border)', minWidth: 160,
 } as const;
 

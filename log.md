@@ -2,6 +2,13 @@
 
 ## 2026-08-12
 
+- Fix: los controles del header de la tarjeta de proveedor (Método/Condiciones
+  de pago, "Ver OC (portal)", "Generar OC") no medían lo mismo de alto —
+  `CARD_INPUT_STYLE` (inputs y botón "Ver OC") traía padding vertical 5px +
+  borde de 1px, contra el padding vertical 9px sin borde del `Button` primario
+  de "Generar OC". Se subió el padding vertical de `CARD_INPUT_STYLE` a 8px
+  (8+8+1+1 = 18, igual a 9+9+0 del botón) para que las cuatro alturas calcen.
+
 - Fix: la columna "Producto" de la tarjeta de proveedor en la tab Órdenes de
   Compra (`ProveedorLineaRow` en `ProyectoSection.tsx`) rompía el ancho de la
   tarjeta completa cuando el texto era largo y sin espacios (descripciones de

@@ -76,6 +76,10 @@ export async function generarOcProveedorPdf(
 
   const lineas: OcProveedorLinea[] = lineasProveedor.map(l => ({
     producto: l.cols[S_PRODUCTO]?.text || l.name || '—',
+    // El "✨ " marca los subitems de Embellecimientos (Frente derecho, Etiqueta
+    // de propiedad, Otros…) — para líneas de producto normal (garments, sin
+    // ese prefijo) el name es solo la variante talla/color, no una zona.
+    zona: l.name?.startsWith('✨') ? l.name.replace(/^✨\s*/, '') : '',
     sku: l.cols[S_SKU]?.text || '',
     color: l.cols[S_COLOR]?.text || '',
     talla: l.cols[S_TALLA]?.text || '',

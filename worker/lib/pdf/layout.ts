@@ -27,13 +27,14 @@ export type Block =
   | { kind: 'text'; text: string; size?: number; bold?: boolean; color?: string }
   | { kind: 'kv'; rows: [string, string][]; columns?: 1 | 2 }
   | { kind: 'table'; columns: TableColumn[]; rows: string[][]; footer?: string[] }
-  /** Como 'table', pero `wrapCol` envuelve a varias líneas en vez de recortar
-   * con elipsis, y el renglón crece para que quepa — las demás columnas se
-   * dibujan ancladas al TOPE del renglón, nunca desaparecen. Se agregó para la
-   * OC a proveedor: descripciones de embellecimiento largas rompían tablas de
-   * ancho fijo (visto primero en la plantilla de Eledo, 2026-08-12). */
+  /** Como 'table', pero las columnas en `wrapCols` envuelven a varias líneas
+   * en vez de recortar con elipsis, y el renglón crece para que quepan — las
+   * demás columnas se dibujan ancladas al TOPE del renglón, nunca desaparecen.
+   * Se agregó para la OC a proveedor: descripciones de embellecimiento largas
+   * rompían tablas de ancho fijo (visto primero en la plantilla de Eledo,
+   * 2026-08-12). */
   | {
-      kind: 'wrapTable'; columns: TableColumn[]; rows: string[][]; wrapCol: number; footer?: string[];
+      kind: 'wrapTable'; columns: TableColumn[]; rows: string[][]; wrapCols: number[]; footer?: string[];
       /** Override de color del renglón de encabezado — default gris. La OC a
        * proveedor usa el naranja de marca de CMP (sacado del logo). */
       headerFill?: string; headerTextColor?: string;
@@ -210,20 +211,27 @@ function drawTable(pdf: PdfWriter, cur: Cursor, block: Extract<Block, { kind: 't
 
 function drawWrapTable(pdf: PdfWriter, cur: Cursor, block: Extract<Block, { kind: 'wrapTable' }>): void {
   const boxes = columnBoxes(block.columns);
-  const wrapBox = boxes[block.wrapCol];
-  const wrapWidth = wrapBox.right - wrapBox.left;
+  const wrapSet = new Set(block.wrapCols);
   const lineHeight = 11;
   const baseRowHeight = 17;
   cur.ensure(18 + baseRowHeight * 2);
   drawTableHeader(pdf, cur, block.columns, block.headerFill, block.headerTextColor);
 
   block.rows.forEach((row, r) => {
-    const lines = wrapText(row[block.wrapCol] ?? '', wrapWidth, 9);
-    const rowHeight = Math.max(baseRowHeight, lines.length * lineHeight + 6);
+    const wrappedByCol = new Map<number, string[]>();
+    let maxLines = 1;
+    for (const i of wrapSet) {
+      const w = boxes[i].right - boxes[i].left;
+      const lines = wrapText(row[i] ?? '', w, 9);
+      wrappedByCol.set(i, lines);
+      maxLines = Math.max(maxLines, lines.length);
+    }
+    const rowHeight = Math.max(baseRowHeight, maxLines * lineHeight + 6);
     if (cur.ensure(rowHeight)) drawTableHeader(pdf, cur, block.columns, block.headerFill, block.headerTextColor);
     if (r % 2 === 1) pdf.rect(cur.page, CONTENT_LEFT, cur.y - 9, CONTENT_WIDTH, rowHeight, { fill: ZEBRA });
     block.columns.forEach((col, i) => {
-      if (i === block.wrapCol) {
+      const lines = wrappedByCol.get(i);
+      if (lines) {
         let ly = cur.y + 2;
         for (const line of lines) {
           pdf.textAligned(cur.page, line, ly, boxes[i], col.align ?? 'left', { size: 9, color: INK });
@@ -231,8 +239,8 @@ function drawWrapTable(pdf: PdfWriter, cur: Cursor, block: Extract<Block, { kind
         }
         return;
       }
-      // Todo lo que no es la columna que envuelve va anclado al TOPE del
-      // renglón — así nunca se desaloja aunque `wrapCol` crezca a varias líneas.
+      // Todo lo que no envuelve va anclado al TOPE del renglón — así nunca se
+      // desaloja aunque las columnas de wrapCols crezcan a varias líneas.
       const cell = row[i] ?? '';
       pdf.textAligned(cur.page, ellipsize(cell, boxes[i].right - boxes[i].left, 9), cur.y + 2, boxes[i], col.align ?? 'left', { size: 9, color: INK });
     });

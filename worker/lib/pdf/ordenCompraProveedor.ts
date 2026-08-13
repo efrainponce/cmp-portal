@@ -20,6 +20,11 @@ const CMP_ORANGE = '#f49e09';
 
 export interface OcProveedorLinea {
   producto: string;
+  /** Zona/tipo de embellecimiento (Frente derecho, Etiqueta de propiedad,
+   * Código de barras, Otros…) — el nombre del subitem de Embellecimientos en
+   * Monday, sin el prefijo "✨". Vacío para líneas de producto normal (no
+   * embellecimiento). Efraín, 2026-08-13: "no sale que es etiqueta y eso". */
+  zona: string;
   sku: string;
   color: string;
   talla: string;
@@ -144,20 +149,22 @@ export function buildOrdenCompraProveedorPdf(input: OcProveedorPdfInput): Uint8A
     { kind: 'divider' },
     {
       kind: 'wrapTable',
-      wrapCol: 0,
+      wrapCols: [0, 1],
       columns: [
-        { header: 'Producto', width: 0.25 },
-        { header: 'Modelo', width: 0.10 },
-        { header: 'Talla', width: 0.07 },
-        { header: 'Unidad', width: 0.08 },
-        { header: 'Moneda', width: 0.07 },
-        { header: 'Cant.', width: 0.09, align: 'right' },
-        { header: 'Precio', width: 0.11, align: 'right' },
-        { header: 'Desc.', width: 0.07, align: 'right' },
-        { header: 'Subtotal', width: 0.16, align: 'right' },
+        { header: 'Producto', width: 0.20 },
+        { header: 'Zona/Tipo', width: 0.11 },
+        { header: 'Modelo', width: 0.08 },
+        { header: 'Talla', width: 0.06 },
+        { header: 'Unidad', width: 0.07 },
+        { header: 'Moneda', width: 0.06 },
+        { header: 'Cant.', width: 0.08, align: 'right' },
+        { header: 'Precio', width: 0.10, align: 'right' },
+        { header: 'Desc.', width: 0.06, align: 'right' },
+        { header: 'Subtotal', width: 0.18, align: 'right' },
       ],
       rows: input.lineas.map(l => [
         l.producto,
+        l.zona,
         [l.sku, l.color].filter(Boolean).join(', '),
         l.talla,
         l.unidad,
