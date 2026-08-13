@@ -2,6 +2,26 @@
 
 ## 2026-08-12
 
+- Feat: "salir de Monday" Fase 0 — cimientos (Eledo/DocuSeal/Airtable)
+  - Clientes delgados, mismo estilo que `worker/lib/automations.ts`, para que las
+    fases siguientes del plan (cotización/OC) llamen a Eledo y DocuSeal DIRECTO en
+    vez de que cmp-tallas sea el intermediario: `worker/lib/eledo.ts`
+    (`renderEledoPdf` — un solo endpoint/auth para toda plantilla, ids reales de
+    cotización `69a0eb3d6345ea9ffcaf7e62` y OC `69b3b936c38adc73cf462f2f`,
+    verificados contra `api/generate_cotizacion.py`/`api/generate_oc.py` del repo
+    `cmp-tallas`), `worker/lib/docuseal.ts` (`createDocuSealSubmission` — sirve
+    tanto la firma única de cotización como las 3 en orden de la OC vía `order`),
+    `worker/lib/airtable.ts` (`fetchAirtableImageUrl` — imagen de producto,
+    degradación silenciosa si falta la API key o falla la call, igual que hoy).
+  - `Env` (`worker/env.ts`) suma `ELEDO_API_KEY`/`DOCUSEAL_API_KEY`/
+    `AIRTABLE_API_KEY`, ninguno con valor todavía en ningún ambiente — son
+    cimientos sin wiring: nada los llama todavía (Fase 2 cotización es el
+    siguiente paso, y necesita además el service account de Google para Drive,
+    que tampoco está configurado). El sync de catálogo Airtable↔Monday (Fase 6)
+    es una integración aparte, más grande, que no vive en `airtable.ts` todavía.
+  - `tsc -b`, `npm test` (165 tests) y `npm run lint` limpios (archivos nuevos sin
+    call sites, cero riesgo de romper nada en producción).
+
 - Feat: "salir de Monday" Fase 1 — validar_costeo nativo (branch `feat/zona-efrain-board`)
   - Arranque del plan grande que reemplaza, fase por fase, las 7 automatizaciones de
     cmp-tallas (Vercel/Python) por lógica nativa del Worker sin perder funcionalidad ni

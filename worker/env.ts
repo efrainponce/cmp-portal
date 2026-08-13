@@ -15,6 +15,12 @@ export interface Env {
   // corre en paralelo contra oportunidades reales y se compara el resultado. Sin
   // definir o distinto de '1' = comportamiento de siempre (cmp-tallas).
   COSTEO_NATIVE?: string;
+  // Fase 0 (cimientos, 2026-08-12) — clientes delgados para las fases siguientes
+  // (cotización/OC vía Eledo+DocuSeal, imagen de producto vía Airtable). Ninguno
+  // tiene valor todavía en ningún ambiente: hacen falta antes de encender Fase 2+.
+  ELEDO_API_KEY?: string;         // worker/lib/eledo.ts
+  DOCUSEAL_API_KEY?: string;      // worker/lib/docuseal.ts
+  AIRTABLE_API_KEY?: string;      // worker/lib/airtable.ts
 
   // Claude agent, shared by two channels: WhatsApp bot (worker/wa/) and the
   // portal chat bubble (worker/assistant/). Both reply politely when unset.
