@@ -293,7 +293,7 @@ export function CotizacionTab({
   const onDeleteLine = async (productId: string) => {
     setDeletingId(productId);
     try {
-      const res = await apiFetch(`/oportunidades_sub/${productId}`, { method: 'DELETE' });
+      const res = await apiFetch(`/boards/oportunidades_sub/items/${productId}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('No se pudo eliminar la línea');
       onSaved?.();
     } catch (e) {

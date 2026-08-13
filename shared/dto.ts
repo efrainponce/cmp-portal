@@ -145,7 +145,8 @@ export interface QuoteVersionsResponse { versions: QuoteVersionDTO[] }
 // real lo puebla Monday de forma asíncrona). `cantidad` en modo 'dividir' es
 // cuánto se mueve a la línea nueva, no el total de la línea origen.
 export interface AjustarLineaRequest {
-  modo: 'editar' | 'dividir';
+  /** 'eliminar' borra la línea de Monday (delete_item) — sin cantidad/producto/color. */
+  modo: 'editar' | 'dividir' | 'eliminar';
   cantidad?: number;
   productoId?: number;
   productoNombre?: string;
