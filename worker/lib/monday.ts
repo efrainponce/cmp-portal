@@ -17,6 +17,34 @@ export interface MondayItem {
   column_values: MondayCol[];
 }
 
+/** Texto de una columna dentro de un `MondayCol[]` en vivo (item recién leído
+ * de la API, no el mirror) — antes duplicado idéntico en cotizacion.ts, oc.ts,
+ * proyectoTallas.ts y costeo.ts. */
+export function cvText(cols: MondayCol[], id: string): string {
+  return cols.find(c => c.id === id)?.text?.trim() ?? '';
+}
+
+export function cvNum(cols: MondayCol[], id: string): number {
+  const n = Number(cvText(cols, id).replace(/,/g, ''));
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** Primer person id de una columna people ({personsAndTeams:[...]}) sobre un
+ * `MondayCol[]` en vivo — mismo shape que notify.ts's personIdsFromColumns,
+ * pero sobre el blob crudo en vez del mirror. Antes duplicado idéntico en
+ * cotizacion.ts, oc.ts y proyectoTallas.ts. */
+export function firstPersonId(cols: MondayCol[], id: string): number | null {
+  const raw = cols.find(c => c.id === id)?.value;
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as { personsAndTeams?: Array<{ id: number | string; kind?: string }> };
+    const person = (parsed.personsAndTeams ?? []).find(p => (p.kind ?? 'person') === 'person');
+    return person ? Number(person.id) : null;
+  } catch {
+    return null;
+  }
+}
+
 interface RawCol {
   id: string; type: string; text: string | null; value: string | null;
   display_value?: string | null;

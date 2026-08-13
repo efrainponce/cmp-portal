@@ -42,13 +42,13 @@ export async function submitCreate(
   for (const id of colIds) {
     if (!allowedIds.has(id)) throw new CreateError(400, `cannot set ${id}`);
   }
+  const boardMeta = COLUMN_META[slug] ?? {};
   for (const f of fields) {
     if (f.required && f.id !== 'name' && !cols?.[f.id]?.trim()) {
-      throw new CreateError(400, `${f.id} is required`);
+      throw new CreateError(400, `${boardMeta[f.id]?.title ?? f.id} es obligatorio`);
     }
   }
 
-  const boardMeta = COLUMN_META[slug] ?? {};
   const columnValues: Record<string, unknown> = {};
   for (const id of colIds) {
     if (id === 'name') continue; // item_name is a separate mutation argument

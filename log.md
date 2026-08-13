@@ -2,6 +2,39 @@
 
 ## 2026-08-13
 
+- Chore: limpieza de código muerto/duplicado en `worker/` (auditoría, "clean
+  old code") + mensaje de error más claro al crear un registro.
+  - `shared/quoteTerms.ts` (`QUOTE_TERMS_BOARD`) y `shared/documents.ts`
+    (`DOC_TEMPLATE_IDS`): sin ningún importador, verificado con grep antes de
+    borrar.
+  - `worker/lib/pdf/ordenCompraProveedor.ts` reimplementaba el algoritmo
+    completo de `importeEnLetras` (tablas ONES/VEINTI/TENS/HUNDREDS +
+    tresCifras/numeroAPalabras) en vez de importar el de
+    `worker/lib/importeEnLetras.ts` (ya compartido por oc.ts/cotizacion.ts, ya
+    testeado) — ~55 líneas menos, mismo output.
+  - `cvText`/`cvNum` (columna→texto/número de un `MondayCol[]` en vivo) y
+    `firstPersonId` (primer id de una columna people) vivían duplicados
+    idénticos en `cotizacion.ts`, `oc.ts`, `proyectoTallas.ts` y/o `costeo.ts`
+    — movidos a `worker/lib/monday.ts` (dueño del tipo `MondayCol`) y
+    exportados desde ahí. `firstLinkedId` (oc.ts vs proyectoTallas.ts) se dejó
+    intacto — regresan tipos distintos (string vs number), no es fusión
+    mecánica.
+  - `NUM` (formato es-MX con `Intl.NumberFormat`) duplicado en
+    `proyectoTallas.ts` y `pdf/templates.ts` — movido a `importeEnLetras.ts`
+    como `fmtNumMx` (mismo tema: formatear números para documentos).
+  - `worker/lib/createRecord.ts`: el error "falta un campo requerido" al crear
+    un registro mostraba el id crudo de la columna de Monday
+    (`"multiple_person_mm03qyw9 is required"`) en vez de su nombre — lo
+    encontré probando la creación de una Oportunidad real (pedido de Efraín,
+    "verify everything... creating an opportunity"): Compras es obligatorio
+    desde 2026-08-10 pero el modal no lo marca con `*` ni el server decía cuál
+    campo era en español. Ahora usa `COLUMN_META[slug][id].title` ("Comprador
+    es obligatorio").
+  - Sin cambios de comportamiento salvo el texto del error — verificado con
+    `tsc -b`, `npm test` (219 tests), `npm run build`, y en el navegador
+    (Playwright) recorriendo Tallas/Órdenes de compra/Ejecución de un Proyecto
+    real sin errores de consola.
+
 - Chore: limpieza de código muerto encontrada por auditoría (pedido de Efraín,
   "clean old code") + refresca `docs/code-index.md` con ~33 archivos que
   faltaban desde el último refresh (2026-07-21) y corrige su descripción de

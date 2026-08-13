@@ -8,8 +8,6 @@
 // único lugar. Ese texto NO se escribe solo a Monday: se muestra en gris como
 // placeholder mientras el campo está vacío, y el botón "Usar texto por defecto"
 // del portal lo inserta tal cual para que el vendedor/compras lo ajuste.
-import type { BoardSlug } from './boards';
-
 export interface QuoteTermField {
   /** Columna de Monday en `oportunidades` (docs/monday-column-map.md). */
   id: string;
@@ -19,8 +17,6 @@ export interface QuoteTermField {
   /** Texto por defecto — placeholder + "Usar texto por defecto". */
   fallback: string;
 }
-
-export const QUOTE_TERMS_BOARD: BoardSlug = 'oportunidades';
 
 export const QUOTE_TERMS: QuoteTermField[] = [
   {

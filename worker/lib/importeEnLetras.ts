@@ -60,6 +60,12 @@ function numAPalabras(nIn: number): string {
   return parts.filter(Boolean).join(' ');
 }
 
+/** Número con separador de miles es-MX ("1,234") — antes duplicado idéntico
+ * en proyectoTallas.ts y pdf/templates.ts. */
+export function fmtNumMx(n: number): string {
+  try { return new Intl.NumberFormat('es-MX').format(n); } catch { return String(n); }
+}
+
 /** "MONTO PESOS XX/100 M.N." (o DOLARES/USD si moneda no es MXN/MN). */
 export function importeEnLetras(monto: number, moneda = 'MXN'): string {
   const pesos = Math.trunc(monto);

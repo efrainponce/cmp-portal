@@ -73,8 +73,6 @@ export const DOC_TEMPLATES: Record<DocTemplateId, DocTemplate> = {
   },
 };
 
-export const DOC_TEMPLATE_IDS = Object.keys(DOC_TEMPLATES) as DocTemplateId[];
-
 export function isDocTemplateId(value: string): value is DocTemplateId {
   return value in DOC_TEMPLATES;
 }

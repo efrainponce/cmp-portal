@@ -12,7 +12,7 @@ import type { Identity } from '../../shared/types';
 import { ownsItem } from './dal';
 import {
   fetchItemWithSubitems, gql, moveItemToGroup, addFileToColumn, createUpdate,
-  fetchUserById, createNotification, type MondayCol, type MondayItem,
+  fetchUserById, createNotification, cvText, cvNum, firstPersonId, type MondayItem,
 } from './monday';
 import { BOARDS } from '../../shared/boards';
 import { DEAL_STAGE_LABELS } from '../../shared/dealStages';
@@ -57,29 +57,6 @@ const SUB_UNIDAD = 'lookup_mm0w4f4v';
 const SUB_CANTIDAD = 'numeric_mkzm6399';
 const SUB_PRECIO = 'numeric_mkzneg3d'; // "Precio de Venta C/U" — solo LECTURA aquí
 
-function cvText(cols: MondayCol[], id: string): string {
-  return cols.find(c => c.id === id)?.text?.trim() ?? '';
-}
-
-function cvNum(cols: MondayCol[], id: string): number {
-  const n = Number(cvText(cols, id).replace(/,/g, ''));
-  return Number.isFinite(n) ? n : 0;
-}
-
-/** Primer person id de una columna people ({personsAndTeams:[...]} — mismo
- * shape que worker/lib/notify.ts's personIdsFromColumns, pero sobre MondayCol[]
- * en vivo en vez del blob de columnas del mirror). */
-function firstPersonId(cols: MondayCol[], id: string): number | null {
-  const raw = cols.find(c => c.id === id)?.value;
-  if (!raw) return null;
-  try {
-    const parsed = JSON.parse(raw) as { personsAndTeams?: Array<{ id: number | string; kind?: string }> };
-    const person = (parsed.personsAndTeams ?? []).find(p => (p.kind ?? 'person') === 'person');
-    return person ? Number(person.id) : null;
-  } catch {
-    return null;
-  }
-}
 
 const round2 = (n: number): number => Math.round(n * 100) / 100;
 

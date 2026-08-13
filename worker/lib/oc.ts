@@ -10,7 +10,7 @@
 import type { Env } from '../env';
 import type { Identity } from '../../shared/types';
 import { ownsItem, PROYECTO_OPP_REL } from './dal';
-import { fetchItemWithSubitems, addFileToColumn, createUpdate, fetchUserById, type MondayCol, type MondayItem } from './monday';
+import { fetchItemWithSubitems, addFileToColumn, createUpdate, fetchUserById, cvText, cvNum, firstPersonId, type MondayCol, type MondayItem } from './monday';
 import { renderEledoPdf, ELEDO_TEMPLATE_OC } from './eledo';
 import { createDocuSealSubmission } from './docuseal';
 import { importeEnLetras } from './importeEnLetras';
@@ -48,27 +48,6 @@ const PAM_EMAIL = 'compras@mexicanadeproteccion.com';
 const ELISA_NAME = 'Elisa Vallado';
 const ELISA_EMAIL = 'administracion@mexicanadeproteccion.com';
 const DEFAULT_COND_PAGO = '50/50, a contado, transferencia o efectivo';
-
-function cvText(cols: MondayCol[], id: string): string {
-  return cols.find(c => c.id === id)?.text?.trim() ?? '';
-}
-
-function cvNum(cols: MondayCol[], id: string): number {
-  const n = Number(cvText(cols, id).replace(/,/g, ''));
-  return Number.isFinite(n) ? n : 0;
-}
-
-function firstPersonId(cols: MondayCol[], id: string): number | null {
-  const raw = cols.find(c => c.id === id)?.value;
-  if (!raw) return null;
-  try {
-    const parsed = JSON.parse(raw) as { personsAndTeams?: Array<{ id: number | string; kind?: string }> };
-    const person = (parsed.personsAndTeams ?? []).find(p => (p.kind ?? 'person') === 'person');
-    return person ? Number(person.id) : null;
-  } catch {
-    return null;
-  }
-}
 
 function firstLinkedId(cols: MondayCol[], id: string): string | null {
   const raw = cols.find(c => c.id === id)?.value;

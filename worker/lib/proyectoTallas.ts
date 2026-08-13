@@ -10,7 +10,7 @@ import type { RawCol } from './serialize';
 import { getItem, childrenOf, linkedItemId, ownsItem, PROYECTO_OPP_REL } from './dal';
 import {
   createSubitem, createUpdate, gql, fetchItemWithSubitems, addFileToColumn, fetchUserById,
-  type MentionInput, type MondayCol,
+  cvText, cvNum, firstPersonId, type MentionInput, type MondayCol,
 } from './monday';
 import { emitNotification } from './notify';
 import { upsertItem, refetchItem } from '../sync';
@@ -20,6 +20,7 @@ import { renderDocument, type Block } from './pdf/layout';
 import { fechaLarga } from './pdf/templates';
 import { createDocuSealSubmission } from './docuseal';
 import { getOrCreateDriveFolderForOportunidad, uploadPdfToDrive } from './drive';
+import { fmtNumMx as NUM } from './importeEnLetras';
 
 export type { TallaBoxInput };
 
@@ -78,27 +79,6 @@ const NO_CUADRA_MSG =
   '⚠️ El desglose de tallas no cuadra con las cantidades de la oportunidad.\n' +
   'Por favor revisa el documento y asegúrate de que la suma de cada producto\n' +
   'coincida exactamente con la cantidad requerida antes de volver a solicitar validación.';
-
-function cvText(cols: MondayCol[], id: string): string {
-  return cols.find(c => c.id === id)?.text?.trim() ?? '';
-}
-
-function cvNum(cols: MondayCol[], id: string): number {
-  const n = Number(cvText(cols, id).replace(/,/g, ''));
-  return Number.isFinite(n) ? n : 0;
-}
-
-function firstPersonId(cols: MondayCol[], id: string): number | null {
-  const raw = cols.find(c => c.id === id)?.value;
-  if (!raw) return null;
-  try {
-    const parsed = JSON.parse(raw) as { personsAndTeams?: Array<{ id: number | string; kind?: string }> };
-    const person = (parsed.personsAndTeams ?? []).find(p => (p.kind ?? 'person') === 'person');
-    return person ? Number(person.id) : null;
-  } catch {
-    return null;
-  }
-}
 
 function firstLinkedId(cols: MondayCol[], id: string): number | null {
   const raw = cols.find(c => c.id === id)?.value;
@@ -476,10 +456,6 @@ export async function checkTodoCuadra(env: Env, viewer: Identity, proyectoId: nu
   const mismatches = [...agg.values()].filter(e => e.cotizado !== e.asignado);
   return { ok: mismatches.length === 0, mismatches };
 }
-
-const NUM = (n: number): string => {
-  try { return new Intl.NumberFormat('es-MX').format(n); } catch { return String(n); }
-};
 
 interface RelacionTallasHeader {
   proyectoNombre: string;

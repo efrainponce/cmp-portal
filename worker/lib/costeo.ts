@@ -11,7 +11,7 @@ import type { Identity, MirrorItem } from '../../shared/types';
 import { getItem, childrenOf, linkedItemId, ownsItem } from './dal';
 import { validarCosteo } from './automations';
 import { submitWrite } from './outbox';
-import { gql, moveItemToGroup, createUpdate, fetchItemWithSubitems, type MondayCol } from './monday';
+import { gql, moveItemToGroup, createUpdate, fetchItemWithSubitems, cvText, cvNum, type MondayCol } from './monday';
 import { BOARDS } from '../../shared/boards';
 import type { RawCol } from './serialize';
 import {
@@ -237,15 +237,6 @@ function checksToErrors(checks: unknown): string[] {
 // portal, worker/lib/documents.ts, pasa a ser el oficial). Gateado por
 // env.COSTEO_NATIVE mientras corre en paralelo contra oportunidades reales.
 // ═══════════════════════════════════════════════════════════════════════════
-
-function cvText(cols: MondayCol[], id: string): string {
-  return cols.find(c => c.id === id)?.text?.trim() ?? '';
-}
-
-function cvNum(cols: MondayCol[], id: string): number {
-  const n = Number(cvText(cols, id).replace(/,/g, ''));
-  return Number.isFinite(n) ? n : 0;
-}
 
 interface SnapshotValues {
   nombre: string;

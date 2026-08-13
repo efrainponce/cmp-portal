@@ -5,6 +5,7 @@
 import type { Block, DocumentMeta } from './layout';
 import { renderDocument } from './layout';
 import { DOC_TEMPLATES, SIGN_INTENT, ATTEST_INTENT, type DocTemplateId } from '../../../shared/documents';
+import { fmtNumMx as NUM } from '../importeEnLetras';
 
 /** Línea de producto tal como la lee compras para costear. SIN precios a
  * propósito: eso es justo lo que la solicitud pide que llenen. */
@@ -84,9 +85,6 @@ export interface RenderInput {
 }
 
 // ── Formato ───────────────────────────────────────────────────────────────────
-const NUM = (n: number): string => {
-  try { return new Intl.NumberFormat('es-MX').format(n); } catch { return String(n); }
-};
 
 /** Fecha legible en hora de la Ciudad de México; ante cualquier problema
  * devuelve el ISO tal cual (nunca revienta el render de un documento). */

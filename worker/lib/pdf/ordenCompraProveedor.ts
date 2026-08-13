@@ -13,6 +13,7 @@
 import type { Block, DocumentMeta } from './layout';
 import { renderDocument } from './layout';
 import { LOGO_JPG_BASE64 } from './logo';
+import { importeEnLetras } from '../importeEnLetras';
 
 // Naranja de marca de CMP — sacado a pixel del logo (banda del escudo), no
 // inventado a ojo.
@@ -62,67 +63,6 @@ function base64ToBytes(b64: string): Uint8Array {
 function fmtMoney(n: number, moneda: string): string {
   const s = n.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   return moneda === 'USD' ? `US$${s}` : `$${s}`;
-}
-
-// ── Importe en letras (mismo algoritmo que api/generate_oc.py:_num_a_palabras,
-//    portado 1:1 para que el texto salga idéntico al que ya conocen en compras) ──
-const ONES = ['', 'UN', 'DOS', 'TRES', 'CUATRO', 'CINCO', 'SEIS', 'SIETE', 'OCHO', 'NUEVE',
-  'DIEZ', 'ONCE', 'DOCE', 'TRECE', 'CATORCE', 'QUINCE',
-  'DIECISEIS', 'DIECISIETE', 'DIECIOCHO', 'DIECINUEVE'];
-const VEINTI = ['VEINTE', 'VEINTIUN', 'VEINTIDOS', 'VEINTITRES', 'VEINTICUATRO',
-  'VEINTICINCO', 'VEINTISEIS', 'VEINTISIETE', 'VEINTIOCHO', 'VEINTINUEVE'];
-const TENS = ['', '', 'VEINTE', 'TREINTA', 'CUARENTA', 'CINCUENTA', 'SESENTA', 'SETENTA', 'OCHENTA', 'NOVENTA'];
-const HUNDREDS = ['', 'CIENTO', 'DOSCIENTOS', 'TRESCIENTOS', 'CUATROCIENTOS', 'QUINIENTOS',
-  'SEISCIENTOS', 'SETECIENTOS', 'OCHOCIENTOS', 'NOVECIENTOS'];
-
-function tresCifras(n: number): string {
-  if (n === 0) return '';
-  const parts: string[] = [];
-  let rest = n;
-  if (rest >= 100) {
-    const c = Math.floor(rest / 100);
-    rest = rest % 100;
-    if (c === 1 && rest === 0) return 'CIEN';
-    parts.push(HUNDREDS[c]);
-  }
-  if (rest === 0) {
-    // nada
-  } else if (rest < 20) {
-    parts.push(ONES[rest]);
-  } else if (rest < 30) {
-    parts.push(VEINTI[rest - 20]);
-  } else {
-    const d = Math.floor(rest / 10);
-    const u = rest % 10;
-    parts.push(TENS[d] + (u ? ' Y ' + ONES[u] : ''));
-  }
-  return parts.filter(Boolean).join(' ');
-}
-
-function numeroAPalabras(n: number): string {
-  if (n === 0) return 'CERO';
-  const parts: string[] = [];
-  let rest = n;
-  if (rest >= 1_000_000) {
-    const m = Math.floor(rest / 1_000_000);
-    rest = rest % 1_000_000;
-    parts.push(m === 1 ? 'UN MILLON' : numeroAPalabras(m) + ' MILLONES');
-  }
-  if (rest >= 1000) {
-    const k = Math.floor(rest / 1000);
-    rest = rest % 1000;
-    parts.push(k === 1 ? 'MIL' : tresCifras(k) + ' MIL');
-  }
-  if (rest > 0) parts.push(tresCifras(rest));
-  return parts.filter(Boolean).join(' ');
-}
-
-export function importeEnLetras(monto: number, moneda: string = 'MXN'): string {
-  const pesos = Math.trunc(monto);
-  const centavos = Math.round((monto - pesos) * 100);
-  const esMxn = moneda.toUpperCase() === 'MXN' || moneda.toUpperCase() === 'MN';
-  const centavosStr = String(centavos).padStart(2, '0');
-  return `${numeroAPalabras(pesos)} ${esMxn ? 'PESOS' : 'DOLARES'} ${centavosStr}/100 ${esMxn ? 'M.N.' : 'USD'}`;
 }
 
 function firmaBlock(label: string, nombre: string): Extract<Block, { kind: 'signature' }> {
