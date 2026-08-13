@@ -22,7 +22,6 @@ import { getZoneImages, uploadZoneImage } from '../../../lib/api';
 import { patchItem } from '../../../lib/apiClient';
 import { StatusBadge, MonoTag } from '../../../components/core/Badges';
 import { Button } from '../../../components/core/Button';
-import { chipFor } from '../../../components/board/cellHelpers';
 import { EMBELL_TEMPLATE_KEYS, explodeEmbellecimiento, upsertEmbellZone } from '../../../lib/embellecimiento';
 import { VersionChips } from './cotizacion/VersionChips';
 
@@ -32,6 +31,7 @@ const DESC_COL = 'long_text_mm1bj4pt';
 const FILE_COL = 'file_mm5akjy5';
 const SKU_COL = 'lookup_mkzn7x9a';
 const NAME_COL = 'lookup_mm0x4kda';
+const COLOR_COL = 'text_mm07s2mg';
 
 const ImageIcon = ({ size = 14, color = '#918b7c' }: { size?: number; color?: string }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ flex: 'none' }}>
@@ -45,6 +45,12 @@ const FileIcon = ({ size = 14, color = '#918b7c' }: { size?: number; color?: str
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ flex: 'none' }}>
     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
     <path d="M14 2v6h6" />
+  </svg>
+);
+
+const PencilIcon = ({ size = 12, color = 'var(--ink-faint)' }: { size?: number; color?: string }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flex: 'none' }}>
+    <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
   </svg>
 );
 
@@ -189,7 +195,6 @@ export function EmbellecimientosTab({
    * SÍ es editable: Compras también captura zonas/imágenes ahí (Efraín, 2026-08-12). */
   readOnly?: boolean;
 }) {
-  const statusCol = subCols.find((c) => c.id === STATUS_COL);
   const descWritable = editable && !readOnly && !!subCols.find((c) => c.id === DESC_COL)?.w;
   const fileWritable = editable && !readOnly && !!subCols.find((c) => c.id === FILE_COL)?.w;
   const [zoneImages, setZoneImages] = useState<Record<string, string>>({});
@@ -307,7 +312,6 @@ export function EmbellecimientosTab({
     <div style={{ padding: '24px 32px 40px', maxWidth: 920, width: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 10 }}>
       <VersionChips versions={versions} selected={selectedVersionId} onSelect={setSelectedVersionId} onNuevaVersion={onNuevaVersion} />
       {embProducts.map((p) => {
-        const statusVal = statusCol ? p.cols[STATUS_COL] : undefined;
         const rawDesc = descPreview[p.id] ?? p.cols[DESC_COL]?.text;
         const zones = explodeEmbellecimiento(rawDesc, true);
         const filledLabels = new Set(zones.map((z) => z.label));
@@ -318,10 +322,9 @@ export function EmbellecimientosTab({
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
               <div style={{ font: 'var(--text-body-strong)', color: 'var(--ink)' }}>{p.cols[NAME_COL]?.text || p.name}</div>
               {p.cols[SKU_COL]?.text && <MonoTag>{p.cols[SKU_COL].text}</MonoTag>}
-              {statusVal?.text && statusCol && (() => {
-                const { label, color, tint } = chipFor(statusCol, statusVal);
-                return <StatusBadge label={label} color={color} tint={tint} />;
-              })()}
+              {p.cols[COLOR_COL]?.text && (
+                <span style={{ font: 'var(--text-label)', color: 'var(--ink-tertiary)' }}>{p.cols[COLOR_COL].text}</span>
+              )}
             </div>
             {zones.length > 0 ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -333,11 +336,13 @@ export function EmbellecimientosTab({
                         onClick={descWritable ? () => onStartEdit(p.id, z.label, z.value) : undefined}
                         style={{
                           font: 'var(--text-body)', color: 'var(--ink-secondary)', flex: 1,
+                          display: 'flex', alignItems: 'center', gap: 6,
                           cursor: descWritable ? 'pointer' : undefined,
                         }}
                         title={descWritable ? 'Editar posición' : undefined}
                       >
-                        <span style={{ color: 'var(--ink)' }}>{z.label}:</span> {z.value}
+                        <span><span style={{ color: 'var(--ink)' }}>{z.label}:</span> {z.value}</span>
+                        {descWritable && <PencilIcon />}
                       </div>
                       <ZoneImage
                         imageUrl={zoneImages[key]}

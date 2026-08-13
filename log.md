@@ -1,5 +1,18 @@
 # Log de commits
 
+## 2026-08-12
+
+- Fix: tab Embellecimientos ahora muestra el Color de la línea junto al SKU, y
+  agrega un ícono de lápiz junto a cada posición capturada (`EmbellecimientosTab.tsx`)
+  - Efraín pidió mostrar el color (no solo SKU) y hacer obvio que las posiciones
+    ya capturadas son clicables para editarlas — el click-to-edit ya existía
+    (commit `4d17ba2`) pero no tenía ninguna señal visual.
+  - Color viene de `text_mm07s2mg` (Oportunidades subitems, ver
+    `docs/monday-column-map.md`).
+  - De paso se quitó el chip de estado "Con Embellecimiento" del encabezado de
+    cada línea — es redundante en esta tab, ya que solo se listan ahí las
+    líneas que lo tienen (Efraín, en la misma sesión).
+
 ## 2026-08-13
 
 - Feat: miniatura de la última OC (PDF) junto al nombre del proveedor en la tab
