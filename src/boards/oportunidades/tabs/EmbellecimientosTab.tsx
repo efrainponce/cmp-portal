@@ -58,7 +58,10 @@ const PencilIcon = ({ size = 12, color = 'var(--ink-faint)' }: { size?: number; 
 // (Efraín, 2026-07-16) — sin restricción de accept en el input. Si la URL no
 // carga como <img> (PDF, .docx…), cae a un link "Ver archivo" en vez de intentar
 // previsualizarlo.
-function ZoneImage({ imageUrl, uploading, error, onUpload, canUpload }: {
+// Exportado para EmbellecimientosVirtualTab (Proyecto, solo lectura): con
+// canUpload=false y sin imageUrl no renderiza nada, así que sirve tal cual
+// para mostrar (sin poder subir) las mismas miniaturas que ve Oportunidades.
+export function ZoneImage({ imageUrl, uploading, error, onUpload, canUpload }: {
   imageUrl?: string; uploading: boolean; error?: string; onUpload: (file: File) => void; canUpload: boolean;
 }) {
   const [previewFailed, setPreviewFailed] = useState(false);

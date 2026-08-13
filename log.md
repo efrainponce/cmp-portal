@@ -2,6 +2,20 @@
 
 ## 2026-08-12
 
+- Feat: tab "Embellecimientos" en Proyecto (post-venta) — Efraín pidió ver ahí
+  lo mismo que en Oportunidades, incluyendo precio. Nuevo
+  `EmbellecimientosVirtualTab` (`src/boards/proyectos/`) reusa el mismo
+  endpoint de la cotización virtual (`GET /api/proyectos/:id/cotizacion-virtual`,
+  ya existente) para leer las líneas vigentes de la Oportunidad ligada +
+  ajustes del Proyecto, y el mismo `ZoneImage` de
+  `oportunidades/tabs/EmbellecimientosTab.tsx` (se exportó) para las miniaturas
+  de referencia por zona. A diferencia de Oportunidades, es de SOLO LECTURA
+  (decisión de Efraín: capturar zonas/subir imágenes se queda exclusivo de la
+  Oportunidad) y sí muestra Cantidad/Precio/Subtotal por línea (gateado a
+  vendedor/compras/admin, igual que Cotización). La tab (y Cotización) ahora
+  aparece en los 4 accesos de Proyecto, no solo en Documentación y Tallas /
+  Órdenes de Compra.
+
 - Feat: OC a Proveedor generada nativa por el portal (`worker/lib/pdf/ordenCompraProveedor.ts`,
   `worker/lib/ocProveedorPdf.ts`, `worker/lib/pdf/logo.ts`, ruta nueva
   `GET /api/proyectos/:id/oc-nativa/:proveedorId/pdf`, botón "Ver OC (portal)"
