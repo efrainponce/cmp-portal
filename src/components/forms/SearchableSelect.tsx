@@ -4,6 +4,7 @@
 // body when the field sits near the bottom of a tall form.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { normalizeText as norm } from '../../lib/textMatch';
 
 export interface SearchableOption { value: string; label: string; sublabel?: string }
 
@@ -15,11 +16,6 @@ interface SearchableSelectProps {
   emptyMessage?: string;
   disabled?: boolean;
   disabledMessage?: string;
-}
-
-const DIACRITICS = /[̀-ͯ]/g;
-function norm(s: string): string {
-  return s.normalize('NFD').replace(DIACRITICS, '').toLowerCase();
 }
 
 const fieldStyle = {

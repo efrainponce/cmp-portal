@@ -2,6 +2,25 @@
 
 ## 2026-08-13
 
+- Chore: limpieza de código muerto encontrada por auditoría (pedido de Efraín,
+  "clean old code") + refresca `docs/code-index.md` con ~33 archivos que
+  faltaban desde el último refresh (2026-07-21) y corrige su descripción de
+  `src/data/oportunidades.ts` (no es mockup muerto — `src/lib/mockFallback.ts`
+  la usa como fallback offline real, activo en producción si el Worker falla).
+  - `src/data/oportunidades.ts`: quita ~10 exports sin ningún importador
+    (`quoteVersionsByOpp`, `documentsByOpp`, `newProductsByOpp`,
+    `productCatalog`, `vendedores`, etc.) — 246 → 128 líneas. Verificado con
+    grep de un solo importador (`mockFallback.ts`) antes de tocar nada.
+  - `src/components/forms/SearchableSelect.tsx`: su `norm()` local era
+    idéntico a `normalizeText` de `lib/textMatch.ts` — reemplazado por el
+    import, mismo comportamiento.
+  - `src/boards/oportunidades/tabs/cotizacion/{QuoteRow,MobileQuoteRow}.tsx`:
+    el cálculo del banner de avisos de línea era código duplicado
+    byte-idéntico entre las dos (confirmado con diff) — extraído a
+    `computeLineBanner` en `gridMeta.tsx`, sin cambio de comportamiento.
+  - Sin cambios de comportamiento en ningún caso — verificado con `tsc -b`,
+    `npm test` (219 tests) y `npm run build`.
+
 - Refactor: divide `ProyectoSection.tsx` (1196 líneas, el archivo más grande
   del repo) en `src/boards/oportunidades/proyecto/` — `shared.tsx` (consts de
   columna, `ProyectoState`/`useProyecto`, `ProyectoActionBar`/`ProyectoLinks`/

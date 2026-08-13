@@ -1,6 +1,6 @@
-// Mock data ported from the CMP Portal design project's Oportunidades board
-// (Board Oportunidades.dc.html / Surface 2 Design.dc.html). No backend yet —
-// this is the same fixture data the design prototype ships with.
+// Fixture data del prototipo de diseño del portal, reusada como fallback
+// offline: src/lib/mockFallback.ts la sirve cuando el fetch al Worker falla
+// (worker abajo, no solo en dev) — ver docs/code-index.md.
 
 export interface Status {
   key: string;
@@ -9,7 +9,7 @@ export interface Status {
   tint: string;
 }
 
-export interface Embellecimiento {
+interface Embellecimiento {
   posicion: string;
   descripcion: string;
 }
@@ -43,69 +43,6 @@ export interface Opportunity {
   updates?: UpdateEntry[];
 }
 
-export interface QuoteProduct extends OppProduct {
-  precioUnitarioFmt: string;
-  subtotalFmt: string;
-  hasEmbellecimiento: boolean;
-}
-
-export interface QuoteVersion {
-  id: number;
-  label: string;
-  createdAt: string;
-  status: 'anterior' | 'vigente';
-  products: QuoteProduct[];
-  productsTotalFmt: string;
-}
-
-export interface DocEntry {
-  nombre: string;
-  tipo: string;
-  fecha: string;
-}
-
-export interface OppDocuments {
-  solicitudes: DocEntry[];
-  cotizacionesNoFirmadas: DocEntry[];
-  cotizacionesFirmadas: DocEntry[];
-  ordenes: DocEntry[];
-  ordenesInternas: DocEntry[];
-  ordenesProveedor: DocEntry[];
-  logistica: DocEntry[];
-}
-
-export interface NewProductProposal {
-  nombre: string;
-  descripcion: string;
-  imagen: string | null;
-  confirmed?: boolean;
-}
-
-export const emptyDocs = (): OppDocuments => ({
-  solicitudes: [],
-  cotizacionesNoFirmadas: [],
-  cotizacionesFirmadas: [],
-  ordenes: [],
-  ordenesInternas: [],
-  ordenesProveedor: [],
-  logistica: [],
-});
-
-export const zonas = [
-  { id: 'espalda', label: 'Espalda' },
-  { id: 'frente_derecho', label: 'Frente derecho' },
-  { id: 'frente_izquierdo', label: 'Frente izquierdo' },
-  { id: 'manga_derecha', label: 'Manga derecha/costado derecho' },
-  { id: 'manga_izquierda', label: 'Manga izquierda/costado izquierdo' },
-  { id: 'etiqueta_fabricante', label: 'Etiqueta del fabricante' },
-  { id: 'etiqueta_propiedad', label: 'Etiqueta de propiedad' },
-  { id: 'otros', label: 'Otros' },
-];
-
-export const colores = ['N/A', 'Negro', 'Verde OD', 'Coyote', 'Azul marino', 'Amarillo', 'Naranja'];
-
-export const tallaSizes = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
-
 export const statuses: Status[] = [
   { key: 'nueva', label: 'Nueva oportunidad', color: '#9a958a', tint: '#eeece7' },
   { key: 'en_coste', label: 'En costeo', color: '#a97c3a', tint: '#f3e9d8' },
@@ -118,9 +55,6 @@ export const statuses: Status[] = [
   { key: 'perdida', label: 'Perdida', color: '#9c4c3d', tint: '#f3e5e1' },
   { key: 'cancelada', label: 'Cancelada', color: '#8f897b', tint: '#efece7' },
 ];
-
-export const statusByKey = (key: string): Status =>
-  statuses.find((s) => s.key === key) ?? statuses[0];
 
 export const opportunities: Opportunity[] = [
   { id: 'o1', cliente: 'Seguridad Perimetral SA', institucion: 'CFE', folio: 'OP-2026-0141', vendedor: 'Diego Torres', statusKey: 'nueva', tipo: 'Estudio de mercado', valor: '$340K', updated: 'Hace 1 h', products: [
@@ -191,56 +125,4 @@ export const opportunities: Opportunity[] = [
   ] },
 ];
 
-export const vendedores = Array.from(new Set(opportunities.map((o) => o.vendedor))).sort();
-
-export const productCatalog = Array.from(
-  new Map(opportunities.flatMap((o) => o.products).map((p) => [p.sku, p])).values()
-);
-
 export const fmtMoney = (n: number) => '$' + Math.round(n).toLocaleString('es-MX');
-
-export const toQuoteProduct = (p: OppProduct): QuoteProduct => ({
-  ...p,
-  precioUnitarioFmt: fmtMoney(p.precioUnitario),
-  subtotalFmt: fmtMoney(p.precioUnitario * p.cantidad),
-  hasEmbellecimiento: Boolean(p.embellecimientos?.length),
-});
-
-// Only o1 has multi-version quote history + documents + new-product proposals
-// in the source design — every other opportunity falls back to its base
-// `products` list as the single "active version".
-export const quoteVersionsByOpp: Record<string, QuoteVersion[]> = {
-  o1: [
-    { id: 1, label: 'V1', createdAt: 'Hace 5 d', status: 'anterior', products: [
-      { producto: 'Cámara de vigilancia PTZ', sku: 'CAM-PTZ-40', color: 'N/A', cantidad: 12, precioUnitario: 18500, precioUnitarioFmt: '$18,500', subtotalFmt: '$222,000', hasEmbellecimiento: false },
-      { producto: 'Sensor perimetral IR', sku: 'SEN-IR-12', color: 'N/A', cantidad: 20, precioUnitario: 4200, precioUnitarioFmt: '$4,200', subtotalFmt: '$84,000', hasEmbellecimiento: false },
-    ], productsTotalFmt: '$306,000' },
-    { id: 2, label: 'V2', createdAt: 'Hace 1 h', status: 'vigente', products: [
-      { producto: 'Cámara de vigilancia PTZ', sku: 'CAM-PTZ-40', color: 'N/A', cantidad: 15, precioUnitario: 18500, precioUnitarioFmt: '$18,500', subtotalFmt: '$277,500', hasEmbellecimiento: false },
-      { producto: 'Sensor perimetral IR', sku: 'SEN-IR-12', color: 'N/A', cantidad: 20, precioUnitario: 4200, precioUnitarioFmt: '$4,200', subtotalFmt: '$84,000', hasEmbellecimiento: false },
-      { producto: 'Central de monitoreo NVR', sku: 'NVR-CTRL-16', color: 'N/A', cantidad: 2, precioUnitario: 32000, precioUnitarioFmt: '$32,000', subtotalFmt: '$64,000', hasEmbellecimiento: false },
-    ], productsTotalFmt: '$425,500' },
-  ],
-};
-
-export const activeQuoteVersionByOpp: Record<string, number> = { o1: 2 };
-
-export const documentsByOpp: Record<string, OppDocuments> = {
-  o1: {
-    solicitudes: [{ nombre: 'Solicitud de costeo V2.pdf', tipo: 'PDF', fecha: 'Hace 1 h' }],
-    cotizacionesNoFirmadas: [{ nombre: 'Cotización V1.pdf', tipo: 'PDF', fecha: 'Hace 5 d' }],
-    cotizacionesFirmadas: [{ nombre: 'Cotización V2 firmada.pdf', tipo: 'PDF', fecha: 'Hace 1 h' }],
-    ordenes: [{ nombre: 'Orden de compra OC-4471.pdf', tipo: 'PDF', fecha: 'Hace 3 d' }],
-    ordenesInternas: [{ nombre: 'OC interna - tallas confirmadas.pdf', tipo: 'PDF', fecha: 'Hace 2 d' }],
-    ordenesProveedor: [{ nombre: 'OC proveedor - CMP.pdf', tipo: 'PDF', fecha: 'Hace 1 d' }],
-    logistica: [],
-  },
-};
-
-export const newProductsByOpp: Record<string, NewProductProposal[]> = {
-  o1: [
-    { nombre: 'Cámara de vigilancia solar autónoma', descripcion: 'Cámara PTZ con panel solar integrado y batería de respaldo, pensada para perímetros sin acceso a energía eléctrica.', imagen: null },
-  ],
-};
-
-export const NEW_PRODUCTS_TARGET = 5;

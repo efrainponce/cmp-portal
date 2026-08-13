@@ -12,7 +12,7 @@ import { LineDetailPanel } from './LineDetailPanel';
 import { ProductPicker, type ProductoChoice } from '../../../../components/forms/ProductPicker';
 import {
   type GridCol, type RowEditState, marginColor, suggestedPrecio23, numFrom, displayProducto, cellValue,
-  inputStyle, valueChipStyle, ETAPA_COSTEO_COLORS, etapaCosteoSelectStyle, getLineWarnings, needsConfirmarTallas, productoProveedorOk,
+  inputStyle, valueChipStyle, ETAPA_COSTEO_COLORS, etapaCosteoSelectStyle, computeLineBanner,
   ETAPA_COSTEO_COL, SUGERIDO_COL, MARGEN_COL,
   PRODUCTO_COL, PRODUCTO_TXT_COL, PRODUCTO_REL_COL, COLOR_COL,
   EMB_STATUS_COL, EMB_LABEL_CON, EMB_LABEL_SIN,
@@ -230,17 +230,7 @@ function MobileQuoteRowInner({
     return <div style={{ ...valueChipStyle, font: 'var(--text-label)', color: 'var(--ink-secondary)' }}>{cellValue(c, displayVal)}</div>;
   };
 
-  const lineWarnings = getLineWarnings(p, state, variant, catalog, precioOnly);
-  // Un solo banner con TODOS los avisos de la línea — mismo criterio que
-  // QuoteRow (desktop): ya no hay badge aparte, todo vive arriba del nombre
-  // del producto (Efraín, 2026-08-05).
-  const needsTallas = !precioOnly && needsConfirmarTallas(p, variant, catalog);
-  const needsProveedor = needsTallas && !productoProveedorOk(p, catalog);
-  const otherWarnings = lineWarnings.filter((w) => w !== 'Sin confirmar' && w !== 'Sin tallas' && w !== 'Sin proveedor');
-  const bannerText = [
-    needsTallas ? `HAY QUE CONFIRMAR TALLAS${needsProveedor ? ' Y PROVEEDOR' : ''}` : null,
-    ...otherWarnings,
-  ].filter(Boolean).join(' • ');
+  const { lineWarnings, bannerText } = computeLineBanner(p, state, variant, catalog, precioOnly);
 
   return (
     <div style={{ borderTop: '1px solid var(--border-subtle)', background: lineWarnings.length > 0 ? '#fdf1f2' : '#fff', padding: '14px' }}>

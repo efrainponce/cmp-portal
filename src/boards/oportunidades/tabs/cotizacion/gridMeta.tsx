@@ -569,3 +569,22 @@ export function getLineWarnings(
 
   return warnings;
 }
+
+/** Un solo banner arriba del nombre del producto con TODOS los avisos de la
+ * línea — ya no hay columna "Avisos" aparte al final de la grid (Efraín,
+ * 2026-08-05: "quiero quitar avisos y que el error esté súper claro arriba
+ * del producto como costeo"). Compartido por QuoteRow (desktop) y
+ * MobileQuoteRow — antes duplicado idéntico en los dos. */
+export function computeLineBanner(
+  product: ItemDTO, state: RowEditState, variant: 'venta' | 'costeo', catalog: ItemDTO[], precioOnly: boolean,
+): { lineWarnings: string[]; bannerText: string } {
+  const lineWarnings = getLineWarnings(product, state, variant, catalog, precioOnly);
+  const needsTallas = !precioOnly && needsConfirmarTallas(product, variant, catalog);
+  const needsProveedor = needsTallas && !productoProveedorOk(product, catalog);
+  const otherWarnings = lineWarnings.filter((w) => w !== 'Sin confirmar' && w !== 'Sin tallas' && w !== 'Sin proveedor');
+  const bannerText = [
+    needsTallas ? `HAY QUE CONFIRMAR TALLAS${needsProveedor ? ' Y PROVEEDOR' : ''}` : null,
+    ...otherWarnings,
+  ].filter(Boolean).join(' • ');
+  return { lineWarnings, bannerText };
+}

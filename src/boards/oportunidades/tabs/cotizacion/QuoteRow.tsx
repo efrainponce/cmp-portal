@@ -19,7 +19,7 @@ import { LineDetailPanel } from './LineDetailPanel';
 import { ProductPicker, type ProductoChoice } from '../../../../components/forms/ProductPicker';
 import {
   type GridCol, type RowEditState, marginColor, suggestedPrecio23, numFrom, displayProducto, cellValue,
-  inputStyle, valueChipStyle, ETAPA_COSTEO_COLORS, etapaCosteoSelectStyle, getLineWarnings, needsConfirmarTallas, productoProveedorOk, gridWrapStyle, colsTemplate,
+  inputStyle, valueChipStyle, ETAPA_COSTEO_COLORS, etapaCosteoSelectStyle, computeLineBanner, gridWrapStyle, colsTemplate,
   STICKY_PRODUCTO_STYLE,
   ETAPA_COSTEO_COL, SUGERIDO_COL, MARGEN_COL,
   PRODUCTO_COL, PRODUCTO_TXT_COL, PRODUCTO_REL_COL, COLOR_COL,
@@ -85,19 +85,7 @@ function QuoteRowInner({
   proveedorSaving, proveedorError, onEditProveedor,
   canDelete, deleting, onDeleteLine, canAjustar, onAjustarLinea, ajusteLabel,
 }: QuoteRowProps) {
-  const lineWarnings = getLineWarnings(p, state, variant, catalog, precioOnly);
-  // Un solo banner arriba del nombre del producto con TODOS los avisos de la
-  // línea — ya no hay columna "Avisos" aparte al final de la grid (Efraín,
-  // 2026-08-05: "quiero quitar avisos y que el error esté súper claro arriba
-  // del producto como costeo", generalizando el banner que antes solo cubría
-  // tallas/proveedor).
-  const needsTallas = !precioOnly && needsConfirmarTallas(p, variant, catalog);
-  const needsProveedor = needsTallas && !productoProveedorOk(p, catalog);
-  const otherWarnings = lineWarnings.filter((w) => w !== 'Sin confirmar' && w !== 'Sin tallas' && w !== 'Sin proveedor');
-  const bannerText = [
-    needsTallas ? `HAY QUE CONFIRMAR TALLAS${needsProveedor ? ' Y PROVEEDOR' : ''}` : null,
-    ...otherWarnings,
-  ].filter(Boolean).join(' • ');
+  const { lineWarnings, bannerText } = computeLineBanner(p, state, variant, catalog, precioOnly);
 
   // Chevron + eliminar. Se renderizaban solo en la celda de Producto de solo
   // lectura, pero en Nueva oportunidad (justo donde canDelete es true) Producto

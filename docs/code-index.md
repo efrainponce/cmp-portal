@@ -1,14 +1,18 @@
 # Índice de código — cmp-portal
 
-Mapa curado de archivos fuente (`.ts`, `.tsx`) para orientarse rápido sin explorar el repo entero. Grep aquí antes de explorar. Este índice puede quedar desactualizado; verifica contra el código si algo no cuadra. Generado: 2026-07-21.
+Mapa curado de archivos fuente (`.ts`, `.tsx`) para orientarse rápido sin explorar el repo entero. Grep aquí antes de explorar. Este índice puede quedar desactualizado; verifica contra el código si algo no cuadra. Generado: 2026-07-21, refrescado: 2026-08-13.
 
 Formato: `- [ruta](ruta) — Propósito (1 frase). Exports: Export1, Export2, Export3.`
 
 Los `*.test.ts` (vitest, `npm test`) no se listan aquí: viven junto al archivo que
 prueban. Hoy cubren `worker/lib/canon.ts`, `worker/lib/columnEncode.ts`,
 `shared/visibility.ts`, `catalogIndex` de `gridMeta.tsx`, el escritor de PDF
-(`worker/lib/pdf/writer.ts` + layout/plantillas), `worker/lib/portalFiles.ts` y el
-scoping de renglones de `worker/lib/dal.ts`.
+(`worker/lib/pdf/writer.ts` + layout/plantillas), `worker/lib/portalFiles.ts`,
+`worker/lib/dal.ts` (scoping de renglones), `worker/lib/costeo.ts`,
+`worker/lib/cotizacion.ts`, `worker/lib/oc.ts`, `worker/lib/proyectoTallas.ts`,
+`worker/lib/proyectoCotizacionVirtual.ts`, `worker/lib/costoDivergencia.ts`,
+`worker/lib/importeEnLetras.ts`, `worker/lib/drive.ts`, `src/lib/productSearch.ts`
+y `src/lib/estadoProductoBuckets.ts`.
 
 ## shared/
 
@@ -21,7 +25,9 @@ scoping de renglones de `worker/lib/dal.ts`.
 - [shared/embellecimiento.ts](shared/embellecimiento.ts) — Compartido con worker: parse/serialize embellecimiento por zona. Exports: EMBELL_TEMPLATE_KEYS, EmbellZoneKey, EMB_STATUS_COL, EMB_LABEL_CON, EMB_LABEL_SIN.
 - [shared/inventory.ts](shared/inventory.ts) — DTOs Inventario + reglas negocio (feature D1 nativa). Exports: MovementType, WarehouseType, MOVEMENT_TYPES, WarehouseDTO, MovementDTO.
 - [shared/documents.ts](shared/documents.ts) — Contrato de documentos del portal + firma electrónica: registro de plantillas, roles que generan/firman, consentimiento (ver docs/documentos-firma.md). Exports: DOC_TEMPLATES, SIGN_INTENT, DocumentDTO, SignatureDTO, documentFilename.
-- [shared/notifications.ts](shared/notifications.ts) — Ruteo del centro de notificaciones (decisión de whitelist de Efraín). Cada etapa puede marcar `severity: 'importante'` para además disparar WhatsApp. Exports: RecipientSelector, StageNotifyEntry, STAGE_NOTIFY, PROJECT_STATUS_NOTIFY.
+- [shared/notifications.ts](shared/notifications.ts) — Ruteo del centro de notificaciones (decisión de whitelist de Efraín). Cada etapa puede marcar `severity: 'importante'` para además disparar WhatsApp. Exports: RecipientSelector, StageNotifyEntry, STAGE_NOTIFY, PROJECT_STATUS_NOTIFY, PRODUCT_STATUS_LABELS, PRODUCT_STATUS_NOTIFY.
+- [shared/productosPropuestos.ts](shared/productosPropuestos.ts) — Contrato DTO del tab "Nuevos productos" (nativo en D1, sin board de Monday detrás). Exports: ProposedProductDTO, ProposedProductsResponse, AddProposedProductResponse.
+- [shared/quoteTerms.ts](shared/quoteTerms.ts) — Campos de condiciones comerciales/tiempo de entrega/vigencia a nivel cotización, con sus textos por defecto centralizados. Exports: QuoteTermField, QUOTE_TERMS_BOARD, QUOTE_TERMS.
 - [shared/types.ts](shared/types.ts) — Tipos base compartidos: Role, Identity, MirrorItem. Exports: Role, Identity, MirrorItem.
 - [shared/visibility.ts](shared/visibility.ts) — La whitelist como data: reglas de lectura/escritura por columna y rol (fail-closed). Exports: ColRule, VISIBILITY, canRead, canWrite, readableCols.
 
@@ -35,30 +41,51 @@ scoping de renglones de `worker/lib/dal.ts`.
 ### worker/lib/
 
 - [worker/lib/agentLoop.ts](worker/lib/agentLoop.ts) — Loop del agente Claude compartido por WhatsApp y portal. Exports: RESET_WORDS, RESET_REPLY, finalText, runAgentLoop.
+- [worker/lib/airtable.ts](worker/lib/airtable.ts) — Cliente delgado de Airtable (Fase 0) que resuelve la imagen de producto para la cotización, con degradación silenciosa si falla. Exports: fetchAirtableImageUrl.
 - [worker/lib/assistantPersonas.ts](worker/lib/assistantPersonas.ts) — Una persona de agente por rol (vendedor/compras/admin/almacen), compartida por ambos canales. Exports: Channel, systemPromptFor.
 - [worker/lib/assistantTools.ts](worker/lib/assistantTools.ts) — Superficie de herramientas del agente Claude compartida por todos los canales. Exports: TOOL_ROLES, TOOLS, toolsFor, runTool.
 - [worker/lib/automations.ts](worker/lib/automations.ts) — Cliente de automaciones cmp-tallas Vercel (trigger, no reimplementar). Exports: AutomationError, AutomationResult, CotizacionResult, validarCosteo.
+- [worker/lib/backup.ts](worker/lib/backup.ts) — Export semanal (cron) del mirror D1 completo a R2 para retención más allá de los 30 días de D1 Time Travel. Exports: backupD1ToR2.
 - [worker/lib/boardAccess.ts](worker/lib/boardAccess.ts) — DAL para role_board_access (tabla D1) — lectura/escritura de accesos por rol. Exports: getBoardAccess, listAllBoardAccess, BoardAccessError, setBoardAccess.
 - [worker/lib/canon.ts](worker/lib/canon.ts) — Canonicalización + hashing de valores de columnas Monday. Exports: md5, ReadColVal, canonValue, ColRawValue.
 - [worker/lib/columnEncode.ts](worker/lib/columnEncode.ts) — Encoda valor de formulario a forma JSON de Monday create_item. Exports: encodeColumnValue.
 - [worker/lib/conversationHistory.ts](worker/lib/conversationHistory.ts) — Trim/TTL/compact rules compartidas por todo agente (ambos canales). Exports: HISTORY_TTL_MS, trimHistory.
 - [worker/lib/costeo.ts](worker/lib/costeo.ts) — "Mandar a costeo" — validación y envío de costeos a cmp-tallas. Exports: CosteoError, validateLinea, EnviarCosteoResult, checkCosteo.
+- [worker/lib/costoDivergencia.ts](worker/lib/costoDivergencia.ts) — Compara el Costo Distribuidor del catálogo entre SKU anterior/nuevo al ajustar una línea y avisa a Compras si diverge más del 10%, sin bloquear. Exports: computeDivergencia, checkCostoDivergente.
+- [worker/lib/cotizacion.ts](worker/lib/cotizacion.ts) — "Generar Cotización" nativo (Fase 2): arma líneas del mirror, genera PDFs vía Eledo, sube a Monday/Drive y pide firma DocuSeal. Exports: CotizacionError, ProductLine, buildProductLines, computeTotals, buildEledoFile, GenerarCotizacionResult, generarCotizacionNative.
 - [worker/lib/cotizacionPdfs.ts](worker/lib/cotizacionPdfs.ts) — Resuelve PDFs de cotización (solicitud, sin firmar, firmada) de columnas Oportunidades. Exports: CotizacionPdfError, PdfKind, resolveCotizacionPdfUrl.
 - [worker/lib/createOportunidad.ts](worker/lib/createOportunidad.ts) — Crear Oportunidad + subitems de línea de producto. Exports: OportunidadError, LineaInput, OportunidadInput, OportunidadResult.
 - [worker/lib/createRecord.ts](worker/lib/createRecord.ts) — Creación síncrona de item genérico (no outbox, sin echo necesario). Exports: CreateError, submitCreate.
 - [worker/lib/dal.ts](worker/lib/dal.ts) — All reads scoped by viewer; handlers no pueden bypassear estos predicados. El scope de LECTURA incluye la zona que el viewer lidera; el de escritura ('own') nunca. Exports: ScopeMode, ownerIdsFor, leadsOthers, scopeFor, childSlugOf, listItems, getItem, ownsItem, childrenOf.
+- [worker/lib/docuseal.ts](worker/lib/docuseal.ts) — Cliente delgado de DocuSeal para pedir firma electrónica (1 o varias, en orden) sobre un PDF ya subido a Monday. Exports: DocuSealError, DocuSealSigner, CreateSubmissionInput, createDocuSealSubmission.
+- [worker/lib/drive.ts](worker/lib/drive.ts) — Cliente REST delgado de Google Drive (Fase 5): crea/cachea la carpeta raíz + 12 subcarpetas de licitación de una Oportunidad y sube los PDFs generados ahí. Exports: DriveError, OPORTUNIDADES_PARENT_FOLDER_ID, SUBFOLDERS, OportunidadFolder, ensureOportunidadFolder, uploadPdfToDrive, getOrCreateDriveFolder, oportunidadRootFolderName, getOrCreateDriveFolderForOportunidad, createOportunidadFolderOnCreate.
 - [worker/lib/duplicateOportunidad.ts](worker/lib/duplicateOportunidad.ts) — "Duplicar" en drawer: clona Oportunidad + líneas en nueva vigente sin costearse. Exports: DuplicateOportunidadError, duplicateOportunidad.
+- [worker/lib/eledo.ts](worker/lib/eledo.ts) — Cliente delgado de Eledo (eledo.online) para renderizar PDFs a partir de una plantilla ya diseñada ahí. Exports: EledoError, ELEDO_TEMPLATE_COTIZACION, ELEDO_TEMPLATE_OC, renderEledoPdf.
 - [worker/lib/embellecimientoImagenes.ts](worker/lib/embellecimientoImagenes.ts) — Imágenes de referencia per-zona (upload validation, almacenamiento en R2). Exports: EmbellImageError, embellImageKey, parseFiles, splitZone.
+- [worker/lib/errorAlerts.ts](worker/lib/errorAlerts.ts) — Cron cada 15 min que revisa `sync_log` por errores recientes y avisa por WhatsApp. Exports: checkErrorsAndAlert.
+- [worker/lib/ganarOportunidad.ts](worker/lib/ganarOportunidad.ts) — "Ganar" desde el portal: replica la automatización nativa de Monday que crea el Proyecto ligado al ganar una Oportunidad. Exports: GanarOportunidadError, ganarOportunidad.
+- [worker/lib/googleAuth.ts](worker/lib/googleAuth.ts) — OAuth2 de cuenta de servicio de Google: firma un JWT RS256 con Web Crypto y lo cambia por un access token (usado por drive.ts). Exports: GoogleAuthError, getGoogleAccessToken.
+- [worker/lib/home.ts](worker/lib/home.ts) — Pantalla "Inicio": arma pendientes accionables por rol (compras/vendedor) reutilizando los mismos checks que bloquean botones del flujo. Exports: comprasPendientes, vendedorPendientes, buildHomeResponse, insertSeguimiento.
 - [worker/lib/http.ts](worker/lib/http.ts) — Helper mínimo compartido por rutas (statusCode responses). Exports: jsonStatus.
+- [worker/lib/importeEnLetras.ts](worker/lib/importeEnLetras.ts) — Convierte un monto a su representación en letras para el PDF de cotización/OC, puerto exacto de la función equivalente de cmp-tallas. Exports: importeEnLetras.
 - [worker/lib/inventory.ts](worker/lib/inventory.ts) — Inventario DAL + validación (feature D1 nativa, no espejado de Monday). Exports: InventoryError, listWarehouses, listMovements, listStock.
+- [worker/lib/lineaAjustes.ts](worker/lib/lineaAjustes.ts) — "Ajustar línea" en Oportunidades: cambia producto/color/embellecimiento/cantidad de una línea sin crear versión ni pasar por costeo, incluso Ganada. Exports: AjusteLineaError, copyRemainingCols, ensureAjustesTable, AjustarLineaResult, ajustarLinea, listAjustes.
 - [worker/lib/monday.ts](worker/lib/monday.ts) — Cliente GraphQL thin de Monday.com (API 2024-10). Exports: MondayCol, MondayItem, gql, ItemsPage.
 - [worker/lib/notify.ts](worker/lib/notify.ts) — Emisor best-effort del centro de notificaciones (idempotente por dedupe_key). Exports: emitNotification, resolveRecipients, maybeEmitStageChange, statusIndex.
+- [worker/lib/oc.ts](worker/lib/oc.ts) — "Generar OC" nativo (Fase 4): agrupa líneas del Proyecto por proveedor, genera un PDF por proveedor vía Eledo y pide firma DocuSeal de 3 firmantes en orden. Exports: ProveedorLine, ProveedorGroup, groupSubitemsByProveedor, groupTotals, Signer, Signers, buildEledoOcFile, OrdenResult, GenerarOcResult, generarOcNative.
+- [worker/lib/ocProveedorPdf.ts](worker/lib/ocProveedorPdf.ts) — Arma los datos de la Orden de Compra a Proveedor (folio + líneas agrupadas) y delega el dibujo al escritor de PDF nativo; solo lectura, en paralelo al flujo oficial de automations.ts. Exports: OcProveedorPdfError, generarOcProveedorPdf.
 - [worker/lib/estadoProducto.ts](worker/lib/estadoProducto.ts) — Historial de "Estado del producto" (proyectos_sub, tab Ejecución) en D1 en vez de una columna de fecha por estado; notifica Incidencia/Retraso. Exports: maybeLogProductoStatus, logProductoStatusFromPortalWrite, listEstadoHistorial.
 - [worker/lib/outbox.ts](worker/lib/outbox.ts) — Write path optimista: D1 mirror primero, Monday async vía waitUntil + echo. Exports: OutboxError, submitWrite, flushOutbox.
+- [worker/lib/productoResumen.ts](worker/lib/productoResumen.ts) — Resumen libre por producto+color del tab Ejecución del Proyecto, nativo en D1 (sin columna de Monday equivalente). Exports: ProductoResumenRow, listProductoResumen, upsertProductoResumen.
+- [worker/lib/productosPropuestos.ts](worker/lib/productosPropuestos.ts) — "Proponer nuevo producto" del tab Nuevos productos, nativo en D1 sin board de Monday detrás. Exports: ProposedProductError, ensureProposedProductsTable, listProposedProducts, addProposedProduct.
+- [worker/lib/proyectoCotizacionVirtual.ts](worker/lib/proyectoCotizacionVirtual.ts) — Cotización del Proyecto 100% D1: toma las líneas vigentes de la Oportunidad ligada y aplica encima un log de ajustes propio sin tocar Monday. Exports: ProyectoCotizacionError, ensureProyectoCotizacionTable, applyAjustesVirtuales, getVirtualLines, listCotizacionVirtual, ajustarLineaVirtual.
+- [worker/lib/proyectoTallas.ts](worker/lib/proyectoTallas.ts) — Captura de tallas por boxes del Proyecto (alta rápida de subitems, alterna al flujo de Sheet/automations) y validaciones asociadas (todo cuadra, confirmar, reportar incorrectas). Exports: TallaBoxInput, checkOcCliente, resolveOportunidadId, CosteoEnrichment, pctTextToFraction, identityKey, filterWanted, buildTallaColumns, needsUpdate, capturarTallas, ReportarTallasResult, reportarTallasIncorrectas, TodoCuadraMismatch, TodoCuadraResult, checkTodoCuadra, ConfirmTallasResult, confirmTallasNative.
 - [worker/lib/quoteVersions.ts](worker/lib/quoteVersions.ts) — Versiones de cotización: vigente siempre es primera subitem, borradores/snapshots para histórico. Exports: QuoteVersionError, listVersions, recordFirstVersion, esDraftVigente.
 - [worker/lib/documents.ts](worker/lib/documents.ts) — Documentos del portal: crea/lista/firma sobre D1+R2, snapshot de datos y portón de integridad SHA-256. Exports: createDocument, listDocuments, documentPdf, signDocument, DocumentError.
 - [worker/lib/pdf/writer.ts](worker/lib/pdf/writer.ts) — Escritor de PDF sin dependencias (Helvetica, líneas, rects, JPEG; texto en WinAnsi octal). Exports: PdfWriter, widthOf, pdfString, jpegInfo, LETTER.
 - [worker/lib/pdf/layout.ts](worker/lib/pdf/layout.ts) — Bloques → páginas: encabezado/pie, tablas paginadas, cajas de firma. Exports: renderDocument, wrapText, Block, DocumentMeta.
+- [worker/lib/pdf/logo.ts](worker/lib/pdf/logo.ts) — Logo de CMP embebido en base64 (JPEG) para no depender de un fetch a assets al generar PDFs. Exports: LOGO_JPG_BASE64.
+- [worker/lib/pdf/ordenCompraProveedor.ts](worker/lib/pdf/ordenCompraProveedor.ts) — Plantilla nativa de la Orden de Compra a Proveedor que reemplaza el PDF de Eledo (perdía columnas con descripciones largas). Exports: OcProveedorLinea, OcProveedorPdfInput, importeEnLetras, buildOrdenCompraProveedorPdf.
 - [worker/lib/pdf/templates.ts](worker/lib/pdf/templates.ts) — Las 3 plantillas (resumen de oportunidad, remisión, constancia de firma) como funciones puras. Exports: renderTemplate, buildBlocks, titleOf, DocData, RenderedSignature.
 - [worker/lib/portalFiles.ts](worker/lib/portalFiles.ts) — Resuelve un key de /api/files → assetId/bytes (R2 con fallback a Monday), mapa key→columna. Exports: readPortalFile, resolveMondayAsset, normalizeFileKey, OPP_FILE_COLS.
 - [worker/lib/r2.ts](worker/lib/r2.ts) — Helpers mínimos sobre binding FILES (bucket R2 para documentos). Exports: oportunidadFileKey, putFile.
@@ -75,6 +102,7 @@ scoping de renglones de `worker/lib/dal.ts`.
 
 - [worker/routes/admin.ts](worker/routes/admin.ts) — Admin-only: gestionar roster y pullear users de Monday. Exports: adminRoutes.
 - [worker/routes/boards.ts](worker/routes/boards.ts) — Rutas genéricas de boards espejados (list/detail/patch/create). Exports: boardRoutes.
+- [worker/routes/home.ts](worker/routes/home.ts) — Ruta GET /api/home de la pantalla "Inicio", con ETag propio sobre el fingerprint de items pendientes. Exports: homeRoutes.
 - [worker/routes/inventario.ts](worker/routes/inventario.ts) — Inventario D1 nativo (no espejado de Monday). Exports: inventarioRoutes.
 - [worker/routes/documents.ts](worker/routes/documents.ts) — API /api/documents*: generar, listar, PDF (base/firmado), firmar, trazo. Exports: documentRoutes.
 - [worker/routes/notifications.ts](worker/routes/notifications.ts) — API del centro de notificaciones scoped al viewer (list ETag/304, marcar leída). Exports: notificationRoutes.
@@ -82,6 +110,7 @@ scoping de renglones de `worker/lib/dal.ts`.
 
 ### worker/sync/
 
+- [worker/sync/delta.ts](worker/sync/delta.ts) — Delta sync cada 15 min: jala activity_logs recientes de las 8 boards en una call y refetchea solo los items que cambiaron, complementa al reconcile de 12h. Exports: deltaSync.
 - [worker/sync/echo.ts](worker/sync/echo.ts) — Outbox echo: ¿estado fresco de Monday coincide con lo que escribimos? Exports: confirmOutboxEcho.
 - [worker/sync/index.ts](worker/sync/index.ts) — Superficie pública del módulo A (ver docs/dev-contracts.md). Exports: (exports re-publicados).
 - [worker/sync/log.ts](worker/sync/log.ts) — Tiny sync_log writer compartido por helpers de sync. Exports: logSync.
@@ -93,6 +122,7 @@ scoping de renglones de `worker/lib/dal.ts`.
 ### worker/wa/
 
 - [worker/wa/agent.ts](worker/wa/agent.ts) — Canal WhatsApp del agente Claude (el loop real vive en lib/agentLoop). Exports: handleIncoming.
+- [worker/wa/notify.ts](worker/wa/notify.ts) — Puente entre el centro de notificaciones y el envío de WhatsApp, solo para severidad 'importante'. Exports: notifyPortalWa.
 - [worker/wa/routes.ts](worker/wa/routes.ts) — Webhook de WhatsApp Cloud API (Meta Graph). Exports: waRoutes.
 - [worker/wa/send.ts](worker/wa/send.ts) — Helpers de envío: sendText, markRead vía WhatsApp Cloud API. Exports: sendText, markRead.
 - [worker/wa/store.ts](worker/wa/store.ts) — Persistencia D1 del bot WhatsApp: identity-by-phone, idempotencia. Exports: normalizePhone, identityByPhone, alreadyProcessed.
@@ -112,8 +142,12 @@ scoping de renglones de `worker/lib/dal.ts`.
 
 ### src/app/
 
+- [src/app/ChunkReloadBoundary.tsx](src/app/ChunkReloadBoundary.tsx) — Error boundary que recarga una sola vez cuando un chunk lazy falla por deploy nuevo (Cloudflare Workers Assets). Exports: reloadOnceForNewDeploy, ChunkReloadBoundary.
+- [src/app/HomeView.tsx](src/app/HomeView.tsx) — Pantalla "Inicio": saludo + pendientes en tarjetas por rol, con seguimiento inline. Exports: HomeView.
 - [src/app/ImpersonationBanner.tsx](src/app/ImpersonationBanner.tsx) — Strip fijo: aviso cuando admin suplanta otro usuario. Exports: ImpersonationBanner.
 - [src/app/MobileTopBar.tsx](src/app/MobileTopBar.tsx) — Barra superior móvil: hamburguesa + nombre board activo. Exports: MobileTopBar.
+- [src/app/PhoneGateScreen.tsx](src/app/PhoneGateScreen.tsx) — Bloqueo tras login de Access hasta capturar el teléfono, requerido para identificar al usuario en el bot de WhatsApp. Exports: PhoneGateScreen.
+- [src/app/SessionExpiredScreen.tsx](src/app/SessionExpiredScreen.tsx) — Pantalla de bloqueo total con reintento automático de logout cuando la sesión de Access expiró. Exports: SessionExpiredScreen.
 - [src/app/SettingsPage.tsx](src/app/SettingsPage.tsx) — Admin-only: gestionar roster de identidades del portal. Exports: SettingsPage.
 - [src/app/Sidebar.tsx](src/app/Sidebar.tsx) — Navegación principal: boards gateados por role + settings para admins. Exports: BoardKey, BOARD_LABELS.
 - [src/app/UserChip.tsx](src/app/UserChip.tsx) — Chip de usuario: avatar + nombre + rol badge (GET /api/me). Exports: UserChip.
@@ -127,14 +161,17 @@ scoping de renglones de `worker/lib/dal.ts`.
 - [src/lib/embellecimiento.ts](src/lib/embellecimiento.ts) — Re-export de shared/embellecimiento (parse/serialize por zona). Exports: (re-exports).
 - [src/lib/format.ts](src/lib/format.ts) — Helpers de formato compartidos por renderers y indicators. Exports: isMoneyTitle, fmtMoney, fmtSyncAgo.
 - [src/lib/groupBy.ts](src/lib/groupBy.ts) — Agrupa items por valor de columna status/dropdown (con labels). Exports: ColumnGroup, groupByColumn.
+- [src/lib/homeApi.ts](src/lib/homeApi.ts) — Cliente + hook de la pantalla "Inicio": polling ETag cada 30s sobre GET /home y envío de seguimiento. Exports: HomeResponse (re-export), HomePendienteDTO (re-export), HomeSectionDTO (re-export), enviarSeguimiento, UseHomeResult, useHome.
 - [src/lib/estadoProductoBuckets.ts](src/lib/estadoProductoBuckets.ts) — Agrupa los 11 labels de "Estado del producto" en buckets de avance para la batería del tab Ejecución (lógica pura, testeada). Exports: batteryFromSubitems, batteryFromMirrorText, ESTADO_PRODUCTO_ORDER.
 - [src/lib/impersonation.ts](src/lib/impersonation.ts) — Admin "ver como": target email persiste en localStorage. Exports: getImpersonateTarget, startImpersonation, stopImpersonation.
 - [src/lib/inventoryApi.ts](src/lib/inventoryApi.ts) — Cliente fetch para /api/inventario/* (feature D1 nativa). Exports: (tipos), getWarehouses, getStock, createMovement.
 - [src/lib/documentsApi.ts](src/lib/documentsApi.ts) — Cliente de /api/documents* (generar, listar, firmar, URL del PDF). Exports: listDocuments, createDocument, signDocument, documentPdfUrl.
 - [src/lib/notificationsApi.ts](src/lib/notificationsApi.ts) — Cliente + hook del centro de notificaciones (polling ETag 12s, optimista). Exports: markNotificationRead, markAllNotificationsRead, useNotifications.
-- [src/lib/mockFallback.ts](src/lib/mockFallback.ts) — Fallback offline-only para que board Oportunidades demo sin API. Exports: mockBoardMeta, mockPatch, mockList, mockItemDetail.
+- [src/lib/mockFallback.ts](src/lib/mockFallback.ts) — Fallback offline para el board Oportunidades: se activa cuando cualquier fetch al Worker falla, no solo en dev — reusa src/data/oportunidades.ts. Exports: mockBoardMeta, mockPatch, mockList, mockItemDetail.
+- [src/lib/productSearch.ts](src/lib/productSearch.ts) — Búsqueda flexible por palabras (nombre/SKU/marca, sin acentos) sobre el catálogo de Productos, usada por ProductPicker. Exports: PRODUCTO_SKU_COL, PRODUCTO_NOMBRE_COL, PRODUCTO_MARCA_COL, norm, alnum, productoSku, productoMarca, productoNombreCorto, productSearchIndex, searchProductos, exactProducto.
 - [src/lib/projectStages.ts](src/lib/projectStages.ts) — Config de los 4 accesos Proyectos (post-venta: Tallas, OC, Ejecución, Logística). Exports: ProjectBoardKey, ProjectBoardConfig, PROJECT_STATUS_ORDER, PROJECT_BOARDS.
 - [src/lib/routing.ts](src/lib/routing.ts) — Ruteo mínimo por History API (sin react-router, deep links). Exports: useRoute.
+- [src/lib/sessionState.ts](src/lib/sessionState.ts) — Señal global de sesión de Access expirada tras agotar el auto-retry, consumida por App.tsx para bloquear la UI. Exports: markSessionExpired, useSessionExpired.
 - [src/lib/statusValue.ts](src/lib/statusValue.ts) — Monday status-type columns: parse value {index, post_id, ...}. Exports: statusIndex.
 - [src/lib/syncStatus.ts](src/lib/syncStatus.ts) — Board-list header: "actualizado hace X min" (item.updated_at de Monday). Exports: lastMondayUpdateFromItems.
 - [src/lib/textMatch.ts](src/lib/textMatch.ts) — Text matching insensible a acentos para búsqueda client-side. Exports: normalizeText, textIncludes.
@@ -168,6 +205,7 @@ scoping de renglones de `worker/lib/dal.ts`.
 - [src/components/forms/FilterBar.tsx](src/components/forms/FilterBar.tsx) — Fila de selects "Todos"-first para filtrar. Exports: FilterBar.
 - [src/components/forms/FormField.tsx](src/components/forms/FormField.tsx) — Campo editable genérico para create forms. Exports: FormField.
 - [src/components/forms/PickerRow.tsx](src/components/forms/PickerRow.tsx) — Componente picker row para forms. Exports: PickerRow.
+- [src/components/forms/ProductPicker.tsx](src/components/forms/ProductPicker.tsx) — Picker de producto del catálogo para líneas de cotización (busca por nombre o SKU), reemplaza al datalist nativo. Exports: ProductoChoice, ProductPicker.
 - [src/components/forms/SearchInput.tsx](src/components/forms/SearchInput.tsx) — Input de búsqueda estilizado. Exports: SearchInput.
 - [src/components/forms/SearchableSelect.tsx](src/components/forms/SearchableSelect.tsx) — Combobox searchable type-to-filter. Exports: SearchableSelect.
 - [src/components/forms/Select.tsx](src/components/forms/Select.tsx) — Select estilizado. Exports: Select.
@@ -205,9 +243,18 @@ scoping de renglones de `worker/lib/dal.ts`.
 - [src/boards/oportunidades/EditPersonaModal.tsx](src/boards/oportunidades/EditPersonaModal.tsx) — Reasigna Vendedor o Comprador de Oportunidad. Exports: EditPersonaModal.
 - [src/boards/oportunidades/OportunidadesBoard.tsx](src/boards/oportunidades/OportunidadesBoard.tsx) — Orquestador de vistas de Oportunidades (stages + drawer). Exports: OportunidadesBoard.
 - [src/boards/oportunidades/OpportunityDrawer.tsx](src/boards/oportunidades/OpportunityDrawer.tsx) — Drawer compartido fullscreen de detalle + tabs por role. Exports: OpportunityDrawer.
-- [src/boards/oportunidades/ProyectoSection.tsx](src/boards/oportunidades/ProyectoSection.tsx) — Sección Proyecto compartida por tabs Tallas, OC y Ejecución. Exports: P_SHEET_LINK, P_OC_CLIENTE, EjecucionSection, ESTADO_PRODUCTO_COLORS.
+- [src/boards/oportunidades/ProyectoSection.tsx](src/boards/oportunidades/ProyectoSection.tsx) — Barrel de la sección Proyecto (tabs Tallas, OC, Ejecución): re-exporta de `proyecto/` sin lógica propia. Exports: P_SHEET_LINK, P_OC_CLIENTE, ESTADO_PRODUCTO_COLORS, useProyecto, linkUrl, ProyectoState, ProyectoTallasSection, ProyectoOrdenesSection, EjecucionSection.
 - [src/boards/oportunidades/StageBoard.tsx](src/boards/oportunidades/StageBoard.tsx) — Wrapper genérico para boards de etapa (Oportunidades, Costeo, Validación, etc.). Exports: StageBoard.
 - [src/boards/oportunidades/StageBoardList.tsx](src/boards/oportunidades/StageBoardList.tsx) — Lista compartida agrupada por etapa + búsqueda. Exports: StageBoardList.
+
+### src/boards/oportunidades/proyecto/
+
+Antes un solo archivo (`ProyectoSection.tsx`, 1196 líneas) — dividido 2026-08-13 por tab para que cada uno se lea sin cargar los otros dos. `ProyectoSection.tsx` (arriba) queda como barrel.
+
+- [src/boards/oportunidades/proyecto/shared.tsx](src/boards/oportunidades/proyecto/shared.tsx) — Consts de columna (Proyectos + Subelementos), `ProyectoState`/`useProyecto`, `ProyectoActionBar`/`ProyectoLinks`/`FileList`/`Shell` compartidos por las 3 secciones. Exports: P_SHEET_LINK, P_DRIVE_LINK, P_TALLAS_PDF, P_OC_PDF, P_OC_CLIENTE, P_METODO_PAGO, P_COND_PAGO, S_PRODUCTO, S_SKU, S_COLOR, S_TALLA, S_CANTIDAD, S_PROVEEDOR, S_PROVEEDOR_RAZON, S_PROVEEDOR_CORREO, S_ESTADO, S_COSTO, S_DESCUENTO, S_MONEDA, S_ENTREGA_PROV, ESTADO_PRODUCTO_COLORS, ProyectoState, useProyecto, linkUrl, parseFiles, toR2Files, ActionOutcome, describeResult, OUTCOME_COLOR, ProyectoActionBar, ProyectoLinks, FileList, Shell.
+- [src/boards/oportunidades/proyecto/TallasSection.tsx](src/boards/oportunidades/proyecto/TallasSection.tsx) — Tab Tallas: tarjetas editables por producto+color con "Cotizado" vs. asignado; `groupByProductoColor`/`TallaGroup` también los reusa EjecucionSection. Exports: TallaGroup, sortByTalla, groupByProductoColor, ProyectoTallasSection.
+- [src/boards/oportunidades/proyecto/OrdenesSection.tsx](src/boards/oportunidades/proyecto/OrdenesSection.tsx) — Tab Órdenes de compra: líneas agrupadas por proveedor + botón "Generar OC" acotado a cada uno. Exports: ProyectoOrdenesSection.
+- [src/boards/oportunidades/proyecto/EjecucionSection.tsx](src/boards/oportunidades/proyecto/EjecucionSection.tsx) — Tab Ejecución: batería agregada + tarjetas por producto+color con resumen global y chips de estado por talla. Exports: EjecucionSection.
 
 ### src/boards/oportunidades/tabs/
 
@@ -224,20 +271,23 @@ scoping de renglones de `worker/lib/dal.ts`.
 - [src/boards/oportunidades/tabs/cotizacion/ColumnVisibilityPicker.tsx](src/boards/oportunidades/tabs/cotizacion/ColumnVisibilityPicker.tsx) — Herramienta Columnas: mostrar/ocultar por rol. Exports: ColumnVisibilityPicker.
 - [src/boards/oportunidades/tabs/cotizacion/CotizacionPdfRow.tsx](src/boards/oportunidades/tabs/cotizacion/CotizacionPdfRow.tsx) — Thumbnails + preview PDF cotizaciones (solicitud, sin firmar, firmada). Exports: CotizacionPdfRow.
 - [src/boards/oportunidades/tabs/cotizacion/LineDetailPanel.tsx](src/boards/oportunidades/tabs/cotizacion/LineDetailPanel.tsx) — Panel expandible con ficha completa de línea. Exports: LineDetailPanel.
-- [src/boards/oportunidades/tabs/cotizacion/MobileQuoteRow.tsx](src/boards/oportunidades/tabs/cotizacion/MobileQuoteRow.tsx) — Card de línea mobile (mismo estado/edición que fila desktop). Exports: MobileQuoteRow.
+- [src/boards/oportunidades/tabs/cotizacion/MobileQuoteRow.tsx](src/boards/oportunidades/tabs/cotizacion/MobileQuoteRow.tsx) — Card de línea mobile (mismo estado/edición que fila desktop, gemela de QuoteRow). Exports: MobileQuoteRow.
+- [src/boards/oportunidades/tabs/cotizacion/QuoteRow.tsx](src/boards/oportunidades/tabs/cotizacion/QuoteRow.tsx) — Fila de línea desktop, memoizada (gemela de MobileQuoteRow). Exports: QuoteRowProps (y el componente memoizado).
 - [src/boards/oportunidades/tabs/cotizacion/SnapshotTable.tsx](src/boards/oportunidades/tabs/cotizacion/SnapshotTable.tsx) — Tabla snapshot de versión de cotización. Exports: SnapshotTable.
 - [src/boards/oportunidades/tabs/cotizacion/TotalsRow.tsx](src/boards/oportunidades/tabs/cotizacion/TotalsRow.tsx) — Fila de totales (desktop/mobile) de grid de cotización. Exports: TotalsRow.
 - [src/boards/oportunidades/tabs/cotizacion/VersionChips.tsx](src/boards/oportunidades/tabs/cotizacion/VersionChips.tsx) — Selector de versiones de cotización (vigente + histórico). Exports: VersionChips.
-- [src/boards/oportunidades/tabs/cotizacion/gridMeta.tsx](src/boards/oportunidades/tabs/cotizacion/gridMeta.tsx) — Metadata de grid Cotización: IDs columnas Monday, encabezados. Exports: (constantes).
+- [src/boards/oportunidades/tabs/cotizacion/gridMeta.tsx](src/boards/oportunidades/tabs/cotizacion/gridMeta.tsx) — Metadata de grid Cotización: IDs columnas Monday, encabezados, `computeLineBanner` (banner de avisos compartido por QuoteRow/MobileQuoteRow). Exports: (constantes), computeLineBanner, getLineWarnings, needsConfirmarTallas, productoProveedorOk.
 
 ### src/boards/proyectos/
 
 - [src/boards/proyectos/AgregarLineaModal.tsx](src/boards/proyectos/AgregarLineaModal.tsx) — Línea manual del Proyecto (Compras agrega producto faltante). Exports: AgregarLineaModal.
+- [src/boards/proyectos/AjustarLineaVirtualModal.tsx](src/boards/proyectos/AjustarLineaVirtualModal.tsx) — Modal "Ajustar línea" del Proyecto (versión virtual sobre QuoteLineSnapshot), calcado del de Oportunidades pero sin tocar Monday. Exports: AjustarLineaVirtualModal.
+- [src/boards/proyectos/CotizacionVirtualTab.tsx](src/boards/proyectos/CotizacionVirtualTab.tsx) — Tab Cotización del Proyecto: muestra las líneas vigentes de la Oportunidad ligada con los ajustes virtuales D1 aplicados, sin tocar Monday. Exports: CotizacionVirtualTab.
+- [src/boards/proyectos/EmbellecimientosVirtualTab.tsx](src/boards/proyectos/EmbellecimientosVirtualTab.tsx) — Tab Embellecimientos del Proyecto, solo lectura, sobre las mismas líneas virtuales de CotizacionVirtualTab. Exports: EmbellecimientosVirtualTab.
 - [src/boards/proyectos/ProyectoBoard.tsx](src/boards/proyectos/ProyectoBoard.tsx) — Orquestador de Proyectos (post-venta). Exports: ProyectoBoard.
 - [src/boards/proyectos/ProyectoBoardList.tsx](src/boards/proyectos/ProyectoBoardList.tsx) — Lista Proyectos (post-venta) para los 3 accesos sidebar. Exports: ProyectoBoardList.
 - [src/boards/proyectos/ProyectoDrawer.tsx](src/boards/proyectos/ProyectoDrawer.tsx) — Drawer Proyecto (post-venta), abierto por su propio id. Exports: ProyectoDrawer.
 
 ### src/data/
 
-- [src/data/oportunidades.ts](src/data/oportunidades.ts) — Mock data del proyecto de diseño CMP Portal. Exports: Status, Embellecimiento, OppProduct.
-
+- [src/data/oportunidades.ts](src/data/oportunidades.ts) — Fixture data del prototipo de diseño, reusada como fallback offline real por `src/lib/mockFallback.ts` (no es mockup muerto — ver ahí). Exports: Status, OppProduct, UpdateEntry, Opportunity, statuses, opportunities, fmtMoney.
