@@ -2,6 +2,12 @@
 
 ## 2026-08-12
 
+- Fix: el board Costeo (`src/lib/dealStages.ts`) ya no oculta ninguna etapa —
+  antes traía un `excludeStages` (Seguimiento/Negociación/Ganada/Perdida,
+  decisión de Efraín de 2026-07-20) que dejaba fuera oportunidades que él
+  quería seguir viendo ahí. Efraín pidió ver TODAS las oportunidades de
+  TODAS las etapas en Costeo, Ganadas incluidas — se revierte ese filtro.
+
 - Fix: la miniatura de la última OC (`ProyectoSection.tsx`, commit `5848fe4`
   de hoy mismo) nunca matcheaba nada — el regex esperaba nombres de archivo
   `orden_compra_<proveedor>.pdf`, pero cmp-tallas los sube como
