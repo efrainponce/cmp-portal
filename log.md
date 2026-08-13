@@ -2,6 +2,27 @@
 
 ## 2026-08-12
 
+- Feat: OC a Proveedor generada nativa por el portal (`worker/lib/pdf/ordenCompraProveedor.ts`,
+  `worker/lib/ocProveedorPdf.ts`, `worker/lib/pdf/logo.ts`, ruta nueva
+  `GET /api/proyectos/:id/oc-nativa/:proveedorId/pdf`, botón "Ver OC (portal)"
+  en `ProyectoSection.tsx`) — Efraín reportó la OC de GDL Tactical (OC-202,
+  OPP-0879) saliendo sin Precio/Cantidad/Descuento/Subtotal. Diagnóstico
+  bisectando el payload real contra la API de Eledo directamente: los datos
+  llegaban correctos (el total ya cuadraba a la centavo), pero la plantilla de
+  Eledo pierde esas columnas Y el pie de firmas cuando el texto de "Producto"
+  es largo y se envuelve a varias líneas — algo que pasa siempre con las
+  descripciones de embellecimiento de GDL Tactical. Se agregó un bloque
+  `wrapTable` a `worker/lib/pdf/layout.ts` (el renglón crece con el texto en
+  vez de desalojar a las columnas vecinas) y se generó la OC con el escritor
+  de PDF propio del portal en vez de depender de Eledo. Logo de CMP embebido
+  (patrón tomado de `janing/worker/lib/pdf/logo.ts`, solo eso). v1 a propósito
+  simple (Efraín, "como la de janing"): sin folio propio (pendiente conectar
+  el ledger de Sheets de cmp-tallas) y sin firma electrónica — deja el espacio
+  de firma FÍSICA (línea + nombre precargado) para Elaborado/Revisado/
+  Autorizado. Convive con el botón "Generar OC" existente (Eledo/DocuSeal)
+  mientras se prueba en paralelo. Verificado con datos reales end-to-end
+  (curl + Playwright contra el dev server).
+
 - Fix: cron del backup semanal a R2 (`worker/index.ts`, `wrangler.jsonc`) nunca
   se registraba en Cloudflare — el commit de "backup semanal del mirror D1 a
   R2" usó `"0 3 * * 0"` para domingo, pero la API de Workers rechaza `0` como

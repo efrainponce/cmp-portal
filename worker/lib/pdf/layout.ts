@@ -27,6 +27,12 @@ export type Block =
   | { kind: 'text'; text: string; size?: number; bold?: boolean; color?: string }
   | { kind: 'kv'; rows: [string, string][]; columns?: 1 | 2 }
   | { kind: 'table'; columns: TableColumn[]; rows: string[][]; footer?: string[] }
+  /** Como 'table', pero `wrapCol` envuelve a varias líneas en vez de recortar
+   * con elipsis, y el renglón crece para que quepa — las demás columnas se
+   * dibujan ancladas al TOPE del renglón, nunca desaparecen. Se agregó para la
+   * OC a proveedor: descripciones de embellecimiento largas rompían tablas de
+   * ancho fijo (visto primero en la plantilla de Eledo, 2026-08-12). */
+  | { kind: 'wrapTable'; columns: TableColumn[]; rows: string[][]; wrapCol: number; footer?: string[] }
   | { kind: 'divider' }
   | { kind: 'spacer'; height: number }
   | { kind: 'note'; text: string }
@@ -42,6 +48,9 @@ export interface DocumentMeta {
   generatedAt: string;
   /** Línea legal opcional del pie (documentos firmados la usan para el hash). */
   footerNote?: string;
+  /** JPEG del membrete (worker/lib/pdf/logo.ts) — si no se manda, el
+   * encabezado cae de vuelta al texto "MEXICANA DE PROTECCIÓN". */
+  logo?: Uint8Array;
 }
 
 const CONTENT_LEFT = MARGIN;
@@ -189,6 +198,50 @@ function drawTable(pdf: PdfWriter, cur: Cursor, block: Extract<Block, { kind: 't
   cur.y += 10;
 }
 
+function drawWrapTable(pdf: PdfWriter, cur: Cursor, block: Extract<Block, { kind: 'wrapTable' }>): void {
+  const boxes = columnBoxes(block.columns);
+  const wrapBox = boxes[block.wrapCol];
+  const wrapWidth = wrapBox.right - wrapBox.left;
+  const lineHeight = 11;
+  const baseRowHeight = 17;
+  cur.ensure(18 + baseRowHeight * 2);
+  drawTableHeader(pdf, cur, block.columns);
+
+  block.rows.forEach((row, r) => {
+    const lines = wrapText(row[block.wrapCol] ?? '', wrapWidth, 9);
+    const rowHeight = Math.max(baseRowHeight, lines.length * lineHeight + 6);
+    if (cur.ensure(rowHeight)) drawTableHeader(pdf, cur, block.columns);
+    if (r % 2 === 1) pdf.rect(cur.page, CONTENT_LEFT, cur.y - 9, CONTENT_WIDTH, rowHeight, { fill: ZEBRA });
+    block.columns.forEach((col, i) => {
+      if (i === block.wrapCol) {
+        let ly = cur.y + 2;
+        for (const line of lines) {
+          pdf.textAligned(cur.page, line, ly, boxes[i], col.align ?? 'left', { size: 9, color: INK });
+          ly += lineHeight;
+        }
+        return;
+      }
+      // Todo lo que no es la columna que envuelve va anclado al TOPE del
+      // renglón — así nunca se desaloja aunque `wrapCol` crezca a varias líneas.
+      const cell = row[i] ?? '';
+      pdf.textAligned(cur.page, ellipsize(cell, boxes[i].right - boxes[i].left, 9), cur.y + 2, boxes[i], col.align ?? 'left', { size: 9, color: INK });
+    });
+    cur.y += rowHeight;
+    pdf.line(cur.page, CONTENT_LEFT, cur.y - 8, CONTENT_RIGHT, cur.y - 8, { color: RULE, width: 0.4 });
+  });
+
+  if (block.footer) {
+    if (cur.ensure(baseRowHeight + 4)) drawTableHeader(pdf, cur, block.columns);
+    pdf.rect(cur.page, CONTENT_LEFT, cur.y - 9, CONTENT_WIDTH, baseRowHeight, { fill: '#eef2f6' });
+    block.columns.forEach((col, i) => {
+      const cell = block.footer?.[i] ?? '';
+      pdf.textAligned(cur.page, ellipsize(cell, boxes[i].right - boxes[i].left, 9.5, 'HB'), cur.y + 2, boxes[i], col.align ?? 'left', { size: 9.5, font: 'HB', color: INK });
+    });
+    cur.y += baseRowHeight;
+  }
+  cur.y += 10;
+}
+
 function drawNote(pdf: PdfWriter, cur: Cursor, text: string): void {
   const lines = wrapText(text, CONTENT_WIDTH - 20, 8);
   const height = lines.length * 11 + 14;
@@ -231,7 +284,8 @@ function drawChrome(pdf: PdfWriter, meta: DocumentMeta): void {
   const total = pdf.pageCount;
   for (let page = 0; page < total; page++) {
     // Encabezado
-    pdf.text(page, CONTENT_LEFT, 44, 'MEXICANA DE PROTECCIÓN', { size: 11, font: 'HB', color: ACCENT });
+    if (meta.logo) pdf.image(page, meta.logo, CONTENT_LEFT, 14, 101, 40);
+    else pdf.text(page, CONTENT_LEFT, 44, 'MEXICANA DE PROTECCIÓN', { size: 11, font: 'HB', color: ACCENT });
     pdf.textAligned(page, meta.title, 40, { left: CONTENT_LEFT + 200, right: CONTENT_RIGHT }, 'right', { size: 10, font: 'HB', color: INK });
     const sub = [meta.subtitle, meta.folio ? `Folio ${meta.folio}` : ''].filter(Boolean).join(' · ');
     if (sub) pdf.textAligned(page, sub, 53, { left: CONTENT_LEFT + 200, right: CONTENT_RIGHT }, 'right', { size: 8.5, color: INK_SOFT });
@@ -258,6 +312,7 @@ export function renderDocument(meta: DocumentMeta, blocks: Block[]): Uint8Array 
       case 'text': drawText(pdf, cur, block); break;
       case 'kv': drawKv(pdf, cur, block); break;
       case 'table': drawTable(pdf, cur, block); break;
+      case 'wrapTable': drawWrapTable(pdf, cur, block); break;
       case 'divider':
         cur.ensure(12);
         pdf.line(cur.page, CONTENT_LEFT, cur.y, CONTENT_RIGHT, cur.y, { color: RULE });

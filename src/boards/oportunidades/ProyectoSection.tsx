@@ -685,6 +685,33 @@ function OcThumb({ file }: { file: { url: string; name: string } | undefined }) 
   );
 }
 
+/** Botón "Ver OC (portal)" — arma el PDF al vuelo en el Worker
+ * (worker/lib/ocProveedorPdf.ts) en vez de disparar Eledo/cmp-tallas. v1 a
+ * propósito simple (Efraín, 2026-08-13): solo genera/muestra, sin folio propio
+ * ni firma electrónica — conviven los dos botones mientras se prueba. */
+function NativeOcButton({ proyectoId, proveedorId }: { proyectoId: string; proveedorId: string | null }) {
+  const [preview, setPreview] = useState(false);
+  if (!proveedorId) return null;
+  const url = `/api/proyectos/${proyectoId}/oc-nativa/${proveedorId}/pdf`;
+  return (
+    <>
+      <button type="button" onClick={() => setPreview(true)} style={CARD_INPUT_STYLE} title="Genera la OC de este proveedor con el motor propio del portal (con Precio/Cantidad/Subtotal correctos)">
+        Ver OC (portal)
+      </button>
+      {preview && (
+        <Modal title="Orden de compra — portal" onClose={() => setPreview(false)} width={760}>
+          <Suspense fallback={<div style={{ font: 'var(--text-label)', color: 'var(--ink-quiet)' }}>Generando…</div>}>
+            <PdfCanvasPreview url={url} maxWidth={712} />
+          </Suspense>
+          <a href={url} download style={{ display: 'inline-block', marginTop: 12, font: 'var(--text-label)', color: 'var(--accent)' }}>
+            Descargar
+          </a>
+        </Modal>
+      )}
+    </>
+  );
+}
+
 /** Tarjeta de un proveedor: sus líneas + botón "Generar OC" acotado a él
  * (only_proveedor) — resultado local con el mismo contrato que ProyectoActionBar.
  * Método/Condiciones de pago son overrides SOLO de esta OC (WhatsApp 2026-08-04:
@@ -736,6 +763,7 @@ function ProveedorCard({ group, proyecto, oppId, reload }: { group: ProveedorGro
             placeholder="Condiciones de pago" title="Condiciones de pago de esta OC (no cambia el default del Proyecto)"
             style={{ ...CARD_INPUT_STYLE, minWidth: 220 }}
           />
+          <NativeOcButton proyectoId={proyecto.id} proveedorId={group.proveedorId} />
           <ConfirmButton
             label="Generar OC"
             confirmLabel="¿Generar la OC de este proveedor? Se manda a firmas"
