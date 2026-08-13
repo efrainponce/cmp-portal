@@ -2,6 +2,14 @@
 
 ## 2026-08-13
 
+- Feat: acceso "Ejecución" del sidebar renombrado a "Reporte de Proyectos" y
+  sin filtro de status (`projectStages.ts`, `Sidebar.tsx`)
+  - Antes solo mostraba proyectos con `project_status = Ejecución` (id `3`);
+    ahora `statuses: PROJECT_STATUS_ORDER` incluye las 6 etapas, así que
+    aparecen todos los proyectos sin importar su estado. Sigue agrupado por
+    Zona y con la batería de avance (comportamiento ligado a `key ===
+    'ejecucion'`, sin cambios).
+
 - Feat: columna Techo (`numeric_mkznpn83`) editable en la grid de Costeo para
   compras y admin
   - Estaba en la whitelist como solo lectura (`vis: AC`, grupo de columnas

@@ -35,7 +35,7 @@ const ZONA_EFRAIN_ITEM: NavItemConfig = { key: 'zona_efrain', label: 'Zona Efrai
 const PROYECTOS_ITEMS: NavItemConfig[] = [
   { key: 'doctallas', label: 'Documentación y Tallas', icon: IconDocTallas },
   { key: 'ordenescompra', label: 'Órdenes de Compra', icon: IconOrdenesCompra },
-  { key: 'ejecucion', label: 'Ejecución', icon: IconEjecucion },
+  { key: 'ejecucion', label: 'Reporte de Proyectos', icon: IconEjecucion },
   { key: 'logistica', label: 'Logística', icon: IconLogistica },
 ];
 

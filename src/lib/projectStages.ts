@@ -29,6 +29,8 @@ export const PROJECT_BOARDS: Record<ProjectBoardKey, ProjectBoardConfig> = {
   // dentro de "logistica" — separado para que el seguimiento operativo (batería +
   // estado por producto/talla, tab "ejecucion") no se mezcle con proyectos ya
   // cerrados. Agrupado por Zona en vez de por status (ProyectoBoardList.tsx).
-  ejecucion: { key: 'ejecucion', title: 'Ejecución', statuses: ['3'], defaultTab: 'ejecucion' },
+  // Renombrado a "Reporte de Proyectos" y sin filtro de status (Efraín, 2026-08-13):
+  // muestra TODOS los proyectos sin importar su etapa.
+  ejecucion: { key: 'ejecucion', title: 'Reporte de Proyectos', statuses: PROJECT_STATUS_ORDER, defaultTab: 'ejecucion' },
   logistica: { key: 'logistica', title: 'Logística', statuses: ['1'], defaultTab: 'logistica' },
 };
