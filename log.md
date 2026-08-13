@@ -2,6 +2,14 @@
 
 ## 2026-08-13
 
+- Feat: columna Techo (`numeric_mkznpn83`) editable en la grid de Costeo para
+  compras y admin
+  - Estaba en la whitelist como solo lectura (`vis: AC`, grupo de columnas
+    mirror/fórmula) y nunca se pintaba como input aunque ya se mostraba en la
+    grid desde el 2026-08-10. Se le dio su propia entrada `w: WAC` en
+    `shared/visibility.ts` y se agregó a `inlineEditableCols` en `gridMeta.tsx`
+    — mismo patrón que Costo embell. C/U, que tuvo el mismo bug.
+
 - Fix: chip de talla en Ejecución ahora deja claro que ahí se modifica el
   estado (`EjecucionSection.tsx`)
   - Pam (compras) no lograba cambiar el color/estatus de una talla porque el

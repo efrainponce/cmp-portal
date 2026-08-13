@@ -106,6 +106,9 @@ export function inlineEditableCols(lineEdits: boolean): Set<string> {
     // Moneda de la línea e IVA % — los captura Compras junto con los costos
     // (Efraín, 2026-07-30).
     MONEDA_COL, IVA_PCT_COL,
+    // Techo — tope de precio, capturable por Compras/admin junto con el resto
+    // del costeo (Efraín, 2026-08-13). Ya escribible en visibility.ts (w: WAC).
+    'numeric_mkznpn83',
   ]);
   if (lineEdits) {
     base.add(PRODUCTO_COL);

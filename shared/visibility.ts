@@ -100,10 +100,13 @@ export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
     ...vis(['lookup_mm11t8gj',
       'lookup_mm0bdwb5', 'formula_mkznqx51', 'formula_mkzngnjm',
       'formula_mm0rqjv1', 'lookup_mm0bbz02', 'long_text_mm1b9bh8',
-      'formula_mkznpfgg', 'formula_mkznrm5a', 'numeric_mkznpn83',
+      'formula_mkznpfgg', 'formula_mkznrm5a',
       'numeric_mm2qzzbe', 'formula_mkznsb7m', 'formula_mkznpp33',
       'formula_mkzne7gd', 'formula_mkznry25', 'formula_mkznpw5p', 'formula_mkzn28xk',
       'lookup_mm1tjv9n'], AC),                  // the Costeo view columns
+    // Techo — tope de precio capturado en Monday; compras/admin lo editan
+    // desde la Costeo (Efraín, 2026-08-13).
+    numeric_mkznpn83: { vis: AC, w: WAC },
     // Costeo inputs — writable by compras/admin (Costeo capture, stage 15).
     numeric_mm0bph99: { vis: AC, w: WAC },   // Costo Distr. C/U
     numeric_mkzn2q51: { vis: AC, w: WAC },   // Descuento Distr. %
