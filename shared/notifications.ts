@@ -97,7 +97,7 @@ export const PRODUCT_STATUS_LABELS: Record<string, string> = {
   '2': 'En embellecimiento',
   '3': 'En CMP para entrega cliente',
   '4': 'En produccion',
-  '5': 'OC Proveedor lista',
+  '5': 'Enviado con el',
   '6': 'Entregado',
   '7': 'Incidencia/Retraso',
   '8': 'OC Proveedor enviada',

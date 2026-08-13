@@ -53,7 +53,7 @@ export const ESTADO_PRODUCTO_COLORS: Record<string, string> = {
   'En embellecimiento': '#5559df',
   'En CMP para entrega cliente': '#784bd1',
   'En produccion': '#a1e3f6',
-  'OC Proveedor lista': '#c4c4c4',
+  'Enviado con el': '#c4c4c4',
   'Entregado': '#037f4c',
   'Incidencia/Retraso': '#df2f4a',
   'OC Proveedor enviada': '#a9bee8',

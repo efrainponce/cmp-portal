@@ -54,8 +54,6 @@ const SUB_COLOR = 'text_mm07s2mg';
 const SUB_CANTIDAD = 'numeric_mkzm6399';
 const SUB_EMB_STATUS = 'color_mm1b34bg';
 const SUB_EMB_DESC = 'long_text_mm1bj4pt';
-const SUB_PRECIO = 'numeric_mkzneg3d';
-const SUB_ETAPA_COSTEO = 'color_mm084gvf';
 const SUB_FILE = 'file_mm5akjy5'; // Imagen embellecimiento
 
 // "dividir" clona la línea entera, no solo producto/color/cantidad/embellecimiento

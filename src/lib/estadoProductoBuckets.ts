@@ -27,7 +27,7 @@ export const ESTADO_BUCKETS: EstadoBucket[] = [
 export const LABEL_TO_BUCKET: Record<string, EstadoBucketKey> = {
   'Pendiente OC al Prov': 'por_surtir',
   'OC Proveedor enviada': 'por_surtir',
-  'OC Proveedor lista': 'por_surtir',
+  'Enviado con el': 'por_surtir',
   'En produccion': 'produccion',
   'En CMP para embellecer': 'embellecimiento',
   'En embellecimiento': 'embellecimiento',
@@ -41,7 +41,7 @@ export const LABEL_TO_BUCKET: Record<string, EstadoBucketKey> = {
 // Orden real del flujo (no el `index` que Monday trae hoy, desordenado) — para el
 // selector de "cambiar estado" del tab Ejecución (ProyectoSection.tsx EstadoChip).
 export const ESTADO_PRODUCTO_ORDER: string[] = [
-  'Pendiente OC al Prov', 'OC Proveedor enviada', 'OC Proveedor lista', 'En produccion',
+  'Pendiente OC al Prov', 'OC Proveedor enviada', 'Enviado con el', 'En produccion',
   'En tránsito', 'En CMP para embellecer', 'En embellecimiento', 'En CMP para entrega cliente',
   'Con vendedor para entrega cliente', 'Entregado', 'Incidencia/Retraso',
 ];

@@ -2,6 +2,38 @@
 
 ## 2026-08-13
 
+- Fix: re-introspección de boards (`scripts/introspect-boards.mjs` contra Monday
+  real, pedido de Efraín — "check everything using monday api") reveló que
+  `color_mm0hqf79` ("Estado del producto", proyectos_sub) renombró su label
+  índice 5 de "OC Proveedor lista" a "Enviado con el" en Monday — nuestras
+  copias locales del texto (obligadas, el worker no puede importar
+  `column-meta.gen.ts` como fuente de labels de negocio) seguían con el texto
+  viejo en `shared/notifications.ts` (`PRODUCT_STATUS_LABELS`),
+  `src/lib/estadoProductoBuckets.ts` (`LABEL_TO_BUCKET`/`ESTADO_PRODUCTO_ORDER`)
+  y `ProyectoSection.tsx` (`ESTADO_PRODUCTO_COLORS`). Bug real y activo: el
+  picker "cambiar estado" del tab Ejecución seguía ofreciendo el label viejo,
+  que ya no existe en Monday — un intento de guardarlo habría fallado o hecho
+  que Monday asignara una etiqueta arbitraria; además `estado_producto_historial`
+  (D1) habría quedado registrando texto obsoleto en el historial permanente.
+  Las 4 copias ahora dicen "Enviado con el" (mismo índice, mismo bucket
+  `por_surtir`, mismo color, misma posición en el orden — la conducta no
+  cambia, solo el texto que ya no coincidía con Monday). `column-meta.gen.ts`
+  también recogió una opción nueva de "Color" (`dropdown_mkztty4b`, "MARRON")
+  sin impacto en código.
+  - **Pendiente de decisión de Efraín** (no toqué nada): la introspección
+    también reveló que `deal_stage` (Oportunidades) ahora tiene un índice 10
+    con label "En Negociación" (con acento) ADEMÁS del índice 3 existente
+    "En Negociacion" (sin acento) — dos opciones de Monday que normalizan al
+    mismo texto. `shared/dealStages.ts` (`DEAL_STAGE_LABELS`/`DEAL_STAGE_ORDER`)
+    no conoce el índice 10. Si es un duplicado accidental en Monday, se debería
+    borrar ahí; si es una etapa nueva intencional, hay que agregarla a
+    `dealStages.ts` (posición en el pipeline, notificaciones, etc.) — decisión
+    de negocio, dejo ambas opciones intactas hasta que Efraín confirme cuál es.
+- Fix: 2 constantes muertas (`SUB_PRECIO`, `SUB_ETAPA_COSTEO`) en
+  `worker/lib/lineaAjustes.ts` — declaradas pero nunca leídas (el copiado de
+  "dividir línea" ya las cubre por tipo de columna vía `COPY_COL_TYPES`, no
+  por estas constantes). Sin efecto en comportamiento.
+
 - Fix: descuento de Proyecto se guardaba como % entero, `generar-oc` lo leía
   como fracción — montos de OC negativos
   - Encontrado corriendo, por pedido de Efraín, una prueba end-to-end real de
