@@ -28,9 +28,9 @@ const PdfCanvasPreview = lazy(() =>
 // confiable ni en Chrome real. El PDF se resuelve vía un endpoint propio que
 // transmite los bytes ya resueltos por la API de Monday (mismo
 // mecanismo que las imágenes de embellecimiento — worker/lib/cotizacionPdfs.ts).
-function PdfIcon({ color }: { color: string }) {
+export function PdfIcon({ color, size = 34 }: { color: string; size?: number }) {
   return (
-    <svg width="34" height="34" viewBox="0 0 24 24" fill="none">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <path d="M6 2h8l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Z" fill={color} opacity=".14" />
       <path d="M6 2h8l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Z" stroke={color} strokeWidth="1.4" />
       <path d="M14 2v5h5" stroke={color} strokeWidth="1.4" strokeLinejoin="round" />

@@ -1,5 +1,25 @@
 # Log de commits
 
+## 2026-08-13
+
+- Feat: miniatura de la última OC (PDF) junto al nombre del proveedor en la tab
+  Órdenes de compra (`ProveedorCard`, `ProyectoSection.tsx`)
+  - Efraín pidió que las OC generadas por proveedor no quedaran solo en el listado
+    plano hasta abajo de la pestaña, sino visibles como miniatura junto a la
+    tarjeta de cada proveedor.
+  - cmp-tallas sube los PDFs a `file_mm0hj9pn` (Proyecto) como
+    `orden_compra_<nombre proveedor>.pdf`, sin id que los ligue al proveedor —
+    verificado contra datos reales en D1 (`wrangler d1 execute --remote`).
+    `findLatestOcFile` empareja por nombre normalizado (sin acentos/mayúsculas)
+    contra la razón social Y el texto crudo del item de Proveedores (pueden
+    diferir), y toma el último match (el arreglo conserva orden de subida). Sin
+    match no se renderiza nada — no hay forma de saber si un proveedor fue
+    renombrado después de generar su OC.
+  - Reutiliza el patrón de `CotizacionPdfRow` (ícono PDF exportado, preview
+    embebido con pdf.js vía `PdfCanvasPreview`/`Modal`) en vez de inventar uno
+    nuevo. Se quitó el `FileList` de "Órdenes de compra (PDF)" al fondo de la
+    pestaña (redundante con la miniatura por tarjeta); el de tallas se mantiene.
+
 ## 2026-08-12
 
 - Fix: "elegir vendedor" no mostraba a Rodrigo (picker de Contacto y contacto huérfano)
