@@ -443,6 +443,19 @@
     `scripts/perf-bench.mjs` + `scripts/perf-results/`) — se dejaron sin
     commitear, solo se stageó el archivo propio de este fix.
 
+- Fix: ids nativos aleatorios de verdad, no un contador (`nativeSeq.ts`)
+  - Efraín: los ids sintéticos deben ser random (Web Crypto, no `Math.random`
+    ni un contador secuencial) — igual que los de Monday, que se ven como
+    números grandes sin patrón. Un contador delataría cuántos registros
+    nativos existen y en qué orden nacieron. `reserveNativeId` ahora sortea un
+    offset de 32 bits sobre `NATIVE_ID_FLOOR` y verifica unicidad contra TODA
+    la tabla `items` (global, como Monday) antes de devolverlo, con reintento.
+  - Una sola función para toda entidad nativa futura (línea, proyecto...): al
+    compartir piso y rango, el largo en dígitos siempre sale igual (12),
+    nunca varía por tipo de registro — pedido explícito de Efraín.
+  - Probado en local: tres creaciones seguidas dieron ids de 12 dígitos sin
+    patrón secuencial (903480448515, 903668866508, 902736970730).
+
 - Feat: "salir de Monday" — Paso 1+2, oportunidades nativas de Zona Efrain
   (`shared/nativeId.ts`, `worker/lib/nativeSeq.ts`, `worker/lib/createRecord.ts`,
   `worker/lib/outbox.ts`, `worker/sync/reconcile.ts`, `worker/sync/refetch.ts`,
