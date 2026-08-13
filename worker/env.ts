@@ -23,6 +23,10 @@ export interface Env {
   // proyectoTallas.ts confirmTallasNative — gate TODO CUADRA 100% D1, PDF propio
   // del portal, DocuSeal directo) en vez de cmp-tallas' /api/confirm_tallas.
   TALLAS_NATIVE?: string;
+  // Fase 4 (2026-08-12): '1' prende "Generar OC" nativo (worker/lib/oc.ts —
+  // agrupa por proveedor, Eledo+DocuSeal directo, folio global "OC-n" en D1) en
+  // vez de cmp-tallas' /api/generate_oc.
+  OC_NATIVE?: string;
   // Fase 0 (cimientos, 2026-08-12) — clientes delgados para las fases siguientes
   // (cotización/OC vía Eledo+DocuSeal, imagen de producto vía Airtable).
   ELEDO_API_KEY?: string;         // worker/lib/eledo.ts

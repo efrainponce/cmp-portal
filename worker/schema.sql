@@ -440,3 +440,12 @@ CREATE TABLE IF NOT EXISTS tallas_folios (
   item_id  INTEGER PRIMARY KEY,     -- proyectos item id
   seq      INTEGER NOT NULL DEFAULT 0
 );
+
+-- Folio GLOBAL "OC-n" (Fase 4, plan "salir de Monday", 2026-08-12,
+-- worker/lib/oc.ts nextOcFolio) — a diferencia de costeo/cotizacion/tallas_folios
+-- (por item), este es una sola fila: reemplaza el ledger de Sheets que contaba
+-- TODAS las filas de TODOS los proyectos/proveedores. Lazy en runtime.
+CREATE TABLE IF NOT EXISTS oc_folios (
+  id   INTEGER PRIMARY KEY CHECK (id = 1),
+  seq  INTEGER NOT NULL DEFAULT 0
+);

@@ -2,6 +2,35 @@
 
 ## 2026-08-12
 
+- Feat: "salir de Monday" Fase 4 — "Generar OC" nativo (Eledo/DocuSeal directo)
+  - Reimplementé `api/generate_oc.py` 1:1 en `worker/lib/oc.ts`: agrupa los
+    subitems del Proyecto por proveedor ligado (los sin proveedor se saltan),
+    calcula subtotal por línea (cantidad·precio·(1-descuento)) y monto por
+    proveedor, genera un PDF por proveedor vía Eledo directo (template
+    `69b3b936c38adc73cf462f2f`, ya agregado en Fase 0) con `importe_en_letras`
+    calculado sobre monto+IVA(16%) — no sobre el subtotal, regla exacta del
+    Python —, sube cada PDF a Monday y pide firma DocuSeal de 3 firmantes en
+    orden (Elaborado→Revisado→Autorizado, via `order`). Revisado/Autorizado
+    siguen hardcodeados a Pam/Elisa (mismos valores que cmp-tallas — evita que
+    una columna de Monday vacía tumbe la firma); Elaborado se lee de Monday y
+    cae a Pam si está vacía. Sin filtro de "saltar proveedores con OC vigente":
+    Efraín lo revirtió el 2026-08-10 a propósito, no se reintrodujo.
+  - Folio **global** `OC-n` en D1 (`oc_folios`, una sola fila — a diferencia de
+    costeo/cotización/tallas que son por item): reemplaza el ledger de Google
+    Sheets que contaba TODAS las filas de TODOS los proyectos/proveedores.
+  - Gateado por `OC_NATIVE` (sin definir = cmp-tallas de siempre), wireado en la
+    misma ruta genérica `/api/proyectos/:id/:action` junto a `TALLAS_NATIVE`.
+    `worker/lib/oc.test.ts` (7 tests: agrupación por proveedor, totales,
+    payload de Eledo). Ids de columna verificados contra
+    `shared/column-meta.gen.ts` — `board_relation_mm1cfgv5` (Proveedor) ya
+    estaba probado en producción por la Fase 3. `tsc -b`, `npm test` (216
+    tests) y `npm run lint` limpios.
+  - Con esto quedan nativas 4 de las 7 automatizaciones del plan (costeo,
+    cotización, tallas, OC). Pendientes: Fase 5 (Drive — necesita firmar JWT
+    RS256 del service account de Google desde el Worker con Web Crypto, sin
+    librería `googleapis` disponible en Workers) y Fase 6 (catálogo
+    Airtable↔Monday, integración aparte).
+
 - Feat: "salir de Monday" Fase 3 — "Confirmar tallas" nativo, sin Google Sheet
   - Efraín: "quizás en D1 no necesitamos el Excel, no lo intentes generar" — cambió
     el alcance de esta fase respecto al plan original: en vez de portar el Google

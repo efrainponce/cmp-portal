@@ -21,6 +21,7 @@ import { listVersions, duplicateVersion, restoreVersion, esDraftVigente, recordF
 import { ajustarLinea, AjusteLineaError } from '../lib/lineaAjustes';
 import { listCotizacionVirtual, ajustarLineaVirtual, ProyectoCotizacionError } from '../lib/proyectoCotizacionVirtual';
 import { capturarTallas, reportarTallasIncorrectas, checkOcCliente, confirmTallasNative } from '../lib/proyectoTallas';
+import { generarOcNative } from '../lib/oc';
 import { listEstadoHistorial } from '../lib/estadoProducto';
 import { listProductoResumen, upsertProductoResumen } from '../lib/productoResumen';
 import { duplicateOportunidad, DuplicateOportunidadError } from '../lib/duplicateOportunidad';
@@ -937,13 +938,15 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     };
 
     try {
-      // Fase 3 (plan "salir de Monday", 2026-08-12): mismo gate que COSTEO_NATIVE/
-      // COTIZACION_NATIVE — fallback vivo a cmp-tallas mientras se corre en
-      // paralelo contra Proyectos reales antes de cortar el cable. Solo
-      // "tallas-confirmar" tiene versión nativa por ahora (regenerar/importar/oc
-      // siguen en cmp-tallas).
+      // Fase 3/4 (plan "salir de Monday", 2026-08-12): mismo gate que
+      // COSTEO_NATIVE/COTIZACION_NATIVE — fallback vivo a cmp-tallas mientras se
+      // corre en paralelo contra Proyectos reales antes de cortar el cable.
+      // "tallas-regenerar"/"tallas-importar" siguen en cmp-tallas (dependen del
+      // Sheet, que esta fase retiró — Efraín, 2026-08-12).
       const result = actionKey === 'tallas-confirmar' && c.env.TALLAS_NATIVE === '1'
         ? await confirmTallasNative(c.env, viewer, itemId)
+        : actionKey === 'generar-oc' && c.env.OC_NATIVE === '1'
+        ? await generarOcNative(c.env, viewer, itemId, opts)
         : await action.run(c.env, itemId, opts);
       // cmp-tallas (o el flujo nativo) escribe directo en Monday — refresca el mirror.
       await refetchItemTree(c.env, BOARDS.proyectos.id, itemId);
