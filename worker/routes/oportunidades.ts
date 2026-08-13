@@ -41,6 +41,7 @@ import { canWrite } from '../../shared/visibility';
 import { emitNotification } from '../lib/notify';
 import { createDocument, documentPdf } from '../lib/documents';
 import { generarOcProveedorPdf, OcProveedorPdfError } from '../lib/ocProveedorPdf';
+import { generarCotizacionPreviewPdf, CotizacionPreviewPdfError } from '../lib/cotizacionPreviewPdf';
 import { md5 } from '../lib/canon';
 
 // Acciones de cmp-tallas sobre el Proyecto. Cada una exige que el viewer pueda
@@ -695,6 +696,32 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       });
     } catch (err) {
       if (err instanceof OcProveedorPdfError) return jsonStatus({ error: err.message }, err.status);
+      return jsonStatus({ error: 'internal error' }, 500);
+    }
+  });
+
+  // Cotización — vista previa generada nativa por el portal (2026-08-13), mismo
+  // template visual que la OC a proveedor. SOLO vista previa: no se guarda en
+  // D1, no se firma, no sale de aquí — la cotización oficial para el cliente
+  // sigue generándose en Eledo (docs/documentos-firma.md, Efraín 2026-07-26).
+  app.get('/api/oportunidades/:id/cotizacion-preview/pdf', async c => {
+    const itemId = Number(c.req.param('id'));
+    if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
+    const viewer = c.get('viewer');
+
+    try {
+      const bytes = await generarCotizacionPreviewPdf(c.env, itemId, viewer);
+      return new Response(bytes, {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/pdf',
+          'Content-Length': String(bytes.length),
+          'Content-Disposition': 'inline; filename="cotizacion-vista-previa.pdf"',
+          'Cache-Control': 'private, no-store',
+        },
+      });
+    } catch (err) {
+      if (err instanceof CotizacionPreviewPdfError) return jsonStatus({ error: err.message }, err.status);
       return jsonStatus({ error: 'internal error' }, 500);
     }
   });

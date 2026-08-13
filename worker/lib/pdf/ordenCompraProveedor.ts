@@ -12,12 +12,8 @@
 // nombre precargado, como el PDF de Eledo) para Elaborado/Revisado/Autorizado.
 import type { Block, DocumentMeta } from './layout';
 import { renderDocument } from './layout';
-import { LOGO_JPG_BASE64 } from './logo';
+import { LOGO_JPG_BASE64, CMP_ORANGE } from './logo';
 import { importeEnLetras } from '../importeEnLetras';
-
-// Naranja de marca de CMP — sacado a pixel del logo (banda del escudo), no
-// inventado a ojo.
-const CMP_ORANGE = '#f49e09';
 
 export interface OcProveedorLinea {
   producto: string;

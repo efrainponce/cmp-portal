@@ -4,8 +4,16 @@
 // + su entrada en shared/documents.ts.
 import type { Block, DocumentMeta } from './layout';
 import { renderDocument } from './layout';
+import { CMP_ORANGE, LOGO_JPG_BASE64 } from './logo';
 import { DOC_TEMPLATES, SIGN_INTENT, ATTEST_INTENT, type DocTemplateId } from '../../../shared/documents';
 import { fmtNumMx as NUM } from '../importeEnLetras';
+
+function base64ToBytes(b64: string): Uint8Array {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
 
 /** Línea de producto tal como la lee compras para costear. SIN precios a
  * propósito: eso es justo lo que la solicitud pide que llenen. */
@@ -153,8 +161,13 @@ function solicitudBlocks(d: SolicitudCosteoData): Block[] {
   // Sin columna de precio ni de importe: la solicitud PIDE los precios, no los
   // trae (Efraín, 2026-07-26). Tampoco imágenes: el motor solo embebe JPEG y el
   // catálogo las tiene en PNG; SKU + marca alcanzan para identificar el producto.
+  // wrapTable + naranja de marca — mismo template visual que la OC a Proveedor
+  // (worker/lib/pdf/ordenCompraProveedor.ts, Efraín 2026-08-13: "está genial,
+  // usa ese mismo template"); Producto envuelve a varias líneas en vez de
+  // recortarse con elipsis, igual que ahí.
   blocks.push({
-    kind: 'table',
+    kind: 'wrapTable',
+    wrapCols: [1],
     // La unidad va pegada a la cantidad ("30 Pieza") en vez de en su propia
     // columna: casi siempre dice "Pieza" y ese ancho le hace falta a marca y
     // color, que se recortaban con elipsis (visto en la solicitud de OPP-0717).
@@ -175,6 +188,8 @@ function solicitudBlocks(d: SolicitudCosteoData): Block[] {
       `${NUM(l.cantidad)} ${l.unidad || 'Pieza'}`,
     ]),
     footer: ['', `${d.lineas.length} partida(s)`, '', '', '', NUM(piezas)],
+    headerFill: CMP_ORANGE,
+    headerTextColor: '#ffffff',
   });
 
   // El detalle largo (descripción del catálogo, tallas, embellecimiento) va como
@@ -358,6 +373,9 @@ export function metaOf(input: RenderInput): DocumentMeta {
     // Solo el hash: el pie es de 7pt y una leyenda más larga se recortaría con
     // elipsis justo encima de los últimos dígitos, que son los que sirven.
     footerNote: signed && input.baseSha256 ? `SHA-256 ${input.baseSha256}` : undefined,
+    // Mismo membrete que la OC a Proveedor (worker/lib/pdf/ordenCompraProveedor.ts)
+    // — antes caía al texto "MEXICANA DE PROTECCIÓN" del fallback de layout.ts.
+    logo: base64ToBytes(LOGO_JPG_BASE64),
   };
 }
 

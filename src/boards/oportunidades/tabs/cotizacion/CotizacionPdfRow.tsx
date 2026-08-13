@@ -91,6 +91,61 @@ function PdfThumb({ oppId, kind, available, label, accentColor, onPreview }: {
   );
 }
 
+/** Vista previa de la Cotización armada nativa por el portal (2026-08-13, mismo
+ * template visual que la OC a Proveedor) — SOLO preview dentro del portal, no
+ * reemplaza la cotización oficial que sigue saliendo de Eledo. Se genera al
+ * vuelo desde el mirror, así que siempre está disponible en cuanto hay líneas
+ * de producto (a diferencia de los PdfThumb de al lado, que dependen de un
+ * archivo ya subido a Monday). */
+function CotizacionPreviewThumb({ oppId, hasLineas }: { oppId: string; hasLineas: boolean }) {
+  const [preview, setPreview] = useState(false);
+  const url = `/api/oportunidades/${oppId}/cotizacion-preview/pdf`;
+  return (
+    <div style={{ width: 108 }}>
+      <div style={{
+        font: '600 10px \'Inter\', sans-serif', color: 'var(--accent)', textTransform: 'uppercase',
+        letterSpacing: '.3px', marginBottom: 6,
+      }}>
+        Vista previa
+      </div>
+      {hasLineas ? (
+        <>
+          <div
+            onClick={() => setPreview(true)}
+            title="Genera una vista previa de la cotización con el motor propio del portal — no es la cotización oficial (esa sigue saliendo de Eledo)"
+            style={{
+              cursor: 'pointer', width: 108, height: 92, border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)',
+              background: 'var(--bg-sunken)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <PdfIcon color="var(--accent)" />
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'center', marginTop: 4 }}>
+            <span onClick={() => setPreview(true)} style={{ cursor: 'pointer', font: 'var(--text-caption)', color: 'var(--accent)' }}>Ver</span>
+          </div>
+        </>
+      ) : (
+        <div style={{
+          width: 108, height: 92, border: '1px dashed var(--ink-faint)', borderRadius: 'var(--radius-lg)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: 8,
+        }}>
+          <span style={{ font: 'var(--text-caption)', color: 'var(--ink-faint)' }}>Sin líneas</span>
+        </div>
+      )}
+      {preview && (
+        <Modal title="Cotización — vista previa (portal)" onClose={() => setPreview(false)} width={760}>
+          <Suspense fallback={<div style={{ font: 'var(--text-label)', color: 'var(--ink-quiet)' }}>Generando…</div>}>
+            <PdfCanvasPreview url={url} maxWidth={712} />
+          </Suspense>
+          <a href={url} download style={{ display: 'inline-block', marginTop: 12, font: 'var(--text-label)', color: 'var(--accent)' }}>
+            Descargar
+          </a>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
 /** "Inventario Actual (Imagen)" — mismo cuadro que los PdfThumb de al lado,
  * pero es un upload real (Compras/admin, `w: WAC` en shared/visibility.ts):
  * el cuadro vacío ES el dropzone; con archivo ya subido, se ve como link
@@ -171,8 +226,11 @@ function InventarioThumb({ oppId, item, onUploaded }: { oppId: string; item: Ite
 
 /** Solicitud de costeo, y cotización sin firmar / firmada por el vendedor, lado a lado
  * + Inventario (Efraín, 2026-08-10). */
-export function CotizacionPdfRow({ oppId, item, hasSolicitud, hasSinFirmar, hasFirmada, onInventarioUploaded }: {
+export function CotizacionPdfRow({ oppId, item, hasSolicitud, hasSinFirmar, hasFirmada, hasLineas = false, onInventarioUploaded }: {
   oppId?: string; item?: ItemDetailDTO; hasSolicitud: boolean; hasSinFirmar: boolean; hasFirmada: boolean;
+  /** true si la oportunidad ya tiene líneas de producto — habilita "Vista previa"
+   * (portal), que no depende de ningún archivo subido a Monday. */
+  hasLineas?: boolean;
   onInventarioUploaded?: () => void;
 }) {
   const me = useMe();
@@ -206,13 +264,14 @@ export function CotizacionPdfRow({ oppId, item, hasSolicitud, hasSinFirmar, hasF
     return () => { cancelled = true; };
   }, [oppId, hasSolicitud, hasSinFirmar, hasFirmada]);
 
-  if (!oppId || (!hasSolicitud && !hasSinFirmar && !hasFirmada && !showInventario)) return null;
+  if (!oppId || (!hasSolicitud && !hasSinFirmar && !hasFirmada && !hasLineas && !showInventario)) return null;
   return (
     <>
       <div style={{ display: 'flex', gap: 16, marginBottom: 16 }}>
         <PdfThumb oppId={oppId} kind="solicitud_costeo" available={hasSolicitud} label="Costeo" accentColor="var(--status-en-coste)" onPreview={() => setPreview('solicitud_costeo')} />
         <PdfThumb oppId={oppId} kind="sin_firmar" available={hasSinFirmar} label="Sin firmar" accentColor="var(--status-esperando)" onPreview={() => setPreview('sin_firmar')} />
         <PdfThumb oppId={oppId} kind="firmada" available={hasFirmada} label="Firmada" accentColor="var(--status-ganada)" onPreview={() => setPreview('firmada')} />
+        <CotizacionPreviewThumb oppId={oppId} hasLineas={hasLineas} />
         {showInventario && item && <InventarioThumb oppId={oppId} item={item} onUploaded={onInventarioUploaded} />}
       </div>
       {preview && (

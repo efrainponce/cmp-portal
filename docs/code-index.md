@@ -54,6 +54,7 @@ y `src/lib/estadoProductoBuckets.ts`.
 - [worker/lib/costoDivergencia.ts](worker/lib/costoDivergencia.ts) — Compara el Costo Distribuidor del catálogo entre SKU anterior/nuevo al ajustar una línea y avisa a Compras si diverge más del 10%, sin bloquear. Exports: computeDivergencia, checkCostoDivergente.
 - [worker/lib/cotizacion.ts](worker/lib/cotizacion.ts) — "Generar Cotización" nativo (Fase 2): arma líneas del mirror, genera PDFs vía Eledo, sube a Monday/Drive y pide firma DocuSeal. Exports: CotizacionError, ProductLine, buildProductLines, computeTotals, buildEledoFile, GenerarCotizacionResult, generarCotizacionNative.
 - [worker/lib/cotizacionPdfs.ts](worker/lib/cotizacionPdfs.ts) — Resuelve PDFs de cotización (solicitud, sin firmar, firmada) de columnas Oportunidades. Exports: CotizacionPdfError, PdfKind, resolveCotizacionPdfUrl.
+- [worker/lib/cotizacionPreviewPdf.ts](worker/lib/cotizacionPreviewPdf.ts) — Arma los datos de la Cotización vista previa (portal) desde las líneas vigentes de la Oportunidad; solo lectura, no reemplaza la cotización oficial de Eledo. Exports: CotizacionPreviewPdfError, generarCotizacionPreviewPdf.
 - [worker/lib/createOportunidad.ts](worker/lib/createOportunidad.ts) — Crear Oportunidad + subitems de línea de producto. Exports: OportunidadError, LineaInput, OportunidadInput, OportunidadResult.
 - [worker/lib/createRecord.ts](worker/lib/createRecord.ts) — Creación síncrona de item genérico (no outbox, sin echo necesario). Exports: CreateError, submitCreate.
 - [worker/lib/dal.ts](worker/lib/dal.ts) — All reads scoped by viewer; handlers no pueden bypassear estos predicados. El scope de LECTURA incluye la zona que el viewer lidera; el de escritura ('own') nunca. Exports: ScopeMode, ownerIdsFor, leadsOthers, scopeFor, childSlugOf, listItems, getItem, ownsItem, childrenOf.
@@ -84,8 +85,9 @@ y `src/lib/estadoProductoBuckets.ts`.
 - [worker/lib/documents.ts](worker/lib/documents.ts) — Documentos del portal: crea/lista/firma sobre D1+R2, snapshot de datos y portón de integridad SHA-256. Exports: createDocument, listDocuments, documentPdf, signDocument, DocumentError.
 - [worker/lib/pdf/writer.ts](worker/lib/pdf/writer.ts) — Escritor de PDF sin dependencias (Helvetica, líneas, rects, JPEG; texto en WinAnsi octal). Exports: PdfWriter, widthOf, pdfString, jpegInfo, LETTER.
 - [worker/lib/pdf/layout.ts](worker/lib/pdf/layout.ts) — Bloques → páginas: encabezado/pie, tablas paginadas, cajas de firma. Exports: renderDocument, wrapText, Block, DocumentMeta.
-- [worker/lib/pdf/logo.ts](worker/lib/pdf/logo.ts) — Logo de CMP embebido en base64 (JPEG) para no depender de un fetch a assets al generar PDFs. Exports: LOGO_JPG_BASE64.
-- [worker/lib/pdf/ordenCompraProveedor.ts](worker/lib/pdf/ordenCompraProveedor.ts) — Plantilla nativa de la Orden de Compra a Proveedor que reemplaza el PDF de Eledo (perdía columnas con descripciones largas). Exports: OcProveedorLinea, OcProveedorPdfInput, buildOrdenCompraProveedorPdf.
+- [worker/lib/pdf/logo.ts](worker/lib/pdf/logo.ts) — Logo de CMP embebido en base64 (JPEG) para no depender de un fetch a assets al generar PDFs; también expone CMP_ORANGE (naranja de marca, header de tabla). Exports: LOGO_JPG_BASE64, CMP_ORANGE.
+- [worker/lib/pdf/ordenCompraProveedor.ts](worker/lib/pdf/ordenCompraProveedor.ts) — Plantilla nativa de la Orden de Compra a Proveedor que reemplaza el PDF de Eledo (perdía columnas con descripciones largas); template de referencia que copian solicitud-costeo y cotizacionPreview. Exports: OcProveedorLinea, OcProveedorPdfInput, buildOrdenCompraProveedorPdf.
+- [worker/lib/pdf/cotizacionPreview.ts](worker/lib/pdf/cotizacionPreview.ts) — Cotización vista previa (SOLO dentro del portal, no reemplaza la oficial de Eledo): mismo template visual que la OC a Proveedor. Exports: CotizacionPreviewLinea, CotizacionPreviewInput, buildCotizacionPreviewPdf.
 - [worker/lib/pdf/templates.ts](worker/lib/pdf/templates.ts) — Las 3 plantillas (resumen de oportunidad, remisión, constancia de firma) como funciones puras. Exports: renderTemplate, buildBlocks, titleOf, DocData, RenderedSignature.
 - [worker/lib/portalFiles.ts](worker/lib/portalFiles.ts) — Resuelve un key de /api/files → assetId/bytes (R2 con fallback a Monday), mapa key→columna. Exports: readPortalFile, resolveMondayAsset, normalizeFileKey, OPP_FILE_COLS.
 - [worker/lib/r2.ts](worker/lib/r2.ts) — Helpers mínimos sobre binding FILES (bucket R2 para documentos). Exports: oportunidadFileKey, putFile.
@@ -196,7 +198,7 @@ y `src/lib/estadoProductoBuckets.ts`.
 - [src/components/core/Button.tsx](src/components/core/Button.tsx) — Botón con variantes. Exports: Button.
 - [src/components/core/ConfirmButton.tsx](src/components/core/ConfirmButton.tsx) — Botón confirmación 2-paso. Exports: ConfirmButton.
 - [src/components/core/Modal.tsx](src/components/core/Modal.tsx) — Diálogo centrado (no fullscreen como OpportunityDrawer). Exports: Modal.
-- [src/components/core/PdfCanvasPreview.tsx](src/components/core/PdfCanvasPreview.tsx) — Renderiza PDF a canvas con pdfjs. Exports: warmPdfWorker, PdfCanvasPreview.
+- [src/components/core/PdfCanvasPreview.tsx](src/components/core/PdfCanvasPreview.tsx) — Renderiza TODAS las páginas de un PDF a canvas con pdfjs, una debajo de otra. Exports: warmPdfWorker, PdfCanvasPreview.
 - [src/components/core/PersonAvatar.tsx](src/components/core/PersonAvatar.tsx) — Avatar circular de iniciales. Exports: PersonAvatar, PersonPair.
 - [src/components/documents/DocumentsPanel.tsx](src/components/documents/DocumentsPanel.tsx) — Panel reusable por fuente: genera, lista y firma documentos del portal. Exports: DocumentsPanel.
 - [src/components/documents/SignDocumentModal.tsx](src/components/documents/SignDocumentModal.tsx) — Modal de firma: previsualiza el PDF, captura el trazo, consentimiento + huella. Exports: SignDocumentModal.
@@ -269,7 +271,7 @@ Antes un solo archivo (`ProyectoSection.tsx`, 1196 líneas) — dividido 2026-08
 ### src/boards/oportunidades/tabs/cotizacion/
 
 - [src/boards/oportunidades/tabs/cotizacion/ColumnVisibilityPicker.tsx](src/boards/oportunidades/tabs/cotizacion/ColumnVisibilityPicker.tsx) — Herramienta Columnas: mostrar/ocultar por rol. Exports: ColumnVisibilityPicker.
-- [src/boards/oportunidades/tabs/cotizacion/CotizacionPdfRow.tsx](src/boards/oportunidades/tabs/cotizacion/CotizacionPdfRow.tsx) — Thumbnails + preview PDF cotizaciones (solicitud, sin firmar, firmada). Exports: CotizacionPdfRow.
+- [src/boards/oportunidades/tabs/cotizacion/CotizacionPdfRow.tsx](src/boards/oportunidades/tabs/cotizacion/CotizacionPdfRow.tsx) — Thumbnails + preview PDF cotizaciones (solicitud, sin firmar, firmada) + vista previa nativa del portal. Exports: CotizacionPdfRow.
 - [src/boards/oportunidades/tabs/cotizacion/LineDetailPanel.tsx](src/boards/oportunidades/tabs/cotizacion/LineDetailPanel.tsx) — Panel expandible con ficha completa de línea. Exports: LineDetailPanel.
 - [src/boards/oportunidades/tabs/cotizacion/MobileQuoteRow.tsx](src/boards/oportunidades/tabs/cotizacion/MobileQuoteRow.tsx) — Card de línea mobile (mismo estado/edición que fila desktop, gemela de QuoteRow). Exports: MobileQuoteRow.
 - [src/boards/oportunidades/tabs/cotizacion/QuoteRow.tsx](src/boards/oportunidades/tabs/cotizacion/QuoteRow.tsx) — Fila de línea desktop, memoizada (gemela de MobileQuoteRow). Exports: QuoteRowProps (y el componente memoizado).

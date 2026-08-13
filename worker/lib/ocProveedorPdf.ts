@@ -5,11 +5,11 @@
 // a Monday, a diferencia de generateOC (worker/lib/automations.ts), que sigue
 // siendo el flujo "oficial" (folio + firmas) mientras este se prueba en
 // paralelo (Efraín, 2026-08-13).
-import type { Env } from './env';
-import type { Identity } from '../shared/types';
+import type { Env } from '../env';
+import type { Identity } from '../../shared/types';
 import { getItem, childrenOf } from './dal';
 import { toItemDTO } from './serialize';
-import type { ItemDTO } from '../shared/dto';
+import type { ItemDTO } from '../../shared/dto';
 import { buildOrdenCompraProveedorPdf, type OcProveedorLinea } from './pdf/ordenCompraProveedor';
 
 export class OcProveedorPdfError extends Error {

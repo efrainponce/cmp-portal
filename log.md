@@ -2,6 +2,58 @@
 
 ## 2026-08-13
 
+- Feat: Solicitud de costeo y Cotización (vista previa) usan el template de la
+  OC a Proveedor + fix de PDFs multipágina que solo mostraban la página 1
+  - Efraín: el PDF de la OC a Proveedor (`worker/lib/pdf/ordenCompraProveedor.ts`,
+    naranja de marca en el header de tabla, membrete, desglose Subtotal/IVA/Total)
+    "está genial, usa ese mismo template" — pidió lo mismo para Solicitud de
+    costeo y para una vista previa de Cotización (aclaró que esta última es
+    SOLO vista previa dentro del portal, la cotización oficial al cliente
+    sigue saliendo de Eledo).
+  - `CMP_ORANGE` se movió de `ordenCompraProveedor.ts` a `worker/lib/pdf/logo.ts`
+    (junto al logo) para que las plantillas nuevas lo reutilicen sin duplicar
+    el literal. `solicitudBlocks` (`worker/lib/pdf/templates.ts`) ahora usa
+    `wrapTable` con el header naranja en vez de la tabla gris genérica, y las
+    3 plantillas de `documents.ts` (solicitud/remisión/constancia) ganan el
+    membrete real (antes caían al texto "MEXICANA DE PROTECCIÓN" — el `meta`
+    nunca mandaba `logo`).
+  - Cotización vista previa es nueva y nativa, mismo patrón que la OC a
+    Proveedor: `worker/lib/pdf/cotizacionPreview.ts` (bloques puros) +
+    `worker/lib/cotizacionPreviewPdf.ts` (arma los datos desde las líneas
+    vigentes de la Oportunidad — el mirror siempre es la vigente, ver
+    `quoteVersions.ts`) + `GET /api/oportunidades/:id/cotizacion-preview/pdf`.
+    No pasa por `documents.ts` (D1) — se genera al vuelo y se descarta al
+    cerrar el preview, igual que `oc-nativa/:proveedorId/pdf`. Botón "Vista
+    previa" nuevo en `CotizacionPdfRow.tsx`, junto a los thumbnails de Costeo/
+    Sin firmar/Firmada.
+  - Fix reportado aparte: el modal de preview de PDF (`PdfCanvasPreview.tsx`)
+    solo renderizaba `getPage(1)` — con cualquier PDF de más de una página
+    (la mayoría de las OC/cotizaciones con varias líneas) solo se veía la
+    primera. Ahora itera `doc.numPages` y apila un `<canvas>` por página
+    dentro de un contenedor (antes un solo `<canvas>` fijo).
+  - De paso: `worker/lib/ocProveedorPdf.ts` tenía imports rotos desde su
+    commit original (`../shared/types`/`./env` en vez de `../../shared/types`/
+    `../env` — `worker/shared/` no existe) que rompían `tsc --noEmit` sobre
+    `tsconfig.worker.json`; se corrigió al tocar el archivo hermano
+    (`cotizacionPreviewPdf.ts` copia el mismo patrón). No se tocaron los otros
+    2 errores preexistentes de `tsc` (`admin.ts`, `boards.ts`) — no relacionados
+    con este trabajo.
+  - Verificado generando ambos PDFs con datos de prueba y renderizando con
+    `qlmanage -t` (motor de PDF real de macOS) para revisar el layout a ojo;
+    conteo de páginas de un PDF de prueba de 5 páginas confirmado con
+    `pdfjs-dist` en Node (antes del fix del preview solo se habría visto 1).
+  - `npx tsc --noEmit` (3 tsconfigs) y `npm run lint` limpios. Un test de
+    `writer.test.ts` empezó a fallar tras agregarle el membrete a la solicitud
+    de costeo: la aserción "el PDF no debe traer ningún `$`" decodificaba el
+    archivo completo, incluido el JPEG binario del logo, y sus bytes
+    coincidían por azar con el patrón — se ajustó el test para excluir el
+    stream de la imagen antes de decodificar texto, no para debilitar la
+    aserción real.
+  - Nota de concurrencia: había otra sesión con cambios sueltos sin commitear
+    en archivos que este trabajo también tocó (`worker/routes/oportunidades.ts`
+    principalmente, feature de Tallas/Género M/F) — se aislaron los hunks
+    propios y se dejó el resto del working tree intacto.
+
 - Feat: Tallas del catálogo se sincronizan Portal→Airtable ("Tallas Portal") +
   checkbox "Género M/F"
   - Efraín reportó que Compras corrige "Tallas" (text_mm5v6jhj, catálogo

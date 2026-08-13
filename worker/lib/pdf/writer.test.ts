@@ -9,6 +9,14 @@ import { renderTemplate, formatTallas, formatMultiline } from './templates';
 
 const decode = (bytes: Uint8Array): string => new TextDecoder('latin1').decode(bytes);
 
+// Todas las plantillas ahora traen el membrete (JPEG embebido, worker/lib/
+// pdf/logo.ts) — sus ~15KB de bytes binarios pueden coincidir por azar con
+// cualquier patrón corto, así que las aserciones de "esto NO debe aparecer en
+// el texto impreso" tienen que decodificar solo el contenido de página, no el
+// stream de la imagen.
+const decodeTextOnly = (bytes: Uint8Array): string =>
+  decode(bytes).replace(/<< \/Type \/XObject[\s\S]*?stream\r?\n[\s\S]*?endstream/g, '');
+
 describe('pdfString', () => {
   it('escapa paréntesis y backslash', () => {
     expect(pdfString('a(b)c\\d')).toBe('(a\\(b\\)c\\\\d)');
@@ -167,7 +175,7 @@ describe('renderTemplate', () => {
         ],
       },
     });
-    const text = decode(bytes);
+    const text = decodeTextOnly(bytes);
     expect(text).toContain('Uniformes Hospital General');
     expect(text).toContain('PRODUCTOS POR COSTEAR');
     expect(text).toContain('FIL-001');
