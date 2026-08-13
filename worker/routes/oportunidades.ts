@@ -16,6 +16,7 @@ import {
   AutomationError,
 } from '../lib/automations';
 import { enviarACosteo, enviarAValidacion, checkCosteo, checkValidacion, CosteoError } from '../lib/costeo';
+import { generarCotizacionNative, CotizacionError } from '../lib/cotizacion';
 import { listVersions, duplicateVersion, restoreVersion, esDraftVigente, recordFirstVersion, QuoteVersionError } from '../lib/quoteVersions';
 import { ajustarLinea, AjusteLineaError } from '../lib/lineaAjustes';
 import { listCotizacionVirtual, ajustarLineaVirtual, ProyectoCotizacionError } from '../lib/proyectoCotizacionVirtual';
@@ -290,14 +291,21 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     if (!row) return c.json({ error: 'not found' }, 404);
 
     try {
-      const result = await generateCotizacion(c.env, itemId);
+      // Fase 2 (plan "salir de Monday", 2026-08-12): mismo gate que COSTEO_NATIVE —
+      // fallback vivo a cmp-tallas mientras se corre en paralelo contra
+      // oportunidades reales y se compara el resultado antes de cortar el cable.
+      const result = c.env.COTIZACION_NATIVE === '1'
+        ? await generarCotizacionNative(c.env, itemId, viewer)
+        : await generateCotizacion(c.env, itemId);
       if (result.ok) {
-        await recordFirstVersion(c.env, itemId, viewer, typeof result.folio_cotizacion === 'string' ? result.folio_cotizacion : undefined, Number(result.total ?? 0));
+        const folio = 'folio' in result ? result.folio : (result as { folio_cotizacion?: unknown }).folio_cotizacion;
+        await recordFirstVersion(c.env, itemId, viewer, typeof folio === 'string' ? folio : undefined, Number(result.total ?? 0));
       }
       await refetchItem(c.env, BOARDS.oportunidades.id, itemId);
       return c.json(result);
     } catch (err) {
       if (err instanceof AutomationError) return jsonStatus({ ok: false, reason: err.message }, err.status);
+      if (err instanceof CotizacionError) return jsonStatus({ ok: false, reason: err.message }, err.status);
       return jsonStatus({ ok: false, reason: 'internal error' }, 500);
     }
   });

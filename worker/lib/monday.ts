@@ -282,6 +282,26 @@ export async function fetchUsers(env: Env): Promise<MondayUser[]> {
   return data?.users ?? [];
 }
 
+/** Un usuario puntual por id (DocuSeal necesita su email para armar el
+ * submitter) — sin pagear fetchUsers' página completa de 200 solo para
+ * resolver a uno. `null` si el id no existe o no trae email. */
+export async function fetchUserById(env: Env, userId: number): Promise<{ id: string; name: string; email: string } | null> {
+  const query = `query($ids:[ID!]!){ users(ids:$ids){ id name email } }`;
+  const data = await gql(env, query, { ids: [String(userId)] });
+  const user = data?.users?.[0];
+  return user?.email ? { id: String(user.id), name: user.name, email: user.email } : null;
+}
+
+/** Notificación NATIVA de Monday (la campanita) sobre un item — a diferencia de
+ * createUpdate (comentario visible), esta es privada para `userId`. Usada por
+ * flujos que necesitan avisarle a alguien aunque no abra el portal (p.ej.
+ * "ningún producto tiene precio" en worker/lib/cotizacion.ts). Best-effort por
+ * convención del caller — esta función sí propaga el error. */
+export async function createNotification(env: Env, userId: number, targetItemId: number, text: string): Promise<void> {
+  const query = `mutation($userId:ID!,$targetId:ID!,$text:String!){ create_notification(user_id:$userId,target_id:$targetId,text:$text,target_type:Project){ text } }`;
+  await gql(env, query, { userId: String(userId), targetId: String(targetItemId), text });
+}
+
 /** Single item by id (used by refetchItem — webhook/refresh never trust the payload). */
 export async function fetchItem(env: Env, itemId: number): Promise<MondayItem | null> {
   const query = `query($id:[ID!]){ items(ids:$id){ ${ITEM_FIELDS} } }`;

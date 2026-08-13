@@ -2,6 +2,40 @@
 
 ## 2026-08-12
 
+- Feat: "salir de Monday" Fase 2 — cotización nativa (Eledo/DocuSeal directo)
+  - Efraín agregó `ELEDO_API_KEY`/`DOCUSEAL_API_KEY`/`AIRTABLE_API_KEY` (+ service
+    account de Google, para fases futuras) a `.env`; los copié a `.dev.vars` (nunca
+    se usa `.env` con wrangler — regla dura del repo) y verifiqué los 3 en vivo
+    contra las APIs reales ANTES de construir encima: Airtable (auth + shape exacto
+    de `Imagen producto`/`thumbnails.full.url` contra un record real), Eledo (un
+    render real con el template de cotización — `69a0eb3d6345ea9ffcaf7e62` — devolvió
+    un PDF válido), DocuSeal (auth de solo lectura, sin crear ninguna submission).
+  - Reimplementé `api/generate_cotizacion.py` 1:1 en `worker/lib/cotizacion.ts`:
+    arma las líneas desde subitems en vivo (salta "Embellecimiento"), resuelve el
+    vendedor (nombre+email) vía Monday, imagen de producto vía Airtable
+    (degradación silenciosa si falla), totales (IVA 16%), folio propio en D1
+    (`cotizacion_folios`, mismo patrón que `costeo_folios` — reemplaza el ledger de
+    Google Sheets), PDF con/sin precio vía Eledo directo (`worker/lib/eledo.ts`),
+    sube ambos a Monday, DocuSeal SOLO para la versión con precio (firma del
+    vendedor), stage→"Cotización"+grupo, update de auditoría (sin total ni link,
+    mismo criterio de privacidad que cmp-tallas). Casos "skip" preservados: sin
+    líneas de producto, o ninguna con precio (notifica a compras vía Monday
+    nativo — `create_notification`, nueva primitiva en `monday.ts` junto con
+    `fetchUserById`).
+  - `worker/lib/importeEnLetras.ts`: puerto EXACTO del conversor número→letras en
+    español de cmp-tallas (para "TotalPalabras" de la plantilla Eledo) — 28 casos de
+    test generados corriendo el Python REAL como referencia (no inventados),
+    incluida su rareza gramatical a propósito ("UN PESOS", no "UN PESO").
+  - Gateado por `COTIZACION_NATIVE` (sin definir = cmp-tallas de siempre), mismo
+    criterio de fallback vivo que Fase 1. El camino de escritura (subir PDF a
+    Monday + crear la submission real de DocuSeal, que le manda correo de firma a
+    un vendedor real) se dejó sin probar en vivo a propósito — verificar eso ya
+    implica un efecto real sobre una persona real; queda para cuando Efraín elija
+    una oportunidad de prueba y encienda el flag.
+  - Nuevos tests: `worker/lib/cotizacion.test.ts` (líneas desde subitems, totales,
+    payload de Eledo con/sin precio) y `worker/lib/importeEnLetras.test.ts`.
+    `tsc -b`, `npm test` (202 tests) y `npm run lint` limpios.
+
 - Feat: "salir de Monday" Fase 0 — cimientos (Eledo/DocuSeal/Airtable)
   - Clientes delgados, mismo estilo que `worker/lib/automations.ts`, para que las
     fases siguientes del plan (cotización/OC) llamen a Eledo y DocuSeal DIRECTO en

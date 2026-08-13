@@ -15,9 +15,12 @@ export interface Env {
   // corre en paralelo contra oportunidades reales y se compara el resultado. Sin
   // definir o distinto de '1' = comportamiento de siempre (cmp-tallas).
   COSTEO_NATIVE?: string;
+  // Fase 2 (2026-08-12): '1' prende worker/lib/cotizacion.ts (Eledo+DocuSeal
+  // directo) en vez de cmp-tallas' /api/generate_cotizacion. Mismo criterio de
+  // fallback vivo que COSTEO_NATIVE.
+  COTIZACION_NATIVE?: string;
   // Fase 0 (cimientos, 2026-08-12) — clientes delgados para las fases siguientes
-  // (cotización/OC vía Eledo+DocuSeal, imagen de producto vía Airtable). Ninguno
-  // tiene valor todavía en ningún ambiente: hacen falta antes de encender Fase 2+.
+  // (cotización/OC vía Eledo+DocuSeal, imagen de producto vía Airtable).
   ELEDO_API_KEY?: string;         // worker/lib/eledo.ts
   DOCUSEAL_API_KEY?: string;      // worker/lib/docuseal.ts
   AIRTABLE_API_KEY?: string;      // worker/lib/airtable.ts

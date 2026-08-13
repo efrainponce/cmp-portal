@@ -424,3 +424,11 @@ CREATE TABLE IF NOT EXISTS costeo_folios (
   item_id  INTEGER PRIMARY KEY,     -- oportunidades item id
   seq      INTEGER NOT NULL DEFAULT 0
 );
+
+-- Folio de la cotización nativa (Fase 2, plan "salir de Monday", 2026-08-12,
+-- worker/lib/cotizacion.ts nextCotizacionSeq). Mismo patrón que costeo_folios:
+-- reemplaza el ledger de Google Sheets de cmp-tallas. Lazy en runtime.
+CREATE TABLE IF NOT EXISTS cotizacion_folios (
+  item_id  INTEGER PRIMARY KEY,     -- oportunidades item id
+  seq      INTEGER NOT NULL DEFAULT 0
+);
