@@ -4,16 +4,22 @@
 // Botones espejo de los de Monday, gated por rol; las tallas importadas se
 // muestran desde el mirror (proyectos_sub) — el objetivo es que dejen de vivir
 // solo en el Excel.
-import { useCallback, useEffect, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { getProyecto, proyectoAction, type ItemDetailDTO, type ItemDTO, type ProyectoAction, type EstadoHistorialEntryDTO } from '../../lib/api';
 import { patchItem, reportarTallasIncorrectas, getEstadoHistorial, getProductoResumen, patchProductoResumen, getCotizacionVirtual, type QuoteLineSnapshot } from '../../lib/apiClient';
 import { useMe } from '../../lib/useMe';
 import { ConfirmButton } from '../../components/core/ConfirmButton';
 import { Button } from '../../components/core/Button';
 import { MonoTag, StatusBadge } from '../../components/core/Badges';
+import { Modal } from '../../components/core/Modal';
 import { fmtMoney } from '../../lib/format';
 import { ProgressBattery } from '../../components/board/ProgressBattery';
 import { batteryFromSubitems, ESTADO_PRODUCTO_ORDER } from '../../lib/estadoProductoBuckets';
+import { PdfIcon } from './tabs/cotizacion/CotizacionPdfRow';
+
+const PdfCanvasPreview = lazy(() =>
+  import('../../components/core/PdfCanvasPreview').then((m) => ({ default: m.PdfCanvasPreview })),
+);
 
 // Proyectos (18395657594)
 export const P_SHEET_LINK = 'link_mm1amwz8';     // Google Sheet de tallas
@@ -554,6 +560,7 @@ interface ProveedorGroup {
   key: string;
   proveedorId: string | null;
   nombre: string;
+  nombreItem: string;
   correo: string;
   lineas: ItemDTO[];
 }
@@ -571,6 +578,7 @@ function groupByProveedor(lineas: ItemDTO[]): ProveedorGroup[] {
         key,
         proveedorId: id != null ? String(id) : null,
         nombre: l.cols[S_PROVEEDOR_RAZON]?.text || l.cols[S_PROVEEDOR]?.text || 'Sin proveedor asignado',
+        nombreItem: l.cols[S_PROVEEDOR]?.text || '',
         correo: l.cols[S_PROVEEDOR_CORREO]?.text || '',
         lineas: [],
       });
@@ -579,6 +587,30 @@ function groupByProveedor(lineas: ItemDTO[]): ProveedorGroup[] {
   }
   return [...groups.values()].sort((a, b) =>
     a.key === 'sin-proveedor' ? 1 : b.key === 'sin-proveedor' ? -1 : a.nombre.localeCompare(b.nombre));
+}
+
+function normalizeProveedorNombre(s: string): string {
+  return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+}
+
+/** Empareja el PDF de OC más reciente de un proveedor por nombre de archivo:
+ * cmp-tallas los sube a file_mm0hj9pn como `OC_<folio>_<nombre proveedor>.pdf`
+ * (ej. `OC_OC-125_ABRAHAM FARID GORDILLO KANAN.pdf` — confirmado contra datos
+ * reales el 2026-08-12; el patrón `orden_compra_<nombre>.pdf` de la versión
+ * anterior nunca hizo match con nada, así que ninguna miniatura aparecía — sin
+ * id explícito que ligue el archivo al proveedor). Se prueban nombre e item
+ * crudo como candidatos porque `ProveedorGroup.nombre` prioriza la razón
+ * social, que puede no ser el texto que cmp-tallas usó. El arreglo conserva
+ * orden de subida, así que el último match es el más reciente. */
+function findLatestOcFile(files: { url: string; name: string }[], candidatos: string[]): { url: string; name: string } | undefined {
+  const wanted = candidatos.filter(Boolean).map(normalizeProveedorNombre);
+  if (wanted.length === 0) return undefined;
+  let latest: { url: string; name: string } | undefined;
+  for (const f of files) {
+    const m = /^OC_[^_]+_(.+)\.pdf$/i.exec(f.name);
+    if (m && wanted.includes(normalizeProveedorNombre(m[1]))) latest = f;
+  }
+  return latest;
 }
 
 const PROVEEDOR_GRID_TEMPLATE = '1.6fr 0.9fr 0.8fr 0.7fr 0.6fr 1.1fr 0.7fr 1.5fr 1fr';
@@ -598,7 +630,7 @@ function ProveedorLineaRow({ l }: { l: ItemDTO }) {
   const cellStyle = { font: 'var(--text-label)', color: 'var(--ink-secondary)' } as const;
   return (
     <div style={{ display: 'grid', gridTemplateColumns: PROVEEDOR_GRID_TEMPLATE, gap: 8, padding: '8px 12px', borderTop: '1px solid var(--border-subtle)', alignItems: 'center' }}>
-      <div style={{ ...cellStyle, color: 'var(--ink)' }}>{l.cols[S_PRODUCTO]?.text || l.name}</div>
+      <div style={{ ...cellStyle, color: 'var(--ink)', minWidth: 0, overflowWrap: 'anywhere' }}>{l.cols[S_PRODUCTO]?.text || l.name}</div>
       <div style={cellStyle}>{l.cols[S_SKU]?.text || '—'}</div>
       <div style={cellStyle}>{l.cols[S_COLOR]?.text || '—'}</div>
       <div style={cellStyle}>{l.cols[S_TALLA]?.text || '—'}</div>
@@ -614,20 +646,86 @@ function ProveedorLineaRow({ l }: { l: ItemDTO }) {
 }
 
 const CARD_INPUT_STYLE = {
-  font: 'var(--text-label)', padding: '5px 8px', borderRadius: 'var(--radius-md)',
+  // Padding vertical (8) + borde (1+1) = 18, para igualar la altura del botón
+  // "Generar OC" (Button primario: padding 9 vertical, sin borde = 18 también).
+  font: 'var(--text-label)', padding: '8px', borderRadius: 'var(--radius-md)',
   border: '1px solid var(--border)', minWidth: 160,
 } as const;
+
+/** Miniatura de la última OC (PDF) generada para este proveedor, junto a su
+ * nombre en la tarjeta — antes solo vivían en el listado plano al fondo de la
+ * pestaña (Efraín, 2026-08-13: "que no estén hasta abajo"). Clic abre el
+ * mismo preview embebido que CotizacionPdfRow (pdf.js, sin depender del link
+ * firmado crudo de Monday). Sin match, no se renderiza nada. */
+function OcThumb({ file }: { file: { url: string; name: string } | undefined }) {
+  const [preview, setPreview] = useState(false);
+  if (!file) return null;
+  return (
+    <>
+      <div
+        onClick={() => setPreview(true)}
+        title="Ver última OC generada de este proveedor"
+        style={{
+          cursor: 'pointer', width: 48, height: 48, borderRadius: 'var(--radius-lg)',
+          border: '1px solid var(--border)', background: 'var(--bg-sunken)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+        }}
+      >
+        <PdfIcon color="var(--accent)" size={26} />
+      </div>
+      {preview && (
+        <Modal title="Orden de compra" onClose={() => setPreview(false)} width={760}>
+          <Suspense fallback={<div style={{ font: 'var(--text-label)', color: 'var(--ink-quiet)' }}>Cargando…</div>}>
+            <PdfCanvasPreview url={file.url} maxWidth={712} />
+          </Suspense>
+          <a href={file.url} download style={{ display: 'inline-block', marginTop: 12, font: 'var(--text-label)', color: 'var(--accent)' }}>
+            Descargar
+          </a>
+        </Modal>
+      )}
+    </>
+  );
+}
+
+/** Botón "Ver OC (portal)" — arma el PDF al vuelo en el Worker
+ * (worker/lib/ocProveedorPdf.ts) en vez de disparar Eledo/cmp-tallas. v1 a
+ * propósito simple (Efraín, 2026-08-13): solo genera/muestra, sin folio propio
+ * ni firma electrónica — conviven los dos botones mientras se prueba. */
+function NativeOcButton({ proyectoId, proveedorId }: { proyectoId: string; proveedorId: string | null }) {
+  const [preview, setPreview] = useState(false);
+  if (!proveedorId) return null;
+  const url = `/api/proyectos/${proyectoId}/oc-nativa/${proveedorId}/pdf`;
+  return (
+    <>
+      <button type="button" onClick={() => setPreview(true)} style={CARD_INPUT_STYLE} title="Genera la OC de este proveedor con el motor propio del portal (con Precio/Cantidad/Subtotal correctos)">
+        Ver OC (portal)
+      </button>
+      {preview && (
+        <Modal title="Orden de compra — portal" onClose={() => setPreview(false)} width={760}>
+          <Suspense fallback={<div style={{ font: 'var(--text-label)', color: 'var(--ink-quiet)' }}>Generando…</div>}>
+            <PdfCanvasPreview url={url} maxWidth={712} />
+          </Suspense>
+          <a href={url} download style={{ display: 'inline-block', marginTop: 12, font: 'var(--text-label)', color: 'var(--accent)' }}>
+            Descargar
+          </a>
+        </Modal>
+      )}
+    </>
+  );
+}
 
 /** Tarjeta de un proveedor: sus líneas + botón "Generar OC" acotado a él
  * (only_proveedor) — resultado local con el mismo contrato que ProyectoActionBar.
  * Método/Condiciones de pago son overrides SOLO de esta OC (WhatsApp 2026-08-04:
  * antes el default del Proyecto se aplicaba igual a todos los proveedores) —
  * prellenados con el default, no se guardan de vuelta a Monday. */
-function ProveedorCard({ group, proyecto, reload }: { group: ProveedorGroup; proyecto: ItemDetailDTO; reload: () => void }) {
+function ProveedorCard({ group, proyecto, oppId, reload }: { group: ProveedorGroup; proyecto: ItemDetailDTO; oppId: string | null; reload: () => void }) {
   const [outcome, setOutcome] = useState<ActionOutcome | null>(null);
   const [metodoPago, setMetodoPago] = useState(proyecto.cols[P_METODO_PAGO]?.text ?? '');
   const [condPago, setCondPago] = useState(proyecto.cols[P_COND_PAGO]?.text ?? '');
   const cantidadTotal = group.lineas.reduce((s, r) => s + (Number(r.cols[S_CANTIDAD]?.text?.replace(/,/g, '')) || 0), 0);
+  const ocFiles = toR2Files(parseFiles(proyecto.cols[P_OC_PDF]?.text), oppId, 'oc');
+  const ocFile = findLatestOcFile(ocFiles, [group.nombre, group.nombreItem]);
 
   const onGenerar = async () => {
     setOutcome(null);
@@ -647,10 +745,13 @@ function ProveedorCard({ group, proyecto, reload }: { group: ProveedorGroup; pro
   return (
     <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-xl)', background: '#fff', overflow: 'hidden' }}>
       <div style={{ padding: '12px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', borderBottom: '1px solid var(--border-subtle)' }}>
-        <div>
-          <div style={{ font: 'var(--text-body-strong)', color: 'var(--ink)' }}>{group.nombre}</div>
-          <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)' }}>
-            {group.correo ? `${group.correo} · ` : ''}{group.lineas.length} línea{group.lineas.length === 1 ? '' : 's'} · {cantidadTotal} pzas
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <OcThumb file={ocFile} />
+          <div>
+            <div style={{ font: 'var(--text-body-strong)', color: 'var(--ink)' }}>{group.nombre}</div>
+            <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)' }}>
+              {group.correo ? `${group.correo} · ` : ''}{group.lineas.length} línea{group.lineas.length === 1 ? '' : 's'} · {cantidadTotal} pzas
+            </div>
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -664,6 +765,7 @@ function ProveedorCard({ group, proyecto, reload }: { group: ProveedorGroup; pro
             placeholder="Condiciones de pago" title="Condiciones de pago de esta OC (no cambia el default del Proyecto)"
             style={{ ...CARD_INPUT_STYLE, minWidth: 220 }}
           />
+          <NativeOcButton proyectoId={proyecto.id} proveedorId={group.proveedorId} />
           <ConfirmButton
             label="Generar OC"
             confirmLabel="¿Generar la OC de este proveedor? Se manda a firmas"
@@ -693,11 +795,11 @@ function ProveedorCard({ group, proyecto, reload }: { group: ProveedorGroup; pro
 
 /** Grid de líneas del proyecto agrupadas por proveedor — el equivalente por-proveedor
  * de la tab Cotización, para la tab Órdenes de compra. */
-function ProveedorGrid({ lineas, proyecto, reload }: { lineas: ItemDTO[]; proyecto: ItemDetailDTO; reload: () => void }) {
+function ProveedorGrid({ lineas, proyecto, oppId, reload }: { lineas: ItemDTO[]; proyecto: ItemDetailDTO; oppId: string | null; reload: () => void }) {
   const grupos = groupByProveedor(lineas);
   return (
     <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
-      {grupos.map(g => <ProveedorCard key={g.key} group={g} proyecto={proyecto} reload={reload} />)}
+      {grupos.map(g => <ProveedorCard key={g.key} group={g} proyecto={proyecto} oppId={oppId} reload={reload} />)}
     </div>
   );
 }
@@ -719,12 +821,11 @@ export function ProyectoOrdenesSection({ state, oppId }: { state: ProyectoState;
       <ProyectoActionBar proyecto={p} reload={state.reload} actions={['generar-oc']} />
       {canCompras ? (
         lineas.length > 0
-          ? <ProveedorGrid lineas={lineas} proyecto={p} reload={state.reload} />
+          ? <ProveedorGrid lineas={lineas} proyecto={p} oppId={oppId} reload={state.reload} />
           : <div style={{ marginTop: 14, font: 'var(--text-label)', color: 'var(--ink-quiet)' }}>Aún no hay líneas en el proyecto — importa las tallas primero.</div>
       ) : (
         <div style={{ marginTop: 14, font: 'var(--text-label)', color: 'var(--ink-quiet)' }}>El desglose por proveedor lo gestiona Compras.</div>
       )}
-      <FileList label="Órdenes de compra (PDF)" files={toR2Files(parseFiles(p.cols[P_OC_PDF]?.text), oppId, 'oc')} />
     </div>
   );
 }

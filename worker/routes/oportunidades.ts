@@ -38,6 +38,7 @@ import { jsonStatus } from '../lib/http';
 import { canWrite } from '../../shared/visibility';
 import { emitNotification } from '../lib/notify';
 import { createDocument, documentPdf } from '../lib/documents';
+import { generarOcProveedorPdf, OcProveedorPdfError } from '../lib/ocProveedorPdf';
 import { md5 } from '../lib/canon';
 
 // Acciones de cmp-tallas sobre el Proyecto. Cada una exige que el viewer pueda
@@ -643,6 +644,34 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     const dto: ItemDetailDTO = toItemDTO(row, 'proyectos', viewer.role, pending.has(row.item_id));
     dto.children = children.map(r => toItemDTO(r, 'proyectos_sub', viewer.role, childPending.has(r.item_id)));
     return c.json({ proyecto: dto });
+  });
+
+  // OC a proveedor generada nativa por el portal (2026-08-13) — arma el PDF al
+  // vuelo desde el mirror, sin pasar por Eledo/cmp-tallas. Convive con el botón
+  // "Generar OC" existente (worker/lib/automations.ts generateOC) mientras se
+  // prueba: ese sigue siendo el flujo oficial con folio + firmas por DocuSeal.
+  app.get('/api/proyectos/:id/oc-nativa/:proveedorId/pdf', async c => {
+    const itemId = Number(c.req.param('id'));
+    if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
+    const proveedorId = c.req.param('proveedorId');
+    const viewer = c.get('viewer');
+    if (viewer.role !== 'compras' && viewer.role !== 'admin') return jsonStatus({ error: 'forbidden' }, 403);
+
+    try {
+      const bytes = await generarOcProveedorPdf(c.env, itemId, proveedorId, viewer);
+      return new Response(bytes, {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/pdf',
+          'Content-Length': String(bytes.length),
+          'Content-Disposition': 'inline; filename="orden-de-compra.pdf"',
+          'Cache-Control': 'private, no-store',
+        },
+      });
+    } catch (err) {
+      if (err instanceof OcProveedorPdfError) return jsonStatus({ error: err.message }, err.status);
+      return jsonStatus({ error: 'internal error' }, 500);
+    }
   });
 
   // Dirección inversa de la ruta de arriba (Proyecto → Oportunidad ligada). El

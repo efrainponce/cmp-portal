@@ -90,6 +90,24 @@
     Fase 6 (catálogo Airtable↔Monday, integración aparte — decidir con Efraín
     webhook de Airtable vs. polling por cron antes de construir).
 
+- Feat: miniatura de la última OC (PDF) junto al nombre del proveedor en la tab
+  Órdenes de compra (`ProveedorCard`, `ProyectoSection.tsx`)
+  - Efraín pidió que las OC generadas por proveedor no quedaran solo en el listado
+    plano hasta abajo de la pestaña, sino visibles como miniatura junto a la
+    tarjeta de cada proveedor.
+  - cmp-tallas sube los PDFs a `file_mm0hj9pn` (Proyecto) como
+    `orden_compra_<nombre proveedor>.pdf`, sin id que los ligue al proveedor —
+    verificado contra datos reales en D1 (`wrangler d1 execute --remote`).
+    `findLatestOcFile` empareja por nombre normalizado (sin acentos/mayúsculas)
+    contra la razón social Y el texto crudo del item de Proveedores (pueden
+    diferir), y toma el último match (el arreglo conserva orden de subida). Sin
+    match no se renderiza nada — no hay forma de saber si un proveedor fue
+    renombrado después de generar su OC.
+  - Reutiliza el patrón de `CotizacionPdfRow` (ícono PDF exportado, preview
+    embebido con pdf.js vía `PdfCanvasPreview`/`Modal`) en vez de inventar uno
+    nuevo. Se quitó el `FileList` de "Órdenes de compra (PDF)" al fondo de la
+    pestaña (redundante con la miniatura por tarjeta); el de tallas se mantiene.
+
 ## 2026-08-12
 
 - Feat: "salir de Monday" Fase 4 — "Generar OC" nativo (Eledo/DocuSeal directo)
@@ -255,6 +273,134 @@
     no están en `.dev.vars` ni en producción — hacen falta antes de poder probar esas
     fases en vivo).
 
+- Feat: OC a proveedor (`ordenCompraProveedor.ts`, `ocProveedorPdf.ts`) muestra
+  la Zona/Tipo de cada embellecimiento (Frente derecho, Etiqueta nombre,
+  Otros…), tomada del nombre del subitem de Embellecimientos en Monday —
+  Efraín: "no sale que es etiqueta y eso", antes solo se veía la descripción
+  larga sin indicar a qué posición/tipo correspondía. De paso, `wrapTable`
+  (`layout.ts`) ahora soporta envolver varias columnas (`wrapCols: number[]`
+  en vez de `wrapCol: number`) para que Zona/Tipo tampoco se trunque con "…".
+
+- Fix: rediseño de Subtotal/IVA/Total en la OC a proveedor — el encabezado de
+  la tabla ahora usa el naranja de marca de CMP (sacado a pixel del logo,
+  `headerFill`/`headerTextColor` opcional agregado a `wrapTable`) en vez de
+  gris genérico; se quitó el "Subtotal" duplicado/truncado del pie de tabla;
+  Método/Condiciones de pago quedan alineados renglón por renglón con
+  Subtotal/IVA/Total en vez de un cuadro suelto aparte (Efraín: "tiene que
+  quedar todo super claro").
+
+- Fix: "Elaborado por" en la OC a proveedor siempre es el comprador
+  (`project_owner`) del Proyecto, no quien genera el PDF desde el portal.
+
+- Fix: quita la línea "Generado por el portal CMP · fecha · Doc id" del pie
+  de la OC a proveedor (`hideGeneratedByLine` en `DocumentMeta`) — solo para
+  esta plantilla; los documentos con firma electrónica la conservan porque
+  ahí sí es su referencia de auditoría verificable.
+
+- Fix: los controles del header de la tarjeta de proveedor (Método/Condiciones
+  de pago, "Ver OC (portal)", "Generar OC") no medían lo mismo de alto —
+  `CARD_INPUT_STYLE` (inputs y botón "Ver OC") traía padding vertical 5px +
+  borde de 1px, contra el padding vertical 9px sin borde del `Button` primario
+  de "Generar OC". Se subió el padding vertical de `CARD_INPUT_STYLE` a 8px
+  (8+8+1+1 = 18, igual a 9+9+0 del botón) para que las cuatro alturas calcen.
+
+- Fix: la columna "Producto" de la tarjeta de proveedor en la tab Órdenes de
+  Compra (`ProveedorLineaRow` en `ProyectoSection.tsx`) rompía el ancho de la
+  tarjeta completa cuando el texto era largo y sin espacios (descripciones de
+  embellecimiento tipo GDL Tactical, todo mayúsculas pegado) — el renglón usa
+  CSS Grid con columnas `fr`, cuyo mínimo implícito es el ancho de contenido
+  (`min-content`) de la celda, no 0. Se agregó `minWidth: 0` +
+  `overflowWrap: 'anywhere'` a esa celda para que el texto envuelva dentro de
+  su columna en vez de forzar el grid a desbordarse.
+
+- Feat: tab "Embellecimientos" en Proyecto (post-venta) — Efraín pidió ver ahí
+  lo mismo que en Oportunidades, incluyendo precio. Nuevo
+  `EmbellecimientosVirtualTab` (`src/boards/proyectos/`) reusa el mismo
+  endpoint de la cotización virtual (`GET /api/proyectos/:id/cotizacion-virtual`,
+  ya existente) para leer las líneas vigentes de la Oportunidad ligada +
+  ajustes del Proyecto, y el mismo `ZoneImage` de
+  `oportunidades/tabs/EmbellecimientosTab.tsx` (se exportó) para las miniaturas
+  de referencia por zona. A diferencia de Oportunidades, es de SOLO LECTURA
+  (decisión de Efraín: capturar zonas/subir imágenes se queda exclusivo de la
+  Oportunidad) y sí muestra Cantidad/Precio/Subtotal por línea (gateado a
+  vendedor/compras/admin, igual que Cotización). La tab (y Cotización) ahora
+  aparece en los 4 accesos de Proyecto, no solo en Documentación y Tallas /
+  Órdenes de Compra.
+
+- Feat: OC a Proveedor generada nativa por el portal (`worker/lib/pdf/ordenCompraProveedor.ts`,
+  `worker/lib/ocProveedorPdf.ts`, `worker/lib/pdf/logo.ts`, ruta nueva
+  `GET /api/proyectos/:id/oc-nativa/:proveedorId/pdf`, botón "Ver OC (portal)"
+  en `ProyectoSection.tsx`) — Efraín reportó la OC de GDL Tactical (OC-202,
+  OPP-0879) saliendo sin Precio/Cantidad/Descuento/Subtotal. Diagnóstico
+  bisectando el payload real contra la API de Eledo directamente: los datos
+  llegaban correctos (el total ya cuadraba a la centavo), pero la plantilla de
+  Eledo pierde esas columnas Y el pie de firmas cuando el texto de "Producto"
+  es largo y se envuelve a varias líneas — algo que pasa siempre con las
+  descripciones de embellecimiento de GDL Tactical. Se agregó un bloque
+  `wrapTable` a `worker/lib/pdf/layout.ts` (el renglón crece con el texto en
+  vez de desalojar a las columnas vecinas) y se generó la OC con el escritor
+  de PDF propio del portal en vez de depender de Eledo. Logo de CMP embebido
+  (patrón tomado de `janing/worker/lib/pdf/logo.ts`, solo eso). v1 a propósito
+  simple (Efraín, "como la de janing"): sin folio propio (pendiente conectar
+  el ledger de Sheets de cmp-tallas) y sin firma electrónica — deja el espacio
+  de firma FÍSICA (línea + nombre precargado) para Elaborado/Revisado/
+  Autorizado. Convive con el botón "Generar OC" existente (Eledo/DocuSeal)
+  mientras se prueba en paralelo. Verificado con datos reales end-to-end
+  (curl + Playwright contra el dev server).
+
+- Fix: OC a Proveedor (`ordenCompraProveedor.ts`, ver arriba) ahora muestra
+  Subtotal/IVA (16%)/Total en números, no solo el importe en letras — Efraín
+  pidió poder verificar el total contra su hoja de costeo de embellecimientos.
+  De paso: diagnosticado con esa hoja que la OC de GDL Tactical (OPP-0879)
+  cuadra $2,692.00 por debajo de lo esperado porque falta capturar un renglón
+  de 673 piezas (Etiqueta de propiedad + Código de barras, pantalón, color sin
+  identificar) en la pestaña Embellecimientos del Proyecto — dato faltante en
+  Monday, no bug del PDF (el portal suma correctamente lo que existe).
+
+- Fix: cron del backup semanal a R2 (`worker/index.ts`, `wrangler.jsonc`) nunca
+  se registraba en Cloudflare — el commit de "backup semanal del mirror D1 a
+  R2" usó `"0 3 * * 0"` para domingo, pero la API de Workers rechaza `0` como
+  día-de-semana (a diferencia del cron estándar de Unix): quiere `1-7` (o
+  `SUN`...`SAT`). Cada deploy desde entonces subía bien el Worker+assets pero
+  fallaba en silencio al actualizar los cron triggers (Action en rojo, sin
+  bloquear producción) y el backup nunca corrió ni una vez. Cambiado a `7`.
+  Corregido también en vivo vía API contra la cuenta real mientras se
+  investigaba (Efraín preguntó "¿está en prod?" tras un push en rojo).
+
+- Fix: el board Costeo (`src/lib/dealStages.ts`) ya no oculta ninguna etapa —
+  antes traía un `excludeStages` (Seguimiento/Negociación/Ganada/Perdida,
+  decisión de Efraín de 2026-07-20) que dejaba fuera oportunidades que él
+  quería seguir viendo ahí. Efraín pidió ver TODAS las oportunidades de
+  TODAS las etapas en Costeo, Ganadas incluidas — se revierte ese filtro.
+
+- Fix: la miniatura de la última OC (`ProyectoSection.tsx`, commit `5848fe4`
+  de hoy mismo) nunca matcheaba nada — el regex esperaba nombres de archivo
+  `orden_compra_<proveedor>.pdf`, pero cmp-tallas los sube como
+  `OC_<folio>_<proveedor>.pdf` (confirmado contra datos reales de Monday,
+  item 12707529897: `OC_OC-125_ABRAHAM FARID GORDILLO KANAN.pdf`). Como esa
+  misma versión quitó el listado plano de respaldo, el resultado era que
+  ninguna OC generada se veía en el portal (reportado por Efraín).
+
+- Fix: previews de PDF borrosos en pantallas retina (`PdfCanvasPreview.tsx`) —
+  el canvas se dibujaba a resolución CSS sin multiplicar por
+  `devicePixelRatio`, así que el navegador estiraba esos píxeles al mostrarlo.
+  Ahora el backing store del canvas se escala por `devicePixelRatio` (capado
+  a 3x) mientras el tamaño CSS se fija aparte, mismo patrón que ya usaba
+  `SignaturePad.tsx`. Afecta a los 4 puntos que comparten el componente:
+  OC, cotizaciones, documentos de firma y adjuntos de Actualizaciones
+  (reportado por Efraín).
+
+- Fix: tab Embellecimientos ahora muestra el Color de la línea junto al SKU, y
+  agrega un ícono de lápiz junto a cada posición capturada (`EmbellecimientosTab.tsx`)
+  - Efraín pidió mostrar el color (no solo SKU) y hacer obvio que las posiciones
+    ya capturadas son clicables para editarlas — el click-to-edit ya existía
+    (commit `4d17ba2`) pero no tenía ninguna señal visual.
+  - Color viene de `text_mm07s2mg` (Oportunidades subitems, ver
+    `docs/monday-column-map.md`).
+  - De paso se quitó el chip de estado "Con Embellecimiento" del encabezado de
+    cada línea — es redundante en esta tab, ya que solo se listan ahí las
+    líneas que lo tienen (Efraín, en la misma sesión).
+
 - Fix: "elegir vendedor" no mostraba a Rodrigo (picker de Contacto y contacto huérfano)
   - Ricardo Rivera reportó por WhatsApp (captura) que un vendedor nuevo, Rodrigo (sin
     cuenta propia en Monday), no aparecía en "elegir vendedor" al crear una oportunidad;
@@ -295,6 +441,26 @@
   - `StageBoard.tsx`: `canCreate` ahora también `boardKey === 'zona_efrain'` (mismo patrón que Costeo) para el botón "Nueva oportunidad" ahí. `App.tsx`/`routing.ts` wireados para el nuevo `boardKey`.
   - Verificado con Playwright contra dev local (`X-Dev-Email`): Elisa ve el tab con candado, la lista filtrada y el picker de Vendedor con "Efrain Ponce"/"Efrain Ponce Salinas" disponibles; `/api/me` de Pam confirma `zonaEfrainAccess:false`.
   - `tsc --noEmit` y `npm test` (145 tests) limpios. **No mergeado a main** — feature grande, a petición de Efraín queda en su branch.
+
+- Feat: editar/borrar posiciones ya capturadas en Embellecimientos
+  - Efraín (admin) reportó que en `EmbellecimientosTab` solo se podía AGREGAR una
+    zona vacía (Espalda, Frente, etc.) — una vez que ya tenía texto, no había forma
+    de editarla ni borrarla, solo se veía como texto plano. El servidor ya permitía
+    escribir esa columna (`shared/visibility.ts`, `w` incluye vendedor/compras/admin);
+    el candado era puramente de UI.
+  - Click en el texto de una zona llenada abre el mismo form de captura con la
+    descripción precargada y la zona fija (sin selector) — "Guardar cambios"
+    sobreescribe solo esa zona vía `upsertEmbellZone` (`shared/embellecimiento.ts`,
+    ya soportaba overwrite, solo no se usaba para editar). Ícono de basura junto a
+    cada zona borra la posición (con `window.confirm`) dejando las demás intactas.
+  - Mismos permisos que ya existían para posición/imagen (vendedor/compras/admin) —
+    sin gate nuevo de rol, a pedido explícito de Efraín.
+  - `tsc --noEmit` y `npm run lint` limpios.
+
+- Fix: Embellecimientos ya no se bloquea en Ganada/Perdida
+  - Efraín y Elisa (ambos admin, en la whitelist de la zona privada) reportaron "no podemos modificar nada" en Embellecimientos, en ambos boards (Oportunidades y Costeo) — descartado por permisos de rol (server ya confirma `w:true` para admin en `long_text_mm1bj4pt`/`file_mm5akjy5`/`color_mm1b34bg`, verificado en vivo) y por la zona privada (ambos están en la whitelist). La causa real: `editable` en `EmbellecimientosTab` heredaba el mismo candado que `CotizacionTab` (`stage !== '1' && stage !== '2'`), así que en Ganada/Perdida se apagaba para TODOS los roles, no solo admin.
+  - A diferencia de Cotización (que sí debe congelarse al cerrar), Efraín pidió que Embellecimientos siga editable después de Ganada/Perdida — la captura de posiciones/imágenes de zona es trabajo de producción que sigue después del cierre comercial. `OpportunityDrawer.tsx`: `editable={!ajena}` (ya no depende de `stage`) al pasarlo a `EmbellecimientosTab`; sigue de solo lectura en Validación Costeo y oportunidad ajena (`embellReadOnly` sin cambios).
+  - `tsc --noEmit` limpio.
 
 - Fix: zona privada "Efrain" — agregar a Efrain Ponce Salinas a la whitelist
   - Efraín (el usuario, hijo del CEO, mantiene el portal) pidió poder ver la zona "Efrain" también, "por si hay errores" — la whitelist original solo tenía a su papá (CEO) y a Elisa.

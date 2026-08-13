@@ -40,13 +40,21 @@ export function PdfCanvasPreview({ url, data, maxWidth = 700 }: { url: string; d
       .then((pg) => {
         if (cancelled) return;
         const unscaled = pg.getViewport({ scale: 1 });
-        const viewport = pg.getViewport({ scale: maxWidth / unscaled.width });
+        const cssScale = maxWidth / unscaled.width;
         const canvas = canvasRef.current;
         const ctx = canvas?.getContext('2d');
         if (!canvas || !ctx) return;
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
-        return pg.render({ canvasContext: ctx, viewport, canvas }).promise;
+        // Backing store a resolución de dispositivo (igual que SignaturePad) —
+        // sin esto, en pantallas retina el canvas se dibuja a resolución CSS y
+        // el navegador lo estira, saliendo borroso.
+        const dpr = Math.min(window.devicePixelRatio || 1, 3);
+        const cssViewport = pg.getViewport({ scale: cssScale });
+        const renderViewport = pg.getViewport({ scale: cssScale * dpr });
+        canvas.style.width = `${cssViewport.width}px`;
+        canvas.style.height = `${cssViewport.height}px`;
+        canvas.width = renderViewport.width;
+        canvas.height = renderViewport.height;
+        return pg.render({ canvasContext: ctx, viewport: renderViewport, canvas }).promise;
       })
       .then(() => { if (!cancelled) setLoading(false); })
       .catch((e) => {

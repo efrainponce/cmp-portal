@@ -71,9 +71,13 @@ app.onError(async (err, c) => {
 // (worker/sync/delta.ts). El cuarto (domingo 3am UTC) exporta el mirror D1 completo
 // a R2 (worker/lib/backup.ts) — retención larga más allá de los 30 días de D1 Time
 // Travel, no recovery del día a día. wrangler.jsonc debe declarar exactamente estos
-// cuatro strings de cron.
+// cuatro strings de cron. Domingo es "7", NUNCA "0": la API de Workers rechaza
+// "0" en el campo día-de-semana (a diferencia del cron estándar de Unix) — con
+// "0" el deploy sube el Worker pero el PUT de schedules falla en silencio (el
+// Action queda rojo) y este cron nunca llega a registrarse (2026-08-12/13, el
+// backup semanal nunca corrió por esto).
 const ALERT_CRON = '*/15 * * * *';
-const BACKUP_CRON = '0 3 * * 0';
+const BACKUP_CRON = '0 3 * * 7';
 const CRON_GROUPS: Record<string, BoardSlug[]> = {
   '0 0,12 * * *': ['oportunidades', 'oportunidades_sub', 'proyectos', 'proyectos_sub'],
   '0 6,18 * * *': ['productos', 'instituciones', 'contactos', 'proveedores'],

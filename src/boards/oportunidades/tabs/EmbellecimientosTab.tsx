@@ -22,7 +22,6 @@ import { getZoneImages, uploadZoneImage } from '../../../lib/api';
 import { patchItem } from '../../../lib/apiClient';
 import { StatusBadge, MonoTag } from '../../../components/core/Badges';
 import { Button } from '../../../components/core/Button';
-import { chipFor } from '../../../components/board/cellHelpers';
 import { EMBELL_TEMPLATE_KEYS, explodeEmbellecimiento, upsertEmbellZone } from '../../../lib/embellecimiento';
 import { VersionChips } from './cotizacion/VersionChips';
 
@@ -32,6 +31,7 @@ const DESC_COL = 'long_text_mm1bj4pt';
 const FILE_COL = 'file_mm5akjy5';
 const SKU_COL = 'lookup_mkzn7x9a';
 const NAME_COL = 'lookup_mm0x4kda';
+const COLOR_COL = 'text_mm07s2mg';
 
 const ImageIcon = ({ size = 14, color = '#918b7c' }: { size?: number; color?: string }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ flex: 'none' }}>
@@ -48,11 +48,20 @@ const FileIcon = ({ size = 14, color = '#918b7c' }: { size?: number; color?: str
   </svg>
 );
 
+const PencilIcon = ({ size = 12, color = 'var(--ink-faint)' }: { size?: number; color?: string }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flex: 'none' }}>
+    <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
+  </svg>
+);
+
 // file_mm5akjy5 es una columna de archivo genérica de Monday, no solo imágenes
 // (Efraín, 2026-07-16) — sin restricción de accept en el input. Si la URL no
 // carga como <img> (PDF, .docx…), cae a un link "Ver archivo" en vez de intentar
 // previsualizarlo.
-function ZoneImage({ imageUrl, uploading, error, onUpload, canUpload }: {
+// Exportado para EmbellecimientosVirtualTab (Proyecto, solo lectura): con
+// canUpload=false y sin imageUrl no renderiza nada, así que sirve tal cual
+// para mostrar (sin poder subir) las mismas miniaturas que ve Oportunidades.
+export function ZoneImage({ imageUrl, uploading, error, onUpload, canUpload }: {
   imageUrl?: string; uploading: boolean; error?: string; onUpload: (file: File) => void; canUpload: boolean;
 }) {
   const [previewFailed, setPreviewFailed] = useState(false);
@@ -169,6 +178,10 @@ interface AddPositionState {
   desc: string;
   saving: boolean;
   error?: string;
+  /** true cuando el form edita una zona ya llenada — la zona queda fija (no
+   * hay selector) y el textarea arranca con el valor actual (Efraín, 2026-08-12:
+   * hoy solo se podía agregar zonas vacías, no editar/borrar una ya capturada). */
+  isEdit?: boolean;
 }
 
 export function EmbellecimientosTab({
@@ -177,13 +190,14 @@ export function EmbellecimientosTab({
   subCols: ColMeta[]; products: ItemDTO[];
   versions?: QuoteVersionDTO[]; onNuevaVersion?: () => void;
   onSaved?: () => void;
-  /** false en Ganada/Perdida — sin nuevas posiciones ni imágenes, igual que Cotización. */
+  /** A diferencia de Cotización, aquí NO se apaga en Ganada/Perdida — la
+   * captura de posiciones/imágenes de embellecimiento sigue abierta después de
+   * cerrada la oportunidad (Efraín, 2026-08-12). Solo `!ajena` la apaga. */
   editable?: boolean;
   /** true en Validación Costeo o en una oportunidad ajena — en el board Costeo
    * SÍ es editable: Compras también captura zonas/imágenes ahí (Efraín, 2026-08-12). */
   readOnly?: boolean;
 }) {
-  const statusCol = subCols.find((c) => c.id === STATUS_COL);
   const descWritable = editable && !readOnly && !!subCols.find((c) => c.id === DESC_COL)?.w;
   const fileWritable = editable && !readOnly && !!subCols.find((c) => c.id === FILE_COL)?.w;
   const [zoneImages, setZoneImages] = useState<Record<string, string>>({});
@@ -198,6 +212,17 @@ export function EmbellecimientosTab({
   const [addForm, setAddForm] = useState<AddPositionState | null>(null);
 
   const onStartAdd = (productId: string, zone: string) => setAddForm({ productId, zone, desc: '', saving: false });
+  const onStartEdit = (productId: string, zone: string, currentValue: string) =>
+    setAddForm({ productId, zone, desc: currentValue, saving: false, isEdit: true });
+
+  const writeZone = async (productId: string, zone: string, value: string) => {
+    const product = products.find((p) => p.id === productId);
+    const currentRaw = descPreview[productId] ?? product?.cols[DESC_COL]?.text;
+    const newRaw = upsertEmbellZone(currentRaw, zone, value);
+    await patchItem('oportunidades_sub', productId, { [DESC_COL]: newRaw });
+    setDescPreview((cur) => ({ ...cur, [productId]: newRaw }));
+    onSaved?.();
+  };
 
   const onSaveZone = async () => {
     if (!addForm) return;
@@ -205,18 +230,27 @@ export function EmbellecimientosTab({
     const desc = addForm.desc.trim();
     if (!desc) { setAddForm({ ...addForm, error: 'Escribe una descripción para la posición.' }); return; }
     setAddForm({ ...addForm, saving: true, error: undefined });
-    const product = products.find((p) => p.id === productId);
-    const currentRaw = descPreview[productId] ?? product?.cols[DESC_COL]?.text;
-    const newRaw = upsertEmbellZone(currentRaw, zone, desc);
     try {
-      await patchItem('oportunidades_sub', productId, { [DESC_COL]: newRaw });
+      await writeZone(productId, zone, desc);
     } catch (e) {
-      setAddForm({ productId, zone, desc, saving: false, error: e instanceof Error ? e.message : 'No se pudo guardar.' });
+      setAddForm({ ...addForm, saving: false, error: e instanceof Error ? e.message : 'No se pudo guardar.' });
       return;
     }
-    setDescPreview((cur) => ({ ...cur, [productId]: newRaw }));
     setAddForm(null);
-    onSaved?.();
+  };
+
+  const [deleting, setDeleting] = useState<Record<string, boolean>>({});
+  const onDeleteZone = async (productId: string, zone: string) => {
+    if (!window.confirm(`¿Borrar la posición "${zone}"?`)) return;
+    const key = `${productId}:${zone}`;
+    setDeleting((cur) => ({ ...cur, [key]: true }));
+    try {
+      await writeZone(productId, zone, '');
+    } catch {
+      // el error se ignora — la zona sigue mostrando su valor previo, el
+      // usuario puede reintentar (mismo trato que onSaveZone da a errores).
+    }
+    setDeleting((cur) => ({ ...cur, [key]: false }));
   };
 
   // Solo las líneas marcadas "Con Embellecimiento" en Cotización aparecen aquí
@@ -281,7 +315,6 @@ export function EmbellecimientosTab({
     <div style={{ padding: '24px 32px 40px', maxWidth: 920, width: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 10 }}>
       <VersionChips versions={versions} selected={selectedVersionId} onSelect={setSelectedVersionId} onNuevaVersion={onNuevaVersion} />
       {embProducts.map((p) => {
-        const statusVal = statusCol ? p.cols[STATUS_COL] : undefined;
         const rawDesc = descPreview[p.id] ?? p.cols[DESC_COL]?.text;
         const zones = explodeEmbellecimiento(rawDesc, true);
         const filledLabels = new Set(zones.map((z) => z.label));
@@ -292,10 +325,9 @@ export function EmbellecimientosTab({
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
               <div style={{ font: 'var(--text-body-strong)', color: 'var(--ink)' }}>{p.cols[NAME_COL]?.text || p.name}</div>
               {p.cols[SKU_COL]?.text && <MonoTag>{p.cols[SKU_COL].text}</MonoTag>}
-              {statusVal?.text && statusCol && (() => {
-                const { label, color, tint } = chipFor(statusCol, statusVal);
-                return <StatusBadge label={label} color={color} tint={tint} />;
-              })()}
+              {p.cols[COLOR_COL]?.text && (
+                <span style={{ font: 'var(--text-label)', color: 'var(--ink-tertiary)' }}>{p.cols[COLOR_COL].text}</span>
+              )}
             </div>
             {zones.length > 0 ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -303,8 +335,17 @@ export function EmbellecimientosTab({
                   const key = `${p.id}:${z.label}`;
                   return (
                     <div key={z.label} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <div style={{ font: 'var(--text-body)', color: 'var(--ink-secondary)', flex: 1 }}>
-                        <span style={{ color: 'var(--ink)' }}>{z.label}:</span> {z.value}
+                      <div
+                        onClick={descWritable ? () => onStartEdit(p.id, z.label, z.value) : undefined}
+                        style={{
+                          font: 'var(--text-body)', color: 'var(--ink-secondary)', flex: 1,
+                          display: 'flex', alignItems: 'center', gap: 6,
+                          cursor: descWritable ? 'pointer' : undefined,
+                        }}
+                        title={descWritable ? 'Editar posición' : undefined}
+                      >
+                        <span><span style={{ color: 'var(--ink)' }}>{z.label}:</span> {z.value}</span>
+                        {descWritable && <PencilIcon />}
                       </div>
                       <ZoneImage
                         imageUrl={zoneImages[key]}
@@ -313,6 +354,23 @@ export function EmbellecimientosTab({
                         onUpload={(file) => handleUpload(p.id, z.label, file)}
                         canUpload={fileWritable}
                       />
+                      {descWritable && (
+                        <button
+                          type="button"
+                          title="Borrar posición"
+                          disabled={!!deleting[key]}
+                          onClick={() => onDeleteZone(p.id, z.label)}
+                          style={{
+                            flex: 'none', border: 'none', background: 'none', cursor: deleting[key] ? 'default' : 'pointer',
+                            color: 'var(--ink-faint)', opacity: deleting[key] ? 0.5 : 1, padding: 2, display: 'flex',
+                          }}
+                        >
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M3 6h18" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+                          </svg>
+                        </button>
+                      )}
                     </div>
                   );
                 })}
@@ -325,13 +383,17 @@ export function EmbellecimientosTab({
 
             {isAdding ? (
               <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6, padding: 10, borderRadius: 'var(--radius-lg)', background: 'var(--bg-sunken)' }}>
-                <select
-                  value={addForm.zone}
-                  onChange={(e) => setAddForm({ ...addForm, zone: e.target.value })}
-                  style={{ font: 'var(--text-label)', color: 'var(--ink)', border: '1px solid var(--border)', borderRadius: 6, padding: '5px 7px' }}
-                >
-                  {availableZones.map((z) => <option key={z} value={z}>{z}</option>)}
-                </select>
+                {addForm.isEdit ? (
+                  <div style={{ font: 'var(--text-label-strong)', color: 'var(--ink)' }}>{addForm.zone}</div>
+                ) : (
+                  <select
+                    value={addForm.zone}
+                    onChange={(e) => setAddForm({ ...addForm, zone: e.target.value })}
+                    style={{ font: 'var(--text-label)', color: 'var(--ink)', border: '1px solid var(--border)', borderRadius: 6, padding: '5px 7px' }}
+                  >
+                    {availableZones.map((z) => <option key={z} value={z}>{z}</option>)}
+                  </select>
+                )}
                 <textarea
                   value={addForm.desc}
                   onChange={(e) => setAddForm({ ...addForm, desc: e.target.value })}
@@ -343,7 +405,7 @@ export function EmbellecimientosTab({
                 {addForm.error && <div style={{ font: 'var(--text-caption)', color: 'var(--status-perdida)' }}>{addForm.error}</div>}
                 <div style={{ display: 'flex', gap: 8 }}>
                   <Button variant="primary" onClick={addForm.saving ? undefined : onSaveZone} style={addForm.saving ? { opacity: 0.6 } : undefined}>
-                    {addForm.saving ? 'Guardando…' : 'Guardar posición'}
+                    {addForm.saving ? 'Guardando…' : addForm.isEdit ? 'Guardar cambios' : 'Guardar posición'}
                   </Button>
                   <Button variant="ghost" onClick={() => setAddForm(null)}>Cancelar</Button>
                 </div>
