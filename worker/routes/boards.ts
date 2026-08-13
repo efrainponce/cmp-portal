@@ -5,6 +5,7 @@ import type { Context, Hono } from 'hono';
 import type { Env } from '../env';
 import { BOARDS } from '../../shared/boards';
 import type { BoardSlug } from '../../shared/boards';
+import { isNativeId } from '../../shared/nativeId';
 import type {
   CreateRequest, CreateResponse, CreateUpdateRequest, ItemDetailDTO, ListResponse,
   MeDTO, MentionUserDTO, UpdateDTO, VendedorDTO, WriteRequest, WriteResponse,
@@ -316,10 +317,14 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
     const row = await getItem(c.env, slug, itemId, viewer, 'own');
     if (!row) return c.json({ error: 'not found' }, 404);
 
-    try {
-      await deleteItem(c.env, itemId);
-    } catch {
-      return jsonStatus({ ok: false, error: 'No se pudo eliminar' }, 500);
+    // Item nativo (Zona Efrain, "salir de Monday"): no existe del lado de
+    // Monday — nada que borrar ahí, se salta directo al DELETE de D1 de abajo.
+    if (!isNativeId(itemId)) {
+      try {
+        await deleteItem(c.env, itemId);
+      } catch {
+        return jsonStatus({ ok: false, error: 'No se pudo eliminar' }, 500);
+      }
     }
     // Antes solo se borraba en Monday y se esperaba al webhook subitem_deleted
     // (worker/sync/webhook.ts) para limpiar el mirror — con su debounce de

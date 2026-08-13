@@ -13,6 +13,7 @@ import { reserveNativeId } from './nativeSeq';
 import { rawHash, type RawColumn } from './canon';
 import { cachedFetchUsers } from './rosterCache';
 import { isZonaPrivadaAdminPermitido } from './zonas';
+import { dealStageValue } from '../../shared/dealStages';
 
 export class CreateError extends Error {
   status: number;
@@ -130,9 +131,17 @@ export async function submitCreateNative(
   for (const [id, raw] of Object.entries(allValues)) {
     if (id === 'name' || !raw?.trim()) continue;
     const type = boardMeta[id]?.type ?? 'text';
-    const value = encodeColumnValue(type, raw);
+    const trimmed = raw.trim();
+    // deal_stage: todo el pipeline decide la etapa por `.index`, no por el
+    // label (shared/dealStages.ts dealStageValue) — un item nativo nunca
+    // recibe el echo de Monday que normalmente lo rellena.
+    if (id === 'deal_stage') {
+      rawColumns.push({ id, type, text: trimmed, value: JSON.stringify(dealStageValue(trimmed)) });
+      continue;
+    }
+    const value = encodeColumnValue(type, trimmed);
     if (value === '') continue;
-    const text = await nativeDisplayText(env, type, id, raw.trim());
+    const text = await nativeDisplayText(env, type, id, trimmed);
     rawColumns.push({ id, type, text, value: JSON.stringify(value) });
   }
 

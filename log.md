@@ -443,6 +443,33 @@
     `scripts/perf-bench.mjs` + `scripts/perf-results/`) — se dejaron sin
     commitear, solo se stageó el archivo propio de este fix.
 
+- Feat: "salir de Monday" — Paso 3, líneas de cotización nativas
+  (`worker/routes/oportunidades.ts`, `worker/routes/boards.ts`,
+  `shared/dealStages.ts`, `worker/lib/createRecord.ts`, `worker/lib/outbox.ts`)
+  - Crear línea (`POST /api/oportunidades/:id/productos`): si el padre es
+    nativo, se salta `createSubitem` (Monday) y se inserta la fila directo en
+    `items` (board `oportunidades_sub`, `parent_item_id` = el id del padre,
+    mismo `reserveNativeId` — un solo espacio de ids para toda entidad
+    nativa). `oportunidades_sub` no tiene authzCols (se scopea por el dueño
+    del padre, `worker/lib/dal.ts`), así que no hace falta el shape
+    estructurado que sí necesitan las columnas de personas.
+  - Borrar línea (`DELETE /api/boards/:slug/items/:id`, genérico): si el id es
+    nativo se salta `deleteItem` (Monday) y borra solo en D1.
+  - Hallazgo importante en la investigación: TODO el pipeline (crear línea,
+    `quoteVersions.ts`, `notify.ts`) decide la etapa leyendo `.index` dentro
+    del `value` crudo de `deal_stage` — NUNCA el label de texto. Mi creación
+    nativa original solo guardaba `{label}` (vía `encodeColumnValue`), así que
+    el gate "solo se crean líneas en stage 4" siempre fallaba para una
+    oportunidad nativa recién creada. Fix: `shared/dealStages.ts` gana
+    `dealStageValue(label)` → `{label, index}`; se usa tanto al crear
+    (`submitCreateNative`) como al editar `deal_stage` de un item nativo
+    (`submitWrite`, que nunca recibe el echo de Monday que normalmente lo
+    rellena).
+  - Probado en local end-to-end: crear oportunidad nativa → crear línea →
+    editar cantidad/color (sin encolar outbox) → borrar línea → mover de
+    etapa (el índice se actualiza correctamente, verificado "En costeo"→15) →
+    intentar crear línea fuera de stage 4 correctamente rechazado.
+
 - Fix: ids nativos aleatorios de verdad, no un contador (`nativeSeq.ts`)
   - Efraín: los ids sintéticos deben ser random (Web Crypto, no `Math.random`
     ni un contador secuencial) — igual que los de Monday, que se ven como

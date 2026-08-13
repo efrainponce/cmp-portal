@@ -44,3 +44,14 @@ export function stageKeyForLabel(label: string): string | undefined {
   const target = norm(label);
   return Object.entries(DEAL_STAGE_LABELS).find(([, l]) => norm(l) === target)?.[0];
 }
+
+/** Value shape que Monday realmente usa para deal_stage ({label, index}) — todo el
+ * pipeline (crear línea, quoteVersions, notify) decide la etapa leyendo `.index`
+ * del value crudo, NUNCA el label. Un item nativo ("salir de Monday", Zona Efrain)
+ * jamás recibe el echo real de Monday que normalmente rellena ese índice, así que
+ * quien escribe deal_stage ahí (creación o edición) debe stampearlo con esta forma
+ * — ver worker/lib/createRecord.ts submitCreateNative y worker/lib/outbox.ts. */
+export function dealStageValue(label: string): { label: string; index?: number } {
+  const key = stageKeyForLabel(label);
+  return key === undefined ? { label } : { label, index: Number(key) };
+}

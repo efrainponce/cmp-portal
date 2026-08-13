@@ -6,6 +6,7 @@ import type { BoardSlug } from '../../shared/boards';
 import type { WriteResponse } from '../../shared/dto';
 import { BOARDS, boardById } from '../../shared/boards';
 import { isNativeId } from '../../shared/nativeId';
+import { dealStageValue } from '../../shared/dealStages';
 import { canWrite } from '../../shared/visibility';
 import { COLUMN_META } from '../../shared/column-meta.gen';
 import { canonValue, writeHash } from './canon';
@@ -92,7 +93,13 @@ export async function submitWrite(
       continue;
     }
     const canon = canonValue(types[colId], cols[colId]);
-    const mergedCol: RawCol = { id: colId, type: types[colId], text: canon, value: JSON.stringify(canon) };
+    // deal_stage en un item nativo: nunca llega el echo de Monday que rellena
+    // `.index` (de lo que depende TODO el pipeline — crear línea, quoteVersions,
+    // notify — para decidir la etapa, no del label). Se stampea acá de una vez.
+    const mergedValue = isNativeId(itemId) && colId === 'deal_stage'
+      ? JSON.stringify(dealStageValue(canon))
+      : JSON.stringify(canon);
+    const mergedCol: RawCol = { id: colId, type: types[colId], text: canon, value: mergedValue };
     const mergedJson = JSON.stringify(mergedCol);
     await env.DB
       .prepare(

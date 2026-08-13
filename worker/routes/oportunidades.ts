@@ -6,6 +6,7 @@ import type { Context, Hono } from 'hono';
 import type { Env } from '../env';
 import type { Identity } from '../../shared/types';
 import { BOARDS } from '../../shared/boards';
+import { isNativeId } from '../../shared/nativeId';
 import type { AjustarLineaRequest, AjustarLineaResponse, CotizacionVirtualDTO, DuplicarOportunidadResponse, DuplicarVersionResponse, ItemDetailDTO, QuoteVersionsResponse, TallaBoxInput, CapturarTallasResponse, EstadoHistorialResponse, ProductoResumenResponse, ProductoGeneroResponse } from '../../shared/dto';
 import type { ProposedProductsResponse, AddProposedProductResponse } from '../../shared/productosPropuestos';
 import { getItem, childrenOf, pendingItemIds, proyectoForOportunidad, linkedItemId, PROYECTO_OPP_REL } from '../lib/dal';
@@ -38,6 +39,8 @@ import { resolveCotizacionPdfUrl, CotizacionPdfError, type PdfKind } from '../li
 import { refetchItem, refetchItemTree, upsertItem } from '../sync';
 import { jsonStatus } from '../lib/http';
 import { canWrite } from '../../shared/visibility';
+import { reserveNativeId } from '../lib/nativeSeq';
+import { canonValue, rawHash, type RawColumn } from '../lib/canon';
 import { emitNotification } from '../lib/notify';
 import { createDocument, documentPdf } from '../lib/documents';
 import { generarOcProveedorPdf, OcProveedorPdfError } from '../lib/ocProveedorPdf';
@@ -409,11 +412,34 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
         }
       }
 
-      // Subitem real (create_subitem, no create_item) — así Monday lo linkea al
-      // padre automáticamente; create_item en el board de subitems NO lo hace.
       // Cantidad arranca en 0 a propósito (Efraín) — el grid la marca con warning
       // hasta que el vendedor la captura, en vez de fingir una cantidad de 1.
       const subitemName = 'Nueva línea';
+
+      // Item nativo (Zona Efrain, "salir de Monday"): la línea nace y vive en D1
+      // igual que el padre — mismo espacio de ids sintéticos (reserveNativeId),
+      // sin create_subitem a Monday. oportunidades_sub no tiene authzCols (los
+      // subitems se scopean por el dueño del PADRE, worker/lib/dal.ts), así que
+      // no hace falta el shape estructurado que sí necesita un item con personas.
+      if (isNativeId(itemId)) {
+        const lineId = await reserveNativeId(c.env);
+        const cantidadText = canonValue('numeric', String(body.cantidad ?? 0));
+        const columns: RawColumn[] = [
+          { id: 'numeric_mkzm6399', type: 'numeric', text: cantidadText, value: JSON.stringify(cantidadText) },
+        ];
+        const now = new Date().toISOString();
+        await c.env.DB
+          .prepare(
+            `INSERT INTO items (board_id, item_id, parent_item_id, name, group_id, vendedor_ids, monday_updated_at, synced_at, content_hash, columns)
+             VALUES (?, ?, ?, ?, NULL, '[]', ?, ?, ?, ?)`,
+          )
+          .bind(BOARDS.oportunidades_sub.id, lineId, itemId, subitemName, now, now, rawHash(columns), JSON.stringify(columns))
+          .run();
+        return c.json({ ok: true, id: String(lineId) });
+      }
+
+      // Subitem real (create_subitem, no create_item) — así Monday lo linkea al
+      // padre automáticamente; create_item en el board de subitems NO lo hace.
       const subitemCols: Record<string, unknown> = {
         numeric_mkzm6399: body.cantidad ?? 0, // cantidad
       };
