@@ -6,7 +6,7 @@ import type { Context, Hono } from 'hono';
 import type { Env } from '../env';
 import type { Identity } from '../../shared/types';
 import { BOARDS } from '../../shared/boards';
-import type { AjustarLineaRequest, AjustarLineaResponse, CotizacionVirtualDTO, DuplicarOportunidadResponse, DuplicarVersionResponse, ItemDetailDTO, QuoteVersionsResponse, TallaBoxInput, CapturarTallasResponse, EstadoHistorialResponse, ProductoResumenResponse } from '../../shared/dto';
+import type { AjustarLineaRequest, AjustarLineaResponse, CotizacionVirtualDTO, DuplicarOportunidadResponse, DuplicarVersionResponse, ItemDetailDTO, QuoteVersionsResponse, TallaBoxInput, CapturarTallasResponse, EstadoHistorialResponse, ProductoResumenResponse, ProductoGeneroResponse } from '../../shared/dto';
 import type { ProposedProductsResponse, AddProposedProductResponse } from '../../shared/productosPropuestos';
 import { getItem, childrenOf, pendingItemIds, proyectoForOportunidad, linkedItemId, PROYECTO_OPP_REL } from '../lib/dal';
 import { toItemDTO } from '../lib/serialize';
@@ -24,6 +24,8 @@ import { capturarTallas, reportarTallasIncorrectas, checkOcCliente, confirmTalla
 import { generarOcNative } from '../lib/oc';
 import { listEstadoHistorial } from '../lib/estadoProducto';
 import { listProductoResumen, upsertProductoResumen } from '../lib/productoResumen';
+import { listGeneroMF, setGeneroMF } from '../lib/productoGenero';
+import { syncTallasPortal } from '../lib/airtable';
 import { duplicateOportunidad, DuplicateOportunidadError } from '../lib/duplicateOportunidad';
 import { ganarOportunidad, GanarOportunidadError } from '../lib/ganarOportunidad';
 import { createSubitem, addFileToColumn, fetchAssetPublicUrls, createUpdate, gql, deleteItem } from '../lib/monday';
@@ -834,6 +836,31 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       proyectoId: itemId, producto, color: body.color?.trim() ?? '',
       resumen: body.resumen ?? '', actorEmail: viewer.email,
     });
+    return c.json({ ok: true });
+  });
+
+  // Checkbox "Género M/F" por producto de catálogo (worker/lib/productoGenero.ts)
+  // — nativo en D1, mismo gate de escritura que Tallas (text_mm5v6jhj, grupo WAC
+  // en shared/visibility.ts). Decide si el write-back a Airtable "Tallas Portal"
+  // (worker/lib/airtable.ts syncTallasPortal) expande la lista con prefijo M-/F-;
+  // nunca se ve en Monday.
+  app.get('/api/productos/genero', async c => {
+    const response: ProductoGeneroResponse = { generos: await listGeneroMF(c.env) };
+    return c.json(response);
+  });
+
+  app.patch('/api/productos/:id/genero', async c => {
+    const itemId = Number(c.req.param('id'));
+    if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
+    const viewer = c.get('viewer');
+    if (!canWrite('productos', 'text_mm5v6jhj', viewer.role)) return c.json({ error: 'forbidden' }, 403);
+
+    const row = await getItem(c.env, 'productos', itemId, viewer);
+    if (!row) return c.json({ error: 'not found' }, 404);
+
+    const body = await c.req.json<{ generoMF?: boolean }>();
+    await setGeneroMF(c.env, itemId, !!body.generoMF, viewer.email);
+    c.executionCtx.waitUntil(syncTallasPortal(c.env, row));
     return c.json({ ok: true });
   });
 

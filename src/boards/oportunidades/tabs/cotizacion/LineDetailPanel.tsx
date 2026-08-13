@@ -141,6 +141,7 @@ function ProveedorField({
 export function LineDetailPanel({
   product, catalog, variant, canConfirm, saving, error, onToggleConfirm,
   tallasSaving, tallasError, onEditTallas,
+  generoMF, generoSaving, onToggleGenero,
   proveedorSaving, proveedorError, onEditProveedor,
 }: {
   product: ItemDTO;
@@ -153,6 +154,9 @@ export function LineDetailPanel({
   tallasSaving: boolean;
   tallasError?: string;
   onEditTallas: (productoId: number, next: string) => void;
+  generoMF: boolean;
+  generoSaving: boolean;
+  onToggleGenero: (productoId: number, next: boolean) => void;
   proveedorSaving: boolean;
   proveedorError?: string;
   onEditProveedor: (productoId: number, proveedorId: string, proveedorNombre: string) => void;
@@ -208,6 +212,22 @@ export function LineDetailPanel({
           <div style={{ font: 'var(--text-label)', color: 'var(--ink-secondary)', whiteSpace: 'pre-wrap' }}>
             {tallas || '—'}
           </div>
+        )}
+        {canEditTallas && productoId != null && (
+          <label style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 6,
+            cursor: generoSaving ? 'default' : 'pointer',
+          }}>
+            <input
+              type="checkbox"
+              checked={generoMF}
+              disabled={generoSaving}
+              onChange={(e) => onToggleGenero(productoId, e.target.checked)}
+            />
+            <span style={{ font: 'var(--text-caption)', color: 'var(--ink-secondary)' }}>
+              Género M/F {generoSaving && '(guardando…)'}
+            </span>
+          </label>
         )}
       </div>
       {variant === 'costeo' && productoId != null && (

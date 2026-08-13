@@ -7,7 +7,7 @@ import type {
   ListResponse, MeDTO, MentionUserDTO, MondayUserDTO, ProyectoActionResponse, ProyectoResponse,
   QuoteLineSnapshot, QuoteVersionDTO, QuoteVersionsResponse,
   TallaBoxInput, CapturarTallasResponse, EstadoHistorialEntryDTO, EstadoHistorialResponse,
-  ProductoResumenDTO, ProductoResumenResponse,
+  ProductoResumenDTO, ProductoResumenResponse, ProductoGeneroResponse,
   UpdateAttachmentDTO, UpdateDTO, VendedorDTO, WriteResponse, ZonaDTO,
 } from '../../shared/dto';
 import type { AddProposedProductResponse, ProposedProductDTO, ProposedProductsResponse } from '../../shared/productosPropuestos';
@@ -498,6 +498,25 @@ export async function patchProductoResumen(proyectoId: string, producto: string,
     body: JSON.stringify({ producto, color, resumen }),
   });
   if (!res.ok) throw new Error('PATCH resumen-producto failed: ' + res.status);
+}
+
+/** Checkbox "Género M/F" por producto de catálogo — nativo en D1, worker/lib/
+ * productoGenero.ts. Trae solo los productos marcados (true); el resto se asume
+ * sin género. */
+export async function getProductoGenero(): Promise<Record<string, boolean>> {
+  const res = await apiFetch('/productos/genero');
+  if (!res.ok) throw new Error('GET productos/genero failed: ' + res.status);
+  const body: ProductoGeneroResponse = await res.json();
+  return body.generos;
+}
+
+export async function patchProductoGenero(productoId: string, generoMF: boolean): Promise<void> {
+  const res = await apiFetch(`/productos/${productoId}/genero`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ generoMF }),
+  });
+  if (!res.ok) throw new Error('PATCH productos/genero failed: ' + res.status);
 }
 
 export async function refreshItem(slug: BoardSlug, id: string): Promise<{ ok: boolean }> {

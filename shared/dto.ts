@@ -262,6 +262,16 @@ export interface ProductoResumenResponse {
   resumen: ProductoResumenDTO[];
 }
 
+// GET/PATCH /api/productos/genero — checkbox "Género M/F" por producto de
+// catálogo, worker/lib/productoGenero.ts. Nativo en D1 (Efraín, 2026-08-13:
+// "dejemoslo solo en D1, no vale la pena" una columna de Monday): solo decide
+// si Tallas se expande con prefijo M-/F- al escribirse en Airtable
+// (worker/lib/airtable.ts syncTallasPortal) — nunca se ve en Monday.
+export interface ProductoGeneroResponse {
+  /** producto_id (string) → true solo para los marcados; los no marcados no aparecen. */
+  generos: Record<string, boolean>;
+}
+
 // Monday item updates (comments) — read/posted live, never mirrored to D1.
 // attachments carry no url: it's a presigned S3 link that expires in ~1h, so
 // the frontend resolves a fresh one on demand via the attachment proxy route

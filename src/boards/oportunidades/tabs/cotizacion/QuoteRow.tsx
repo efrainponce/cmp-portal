@@ -60,6 +60,9 @@ export interface QuoteRowProps {
   tallasSaving: boolean;
   tallasError?: string;
   onEditTallas: (productoId: number, next: string) => void;
+  generoMF: boolean;
+  generoSaving: boolean;
+  onToggleGenero: (productoId: number, next: boolean) => void;
   proveedorSaving: boolean;
   proveedorError?: string;
   onEditProveedor: (productoId: number, proveedorId: string, proveedorNombre: string) => void;
@@ -82,6 +85,7 @@ function QuoteRowInner({
   onEdit, onBlur, onColorChange, onEmbellecimientoChange, onStatusChange, onProductoPick,
   expanded, onToggleExpand, canConfirm, confirmSaving, confirmError, onToggleConfirm,
   tallasSaving, tallasError, onEditTallas,
+  generoMF, generoSaving, onToggleGenero,
   proveedorSaving, proveedorError, onEditProveedor,
   canDelete, deleting, onDeleteLine, canAjustar, onAjustarLinea, ajusteLabel,
 }: QuoteRowProps) {
@@ -396,6 +400,9 @@ function QuoteRowInner({
           tallasSaving={tallasSaving}
           tallasError={tallasError}
           onEditTallas={onEditTallas}
+          generoMF={generoMF}
+          generoSaving={generoSaving}
+          onToggleGenero={onToggleGenero}
           proveedorSaving={proveedorSaving}
           proveedorError={proveedorError}
           onEditProveedor={onEditProveedor}

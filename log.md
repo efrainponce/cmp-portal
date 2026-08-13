@@ -2,6 +2,36 @@
 
 ## 2026-08-13
 
+- Feat: Tallas del catálogo se sincronizan Portal→Airtable ("Tallas Portal") +
+  checkbox "Género M/F"
+  - Efraín reportó que Compras corrige "Tallas" (text_mm5v6jhj, catálogo
+    Productos) desde el portal, pero Airtable sigue mandando su propio valor
+    cada ~8h vía Make ("001. Productos - Sync Airtable to Monday" →
+    cmp-tallas `sync_producto.py`) y lo pisa. Investigado el mecanismo real
+    con Make MCP + introspección directa de la API de Airtable: los campos
+    "Tallas"/"Tallas de ficha comercial (ai)" en Airtable son **AI fields**
+    (confirmado con un PATCH real: `INVALID_VALUE_FOR_COLUMN`, no es cuestión
+    de payload) — Airtable nunca los va a aceptar por API, así que no hay
+    forma de que el portal "gane" escribiendo ahí. Efraín creó un campo nuevo
+    de texto plano "Tallas Portal" (`fldaxxCo1hD26cb7d`) para que el portal
+    escriba ahí en vez.
+  - `worker/lib/airtable.ts`: `buildTallasPortalValue` (pura, testeada) +
+    `updateTallasPortal` (PATCH a Airtable, best-effort/silencioso como
+    `fetchAirtableImageUrl`) + `syncTallasPortal` (junta Tallas + género +
+    airtable_id del mirror y dispara el push). Hook en `submitWrite`
+    (`worker/lib/outbox.ts`) cuando se edita `text_mm5v6jhj` en `productos`.
+  - Género M/F (nuevo, mismo pedido): Efraín quiere que al marcar el
+    checkbox, "Tallas Portal" salga con la lista repetida con prefijo M-/F-
+    por talla (mismas tallas para ambos géneros) en vez de la lista simple.
+    Vive **solo en D1** (`worker/lib/productoGenero.ts`, tabla
+    `producto_genero`) — "no vale la pena" una columna de Monday para esto
+    (Efraín). Endpoints nuevos `GET/PATCH /api/productos/genero` (gate WAC,
+    mismo grupo que Tallas). Checkbox nuevo en `LineDetailPanel.tsx` junto a
+    Tallas, mismo patrón optimista que el resto del panel, prop-drilling por
+    `QuoteRow`/`MobileQuoteRow`/`CotizacionTab`.
+  - `npx tsc -b`, `npm test` (223 tests, incluye 4 nuevos de
+    `buildTallasPortalValue`) y `npm run lint` limpios.
+
 - Fix: "Eliminar línea" tardaba muchísimo (hasta 10s+) en reflejarse
   - Efraín probó el borrado directo (Nueva oportunidad) y la línea seguía
     apareciendo un buen rato después de "borrada". Causa: `DELETE

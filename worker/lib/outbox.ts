@@ -14,6 +14,7 @@ import { getItem } from './dal';
 import type { RawCol } from './serialize';
 import type { MondayItem, MondayCol } from './monday';
 import { logProductoStatusFromPortalWrite } from './estadoProducto';
+import { syncTallasPortal } from './airtable';
 
 export class OutboxError extends Error {
   status: number;
@@ -116,6 +117,14 @@ export async function submitWrite(
     )
     .bind(board.id, itemId, JSON.stringify(cols), contentHash, viewer.email, now, now)
     .run();
+
+  // Airtable "Tallas Portal" (worker/lib/airtable.ts) — Compras es ahora el
+  // dueño real de Tallas (los campos de Airtable son AI fields, la API los
+  // rechaza), así que cada edición se re-empuja para que Airtable no se quede
+  // con el valor viejo (Efraín, 2026-08-13).
+  if (slug === 'productos' && 'text_mm5v6jhj' in cols) {
+    ctx.waitUntil(syncTallasPortal(env, row, cols['text_mm5v6jhj']));
+  }
 
   if (!opts.skipFlush) ctx.waitUntil(flushOutbox(env));
   return { ok: true, pending: true };

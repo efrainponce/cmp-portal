@@ -15,7 +15,7 @@
 // the mirror catches up on refetch.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ColMeta, ColVal, ItemDetailDTO, ItemDTO, QuoteVersionDTO } from '../../../lib/api';
-import { patchItem, apiFetch, listItems } from '../../../lib/apiClient';
+import { patchItem, apiFetch, listItems, getProductoGenero, patchProductoGenero } from '../../../lib/apiClient';
 import { Button } from '../../../components/core/Button';
 import { previewRow, COL } from '../../../lib/costeoCalc';
 import { useIsMobile } from '../../../lib/useIsMobile';
@@ -182,11 +182,17 @@ export function CotizacionTab({
   // (Nueva oportunidad o borrador de versión: el ProductPicker busca sobre él
   // y de ahí sale el item_id real) Y en el board Costeo (chevron de detalle:
   // Descripción/Tallas/confirmación viven en el catálogo por SKU).
+  const [generoMF, setGeneroMFMap] = useState<Record<string, boolean>>({});
   useEffect(() => {
     if (canAddLines || variant === 'costeo' || canAjustar) {
       listItems('productos')
         .then((c) => { setCatalog(c); setCatalogLoading(false); })
         .catch(() => setCatalogLoading(false));
+      // Checkbox "Género M/F" (worker/lib/productoGenero.ts) — nativo en D1, no
+      // viene en el catálogo de Monday, se trae aparte con el mismo trigger.
+      if (variant === 'costeo') {
+        getProductoGenero().then(setGeneroMFMap).catch(() => {});
+      }
     } else {
       setCatalogLoading(false);
     }
@@ -247,6 +253,22 @@ export function CotizacionTab({
       setTallasError((er) => ({ ...er, [key]: e instanceof Error ? e.message : 'No se pudo guardar.' }));
     } finally {
       setTallasSaving((s) => ({ ...s, [key]: false }));
+    }
+  };
+
+  const [generoSaving, setGeneroSaving] = useState<Record<string, boolean>>({});
+
+  // Checkbox "Género M/F" — nativo en D1 (worker/lib/productoGenero.ts), no toca
+  // Monday. Solo decide el prefijo M-/F- que se manda a Airtable (Efraín,
+  // 2026-08-13). Mismo patrón optimista que onEditTallas de arriba.
+  const onToggleGenero = async (productoId: number, next: boolean) => {
+    const key = String(productoId);
+    setGeneroSaving((s) => ({ ...s, [key]: true }));
+    try {
+      await patchProductoGenero(key, next);
+      setGeneroMFMap((g) => ({ ...g, [key]: next }));
+    } finally {
+      setGeneroSaving((s) => ({ ...s, [key]: false }));
     }
   };
 
@@ -501,13 +523,13 @@ export function CotizacionTab({
   const latest = useRef({
     onEdit, onBlur, onColorChange,
     onEmbellecimientoChange, onStatusChange, onProductoPick,
-    onToggleConfirm, onEditTallas, onEditProveedor, onDeleteLine, toggleExpanded,
+    onToggleConfirm, onEditTallas, onToggleGenero, onEditProveedor, onDeleteLine, toggleExpanded,
     onAjustarLinea: setAjustarLineaTarget,
   });
   latest.current = {
     onEdit, onBlur, onColorChange,
     onEmbellecimientoChange, onStatusChange, onProductoPick,
-    onToggleConfirm, onEditTallas, onEditProveedor, onDeleteLine, toggleExpanded,
+    onToggleConfirm, onEditTallas, onToggleGenero, onEditProveedor, onDeleteLine, toggleExpanded,
     onAjustarLinea: setAjustarLineaTarget,
   };
   const sEdit = useCallback((pr: ItemDTO, c: string, r: string) => latest.current.onEdit(pr, c, r), []);
@@ -518,6 +540,7 @@ export function CotizacionTab({
   const sProductoPick = useCallback((pr: ItemDTO, ch: ProductoChoice) => latest.current.onProductoPick(pr, ch), []);
   const sToggleConfirm = useCallback((id: number, next: boolean) => latest.current.onToggleConfirm(id, next), []);
   const sEditTallas = useCallback((id: number, next: string) => latest.current.onEditTallas(id, next), []);
+  const sToggleGenero = useCallback((id: number, next: boolean) => latest.current.onToggleGenero(id, next), []);
   const sEditProveedor = useCallback((id: number, proveedorId: string, nombre: string) => latest.current.onEditProveedor(id, proveedorId, nombre), []);
   const sDeleteLine = useCallback((id: string) => latest.current.onDeleteLine(id), []);
   const sToggleExpand = useCallback((id: string) => latest.current.toggleExpanded(id), []);
@@ -631,6 +654,9 @@ export function CotizacionTab({
               tallasSaving={!!tallasSaving[String(linkedProductoId(p))]}
               tallasError={tallasError[String(linkedProductoId(p))]}
               onEditTallas={sEditTallas}
+              generoMF={!!generoMF[String(linkedProductoId(p))]}
+              generoSaving={!!generoSaving[String(linkedProductoId(p))]}
+              onToggleGenero={sToggleGenero}
               proveedorSaving={!!proveedorSaving[String(linkedProductoId(p))]}
               proveedorError={proveedorError[String(linkedProductoId(p))]}
               onEditProveedor={sEditProveedor}
@@ -708,6 +734,9 @@ export function CotizacionTab({
               tallasSaving={!!tallasSaving[String(linkedProductoId(p))]}
               tallasError={tallasError[String(linkedProductoId(p))]}
               onEditTallas={sEditTallas}
+              generoMF={!!generoMF[String(linkedProductoId(p))]}
+              generoSaving={!!generoSaving[String(linkedProductoId(p))]}
+              onToggleGenero={sToggleGenero}
               proveedorSaving={!!proveedorSaving[String(linkedProductoId(p))]}
               proveedorError={proveedorError[String(linkedProductoId(p))]}
               onEditProveedor={sEditProveedor}
