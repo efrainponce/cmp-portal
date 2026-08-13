@@ -14,6 +14,10 @@ import type { Block, DocumentMeta } from './layout';
 import { renderDocument } from './layout';
 import { LOGO_JPG_BASE64 } from './logo';
 
+// Naranja de marca de CMP — sacado a pixel del logo (banda del escudo), no
+// inventado a ojo.
+const CMP_ORANGE = '#f49e09';
+
 export interface OcProveedorLinea {
   producto: string;
   sku: string;
@@ -163,18 +167,23 @@ export function buildOrdenCompraProveedorPdf(input: OcProveedorPdfInput): Uint8A
         l.descuento > 0 ? `${Math.round(l.descuento * 100)}%` : '0%',
         fmtMoney(l.cantidad * l.precio * (1 - l.descuento), l.moneda),
       ]),
-      footer: ['', '', '', '', '', '', '', 'Subtotal', fmtMoney(monto, moneda)],
+      headerFill: CMP_ORANGE,
+      headerTextColor: '#ffffff',
     },
-    { kind: 'spacer', height: 6 },
-    { kind: 'text', text: `Método de pago: ${input.metodoPago || '—'}`, size: 9 },
-    { kind: 'text', text: `Condiciones de pago: ${input.condicionesPago || '—'}`, size: 9 },
-    { kind: 'spacer', height: 4 },
+    { kind: 'spacer', height: 8 },
+    // Dos columnas alineadas por renglón: términos de pago a la izquierda,
+    // desglose de dinero a la derecha — para que Subtotal/IVA/Total salgan
+    // pegados a su renglón correspondiente, no sueltos aparte (Efraín,
+    // 2026-08-13: "tiene que quedar todo super claro").
     {
       kind: 'kv',
       columns: 2,
       rows: [
+        ['Método de pago', input.metodoPago || '—'],
         ['Subtotal', fmtMoney(monto, moneda)],
+        ['Condiciones de pago', input.condicionesPago || '—'],
         ['IVA (16%)', fmtMoney(monto * 0.16, moneda)],
+        [' ', ' '],
         ['Total', fmtMoney(monto * 1.16, moneda)],
       ],
     },

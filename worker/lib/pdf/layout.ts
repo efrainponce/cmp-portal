@@ -32,7 +32,12 @@ export type Block =
    * dibujan ancladas al TOPE del renglón, nunca desaparecen. Se agregó para la
    * OC a proveedor: descripciones de embellecimiento largas rompían tablas de
    * ancho fijo (visto primero en la plantilla de Eledo, 2026-08-12). */
-  | { kind: 'wrapTable'; columns: TableColumn[]; rows: string[][]; wrapCol: number; footer?: string[] }
+  | {
+      kind: 'wrapTable'; columns: TableColumn[]; rows: string[][]; wrapCol: number; footer?: string[];
+      /** Override de color del renglón de encabezado — default gris. La OC a
+       * proveedor usa el naranja de marca de CMP (sacado del logo). */
+      headerFill?: string; headerTextColor?: string;
+    }
   | { kind: 'divider' }
   | { kind: 'spacer'; height: number }
   | { kind: 'note'; text: string }
@@ -165,11 +170,11 @@ function drawKv(pdf: PdfWriter, cur: Cursor, block: Extract<Block, { kind: 'kv' 
   cur.y += 4;
 }
 
-function drawTableHeader(pdf: PdfWriter, cur: Cursor, columns: TableColumn[]): void {
+function drawTableHeader(pdf: PdfWriter, cur: Cursor, columns: TableColumn[], fill = '#eef2f6', textColor = INK_SOFT): void {
   const boxes = columnBoxes(columns);
-  pdf.rect(cur.page, CONTENT_LEFT, cur.y - 10, CONTENT_WIDTH, 18, { fill: '#eef2f6' });
+  pdf.rect(cur.page, CONTENT_LEFT, cur.y - 10, CONTENT_WIDTH, 18, { fill });
   columns.forEach((col, i) => {
-    pdf.textAligned(cur.page, ellipsize(col.header.toUpperCase(), boxes[i].right - boxes[i].left, 7.5, 'HB'), cur.y + 2, boxes[i], col.align ?? 'left', { size: 7.5, font: 'HB', color: INK_SOFT });
+    pdf.textAligned(cur.page, ellipsize(col.header.toUpperCase(), boxes[i].right - boxes[i].left, 7.5, 'HB'), cur.y + 2, boxes[i], col.align ?? 'left', { size: 7.5, font: 'HB', color: textColor });
   });
   cur.y += 18;
 }
@@ -210,12 +215,12 @@ function drawWrapTable(pdf: PdfWriter, cur: Cursor, block: Extract<Block, { kind
   const lineHeight = 11;
   const baseRowHeight = 17;
   cur.ensure(18 + baseRowHeight * 2);
-  drawTableHeader(pdf, cur, block.columns);
+  drawTableHeader(pdf, cur, block.columns, block.headerFill, block.headerTextColor);
 
   block.rows.forEach((row, r) => {
     const lines = wrapText(row[block.wrapCol] ?? '', wrapWidth, 9);
     const rowHeight = Math.max(baseRowHeight, lines.length * lineHeight + 6);
-    if (cur.ensure(rowHeight)) drawTableHeader(pdf, cur, block.columns);
+    if (cur.ensure(rowHeight)) drawTableHeader(pdf, cur, block.columns, block.headerFill, block.headerTextColor);
     if (r % 2 === 1) pdf.rect(cur.page, CONTENT_LEFT, cur.y - 9, CONTENT_WIDTH, rowHeight, { fill: ZEBRA });
     block.columns.forEach((col, i) => {
       if (i === block.wrapCol) {
