@@ -2,6 +2,30 @@
 
 ## 2026-08-13
 
+- Fix: "Eliminar línea" tardaba muchísimo (hasta 10s+) en reflejarse
+  - Efraín probó el borrado directo (Nueva oportunidad) y la línea seguía
+    apareciendo un buen rato después de "borrada". Causa: `DELETE
+    /api/boards/:slug/items/:id` (worker/routes/boards.ts) solo borraba en
+    Monday (`deleteItem`) y devolvía `ok`, sin tocar el mirror D1 — la fila
+    solo desaparecía cuando llegaba el webhook `subitem_deleted`
+    (worker/sync/webhook.ts), que tiene `DEBOUNCE_MS = 10_000` más la
+    latencia real de entrega de Monday. El refetch del drawer tras borrar
+    (`onSaved` → `load()`) lee el mirror, así que mostraba la línea "viva"
+    todo ese rato.
+  - Fix (propuesto por Efraín: "empieza por D1 solo, para de verdad no
+    mostrarla"): la ruta ahora borra la fila de D1 en el momento
+    (`DELETE FROM items WHERE board_id=? AND item_id=?`, mismo query que usa
+    el webhook) justo después de que Monday confirma el borrado, antes de
+    responder. Si el webhook llega después, es un DELETE sobre una fila que
+    ya no existe — no-op inofensivo. La ruta de "Eliminar línea" vía versión
+    nueva (`/api/oportunidades/lineas/:id/ajustar`, modo eliminar) no tenía
+    este problema — ya hace `refetchItemTree` (lectura fresca de Monday)
+    antes de responder.
+  - Verificado en vivo (Playwright + Monday real, dev local) cronometrando
+    clic→desaparición: ~1.8s, dominado por la latencia propia de la mutación
+    `delete_item` de Monday, ya no por el debounce del webhook.
+  - `tsc --noEmit`, `npm test` (219 tests) y `npm run lint` limpios.
+
 - Fix: "Eliminar línea" — corrige el diseño del commit anterior (mismo día) tras
   probarlo en vivo con Efraín
   - Efraín probó el commit anterior (`cd23558`) y corrigió dos cosas en vivo:

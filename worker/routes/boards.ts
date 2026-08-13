@@ -253,10 +253,19 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
 
     try {
       await deleteItem(c.env, itemId);
-      return c.json({ ok: true });
     } catch {
       return jsonStatus({ ok: false, error: 'No se pudo eliminar' }, 500);
     }
+    // Antes solo se borraba en Monday y se esperaba al webhook subitem_deleted
+    // (worker/sync/webhook.ts) para limpiar el mirror — con su debounce de
+    // 10s más la latencia real de entrega de Monday, la línea seguía
+    // apareciendo en el drawer varios segundos/minutos después de "borrada"
+    // (Efraín, 2026-08-13: "tarda muchísimo"). Se borra la fila de D1 aquí
+    // mismo, igual que el webhook — si el webhook llega después, el DELETE
+    // sobre una fila que ya no existe es un no-op inofensivo.
+    await c.env.DB.prepare('DELETE FROM items WHERE board_id = ? AND item_id = ?')
+      .bind(BOARDS[slug].id, itemId).run();
+    return c.json({ ok: true });
   });
 
   app.post('/api/boards/:slug/items/:id/refresh', async c => {
