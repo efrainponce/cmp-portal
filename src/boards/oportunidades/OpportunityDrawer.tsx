@@ -34,6 +34,7 @@ import { PaymentRequestButton } from '../../components/board/PaymentRequestButto
 import { EditableItemName } from '../../components/board/EditableItemName';
 import { EditClienteModal } from './EditClienteModal';
 import { EditPersonaModal } from './EditPersonaModal';
+import { DuplicarOportunidadModal } from './DuplicarOportunidadModal';
 
 interface Props {
   id: string;
@@ -105,6 +106,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
   const me = useMe();
   const canDuplicate = !!me;
   const [duplicating, setDuplicating] = useState(false);
+  const [showDuplicar, setShowDuplicar] = useState(false);
   const { boards } = useBoards();
   const subCols = colForBoard(boards, 'oportunidades_sub');
   const oppCols = colForBoard(boards, 'oportunidades');
@@ -279,11 +281,11 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
 
   // Mismo patrón de polling que CreateOportunidadModal: espera a que Monday
   // asigne el folio antes de navegar, así el drawer nuevo no abre "en blanco".
-  const onDuplicate = async () => {
+  const onDuplicate = async (etapa: string) => {
     setNotice(null);
     setDuplicating(true);
     try {
-      const res = await duplicarOportunidad(id);
+      const res = await duplicarOportunidad(id, etapa);
       if (!res.ok || !res.id) throw new Error(res.error ?? 'No se pudo duplicar la oportunidad.');
       const newId = res.id;
       let attempts = 0;
@@ -295,6 +297,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
         } catch { /* reintentar */ }
         attempts++;
       }
+      setShowDuplicar(false);
       onDuplicated(newId);
     } catch (e) {
       setNotice({ kind: 'error', title: 'No se pudo duplicar la oportunidad:', lines: [e instanceof Error ? e.message : 'Verifica tu conexión.'] });
@@ -551,8 +554,8 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
         </div>
         {canDuplicate && !ajena && (
           <div
-            onClick={duplicating ? undefined : onDuplicate}
-            title="Crea una oportunidad nueva en 'Nueva oportunidad' con los mismos productos vigentes y embellecimientos (sin cotizaciones ni documentos)"
+            onClick={duplicating ? undefined : () => setShowDuplicar(true)}
+            title="Crea una oportunidad nueva con los mismos productos vigentes, embellecimientos y costeo (sin cotizaciones ni documentos)"
             style={{
               font: 'var(--text-label-strong)', color: 'var(--accent)',
               cursor: duplicating ? 'default' : 'pointer', opacity: duplicating ? 0.6 : 1,
@@ -850,6 +853,14 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
             </div>
           </div>
         </Modal>
+      )}
+
+      {showDuplicar && (
+        <DuplicarOportunidadModal
+          onClose={() => setShowDuplicar(false)}
+          onConfirm={onDuplicate}
+          duplicating={duplicating}
+        />
       )}
 
       {restoreTarget && (

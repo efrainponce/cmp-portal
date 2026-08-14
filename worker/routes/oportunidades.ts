@@ -7,7 +7,7 @@ import type { Env } from '../env';
 import type { Identity } from '../../shared/types';
 import { BOARDS } from '../../shared/boards';
 import { isNativeId } from '../../shared/nativeId';
-import type { AjustarLineaRequest, AjustarLineaResponse, CotizacionVirtualDTO, DuplicarOportunidadResponse, DuplicarVersionResponse, ItemDetailDTO, QuoteVersionsResponse, TallaBoxInput, CapturarTallasResponse, EstadoHistorialResponse, ProductoResumenResponse, ProductoGeneroResponse } from '../../shared/dto';
+import type { AjustarLineaRequest, AjustarLineaResponse, CotizacionVirtualDTO, DuplicarOportunidadRequest, DuplicarOportunidadResponse, DuplicarVersionResponse, ItemDetailDTO, QuoteVersionsResponse, TallaBoxInput, CapturarTallasResponse, EstadoHistorialResponse, ProductoResumenResponse, ProductoGeneroResponse } from '../../shared/dto';
 import type { ProposedProductsResponse, AddProposedProductResponse } from '../../shared/productosPropuestos';
 import { getItem, childrenOf, pendingItemIds, proyectoForOportunidad, linkedItemId, PROYECTO_OPP_REL } from '../lib/dal';
 import { toItemDTO } from '../lib/serialize';
@@ -291,14 +291,16 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
   });
 
   // Duplicar (botón del drawer): clona cabecera + líneas vigentes +
-  // embellecimiento a una oportunidad nueva en etapa "Nueva oportunidad" —
+  // embellecimiento a una oportunidad nueva — `etapa` (opcional, default
+  // "Nueva oportunidad") la elige quien duplica en DuplicarOportunidadModal;
   // nunca versiones de cotización ni otros documentos (worker/lib/duplicateOportunidad.ts).
   app.post('/api/oportunidades/:id/duplicar', async c => {
     const itemId = Number(c.req.param('id'));
     if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
+    const body = await c.req.json<DuplicarOportunidadRequest>().catch(() => ({}) as DuplicarOportunidadRequest);
 
     try {
-      const result = await duplicateOportunidad(c.env, c.executionCtx, itemId, c.get('viewer'));
+      const result = await duplicateOportunidad(c.env, c.executionCtx, itemId, c.get('viewer'), body.etapa);
       return c.json({ ok: true, id: String(result.id) } satisfies DuplicarOportunidadResponse);
     } catch (err) {
       if (err instanceof DuplicateOportunidadError) {

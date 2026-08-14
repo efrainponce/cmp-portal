@@ -25,6 +25,14 @@ export const DEAL_STAGE_ORDER = ['4', '15', '7', '9', '6', '0', '3', '8', '1', '
 // Terminal stages: Ganada, Perdida, Cancelada. "Abiertas" = everything else.
 export const CLOSED_STAGES = new Set(['1', '2', '5']);
 
+// Etapas ofrecibles como punto de partida de un duplicado ("Duplicar" en el
+// drawer, worker/lib/duplicateOportunidad.ts + DuplicarOportunidadModal —
+// Efraín, 2026-08-14: "duplicar pregunta a que estado se manda"): el pipeline
+// "hacia adelante" real, mismo orden que CLAUDE.md — no las etapas laterales
+// (Perdida/Cancelada/Seguimiento/Negociación/Cotización), que no tiene
+// sentido elegir como arranque de un duplicado.
+export const DUPLICAR_ETAPAS_VALIDAS = ['4', '15', '7', '9', '8', '1'];
+
 /**
  * True when `stage` sits at or past `threshold` in DEAL_STAGE_ORDER.
  * Unknown/absent stages fail open (return true): the UI only declutters,

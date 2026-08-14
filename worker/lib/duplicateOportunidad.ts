@@ -1,14 +1,19 @@
 // worker/lib/duplicateOportunidad.ts — "Duplicar" en el drawer: clona una
-// Oportunidad a una nueva en etapa "Nueva oportunidad" (4), con cabecera
-// (Cliente/Vendedor/Comprador) + SOLO las líneas vigentes (el mirror actual,
-// igual criterio que quoteVersions.ts), copiadas campo por campo tal cual
-// (producto/color/cantidad/comentarios/embellecimiento + TODO su costeo:
-// costos, Etapa Costeo, moneda, IVA%, Margen Gob%, precio de venta — Efraín,
-// 2026-08-14: "duplicado es duplicado, todo debe estar igual", no una
-// oportunidad que arranca en blanco). La ETAPA de la oportunidad SÍ se
-// resetea a "Nueva oportunidad" (nunca se forja deal_stage a otro valor —
-// ver CLAUDE.md: el portal nunca cambia de etapa por su cuenta, eso dispara
-// automations de Monday/cmp-tallas fuera de su control). Nunca arrastra
+// Oportunidad a una nueva, con cabecera (Cliente/Vendedor/Comprador) + SOLO
+// las líneas vigentes (el mirror actual, igual criterio que quoteVersions.ts),
+// copiadas campo por campo tal cual (producto/color/cantidad/comentarios/
+// embellecimiento + TODO su costeo: costos, Etapa Costeo, moneda, IVA%,
+// Margen Gob%, precio de venta — Efraín, 2026-08-14: "duplicado es duplicado,
+// todo debe estar igual", no una oportunidad que arranca en blanco).
+//
+// La ETAPA de la oportunidad nueva la elige quien duplica (`etapaDestino`,
+// UI: DuplicarOportunidadModal — Efraín, 2026-08-14: "duplicar pregunta a que
+// estado se manda"), default "Nueva oportunidad" si no se manda. Fuera de esa
+// etapa es SOLO la etiqueta — nunca replica el PROCESO que esa etapa implica
+// (Proyecto de "Ganada" vía ganarOportunidad.ts, PDFs de costeo/validación,
+// fechas de solicitud/validación) porque esos son artefactos reales de pasos
+// que nunca ocurrieron en el duplicado; forjarlos sería la misma mentira de
+// datos que este mismo archivo dejó de cometer con las líneas. Nunca arrastra
 // versiones anteriores (cotizacion_versions en D1), PDFs de cotización ni
 // ningún otro documento.
 // Column ids de docs/monday-column-map.md / column-meta.gen.ts — nunca fabricar.
@@ -16,6 +21,7 @@ import type { ExecutionContext } from 'hono';
 import type { Env } from '../env';
 import type { Identity, MirrorItem } from '../../shared/types';
 import { BOARDS } from '../../shared/boards';
+import { DEAL_STAGE_LABELS, DUPLICAR_ETAPAS_VALIDAS } from '../../shared/dealStages';
 import { createItem, createSubitem, addFileToColumn, fetchAssetPublicUrls } from './monday';
 import { getItem, childrenOf } from './dal';
 import { upsertItem, refetchItemTree } from '../sync';
@@ -28,6 +34,8 @@ export class DuplicateOportunidadError extends Error {
     this.status = status;
   }
 }
+
+const ETAPA_DEFAULT = '4'; // Nueva oportunidad
 
 // Oportunidades (18395657596)
 const COL_ETAPA = 'deal_stage';
@@ -128,9 +136,10 @@ async function copyZoneImages(env: Env, sourceCols: Map<string, RawCol>, newSubi
 }
 
 export async function duplicateOportunidad(
-  env: Env, ctx: ExecutionContext, itemId: number, viewer: Identity,
+  env: Env, ctx: ExecutionContext, itemId: number, viewer: Identity, etapaDestino?: string,
 ): Promise<{ id: number }> {
   if (!DUPLICATE_ROLES.includes(viewer.role)) throw new DuplicateOportunidadError(403, 'cannot duplicate');
+  const etapaKey = etapaDestino && DUPLICAR_ETAPAS_VALIDAS.includes(etapaDestino) ? etapaDestino : ETAPA_DEFAULT;
 
   // scope 'own': crea items en Monday a partir de esta (ver worker/lib/zonas.ts).
   const source = await getItem(env, 'oportunidades', itemId, viewer, 'own');
@@ -138,7 +147,7 @@ export async function duplicateOportunidad(
   const srcCols = colsOf(source);
 
   const newCols: Record<string, unknown> = {
-    [COL_ETAPA]: { label: 'Nueva oportunidad' },
+    [COL_ETAPA]: { label: DEAL_STAGE_LABELS[etapaKey] },
   };
   const vendedor = peopleValue(srcCols.get(COL_VENDEDOR));
   if (vendedor) newCols[COL_VENDEDOR] = vendedor;

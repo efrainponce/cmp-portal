@@ -65,8 +65,15 @@ export interface CreateRequest { name: string; cols: Record<string, string>; nat
 export interface CreateResponse { ok: boolean; id?: string; error?: string }
 
 // POST /api/oportunidades/:id/duplicar — clona cabecera + líneas vigentes +
-// embellecimiento a una oportunidad nueva en etapa "Nueva oportunidad"; no
-// arrastra versiones de cotización, PDFs ni otros documentos.
+// embellecimiento a una oportunidad nueva; no arrastra versiones de
+// cotización, PDFs ni otros documentos. `etapa` (Efraín, 2026-08-14: "duplicar
+// pregunta a que estado se manda") es la clave de shared/dealStages.ts
+// DEAL_STAGE_LABELS a la que nace el duplicado — default '4' (Nueva
+// oportunidad) si se omite. Fuera de '4' es solo la ETIQUETA de la etapa: no
+// replica el proceso que esa etapa implica (Proyecto de "Ganada", PDFs de
+// costeo/validación, etc.) — mismo criterio que el backfill manual de
+// OPP-0899.
+export interface DuplicarOportunidadRequest { etapa?: string }
 export interface DuplicarOportunidadResponse { ok: boolean; id?: string; error?: string }
 
 // `email` distingue dos entradas que comparten `id` (mismo monday_user_id) pero

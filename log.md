@@ -2,6 +2,23 @@
 
 ## 2026-08-14
 
+- Feature: "Duplicar" ahora pregunta a qué etapa se manda el clon (Efraín,
+  tras el backfill manual de OPP-0899: "en las siguientes, duplicar pregunta
+  a que estado se manda").
+  - `duplicateOportunidad.ts` acepta `etapaDestino` (una de las 6 etapas del
+    pipeline — `DUPLICAR_ETAPAS_VALIDAS` en `shared/dealStages.ts`), default
+    "Nueva oportunidad" si se omite (mismo comportamiento que antes).
+  - `DuplicarOportunidadModal.tsx` (nuevo): selector de etapa antes de
+    duplicar. Fuera de "Nueva oportunidad" muestra un aviso — el clon SOLO
+    copia la etiqueta de la etapa, no genera el Proyecto de "Ganada" ni los
+    PDFs de costeo/validación que esa etapa normalmente implica (mismo
+    criterio que el backfill manual: nunca forjar artefactos de un proceso
+    que no ocurrió).
+  - Probado en vivo con Playwright contra el board real (OPP-0512): las 6
+    etapas listan bien, el aviso aparece/desaparece correctamente. No se
+    ejecutó la duplicación de verdad para no crear un item de prueba en
+    Monday producción.
+
 - Fix: dos tarjetas "CANCELADA" en el board de Oportunidades (reporte de
   Efraín con captura). Causa: `groupByColumn` (`src/lib/groupBy.ts`) agrupaba
   por el índice crudo de la columna status, no por el texto visible — mismo

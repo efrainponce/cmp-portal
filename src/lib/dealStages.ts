@@ -1,6 +1,6 @@
 // Etapa canon (labels/order) lives in shared/dealStages.ts so the worker's
 // assistant tools use the same source of truth; re-exported here for the UI.
-export { DEAL_STAGE_LABELS, DEAL_STAGE_ORDER, stageAtOrAfter } from '../../shared/dealStages';
+export { DEAL_STAGE_LABELS, DEAL_STAGE_ORDER, DUPLICAR_ETAPAS_VALIDAS, stageAtOrAfter } from '../../shared/dealStages';
 
 export type StageBoardKey = 'oportunidades' | 'oportunidades_web' | 'costeo' | 'validacion' | 'doctallas' | 'ordenescompra' | 'logistica' | 'zona_efrain';
 

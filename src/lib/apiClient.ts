@@ -3,7 +3,7 @@ import type { BoardSlug } from '../../shared/boards';
 import type {
   AjusteDTO, AjustarLineaRequest, AjustarLineaResponse,
   AssistantChatRequest, AssistantChatResponse, AssistantHistoryResponse, AssistantMessage,
-  BoardAccessDTO, ColMeta, ColVal, CostoDivergenciaDTO, CotizacionVirtualDTO, CreateResponse, DuplicarOportunidadResponse, DuplicarVersionResponse, EnviarCosteoResponse, IdentityDTO, ItemDTO, ItemDetailDTO,
+  BoardAccessDTO, ColMeta, ColVal, CostoDivergenciaDTO, CotizacionVirtualDTO, CreateResponse, DuplicarOportunidadRequest, DuplicarOportunidadResponse, DuplicarVersionResponse, EnviarCosteoResponse, IdentityDTO, ItemDTO, ItemDetailDTO,
   ListResponse, MeDTO, MentionUserDTO, MondayUserDTO, ProyectoActionResponse, ProyectoResponse,
   QuoteLineSnapshot, QuoteVersionDTO, QuoteVersionsResponse,
   TallaBoxInput, CapturarTallasResponse, EstadoHistorialEntryDTO, EstadoHistorialResponse,
@@ -309,10 +309,15 @@ export async function enviarValidacion(id: string): Promise<EnviarCosteoResponse
 }
 
 /** Duplicar — clona cabecera + líneas vigentes + embellecimiento a una
- * oportunidad nueva en etapa "Nueva oportunidad"; nunca versiones de
- * cotización ni otros documentos. */
-export async function duplicarOportunidad(id: string): Promise<DuplicarOportunidadResponse> {
-  const res = await apiFetch(`/oportunidades/${id}/duplicar`, { method: 'POST' });
+ * oportunidad nueva; `etapa` (clave de DEAL_STAGE_LABELS, default "4" Nueva
+ * oportunidad si se omite) la elige quien duplica (DuplicarOportunidadModal).
+ * Nunca versiones de cotización ni otros documentos. */
+export async function duplicarOportunidad(id: string, etapa?: string): Promise<DuplicarOportunidadResponse> {
+  const res = await apiFetch(`/oportunidades/${id}/duplicar`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ etapa } satisfies DuplicarOportunidadRequest),
+  });
   const body: DuplicarOportunidadResponse = await res.json();
   if (!res.ok && !body.error) throw new Error('duplicar failed: ' + res.status);
   return body;
