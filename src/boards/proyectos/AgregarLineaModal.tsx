@@ -7,7 +7,7 @@ import type { CSSProperties, ReactNode } from 'react';
 import { Modal } from '../../components/core/Modal';
 import { Button } from '../../components/core/Button';
 import { SearchInput } from '../../components/forms/SearchInput';
-import { usePoll, addProyectoLinea, type ItemDTO } from '../../lib/api';
+import { usePoll, addProyectoLinea, SOLO_NOMBRE, type ItemDTO } from '../../lib/api';
 
 interface Props {
   proyectoId: string;
@@ -23,7 +23,7 @@ export function AgregarLineaModal({ proyectoId, onClose, onCreated }: Props) {
   const [sku, setSku] = useState('');
   const [proveedor, setProveedor] = useState<ItemDTO | null>(null);
   const [q, setQ] = useState('');
-  const { data } = usePoll('proveedores', q);
+  const { data } = usePoll('proveedores', q, SOLO_NOMBRE);
   const opciones = data?.items ?? [];
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);

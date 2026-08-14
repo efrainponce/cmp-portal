@@ -10,7 +10,7 @@ import { PickerRow } from '../../components/forms/PickerRow';
 import { IconBack } from '../../components/icons';
 import {
   useBoards, usePoll, colForBoard, createItem, getVendedores, vendedorKey, vendedorIdFromKey,
-  type BoardSlug, type VendedorDTO,
+  SOLO_NOMBRE, type BoardSlug, type VendedorDTO,
 } from '../../lib/api';
 import { useMe } from '../../lib/useMe';
 import { CREATE_FIELDS } from '../../../shared/createFields';
@@ -47,7 +47,7 @@ export function CreateRecordModal({ slug, title, onClose, onCreated }: Props) {
   const [showMore, setShowMore] = useState(optionalFields.length === 0);
 
   const [instQ, setInstQ] = useState('');
-  const { data: instData } = usePoll('instituciones', instQ);
+  const { data: instData } = usePoll('instituciones', instQ, SOLO_NOMBRE);
   const institucionOptions = instData?.items ?? [];
   const [institucionLabel, setInstitucionLabel] = useState('');
   const [showInstModal, setShowInstModal] = useState(false);

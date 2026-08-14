@@ -11,7 +11,7 @@ import {
   type MovementType,
 } from '../../../../shared/inventory';
 import { createMovement, getWarehouses, type WarehouseDTO } from '../../../lib/inventoryApi';
-import { usePoll, getMe, type ItemDTO, type MeDTO } from '../../../lib/api';
+import { usePoll, getMe, SOLO_NOMBRE, type ItemDTO, type MeDTO } from '../../../lib/api';
 
 const fieldStyle: React.CSSProperties = {
   width: '100%', font: 'var(--text-body)', color: 'var(--ink)', border: '1px solid var(--border)',
@@ -31,7 +31,7 @@ export function NewMovementTab({ onCreated }: { onCreated: () => void }) {
   const [direction, setDirection] = useState<'up' | 'down'>('up');
   const [producto, setProducto] = useState<ItemDTO | null>(null);
   const [productQuery, setProductQuery] = useState('');
-  const { data: productData } = usePoll('productos', productQuery);
+  const { data: productData } = usePoll('productos', productQuery, SOLO_NOMBRE);
   const productOptions = productData?.items ?? [];
   const [quantity, setQuantity] = useState('');
   const [originId, setOriginId] = useState('');

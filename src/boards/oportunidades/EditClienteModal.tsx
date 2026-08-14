@@ -6,7 +6,7 @@ import { useState } from 'react';
 import { Modal } from '../../components/core/Modal';
 import { SearchInput } from '../../components/forms/SearchInput';
 import { PickerRow } from '../../components/forms/PickerRow';
-import { usePoll, patchItem, type ItemDTO } from '../../lib/api';
+import { usePoll, patchItem, SOLO_NOMBRE, type ItemDTO } from '../../lib/api';
 import { useSaveState } from '../../lib/useSaveState';
 
 interface Props {
@@ -19,7 +19,7 @@ interface Props {
 
 export function EditClienteModal({ oppId, oppName, currentCliente, onClose, onSaved }: Props) {
   const [q, setQ] = useState('');
-  const { data } = usePoll('contactos', q);
+  const { data } = usePoll('contactos', q, SOLO_NOMBRE);
   const options = data?.items ?? [];
   const { saving, error, run } = useSaveState();
 

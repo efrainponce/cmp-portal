@@ -7,7 +7,7 @@ import { useEffect, useState } from 'react';
 import { Modal } from '../../components/core/Modal';
 import { SearchInput } from '../../components/forms/SearchInput';
 import { PickerRow } from '../../components/forms/PickerRow';
-import { usePoll, patchItem, getVendedores, type ItemDTO, type VendedorDTO } from '../../lib/api';
+import { usePoll, patchItem, getVendedores, SOLO_NOMBRE, type ItemDTO, type VendedorDTO } from '../../lib/api';
 import { useSaveState } from '../../lib/useSaveState';
 
 interface Props {
@@ -20,7 +20,7 @@ const VENDEDOR_COL = 'multiple_person_mm03vqwx';
 
 export function EditContactoModal({ contact, onClose, onSaved }: Props) {
   const [instQ, setInstQ] = useState('');
-  const { data: instData } = usePoll('instituciones', instQ);
+  const { data: instData } = usePoll('instituciones', instQ, SOLO_NOMBRE);
   const institucionOptions = instData?.items ?? [];
   const [currentInstitucion, setCurrentInstitucion] = useState(contact.cols['contact_account']?.text || '—');
 

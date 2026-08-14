@@ -12,6 +12,16 @@ export * from './apiClient';
 
 export type PollStatus = 'loading' | 'ready' | 'denied' | 'offline';
 
+/** Proyección para los selectores de catálogo (`usePoll(slug, q, SOLO_NOMBRE)`):
+ * NINGUNA columna, solo los campos propios del item (`id`, `name`).
+ *
+ * Los pickers de Productos / Instituciones / Contactos / Proveedores pintan
+ * únicamente `item.name`, pero arrancan con búsqueda vacía y pedían el board
+ * ENTERO — medido: Productos son 1.86 MB (260 KB gz) por 1247 items, y encima
+ * se re-pedía cada 5 s mientras el modal estuviera abierto. Sin columnas baja
+ * a 42 KB. */
+export const SOLO_NOMBRE: readonly string[] = [];
+
 export interface PollResult {
   status: PollStatus;
   data: ListResponse | null;
@@ -41,7 +51,8 @@ export function usePoll(slug: BoardSlug, q = '', cols?: readonly string[]): Poll
 
   // Se serializa para poder usarlo como dep estable: un array literal en el
   // call site cambia de identidad en cada render y reiniciaría el polling.
-  const colsParam = cols?.length ? cols.join(',') : '';
+  // null = sin proyección (todas las columnas); '' = ninguna columna.
+  const colsParam = cols ? cols.join(',') : null;
 
   const load = useCallback(async () => {
     // Pestaña oculta: no gastes requests — al volver, el listener de
@@ -50,7 +61,7 @@ export function usePoll(slug: BoardSlug, q = '', cols?: readonly string[]): Poll
     try {
       const qs = new URLSearchParams();
       if (q) qs.set('q', q);
-      if (colsParam) qs.set('cols', colsParam);
+      if (colsParam !== null) qs.set('cols', colsParam);
       const params = qs.size ? `?${qs}` : '';
       const headers: Record<string, string> = {};
       if (etagRef.current) headers['If-None-Match'] = etagRef.current;

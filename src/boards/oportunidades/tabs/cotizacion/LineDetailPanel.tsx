@@ -14,7 +14,7 @@
 // viviendo en EmbellecimientosTab.
 import { useEffect, useState } from 'react';
 import type { ItemDTO } from '../../../../lib/api';
-import { getZoneImages, usePoll } from '../../../../lib/api';
+import { getZoneImages, usePoll, SOLO_NOMBRE } from '../../../../lib/api';
 import { StatusBadge } from '../../../../components/core/Badges';
 import { SearchInput } from '../../../../components/forms/SearchInput';
 import { EMB_STATUS_COL, EMB_LABEL_CON, explodeEmbellecimiento } from '../../../../lib/embellecimiento';
@@ -90,7 +90,7 @@ function ProveedorField({
 }) {
   const [picking, setPicking] = useState(false);
   const [q, setQ] = useState('');
-  const { data } = usePoll('proveedores', picking ? q : '');
+  const { data } = usePoll('proveedores', picking ? q : '', SOLO_NOMBRE);
   const opciones = picking ? (data?.items ?? []) : [];
 
   if (!picking) {

@@ -2,6 +2,62 @@
 
 ## 2026-08-13
 
+- Perf (2a ronda): selectores de catálogo, ETag compartido y relectura más barata
+  - Efraín pidió "qué más optimizaciones quieres" y eligió las tres que salieron
+    de medir los boards restantes.
+  - **Selectores de catálogo bajaban el board ENTERO** (`NewMovementTab`,
+    `CreateRecordModal`, `EditContactoModal`, `EditClienteModal`,
+    `AgregarLineaModal`, `LineDetailPanel`): todos arrancan con búsqueda vacía y
+    pedían todo, re-pidiéndolo cada 5 s mientras el modal estuviera abierto.
+    Medido: Productos 1.86 MB / 260 KB gz por 1247 items, Instituciones 3.2 MB /
+    139 KB por 3129. Y los seis solo pintan `item.name`, que es campo propio del
+    item, no una columna. Ahora piden `SOLO_NOMBRE` (cero columnas):
+    **Productos 260 → 41.8 KB (-84%)**, Instituciones 139 → 52.8 KB (-62%),
+    Contactos 53.5 → 15.3 KB (-71%). Verificado en navegador: 1247 opciones,
+    nombres correctos.
+    - Hubo que distinguir `?cols=` AUSENTE (todas las columnas, lo que necesitan
+      las vistas genéricas) de `?cols=` VACÍO (ninguna). Se compara contra
+      `undefined`, no por verdadero/falso, y lo mismo en `etagFor` — si la
+      cadena vacía cayera en el ETag de la respuesta completa, un 304 le
+      entregaría al selector la forma con todas las columnas. Anclado en
+      `serialize.test.ts`.
+  - **Abrir una oportunidad invalidaba la lista de TODOS** (`refetch.ts`,
+    `boards.ts`): el ETag de las listas cuelga de `MAX(synced_at)` del board, y
+    `refetchItemTree` reescribía `synced_at` del item y de sus 30+ líneas aunque
+    Monday no hubiera cambiado nada. O sea: cada vez que cualquiera abría
+    cualquier oportunidad, todos los demás re-bajaban el board completo en su
+    siguiente poll. Comprobado con curl antes/después. Ahora refetch usa
+    `skipIfUnchanged` (lo que reconcile ya hacía), así que `synced_at` solo se
+    mueve cuando el contenido cambió de verdad. Los cambios en columnas mirror
+    quedan cubiertos: entran en `content_hash`, no en el `updated_at` de Monday.
+    - Se verificó que `reconcile` y `refetch` calculan el MISMO hash (mismo
+      `COL_FIELDS`/`normalizeCols`, y `rawHash` ordena por id) — si difirieran se
+      pisarían mutuamente y el arreglo no serviría de nada.
+    - Efecto secundario atendido: `synced_at` pasa a significar "último cambio
+      real", pero el drawer rotula "sincronizado hace …", que es cuándo se
+      VERIFICÓ. `pullFromMonday` ahora devuelve si de verdad leyó Monday y la
+      ruta reporta esa hora — si no, diría "sincronizado hace 3 días" un segundo
+      después de releer. No entra en el ETag del detalle (lo ignora), así que no
+      provoca 200s de más.
+    - Comportamiento observado: la PRIMERA apertura de cada item tras el cambio
+      escribe una vez y de ahí queda estable (2a pasada sobre las mismas 3
+      oportunidades: ETag idéntico).
+  - **Relectura más barata** (`refetch.ts`): `skipIfUnchanged` por sí solo
+    cambiaba 31 escrituras por 31 SELECTs secuenciales a D1. Ahora los hashes de
+    todas las líneas se leen en UNA consulta y solo se escribe lo que cambió —
+    el mismo patrón de reconcile. (No pude medir la ganancia real: en local D1 es
+    un archivo y no representa el round-trip de producción.)
+  - **Hallazgo aparte, importante: `npx tsc --noEmit` no revisa NADA.**
+    `tsconfig.json` tiene `"files": []` y solo `references`, así que ese comando
+    (el que documenta CLAUDE.md) sale 0 siempre. Los typechecks que reporté en la
+    ronda anterior eran vacíos. Lo real es `tsc -b` (app+node) y
+    `tsc -p tsconfig.worker.json` — y **el worker no está en las references**, o
+    sea que ni el build ni CI lo typechequean. Al correrlo salieron 2 errores
+    PREEXISTENTES (`admin.ts:87`, `boards.ts:42`, idénticos en HEAD, no de estos
+    cambios) y un error mío de import que el comando vacío había dejado pasar.
+    Queda pendiente decidir con Efraín si se agrega el worker a las references y
+    se arreglan esos dos.
+
 - Perf: portal mucho más liviano en máquinas lentas y conexiones malas
   (banco de medición + 5 arreglos)
   - Efraín reportó que la gente se queja de que el portal va lento, sobre todo

@@ -61,6 +61,19 @@ describe('toItemDTO — proyección de columnas', () => {
     expect(Object.keys(dto.cols).sort()).toEqual([...legibles.slice(0, 2)].sort());
   });
 
+  it('un `only` VACÍO significa ninguna columna, no "todas"', () => {
+    // Es la diferencia entre `?cols=` ausente y `?cols=` vacío en la ruta: los
+    // selectores de catálogo (Productos, Instituciones…) solo pintan `name`, un
+    // campo propio del item, y piden cero columnas. Si el vacío se tratara como
+    // "sin proyección" volverían a bajar el board completo (1.86 MB en
+    // Productos), que es justo lo que se quería evitar.
+    const dto = toItemDTO(fila([...legibles]), 'oportunidades', 'vendedor', false, new Set());
+    expect(dto.cols).toEqual({});
+    // …pero los campos propios del item siguen ahí: son lo que el picker pinta.
+    expect(dto.name).toBe('OPP-0001 - Prueba');
+    expect(dto.id).toBe('42');
+  });
+
   it('pedir una columna inexistente no rompe ni inventa nada', () => {
     const dto = toItemDTO(fila([...legibles]), 'oportunidades', 'vendedor', false, new Set(['no_existe']));
     expect(dto.cols).toEqual({});

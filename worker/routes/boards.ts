@@ -52,19 +52,24 @@ const FRESH_WINDOW_MS = 3_000;
 /** Trae el item (y sus líneas, si el board tiene subitems) directo de Monday
  * antes de responder. Nunca lanza: si Monday falla o va lento, se sirve el
  * mirror — mejor un dato de hace un rato que un drawer roto. */
-async function pullFromMonday(env: Env, slug: BoardSlug, itemId: number, syncedAt?: string): Promise<void> {
-  if (syncedAt && Date.now() - Date.parse(syncedAt) < FRESH_WINDOW_MS) return;
+/** Devuelve true si de verdad se leyó Monday (false si se saltó por frescura o
+ * por writes en vuelo) — el drawer lo usa para poder decir "sincronizado hace
+ * unos segundos" con la verdad. */
+async function pullFromMonday(env: Env, slug: BoardSlug, itemId: number, syncedAt?: string): Promise<boolean> {
+  if (syncedAt && Date.now() - Date.parse(syncedAt) < FRESH_WINDOW_MS) return false;
   const childSlug = childSlugOf(slug);
   // Si el outbox todavía tiene writes en vuelo para este item (o sus líneas),
   // el mirror YA refleja la edición del usuario y Monday puede no haberla
   // recibido todavía — leer "fresh" ahora arriesga pisarla con el valor viejo.
   // Deja que el outbox confirme por su cuenta (ver hasPendingWrites).
   const pending = await hasPendingWrites(env, BOARDS[slug].id, itemId, childSlug ? BOARDS[childSlug].id : undefined);
-  if (pending) return;
+  if (pending) return false;
   try {
     if (childSlug) await refetchItemTree(env, BOARDS[slug].id, itemId);
     else await refetchItem(env, BOARDS[slug].id, itemId);
+    return true;
   } catch { /* Monday caído/rate-limited — seguimos con el mirror */ }
+  return false;
 }
 
 // Deep-link boardKey (src/lib/routing.ts) para la notificación de mención —
@@ -174,15 +179,20 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
     // MAX(synced_at) del board). Esto es solo transporte: `toItemDTO` sigue
     // intersectando contra shared/visibility.ts, así que pedir una columna que
     // el rol no puede leer no la devuelve.
+    // Ojo con la diferencia entre AUSENTE y VACÍO: sin `cols` van todas las
+    // columnas legibles (lo que necesitan las vistas genéricas), mientras que
+    // `?cols=` vacío significa NINGUNA — es lo que piden los selectores de
+    // catálogo, que solo pintan `name` (un campo propio del item, no una
+    // columna). Por eso se compara contra undefined y no por verdadero/falso.
     const colsParam = c.req.query('cols');
-    const only = colsParam
+    const only = colsParam !== undefined
       ? new Set(colsParam.split(',').map(s => s.trim()).filter(Boolean))
       : undefined;
 
     // La proyección entra en el ETag: si no, un cliente que pide 8 columnas y
     // otro que pide todas comparten llave y el 304 le sirve a uno la forma del
     // otro (se quedaría sin columnas, o con la lista vieja).
-    const etag = await etagFor(c.env, slug, viewer, colsParam ?? undefined);
+    const etag = await etagFor(c.env, slug, viewer, colsParam);
     c.header('ETag', etag);
     if (c.req.header('If-None-Match') === etag) return c.body(null, 304);
 
@@ -208,9 +218,12 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
     // reconcile cada 6h — abrir una oportunidad recién costeada mostraba costos
     // viejos o en 0 (OPP-0795, Efraín 2026-07-30). El scoping por viewer se
     // aplica ANTES: nadie dispara refetches de items que no puede ver.
+    let verificadoAt: string | null = null;
     if (c.req.query('fresh')) {
       const known = await getItem(c.env, slug, itemId, viewer);
-      if (known) await pullFromMonday(c.env, slug, itemId, known.synced_at);
+      if (known && await pullFromMonday(c.env, slug, itemId, known.synced_at)) {
+        verificadoAt = new Date().toISOString();
+      }
     }
 
     const childSlug = childSlugOf(slug);
@@ -230,6 +243,15 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
     // predicado que el write path (scope 'own'), así la UI nunca ofrece editar
     // algo que el server va a rechazar. La consulta extra solo la paga un líder.
     dto.ownedByViewer = leadsOthers(viewer) ? await ownsItem(c.env, slug, itemId, viewer) : true;
+
+    // `synced_at` de la fila ahora significa "cuándo cambió el contenido por
+    // última vez" (refetch usa skipIfUnchanged, para no invalidarle la lista a
+    // todos). Pero el drawer rotula "sincronizado hace …", que es cuándo se
+    // VERIFICÓ contra Monday — y acabamos de verificar. Sin esto diría
+    // "sincronizado hace 3 días" un segundo después de releer, que asusta y es
+    // falso. No entra en el ETag (itemDetailEtag ignora syncedAt), así que no
+    // provoca 200s de más.
+    if (verificadoAt) dto.syncedAt = verificadoAt;
 
     // ETag sobre el CONTENIDO ya serializado (no sobre synced_at): abrir una
     // oportunidad dispara dos GETs de este endpoint — uno al espejo y otro con

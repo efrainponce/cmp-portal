@@ -305,7 +305,11 @@ export async function etagFor(env: Env, slug: BoardSlug, viewer: Identity, varia
     : zonaPrivadaRestringe
       ? `h${hiddenOwners.sort((a, b) => a - b).join('.')}`
       : `u${ownerIdsFor(viewer, 'read').sort((a, b) => a - b).join('.')}`;
-  const shape = variant ? `:${fnv1a(variant)}` : '';
+  // `variant !== undefined`, no `variant ?`: la cadena vacía es una proyección
+  // legítima ("ninguna columna", los selectores de catálogo) y tiene que tener
+  // llave propia — si cayera en el mismo ETag que la respuesta completa, un
+  // 304 le entregaría al selector la forma con TODAS las columnas.
+  const shape = variant !== undefined ? `:${fnv1a(variant)}` : '';
   return `"${slug}:${scopeKey}:${row?.c ?? 0}:${row?.m ?? ''}${shape}"`;
 }
 
