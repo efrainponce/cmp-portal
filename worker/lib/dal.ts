@@ -215,6 +215,70 @@ export async function childrenOf(env: Env, parentSlug: BoardSlug, itemId: number
   return res.results ?? [];
 }
 
+// ── Ficha comercial de la línea ───────────────────────────────────────────────
+const SUB_PRODUCTO_REL = 'board_relation_mkzmafgp'; // línea → Producto de catálogo
+const SUB_FICHA = 'lookup_mm0xw8p7';                // mirror: Descripción Cotización
+const PRODUCTO_FICHA = 'long_text_mm0xse7v';        // fuente: Productos, "Descripción cotización (largo)"
+
+/** Rellena EN MEMORIA (nunca en D1) la ficha comercial de las líneas cuyo mirror
+ * todavía viene vacío, leyéndola del producto de catálogo ligado.
+ *
+ * Monday recalcula `lookup_mm0xw8p7` de forma asíncrona después de ligar el
+ * producto, y esa recalculación no dispara webhook: una línea recién creada se
+ * quedaba marcada "Falta descripción" (y bloqueada para "Mandar a costeo")
+ * aunque el catálogo SÍ trae la descripción — el mirror era el único que no se
+ * había enterado (Efraín, 2026-08-14). La fuente de verdad es el producto, así
+ * que se lee de ahí cuando el espejo aún no llega. Una sola consulta a D1, y
+ * solo cuando alguna línea la necesita. */
+export async function hydrateFichaComercial(env: Env, lineas: MirrorItem[]): Promise<void> {
+  const faltantes = lineas.filter(l => !colText(l, SUB_FICHA));
+  if (faltantes.length === 0) return;
+  const ids = faltantes.map(l => linkedItemId(l, SUB_PRODUCTO_REL)).filter((id): id is number => id !== null);
+  const fichaPorProducto = await fichasDeProductos(env, ids);
+  if (fichaPorProducto.size === 0) return;
+
+  for (const linea of faltantes) {
+    const productoId = linkedItemId(linea, SUB_PRODUCTO_REL);
+    const ficha = productoId !== null ? fichaPorProducto.get(productoId) : undefined;
+    if (!ficha) continue;
+    try {
+      const cols: { id: string; type?: string; text?: string | null; value?: string | null }[] =
+        JSON.parse(linea.columns || '[]');
+      const i = cols.findIndex(c => c.id === SUB_FICHA);
+      if (i >= 0) cols[i] = { ...cols[i], text: ficha };
+      else cols.push({ id: SUB_FICHA, type: 'mirror', text: ficha, value: null });
+      linea.columns = JSON.stringify(cols);
+    } catch { /* columns corrupto: se queda como estaba */ }
+  }
+}
+
+/** productoId → ficha comercial (`long_text_mm0xse7v`) del mirror de Productos,
+ * en UNA consulta. Sin scope de viewer a propósito: la ficha ya viaja en cada
+ * línea vía el mirror de Monday, así que no expone nada nuevo. */
+export async function fichasDeProductos(env: Env, productoIds: number[]): Promise<Map<number, string>> {
+  const ids = [...new Set(productoIds)];
+  const out = new Map<number, string>();
+  if (ids.length === 0) return out;
+  const res = await env.DB.prepare(
+    `SELECT * FROM items WHERE board_id = ? AND item_id IN (${ids.map(() => '?').join(',')})`,
+  ).bind(BOARDS.productos.id, ...ids).all<MirrorItem>();
+  for (const row of res.results ?? []) {
+    const ficha = colText(row, PRODUCTO_FICHA);
+    if (ficha) out.set(row.item_id, ficha);
+  }
+  return out;
+}
+
+/** Texto de una columna en un row ya cargado del mirror ('' si no está). */
+function colText(row: MirrorItem, colId: string): string {
+  try {
+    const cols: { id: string; text?: string | null }[] = JSON.parse(row.columns || '[]');
+    return (cols.find(c => c.id === colId)?.text ?? '').trim();
+  } catch {
+    return '';
+  }
+}
+
 // El Proyecto ligado a una Oportunidad (Proyectos board_relation_mm0hf0y3 →
 // Oportunidad). Filtra por LIKE sobre el JSON de columnas y verifica en JS que
 // linked_item_ids realmente contenga el id (el LIKE solo es el índice barato).

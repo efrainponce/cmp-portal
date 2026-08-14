@@ -2,6 +2,30 @@
 
 ## 2026-08-14
 
+- Fix: "Falta descripción" en líneas que SÍ tienen descripción
+  - Efraín mandó la captura: la línea "12380 - Fast-Tac 6 Boot" marcada en rojo
+    con "⚠️ Falta descripción" y, dos centímetros abajo, la descripción y las
+    tallas del producto impresas en el panel de detalle.
+  - Causa: el aviso (y el gate de "Mandar a costeo") leen el mirror de la línea
+    `lookup_mm0xw8p7`. Monday lo recalcula **asíncrono** después de ligar el
+    producto y esa recalculación **no dispara webhook**, así que la línea recién
+    creada se queda con el mirror vacío. El panel de detalle no se veía afectado
+    porque ya tenía su propio fallback al catálogo (`getItem('productos', id)`)
+    — por eso la descripción se veía y el aviso decía lo contrario.
+  - Fix: `dal.hydrateFichaComercial` rellena **en memoria** (nunca en D1) la
+    ficha de las líneas cuyo mirror viene vacío, leyéndola del producto ligado
+    en el mirror de Productos (`long_text_mm0xse7v`, la fuente real). Una sola
+    consulta a D1 y solo cuando alguna línea la necesita.
+  - Aplicado en los tres puntos donde la ausencia dolía: el detalle del drawer
+    (`GET /api/boards/:slug/items/:id`), el pre-chequeo `checkCosteo` (que si no
+    rechazaba el envío) y `runCosteoNative`, que revalida contra la lectura
+    fresca de Monday y hubiera rechazado + revertido la etapa por lo mismo.
+  - Si el producto de catálogo de verdad no trae descripción, el aviso sigue
+    saliendo: es un aviso real (Compras no ha subido la ficha).
+  - `worker/lib/dal.test.ts`: 5 casos nuevos (rellena, no pisa el mirror bueno,
+    sin producto ligado no inventa, producto sin ficha sigue faltando, un solo
+    query para líneas del mismo producto). typecheck + 250 tests en verde.
+
 - Reporte de Proyectos: la etapa del proyecto ahora se ve en cada renglón
   - Efraín: "la etapa de proyecto terminado DEBE ESTAR en el reporte de
     proyectos". Verificado antes de tocar nada, contra producción con

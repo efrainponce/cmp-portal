@@ -3,8 +3,9 @@
 // predicado SQL sale de ahí. Lo cubre un test porque es autorización: un cambio
 // que ensanche el scope de escritura no lo caza el typecheck (todo son números).
 import { describe, it, expect } from 'vitest';
-import type { Identity } from '../../shared/types';
-import { ownerIdsFor, leadsOthers, scopeFor } from './dal';
+import type { Identity, MirrorItem } from '../../shared/types';
+import type { Env } from '../env';
+import { ownerIdsFor, leadsOthers, scopeFor, hydrateFichaComercial } from './dal';
 
 const vendedor = (over: Partial<Identity> = {}): Identity => ({
   email: 'ray@mexicanadeproteccion.com',
@@ -147,5 +148,84 @@ describe('scopeFor: zona privada (hidden_owner_ids)', () => {
     const scope = scopeFor('oportunidades', adminBloqueado(), 'own');
     expect(scope.where).toContain('NOT EXISTS');
     expect(scope.binds).toEqual([77]);
+  });
+});
+
+// ── hydrateFichaComercial ────────────────────────────────────────────────────
+// Monday recalcula el mirror de la ficha (lookup_mm0xw8p7) asíncrono y sin
+// webhook: la línea recién ligada a su producto se quedaba marcada "Falta
+// descripción" y bloqueada para costeo aunque el catálogo SÍ la trae. El
+// relleno es la red de seguridad y vale un test porque es un GATE (Efraín,
+// 2026-08-14).
+describe('hydrateFichaComercial', () => {
+  const SUB_FICHA = 'lookup_mm0xw8p7';
+  const SUB_REL = 'board_relation_mkzmafgp';
+  const PRODUCTO_FICHA = 'long_text_mm0xse7v';
+
+  const linea = (cols: { id: string; text?: string | null; value?: string | null }[]): MirrorItem =>
+    ({ item_id: 1, columns: JSON.stringify(cols) } as unknown as MirrorItem);
+
+  const relCol = (productoId: number) => ({ id: SUB_REL, value: JSON.stringify({ linked_item_ids: [productoId] }) });
+
+  /** env.DB mínimo: devuelve los productos pedidos, y cuenta las consultas. */
+  const fakeEnv = (productos: { item_id: number; ficha: string }[]) => {
+    const stats = { queries: 0 };
+    const results = productos.map(p => ({
+      item_id: p.item_id,
+      columns: JSON.stringify([{ id: PRODUCTO_FICHA, text: p.ficha }]),
+    }));
+    const env = {
+      DB: {
+        prepare: () => {
+          stats.queries++;
+          return { bind: () => ({ all: async () => ({ results }) }) };
+        },
+      },
+    } as unknown as Env;
+    return { env, stats };
+  };
+
+  it('rellena la ficha desde el producto ligado cuando el mirror viene vacío', async () => {
+    const { env } = fakeEnv([{ item_id: 500, ficha: 'Bota táctica FAST TAC de 6"' }]);
+    const lineas = [linea([relCol(500), { id: SUB_FICHA, text: '' }])];
+    await hydrateFichaComercial(env, lineas);
+    const cols: { id: string; text?: string }[] = JSON.parse(lineas[0].columns);
+    expect(cols.find(c => c.id === SUB_FICHA)?.text).toBe('Bota táctica FAST TAC de 6"');
+  });
+
+  it('no toca la línea cuando el mirror ya trae la ficha (ni consulta D1)', async () => {
+    const { env, stats } = fakeEnv([{ item_id: 500, ficha: 'del catálogo' }]);
+    const lineas = [linea([relCol(500), { id: SUB_FICHA, text: 'del mirror' }])];
+    await hydrateFichaComercial(env, lineas);
+    expect(JSON.parse(lineas[0].columns).find((c: { id: string }) => c.id === SUB_FICHA).text).toBe('del mirror');
+    expect(stats.queries).toBe(0);
+  });
+
+  it('sin producto ligado no inventa nada: la línea sigue sin ficha', async () => {
+    const { env, stats } = fakeEnv([]);
+    const lineas = [linea([{ id: SUB_FICHA, text: '' }])];
+    await hydrateFichaComercial(env, lineas);
+    expect(JSON.parse(lineas[0].columns).find((c: { id: string }) => c.id === SUB_FICHA).text).toBe('');
+    expect(stats.queries).toBe(0);
+  });
+
+  it('producto sin descripción en el catálogo: sigue faltando (el aviso es real)', async () => {
+    const { env } = fakeEnv([{ item_id: 500, ficha: '' }]);
+    const lineas = [linea([relCol(500), { id: SUB_FICHA, text: '' }])];
+    await hydrateFichaComercial(env, lineas);
+    expect(JSON.parse(lineas[0].columns).find((c: { id: string }) => c.id === SUB_FICHA).text).toBe('');
+  });
+
+  it('varias líneas del mismo producto: una sola consulta a D1', async () => {
+    const { env, stats } = fakeEnv([{ item_id: 500, ficha: 'ficha' }]);
+    const lineas = [
+      linea([relCol(500), { id: SUB_FICHA, text: '' }]),
+      linea([relCol(500)]),
+    ];
+    await hydrateFichaComercial(env, lineas);
+    expect(stats.queries).toBe(1);
+    for (const l of lineas) {
+      expect(JSON.parse(l.columns).find((c: { id: string }) => c.id === SUB_FICHA).text).toBe('ficha');
+    }
   });
 });
