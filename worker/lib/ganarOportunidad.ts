@@ -185,8 +185,14 @@ export async function ganarOportunidad(
   }
   const vendedor = passthroughValue(srcCols.get(OPP_VENDEDOR));
   if (vendedor) proyectoCols[PROYECTO_VENDEDOR] = vendedor;
-  const zona = passthroughValue(srcCols.get(OPP_ZONA));
-  if (zona) proyectoCols[PROYECTO_ZONA] = zona;
+  // Zona por LABEL, nunca el value crudo: los ids de label son propios de cada
+  // columna y NO coinciden entre boards (Oportunidades 3="Centro", Proyectos
+  // 3="Sur"), así que copiar {ids:[...]} traducía la zona a otra en silencio —
+  // bug real visto en la prueba en vivo del 2026-08-14, donde "Centro" aterrizó
+  // como "Sur". Solo "Norte" coincidía por casualidad, y "Sur" (id 7) ni existe
+  // en Proyectos. Mismo shape que columnEncode.ts para dropdown.
+  const zonaLabel = srcCols.get(OPP_ZONA)?.text?.trim();
+  if (zonaLabel) proyectoCols[PROYECTO_ZONA] = { labels: [zonaLabel] };
   const carpetaDrive = passthroughValue(srcCols.get(OPP_CARPETA_DRIVE));
   if (carpetaDrive) proyectoCols[PROYECTO_CARPETA_DRIVE] = carpetaDrive;
 

@@ -667,7 +667,11 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
                   style={{ fontSize: '11px', padding: '6px 11px' }}
                 />
               )}
-              {stageAtOrAfter(stage, '6') && (
+              {/* Desde "Costeo Confirmado", no desde "Cotización": Monday ordena
+                  Cotización DESPUÉS de Costeo Confirmado, así que el umbral en
+                  '6' dejaba sin botón "Ganar" justo a las oportunidades ya
+                  costeadas y confirmadas (Efraín, 2026-08-14). */}
+              {stageAtOrAfter(stage, '9') && (
                 <ConfirmButton
                   label="Ganar"
                   confirmLabel="¿Marcar como ganada?"

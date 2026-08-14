@@ -2,6 +2,46 @@
 
 ## 2026-08-14
 
+- Fix: "Ganar" mandaba el Proyecto a la zona equivocada; y faltaba el botón en
+  Costeo Confirmado
+  - Efraín: "la parte de pasar a ganada una oportunidad no sirve, necesito que
+    se cree el proyecto... eso es una automatización de Monday pero debería
+    estar aquí igual". El portal **ya lo hacía** desde el 2026-08-05
+    (`worker/lib/ganarOportunidad.ts`, réplica de la automatización nativa) —
+    él no lo sabía, así que se probó end-to-end contra producción para ver qué
+    fallaba de verdad.
+  - **Bug real encontrado en la prueba en vivo**: la Zona del Proyecto salía
+    equivocada. Se copiaba el `value` crudo del dropdown (`{ids:[3]}`), pero los
+    ids de label son propios de cada columna y NO coinciden entre boards:
+    Oportunidades 3="Centro" vs Proyectos 3="Sur". El mapeo real que producía:
+    Noroeste→Bajío, Centro→Sur, Bajío→Centro, Golfo→Noroeste, Sureste→Golfo,
+    Sur→id inexistente; solo "Norte" caía bien, por casualidad. Ahora se copia
+    por **label** (`{labels:[texto]}`, mismo shape que `columnEncode.ts`).
+    Impacto en datos viejos: ninguno — el outbox muestra que "Ganar" del portal
+    se había usado una sola vez desde el 2026-07-20, y esa oportunidad ya tenía
+    Proyecto (camino idempotente); los 69 Proyectos ligados existentes los creó
+    la automatización nativa de Monday, que sí mapea bien.
+  - Hueco cerrado: el botón "Ganar" aparecía desde `stageAtOrAfter(stage,'6')`,
+    y Monday ordena "Cotización" **después** de "Costeo Confirmado" — o sea que
+    las oportunidades ya costeadas y confirmadas se quedaban sin botón (4 hoy en
+    producción). Umbral movido a '9' (Costeo Confirmado).
+  - Verificado en vivo (Playwright + sesión real de producción,
+    `scripts/prod-login.mjs`): oportunidad de prueba OPP-0901, etapa Cotización
+    → botón "Ganar" → `200 {"ok":true,"proyectoId":...}`. En Monday quedó el
+    Proyecto en el grupo "Etapa 1: Subir Tallas y Documentos", con Vendedor,
+    Compras, Elaborado por y Carpeta Drive copiados, link bidireccional en
+    ambos lados y la Oportunidad en "Ganada" dentro del grupo "Oportunidades
+    Ganadas". Todo correcto salvo la Zona — de ahí el fix. Re-verificado con una
+    segunda oportunidad de prueba ya con el fix desplegado; ambas se borraron de
+    Monday al terminar.
+  - Detalle menor observado, sin tocar: en "Nueva oportunidad" el campo
+    **Compras** no está marcado con `*`, pero el server lo exige y responde 400
+    "Compras es obligatorio" al crear.
+  - typecheck limpio y 250 tests en verde. No se tocó el camino nativo
+    (`ganarOportunidadNativeD1`, Zona Efrain) — ahí el Proyecto vive en D1 y la
+    UI lee el `text`, así que la zona se ve bien; pero si algún día ese item
+    viaja a Monday, arrastra el mismo `{ids:[...]}` de origen.
+
 - Fix: "Falta descripción" en líneas que SÍ tienen descripción
   - Efraín mandó la captura: la línea "12380 - Fast-Tac 6 Boot" marcada en rojo
     con "⚠️ Falta descripción" y, dos centímetros abajo, la descripción y las
