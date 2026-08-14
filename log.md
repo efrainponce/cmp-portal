@@ -2,6 +2,21 @@
 
 ## 2026-08-14
 
+- Fix: el delta sync (cron cada 15 min, `worker/sync/delta.ts`) llevaba 3 días
+  mudo — 0 filas en `sync_log` desde 2026-08-11 21:31, ni éxito ni fallo.
+  Reportado por Elizabeth: OPP-0904 "CHAMARRAS LA PAZ" creada directo en
+  Monday, invisible en el portal 40+ min después (mismo patrón que OPP-0504,
+  el caso que originó el delta sync). Causa: el loop de refetch por item no
+  tenía try/catch — un solo item que truene (fetch/D1/ficha) aborta la
+  función ANTES de mover el checkpoint (`sync_state`) y ANTES del log final,
+  así que la siguiente corrida vuelve a tocar el mismo item y truena igual —
+  mudo para siempre, sin dejar rastro (ni la alerta de WhatsApp lo detecta,
+  porque no hay fila que revisar). Fix: try/catch por item, loggea el fallo y
+  sigue; el checkpoint y el resumen ahora siempre se escriben. Confirmado que
+  el cron SÍ estaba bien registrado en Cloudflare (API de schedules) — no es
+  el bug del cron del backup semanal (commit 8a3b141); los webhooks de
+  `create_item` también están bien registrados (`scripts/create-webhooks.mjs`).
+
 - Feature: "Duplicar" ahora pregunta a qué etapa se manda el clon (Efraín,
   tras el backfill manual de OPP-0899: "en las siguientes, duplicar pregunta
   a que estado se manda").
