@@ -649,6 +649,17 @@ export async function postUpdate(slug: BoardSlug, id: string, body: string, ment
   return res.json();
 }
 
+/** Marca updates/replies como vistos por el viewer actual — best-effort, nunca lanza
+ * (el "ojito" nunca debe romper la carga del feed). */
+export async function markUpdatesSeen(slug: BoardSlug, id: string, ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  try {
+    await apiFetch(`/boards/${slug}/items/${id}/updates/seen`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }),
+    });
+  } catch { /* best-effort */ }
+}
+
 /** Adjunta un archivo a un update ya creado (el composer primero crea el
  * update con postUpdate, luego llama esto con su id) — attachment nativo de
  * Monday, no un link que expira. */

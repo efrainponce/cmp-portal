@@ -281,7 +281,7 @@ export interface ProductoGeneroResponse {
 // the frontend resolves a fresh one on demand via the attachment proxy route
 // (GET .../updates/attachments/:assetId), keyed by id.
 export interface UpdateAttachmentDTO { id: string; name: string; ext: string }
-export interface UpdateDTO { id: string; body: string; author: string; createdAt: string; attachments: UpdateAttachmentDTO[] }
+export interface UpdateDTO { id: string; body: string; author: string; createdAt: string; attachments: UpdateAttachmentDTO[]; seenBy: string[] }
 export interface CreateUpdateRequest { body: string; mentions?: { id: number; nombre: string }[] }
 
 // GET /api/users — full Monday account roster (any authenticated viewer), used

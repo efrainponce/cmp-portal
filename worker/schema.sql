@@ -460,3 +460,18 @@ CREATE TABLE IF NOT EXISTS drive_folders (
   subfolders_json  TEXT NOT NULL,        -- {"01. BASES": "id", ...}
   created_at       TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- "Ojitos" de Actualizaciones (2026-08-14, worker/lib/updateSeen.ts) — quién ya vio
+-- cada update/reply del feed. Monday trae su propio `viewers` en el update, pero solo
+-- se llena cuando alguien lo ve DENTRO de Monday.com; una lectura vía nuestra API (que
+-- es como el portal sirve el feed) nunca lo marca, así que el "visto" del portal se
+-- lleva aparte aquí. El GET de updates fusiona esta tabla con el `viewers` nativo de
+-- Monday para cubrir ambas superficies. `update_id` es el id de Monday (update o
+-- reply, mismo espacio de ids) — no hace falta item_id, siempre se consulta por la
+-- lista de ids que ya trajo el feed. Lazy en runtime.
+CREATE TABLE IF NOT EXISTS update_seen (
+  update_id    TEXT NOT NULL,
+  viewer_email TEXT NOT NULL REFERENCES identity(email) ON DELETE CASCADE,
+  seen_at      TEXT NOT NULL,
+  PRIMARY KEY (update_id, viewer_email)
+);

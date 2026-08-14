@@ -27,6 +27,7 @@ import { isZonaPrivadaAdminPermitido } from '../lib/zonas';
 import { refetchItem, refetchItemTree } from '../sync';
 import { jsonStatus } from '../lib/http';
 import { emitNotification } from '../lib/notify';
+import { markUpdatesSeen, seenByFor } from '../lib/updateSeen';
 
 // `s` acepta undefined porque c.req.param() lo devuelve así cuando la ruta no
 // trae el parámetro — y ahí la respuesta correcta es la misma que para un slug
@@ -416,11 +417,42 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
     const flat = updates
       .flatMap(u => [u, ...(u.replies ?? [])])
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-    const dto: UpdateDTO[] = flat.map(u => ({
-      id: u.id, body: u.text_body ?? '', author: u.creator?.name ?? 'Monday', createdAt: u.created_at,
-      attachments: (u.assets ?? []).map(a => ({ id: a.id, name: a.name, ext: a.file_extension.replace(/^\./, '').toLowerCase() })),
-    }));
+    // "Ojitos": Monday's own `viewers` solo se llena por vistas dentro de
+    // Monday.com; se fusiona con lo que el portal registró en D1 (worker/lib/updateSeen.ts)
+    // para que el indicador cubra ambas superficies. Dedupe case-insensitive por nombre.
+    const portalSeenBy = await seenByFor(c.env, flat.map(u => u.id));
+    const dto: UpdateDTO[] = flat.map(u => {
+      const names = new Map<string, string>();
+      for (const n of portalSeenBy.get(u.id) ?? []) names.set(n.toLowerCase(), n);
+      for (const v of u.viewers ?? []) if (v.user?.name) names.set(v.user.name.toLowerCase(), v.user.name);
+      return {
+        id: u.id, body: u.text_body ?? '', author: u.creator?.name ?? 'Monday', createdAt: u.created_at,
+        attachments: (u.assets ?? []).map(a => ({ id: a.id, name: a.name, ext: a.file_extension.replace(/^\./, '').toLowerCase() })),
+        seenBy: [...names.values()].sort((a, b) => a.localeCompare(b)),
+      };
+    });
     return c.json(dto);
+  });
+
+  // El "visto" del portal se registra aparte de Monday (ver seenByFor arriba)
+  // — el front llama esto tras cargar el feed, marcando lo que acaba de traer.
+  // Best-effort: nunca debe romper la lectura del feed.
+  app.post('/api/boards/:slug/items/:id/updates/seen', async c => {
+    const slug = boardFor(c);
+    if (!slug) return c.json({ error: 'not found' }, 404);
+    const itemId = Number(c.req.param('id'));
+    if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
+    const viewer = c.get('viewer');
+
+    const row = await getItem(c.env, slug, itemId, viewer);
+    if (!row) return c.json({ error: 'not found' }, 404);
+
+    const body = await c.req.json<{ ids?: string[] }>();
+    const ids = (body.ids ?? []).filter(id => typeof id === 'string' && id.length > 0);
+    try {
+      await markUpdatesSeen(c.env, ids, viewer.email);
+    } catch { /* best-effort — nunca bloquea la lectura del feed */ }
+    return c.json({ ok: true });
   });
 
   // Same channel backs both the Actualizaciones composer and payment-request
@@ -481,7 +513,7 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
 
     const dto: UpdateDTO = {
       id: u.id, body: u.text_body ?? signed, author: u.creator?.name ?? (viewer.nombre ?? viewer.email), createdAt: u.created_at,
-      attachments: [],
+      attachments: [], seenBy: [],
     };
     return c.json(dto);
   });

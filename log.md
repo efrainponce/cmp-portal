@@ -2,6 +2,24 @@
 
 ## 2026-08-14
 
+- Feat: "ojitos" (visto por) en Actualizaciones — Elizabeth: "en el nuevo
+  sistema no se puede poner el ojito, para ver que si persona ya vio los
+  comentarios". El feed de Actualizaciones lee `item.updates` de Monday en
+  vivo y nunca se mirror-ea; el `viewers` nativo de Monday solo se llena
+  cuando alguien ve el update DENTRO de Monday.com, nunca por una lectura vía
+  API (que es como el portal sirve el feed) — Efraín confirmó que el "visto"
+  del portal hay que llevarlo aparte, en D1, como mínimo.
+  - Tabla nueva `update_seen` (`worker/schema.sql`, lazy-create en
+    `worker/lib/updateSeen.ts`, mismo patrón que `zonas`): quién vio cada
+    update/reply desde el portal.
+  - `GET .../updates` fusiona esa tabla con el `viewers` nativo de Monday
+    (agregado a `UPDATE_FIELDS`/`REPLY_FIELDS` en `monday.ts`) — el indicador
+    cubre a quien vio el comentario en Monday.com o en el portal, cualquiera
+    de los dos. Nuevo `UpdateDTO.seenBy`.
+  - Nuevo `POST .../updates/seen`: el front (`ActualizacionesTab.tsx`) lo
+    llama tras cada carga del feed, marcando lo que acaba de traer.
+    Best-effort, nunca bloquea la lectura.
+
 - Fix: cotización congelada tras duplicar/versionar — Elizabeth (WhatsApp):
   "el clon que hice, se borraron todos los datos" y "no me deja modificar la
   cant, se quedo congelado". Efraín aclaró el modelo correcto: "TODO es

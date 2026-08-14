@@ -245,11 +245,15 @@ export interface MondayUpdate {
   // Threaded replies (e.g. a Monday-native "responder" on someone else's comment)
   // — same shape as a top-level update, so callers can flatten them into one feed.
   replies?: MondayUpdate[];
+  // Solo se llena cuando alguien lo ve DENTRO de Monday.com (nunca por una
+  // lectura vía API, que es como el portal sirve el feed) — boards.ts lo
+  // fusiona con worker/lib/updateSeen.ts para cubrir ambas superficies.
+  viewers?: { user: { name: string } | null }[];
 }
 
-const UPDATE_FIELDS = `id text_body created_at creator{name} assets{id name file_extension}`;
+const UPDATE_FIELDS = `id text_body created_at creator{name} assets{id name file_extension} viewers{user{name}}`;
 // Monday's `Reply` type (unlike `Update`) has no `assets` field in API 2025-04 — replies can't carry attachments.
-const REPLY_FIELDS = `id text_body created_at creator{name}`;
+const REPLY_FIELDS = `id text_body created_at creator{name} viewers{user{name}}`;
 
 /** Updates (comments) on an item, newest first, each with its own replies thread
  * (Monday keeps replies nested under their parent update, not as siblings). */

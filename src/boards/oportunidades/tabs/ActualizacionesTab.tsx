@@ -3,7 +3,7 @@
 // truth the team already checks inside monday.com itself.
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import type { BoardSlug, MentionUserDTO, UpdateAttachmentDTO, UpdateDTO } from '../../../lib/apiClient';
-import { getMentionUsers, getUpdates, postUpdate, postUpdateAttachment, updateAttachmentHref } from '../../../lib/api';
+import { getMentionUsers, getUpdates, markUpdatesSeen, postUpdate, postUpdateAttachment, updateAttachmentHref } from '../../../lib/api';
 import { Modal } from '../../../components/core/Modal';
 
 const PdfCanvasPreview = lazy(() =>
@@ -23,6 +23,22 @@ function AttachmentIcon({ color }: { color: string }) {
       <path d="M14 2v5h5" stroke={color} strokeWidth="1.4" strokeLinejoin="round" />
     </svg>
   );
+}
+
+function EyeIcon({ color }: { color: string }) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ flex: 'none' }}>
+      <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z" stroke={color} strokeWidth="1.4" strokeLinejoin="round" />
+      <circle cx="12" cy="12" r="3" stroke={color} strokeWidth="1.4" />
+    </svg>
+  );
+}
+
+/** "Visto por Fulano, Zutano" — corta a 5 nombres y agrega "y N más" para no
+ * saturar hilos con muchos participantes. */
+function seenByLabel(names: string[]): string {
+  if (names.length <= 5) return names.join(', ');
+  return `${names.slice(0, 5).join(', ')} y ${names.length - 5} más`;
 }
 
 /** Un adjunto de un update: PDFs abren vista previa embebida (mismo mecanismo
@@ -116,6 +132,7 @@ export function ActualizacionesTab({ slug, itemId }: Props) {
         if (loadTokenRef.current !== token) return;
         window.clearTimeout(timeout);
         setUpdates(data);
+        markUpdatesSeen(slug, itemId, data.map((u) => u.id));
       })
       .catch(() => {
         if (loadTokenRef.current !== token) return;
@@ -304,6 +321,12 @@ export function ActualizacionesTab({ slug, itemId }: Props) {
           <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)', marginTop: 4 }}>
             {u.author} · {fmtWhen(u.createdAt)}
           </div>
+          {u.seenBy.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, font: 'var(--text-caption)', color: 'var(--ink-faint)', marginTop: 2 }}>
+              <EyeIcon color="var(--ink-faint)" />
+              <span>Visto por {seenByLabel(u.seenBy)}</span>
+            </div>
+          )}
         </div>
       ))}
 
