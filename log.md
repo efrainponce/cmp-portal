@@ -2,6 +2,32 @@
 
 ## 2026-08-13
 
+- Fix + perf: en producción, un fallo de API mostraba oportunidades INVENTADAS
+  - Salió analizando qué hay dentro del bundle de entrada (sourcemap): 15 KB de
+    él eran `src/data/oportunidades.ts` + `src/lib/mockFallback.ts`, o sea el
+    fixture del prototipo de diseño, que `usePoll` usaba como fallback cuando el
+    fetch falla. El comentario del archivo dice "offline demo", pero el guard
+    era ninguno: aplicaba igual en producción.
+  - **Lo grave no es el peso**: `offlineMock` se marcaba en el hook pero **no se
+    pinta en ninguna parte de la UI**. Si la API fallaba, la gente veía una
+    lista de oportunidades falsas —con clientes y montos inventados— sin ningún
+    aviso de que no eran reales.
+  - Ahora los mocks están detrás de `import.meta.env.DEV`: en dev siguen igual
+    (el board demuestra con el worker apagado) y en producción se muestra el
+    estado de error que ya existía. Verificado en navegador con la API
+    bloqueada: sale "No se pudo conectar", cero oportunidades falsas, cero
+    errores de consola. El bundler además saca los 15 KB del build (confirmado
+    buscando cadenas del fixture en el JS: ya no están).
+  - Dos cosas que se arreglaron al descubrirlas por este cambio:
+    - El mensaje decía "Verifica que el worker esté corriendo" — lenguaje para
+      quien programa. Como ahora sí lo va a ver la gente, quedó "No se pudo
+      conectar. Revisa tu conexión e intenta de nuevo."
+    - La precarga de `index.html` guardaba promesas que, con la API caída, se
+      rechazaban sin handler y salían como "Unhandled promise rejection" en
+      consola. Se les cuelga un `catch` vacío que sólo marca el rechazo como
+      manejado; la promesa guardada sigue rechazando para quien la consuma.
+  - Bundle de entrada: 250.1 → 240.0 KB (75.6 → 72.6 KB gz).
+
 - Perf: Costeo abre sin esperar el catálogo, y el logo deja de pesar 15.8 KB
   - Efraín señaló que **Costeo y Proyectos son lo más importante**, así que se
     midieron esos dos flujos completos en producción (red 1.5 Mbps, CPU 4x,

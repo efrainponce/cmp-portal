@@ -234,7 +234,8 @@ export async function patchItem(slug: BoardSlug, id: string, cols: Record<string
     return res.json();
   } catch (e) {
     if (e instanceof AccessError || slug !== 'oportunidades') throw e;
-    mockPatch(id, cols); // offline demo: keep the edit locally
+    if (!import.meta.env.DEV) throw e;
+    mockPatch(id, cols); // offline demo (solo dev): keep the edit locally
     return { ok: true, pending: true };
   }
 }
@@ -620,6 +621,7 @@ export async function getItemDetail(
     return { item, offlineMock: false };
   } catch (e) {
     if (e instanceof AccessError) throw e;
+    if (!import.meta.env.DEV) throw e;
     const mock = mockItemDetail(slug, id);
     if (mock) return { item: mock, offlineMock: true };
     throw e;

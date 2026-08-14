@@ -10,7 +10,7 @@ interface Props {
 export function BoardStatus({ status, children }: Props) {
   if (status === 'loading') return <Centered>Cargando…</Centered>;
   if (status === 'denied') return <Centered>No tienes acceso a este tablero. Pide acceso a un administrador.</Centered>;
-  if (status === 'offline') return <Centered>No se pudo conectar con el servidor. Verifica que el worker esté corriendo.</Centered>;
+  if (status === 'offline') return <Centered>No se pudo conectar. Revisa tu conexión e intenta de nuevo.</Centered>;
   return <>{children}</>;
 }
 

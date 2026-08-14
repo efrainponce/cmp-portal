@@ -42,7 +42,16 @@
           // Se probó `priority: 'low'` aquí para que el bundle ganara la carrera
           // de ancho de banda: no movió la aguja (FCP 1532 → 1560 ms, ruido),
           // así que no se deja complejidad sin ganancia medida.
-          try { P[url] = fetch(url, { credentials: 'same-origin' }); } catch (e) { /* que siga */ }
+          try {
+            var f = fetch(url, { credentials: 'same-origin' });
+            // Si la API está caída, esta promesa se rechaza. Puede que nadie la
+            // consuma nunca (apiFetch sólo toma las que coinciden), y un rechazo
+            // sin handler sale como "Unhandled promise rejection" en consola.
+            // Este catch vacío la marca como manejada; `f` sigue rechazando para
+            // quien sí la consuma, que ahí cae al fetch normal.
+            f.catch(function () {});
+            P[url] = f;
+          } catch (e) { /* que siga */ }
         }
 
         // Columnas que pinta la lista de Oportunidades. DEBE coincidir con

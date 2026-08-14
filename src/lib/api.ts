@@ -88,7 +88,13 @@ export function usePoll(slug: BoardSlug, q = '', cols?: readonly string[]): Poll
       setStatus('ready');
     } catch (e) {
       if (e instanceof AccessError) { setStatus('denied'); return; }
-      const fallback = mockList(slug, q);
+      // Los mocks son SOLO para desarrollo (ver mockFallback.ts: existen para que el
+      // board demuestre con el worker apagado). En producción NO deben usarse: si la
+      // API falla, mostrar oportunidades inventadas sin ningún aviso es peor que
+      // mostrar el estado de error — y `offlineMock` no se pinta en ninguna parte de
+      // la UI, así que nadie se enteraba. Con `import.meta.env.DEV` en false, el
+      // bundler además saca del build los ~15 KB de datos de demo.
+      const fallback = import.meta.env.DEV ? mockList(slug, q) : null;
       // (el mock no proyecta columnas: es solo el modo offline de demo)
       if (fallback) {
         hasDataRef.current = true;
@@ -145,6 +151,7 @@ export function useBoards(): { status: PollStatus; boards: BoardMeta[] } {
       .catch((e) => {
         if (cancelled) return;
         if (e instanceof AccessError) { setStatus('denied'); return; }
+        if (!import.meta.env.DEV) { setStatus('offline'); return; }
         setBoards(mockBoardMeta());
         setStatus('ready');
       });
