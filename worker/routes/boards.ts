@@ -58,9 +58,9 @@ function boardFor(c: Context<{ Bindings: Env }>): BoardSlug | null {
  * versiones son un registro "detrás", nunca un candado para seguir editando
  * (Efraín, 2026-08-14). No-op si la vigente ya es borrador (nada que
  * archivar) — mismo guard que duplicateVersion, evitado aquí de antemano
- * para no pagar su excepción en el camino feliz. Devuelve el error si la
- * oportunidad está Ganada/Perdida (duplicateVersion no versiona ahí); el
- * caller decide qué hacer con eso. */
+ * para no pagar su excepción en el camino feliz. Incluye Ganada/Perdida
+ * (Efraín, 2026-08-14): también se puede versionar ahí. Devuelve el error de
+ * duplicateVersion tal cual (p.ej. sin líneas); el caller decide qué hacer. */
 async function autoVersionLineaCosteada(
   env: Env, ctx: ExecutionContext, parentItemId: number, viewer: Identity,
 ): Promise<QuoteVersionError | null> {

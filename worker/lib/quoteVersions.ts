@@ -7,8 +7,10 @@
 // Nueva oportunidad y la regresa a costeo con "Mandar a costeo" cuando quiera.
 // Borrador = todas las líneas con Etapa Costeo vacía/"No iniciado" (duplicar las
 // resetea); nunca se tocan columnas de costo (grupo AC/WAC, de Compras).
-// El vendedor puede versionar en cualquier etapa salvo Ganada/Perdida (Efraín,
-// 2026-07-15) — no solo tras cotizar.
+// El vendedor puede versionar en CUALQUIER etapa, incluidas Ganada/Perdida
+// (Efraín, 2026-08-14 — revierte el candado de Ganada/Perdida del
+// 2026-07-15: sí hay casos reales de modificar una cotización ya cerrada,
+// p.ej. un cambio pedido tras ganar) — no solo tras cotizar.
 import type { ExecutionContext } from 'hono';
 import type { Env } from '../env';
 import type { Identity, MirrorItem } from '../../shared/types';
@@ -19,6 +21,8 @@ import { createSubitem, deleteItem } from './monday';
 import { upsertItem } from '../sync';
 import type { RawCol } from './serialize';
 import { listAjustes } from './lineaAjustes';
+import { emitNotification, resolveRecipients, personIdsFromColumns } from './notify';
+import { BOARDS } from '../../shared/boards';
 
 export class QuoteVersionError extends Error {
   status: number;
@@ -39,6 +43,11 @@ const SUB_EMB_STATUS = 'color_mm1b34bg';
 const SUB_EMB_DESC = 'long_text_mm1bj4pt';
 const SUB_PRECIO = 'numeric_mkzneg3d';
 const SUB_ETAPA_COSTEO = 'color_mm084gvf';
+
+// Oportunidades (item padre) — "Compras" asignado, para notificar al crear una
+// versión (mismo id ya hardcodeado en worker/lib/costoDivergencia.ts, no hay
+// constante compartida única — docs/monday-column-map.md).
+const OPP_COMPRAS_COL = 'multiple_person_mm03qyw9';
 
 const EMB_LABEL_CON = 'Con Embellecimiento';
 const EMB_LABEL_SIN = 'Sin Embellecimiento';
@@ -202,13 +211,6 @@ export async function duplicateVersion(
   const opp = await getItem(env, 'oportunidades', itemId, viewer, 'own');
   if (!opp) throw new QuoteVersionError(404, 'not found');
 
-  const cols = colsOf(opp);
-  let stage = '';
-  try { stage = String((JSON.parse(cols.get('deal_stage')?.value ?? 'null') as { index?: unknown })?.index ?? ''); } catch { /* ignore */ }
-  if (stage === '1' || stage === '2') {
-    throw new QuoteVersionError(422, 'La oportunidad ya está Ganada o Perdida — no se pueden editar sus líneas.');
-  }
-
   const lineas = await childrenOf(env, 'oportunidades', itemId, viewer);
   if (lineas.length === 0) {
     throw new QuoteVersionError(422, 'La oportunidad no tiene líneas de producto — no hay nada que duplicar.');
@@ -237,6 +239,39 @@ export async function duplicateVersion(
   // Flush AQUÍ (no vía waitUntil): la ruta refetchea el árbol desde Monday
   // enseguida — sin este await el refetch pisaría el mirror con datos viejos.
   await flushOutbox(env);
+
+  await notifyNuevaVersion(env, opp, itemId, version, viewer);
+}
+
+/** Avisa a la OTRA parte cuando se crea una versión — vendedor avisa a Compras,
+ * Compras (o admin) avisa a Ventas (Efraín, 2026-08-14: cubre los 4 disparadores
+ * de duplicateVersion — botón explícito, auto-versionado al editar/borrar/crear
+ * línea y "ajustar línea"→eliminar — desde este único punto). Best-effort,
+ * `emitNotification`/`resolveRecipients` ya se tragan sus propios errores. */
+async function notifyNuevaVersion(
+  env: Env, opp: MirrorItem, itemId: number, version: number, viewer: Identity,
+): Promise<void> {
+  const vendedorIds = JSON.parse(opp.vendedor_ids || '[]') as number[];
+  const compradorIds = personIdsFromColumns(opp.columns, OPP_COMPRAS_COL);
+  const recipients = await resolveRecipients(
+    env, viewer.role === 'vendedor' ? ['comprador'] : ['owner'],
+    { vendedorIds, compradorIds, actorEmail: viewer.email },
+  );
+  const actorName = viewer.nombre || viewer.email;
+  for (const recipientEmail of recipients) {
+    await emitNotification(env, {
+      recipientEmail,
+      severity: 'importante',
+      kind: 'nueva_version',
+      title: `${actorName} creó V${version} de la cotización en ${opp.name}`,
+      body: 'La versión anterior quedó archivada — revisa la vigente.',
+      boardKey: 'oportunidades',
+      boardId: BOARDS.oportunidades.id,
+      itemId,
+      actor: actorName,
+      dedupeKey: `nueva_version:${itemId}:${version}:${recipientEmail}`,
+    });
+  }
 }
 
 // Mismo criterio de tolerancia que costeo.ts norm(): sin acentos/mayúsculas.
@@ -257,13 +292,6 @@ export async function restoreVersion(
   // scope 'own': reescribe las líneas de la oportunidad (ver worker/lib/zonas.ts).
   const opp = await getItem(env, 'oportunidades', itemId, viewer, 'own');
   if (!opp) throw new QuoteVersionError(404, 'not found');
-
-  const cols = colsOf(opp);
-  let stage = '';
-  try { stage = String((JSON.parse(cols.get('deal_stage')?.value ?? 'null') as { index?: unknown })?.index ?? ''); } catch { /* ignore */ }
-  if (stage === '1' || stage === '2') {
-    throw new QuoteVersionError(422, 'La oportunidad ya está Ganada o Perdida — no se pueden editar sus líneas.');
-  }
 
   const row = await env.DB
     .prepare('SELECT products FROM cotizacion_versions WHERE item_id = ? AND version = ?')

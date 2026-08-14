@@ -2,6 +2,35 @@
 
 ## 2026-08-14
 
+- Feat: versionar cotización ahora funciona en Ganada/Perdida + notifica a la
+  otra parte. Efraín, sobre el fix anterior de "+ Nueva versión": confirmó que
+  Ganada/Perdida SÍ deben poder modificarse (hay casos reales de cambios tras
+  ganar) y pidió avisar a Compras cuando Ventas versiona, y a Ventas cuando
+  Compras (o admin) lo hace.
+  - `worker/lib/quoteVersions.ts`: quita el candado de stage 1/2 en
+    `duplicateVersion`/`restoreVersion` (antes tiraban 422 "Ganada o Perdida
+    — no se pueden editar sus líneas"). `worker/routes/oportunidades.ts`
+    (crear línea) y el comentario de `autoVersionLineaCosteada`
+    (`worker/routes/boards.ts`) igual — ya no hay ruta que distinga Ganada/
+    Perdida del resto de las etapas para versionar.
+  - `OpportunityDrawer.tsx`: `canVersion` ya no excluye stage 1/2; `editable`
+    de `CotizacionTab` pasa de `stage !== '1' && stage !== '2' && !ajena` a
+    `!ajena` (igual que `EmbellecimientosTab` ya tenía) — si no, el borrador
+    que crea "+ Nueva versión" quedaba sin poder editarse inline en una
+    oportunidad cerrada.
+  - Notificación nueva (`kind: 'nueva_version'`, severidad `importante` — sí
+    dispara WhatsApp): un solo punto en `duplicateVersion` (cubre los 4
+    disparadores — botón explícito, auto-versionado al editar/borrar/crear
+    línea, y "ajustar línea"→eliminar) resuelve comprador/vendedor asignados
+    de la oportunidad (`vendedor_ids` + columna people "Compras",
+    `multiple_person_mm03qyw9`) y usa `resolveRecipients`/`emitNotification`
+    ya existentes (`worker/lib/notify.ts`) — mismo patrón que
+    `costoDivergencia.ts`. Sin selector de rol nuevo: si el actor es
+    vendedor avisa a `comprador`, si no (compras/admin) avisa a `owner`.
+  - `npm run typecheck`, `npm run lint` y `npm test` (268 tests) limpios. No
+    verificado en vivo contra Monday (cambio de reglas de negocio, pendiente
+    que Efraín lo confirme con un caso real).
+
 - Fix: "+ Nueva versión"/"Restaurar versión" no aparecían al abrir una
   oportunidad ya costeada desde el board Costeo. Reportado por Efraín con
   captura (OPP-0907, V1 vigente con PDFs ya generados, stage "En costeo"):

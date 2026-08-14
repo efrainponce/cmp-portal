@@ -518,16 +518,18 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
   // server responde 404 a cualquier write sobre una oportunidad ajena.
   const ajena = item.ownedByViewer === false;
   const noLineEdits = readOnlyCosteo || isValidacion || ajena;
-  // "+ Nueva versión"/"Restaurar versión": el server las permite en cualquier
-  // etapa salvo Ganada/Perdida y sin mirar boardKey (worker/lib/quoteVersions.ts
-  // — duplicateVersion/restoreVersion no tienen candado de board). readOnlyCosteo
-  // NO debe apagarlas: bloquea la edición INLINE de producto/color/cantidad
-  // desde Costeo (trabajo de Ventas), pero versionar es una acción de archivo
-  // aparte — impedirla ahí dejaba una vigente ya costeada sin ninguna vía de
-  // cambio al abrir el item desde el board Costeo (Efraín, 2026-08-14: "ya
-  // tiene cotización y no puedo crear una V2 es absurdo"). Validación sigue
-  // bloqueada (ahí lo único editable es Precio de Venta).
-  const canVersion = stage !== '1' && stage !== '2' && !isValidacion && !ajena;
+  // "+ Nueva versión"/"Restaurar versión": el server las permite en CUALQUIER
+  // etapa, incluidas Ganada/Perdida (worker/lib/quoteVersions.ts, Efraín
+  // 2026-08-14: sí hay casos reales de modificar una cotización ya cerrada),
+  // y sin mirar boardKey (duplicateVersion/restoreVersion no tienen candado
+  // de board). readOnlyCosteo NO debe apagarlas: bloquea la edición INLINE de
+  // producto/color/cantidad desde Costeo (trabajo de Ventas), pero versionar
+  // es una acción de archivo aparte — impedirla ahí dejaba una vigente ya
+  // costeada sin ninguna vía de cambio al abrir el item desde el board Costeo
+  // (Efraín, 2026-08-14: "ya tiene cotización y no puedo crear una V2 es
+  // absurdo"). Validación sigue bloqueada (ahí lo único editable es Precio
+  // de Venta).
+  const canVersion = !isValidacion && !ajena;
   // Embellecimientos (tab aparte): a diferencia del resto de la línea, Compras
   // SÍ captura/edita zonas e imágenes desde el board Costeo (Efraín, 2026-08-12)
   // — por eso no hereda readOnlyCosteo. Validación y oportunidad ajena se
@@ -792,7 +794,11 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
               ],
             });
           }}
-          editable={stage !== '1' && stage !== '2' && !ajena}
+          // Ya no excluye Ganada/Perdida (Efraín, 2026-08-14): tras "+ Nueva
+          // versión" la vigente queda en borrador igual que en cualquier otra
+          // etapa, y ese borrador debe poder editarse inline — mismo criterio
+          // que EmbellecimientosTab (`!ajena`, ver abajo).
+          editable={!ajena}
           onNuevaVersion={canVersion && stage !== '4' && !draftVigente ? () => setShowNuevaVersion(true) : undefined}
           onRestoreVersion={canVersion ? (v) => setRestoreTarget(v) : undefined}
           stage={stage}
