@@ -17,7 +17,7 @@ import {
   AutomationError,
 } from '../lib/automations';
 import { enviarACosteo, enviarAValidacion, checkCosteo, checkValidacion, CosteoError } from '../lib/costeo';
-import { generarCotizacionNative, CotizacionError } from '../lib/cotizacion';
+import { generarCotizacionNative, generarCotizacionNativeD1, CotizacionError } from '../lib/cotizacion';
 import { listVersions, duplicateVersion, restoreVersion, esDraftVigente, recordFirstVersion, QuoteVersionError } from '../lib/quoteVersions';
 import { ajustarLinea, AjusteLineaError } from '../lib/lineaAjustes';
 import { listCotizacionVirtual, ajustarLineaVirtual, ProyectoCotizacionError } from '../lib/proyectoCotizacionVirtual';
@@ -302,9 +302,14 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       // Fase 2 (plan "salir de Monday", 2026-08-12): mismo gate que COSTEO_NATIVE —
       // fallback vivo a cmp-tallas mientras se corre en paralelo contra
       // oportunidades reales y se compara el resultado antes de cortar el cable.
-      const result = c.env.COTIZACION_NATIVE === '1'
-        ? await generarCotizacionNative(c.env, itemId, viewer)
-        : await generateCotizacion(c.env, itemId);
+      // Un item nativo (Zona Efrain) no cabe en ninguna de las dos ramas de
+      // arriba (ninguna sabe hablar con un id que no existe en Monday) —
+      // siempre su propia rama D1-only, sin importar el flag.
+      const result = isNativeId(itemId)
+        ? await generarCotizacionNativeD1(c.env, c.executionCtx, itemId, viewer)
+        : c.env.COTIZACION_NATIVE === '1'
+          ? await generarCotizacionNative(c.env, itemId, viewer)
+          : await generateCotizacion(c.env, itemId);
       if (result.ok) {
         const folio = 'folio' in result ? result.folio : (result as { folio_cotizacion?: unknown }).folio_cotizacion;
         await recordFirstVersion(c.env, itemId, viewer, typeof folio === 'string' ? folio : undefined, Number(result.total ?? 0));

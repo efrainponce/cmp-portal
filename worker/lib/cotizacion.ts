@@ -7,9 +7,10 @@
 // ledger de Google Sheets que llevaba cmp-tallas — nunca decrece, igual que allá).
 // La imagen de producto sigue viniendo de Airtable (worker/lib/airtable.ts),
 // degradación silenciosa si falla — igual que hoy.
+import type { ExecutionContext } from 'hono';
 import type { Env } from '../env';
 import type { Identity } from '../../shared/types';
-import { ownsItem } from './dal';
+import { getItem, childrenOf, ownsItem } from './dal';
 import {
   fetchItemWithSubitems, gql, moveItemToGroup, addFileToColumn, createUpdate,
   fetchUserById, createNotification, cvText, cvNum, firstPersonId, type MondayItem,
@@ -21,6 +22,9 @@ import { createDocuSealSubmission } from './docuseal';
 import { fetchAirtableImageUrl } from './airtable';
 import { importeEnLetras } from './importeEnLetras';
 import { getOrCreateDriveFolder, oportunidadRootFolderName, uploadPdfToDrive } from './drive';
+import { submitWrite } from './outbox';
+import { createDocument } from './documents';
+import type { RawCol } from './serialize';
 
 export class CotizacionError extends Error {
   status: number;
@@ -207,6 +211,54 @@ export interface GenerarCotizacionResult {
   pdfConPrecio?: string;
   pdfSinPrecio?: string;
   docusealId?: string;
+}
+
+function colsOf(columns: string): Map<string, RawCol> {
+  try {
+    const raw: RawCol[] = JSON.parse(columns || '[]');
+    return new Map(raw.map(c => [c.id, c]));
+  } catch {
+    return new Map();
+  }
+}
+
+/** "Generar Cotización" para una oportunidad nativa (Zona Efrain, "salir de
+ * Monday") — PDF propio del portal (worker/lib/pdf/templates.ts, R2 vía
+ * worker/lib/documents.ts) en vez de Eledo, sin subir nada a Monday, sin
+ * DocuSeal ni Drive. Mismos dos checks de skip que el flujo real (sin líneas
+ * / sin ningún precio asignado), sin los posts de update a Monday que ese
+ * flujo usaba para avisar — no aplican aquí. */
+export async function generarCotizacionNativeD1(
+  env: Env, ctx: ExecutionContext, itemId: number, viewer: Identity,
+): Promise<GenerarCotizacionResult> {
+  const lineas = await childrenOf(env, 'oportunidades', itemId, viewer);
+  const vivas = lineas.filter(l => (colsOf(l.columns).get(SUB_TIPO)?.text ?? '').trim().toLowerCase() !== 'embellecimiento');
+  if (vivas.length === 0) {
+    return { ok: true, skipped: true, reason: 'No hay líneas de producto (¿todos son Embellecimiento?)' };
+  }
+  const subtotal = round2(vivas.reduce((s, l) => {
+    const c = colsOf(l.columns);
+    return s + cvNum2(c, SUB_CANTIDAD) * cvNum2(c, SUB_PRECIO);
+  }, 0));
+  if (subtotal <= 0) {
+    return { ok: true, skipped: true, reason: 'Ningún producto tiene precio. Cotización no generada.' };
+  }
+
+  const item = await getItem(env, 'oportunidades', itemId, viewer, 'own');
+  const folioOpp = colsOf(item?.columns ?? '[]').get(OPP_FOLIO)?.text || String(itemId);
+  const seq = await nextCotizacionSeq(env, itemId);
+  const folioSuffix = folioOpp.includes('-') ? (folioOpp.split('-').pop() ?? folioOpp).trim() : folioOpp;
+  const folio = `${folioSuffix} - ${seq}`;
+
+  await createDocument(env, viewer, { templateId: 'cotizacion', sourceId: String(itemId), folio });
+  await submitWrite(env, ctx, 'oportunidades', itemId, { deal_stage: DEAL_STAGE_LABELS['6'] }, viewer, { trusted: true });
+
+  return { ok: true, folio, total: round2(subtotal * 1.16) };
+}
+
+function cvNum2(cols: Map<string, RawCol>, id: string): number {
+  const n = Number((cols.get(id)?.text ?? '').replace(/,/g, ''));
+  return Number.isFinite(n) ? n : 0;
 }
 
 /** Botón "Generar Cotización" — flujo completo nativo. `ownsItem` (no la zona):

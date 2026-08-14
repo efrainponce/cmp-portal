@@ -45,6 +45,37 @@ export interface SolicitudCosteoData {
   lineas: DocLine[];
 }
 
+/** Línea de producto de una cotización — a diferencia de DocLine, SÍ lleva
+ * precio (es justo lo que este documento le manda al cliente). */
+export interface CotizacionLine {
+  numPartida: number;
+  producto: string;
+  sku?: string;
+  marca?: string;
+  color?: string;
+  cantidad: number;
+  unidad?: string;
+  precio: number;
+  importe: number;
+}
+
+export interface CotizacionData {
+  kind: 'cotizacion';
+  folio: string;
+  cliente?: string;
+  cargo?: string;
+  institucion?: string;
+  vendedor?: string;
+  vigencia?: string;
+  tiempoEntrega?: string;
+  comentarios?: string;
+  lineas: CotizacionLine[];
+  subtotal: number;
+  iva: number;
+  total: number;
+  totalPalabras: string;
+}
+
 export interface RemisionInventarioData {
   kind: 'remision-inventario';
   movimientoId: number;
@@ -69,7 +100,7 @@ export interface ConstanciaFirmaData {
   contexto?: string;
 }
 
-export type DocData = SolicitudCosteoData | RemisionInventarioData | ConstanciaFirmaData;
+export type DocData = SolicitudCosteoData | CotizacionData | RemisionInventarioData | ConstanciaFirmaData;
 
 /** Firma ya asentada, tal como la pinta el PDF regenerado. */
 export interface RenderedSignature {
@@ -222,6 +253,70 @@ function solicitudBlocks(d: SolicitudCosteoData): Block[] {
   return blocks;
 }
 
+function cotizacionBlocks(d: CotizacionData): Block[] {
+  const blocks: Block[] = [
+    { kind: 'heading', text: 'Datos de la cotización' },
+    {
+      kind: 'kv',
+      rows: [
+        ['Folio', d.folio],
+        ['Institución', d.institucion ?? ''],
+        ['Contacto', d.cliente ?? ''],
+        ['Cargo', d.cargo ?? ''],
+        ['Vendedor', d.vendedor ?? ''],
+        ['Vigencia', d.vigencia ?? ''],
+        ['Tiempo de entrega', d.tiempoEntrega ?? ''],
+      ],
+    },
+    { kind: 'heading', text: 'Productos' },
+  ];
+
+  if (d.lineas.length === 0) {
+    blocks.push({ kind: 'text', text: 'Sin líneas de producto.', color: '#5b6472' });
+    return blocks;
+  }
+
+  blocks.push({
+    kind: 'wrapTable',
+    wrapCols: [1],
+    columns: [
+      { header: '#', width: 0.05, align: 'right' },
+      { header: 'Producto', width: 0.30 },
+      { header: 'Color', width: 0.13 },
+      { header: 'Cantidad', width: 0.12, align: 'right' },
+      { header: 'P. Unitario', width: 0.18, align: 'right' },
+      { header: 'Importe', width: 0.22, align: 'right' },
+    ],
+    rows: d.lineas.map(l => [
+      String(l.numPartida),
+      l.producto,
+      l.color ?? '',
+      `${NUM(l.cantidad)} ${l.unidad || 'Pieza'}`,
+      `$${NUM(l.precio)}`,
+      `$${NUM(l.importe)}`,
+    ]),
+    footer: ['', '', '', '', '', `$${NUM(d.total)}`],
+    headerFill: CMP_ORANGE,
+    headerTextColor: '#ffffff',
+  });
+
+  blocks.push({
+    kind: 'kv',
+    columns: 1,
+    rows: [
+      ['Subtotal', `$${NUM(d.subtotal)}`],
+      ['IVA (16%)', `$${NUM(d.iva)}`],
+      ['Total', `$${NUM(d.total)}`],
+      ['Importe con letra', d.totalPalabras],
+    ],
+  });
+
+  if (d.comentarios) {
+    blocks.push({ kind: 'heading', text: 'Comentarios' }, { kind: 'text', text: d.comentarios });
+  }
+  return blocks;
+}
+
 function remisionBlocks(d: RemisionInventarioData): Block[] {
   const blocks: Block[] = [
     { kind: 'heading', text: 'Movimiento' },
@@ -334,6 +429,7 @@ export function templateIdOf(data: DocData): DocTemplateId {
 export function titleOf(data: DocData): string {
   switch (data.kind) {
     case 'solicitud-costeo': return `Solicitud de costeo`;
+    case 'cotizacion': return `Cotización`;
     case 'remision-inventario': return `Remisión de inventario`;
     case 'constancia-firma': return `Constancia de firma electrónica`;
   }
@@ -342,6 +438,7 @@ export function titleOf(data: DocData): string {
 function subtitleOf(data: DocData): string | undefined {
   switch (data.kind) {
     case 'solicitud-costeo': return data.nombre;
+    case 'cotizacion': return data.institucion ?? data.cliente;
     case 'remision-inventario': return `${data.tipo} · ${data.producto}`;
     case 'constancia-firma': return data.archivo;
   }
@@ -350,6 +447,7 @@ function subtitleOf(data: DocData): string | undefined {
 function folioOf(data: DocData): string | undefined {
   switch (data.kind) {
     case 'solicitud-costeo': return data.folio;
+    case 'cotizacion': return data.folio;
     case 'remision-inventario': return data.folio ?? `MOV-${data.movimientoId}`;
     case 'constancia-firma': return undefined;
   }
@@ -357,6 +455,7 @@ function folioOf(data: DocData): string | undefined {
 
 export function buildBlocks(input: RenderInput): Block[] {
   const body = input.data.kind === 'solicitud-costeo' ? solicitudBlocks(input.data)
+    : input.data.kind === 'cotizacion' ? cotizacionBlocks(input.data)
     : input.data.kind === 'remision-inventario' ? remisionBlocks(input.data)
     : constanciaBlocks(input.data, input.baseSha256);
   return [...body, { kind: 'spacer', height: 10 }, ...signatureBlocks(input)];

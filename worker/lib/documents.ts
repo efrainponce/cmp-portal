@@ -27,6 +27,7 @@ import { getBoardAccess } from './boardAccess';
 import { readPortalFile, normalizeFileKey } from './portalFiles';
 import { BOARDS } from '../../shared/boards';
 import { emitNotification } from './notify';
+import { importeEnLetras } from './importeEnLetras';
 
 export class DocumentError extends Error {
   status: number;
@@ -120,6 +121,7 @@ export function signatureLabels(templateId: DocTemplateId): string[] {
   switch (templateId) {
     case 'remision-inventario': return ['Entrega', 'Recibe'];
     case 'solicitud-costeo': return ['Solicitó'];
+    case 'cotizacion': return ['Generó'];
     case 'constancia-firma': return ['Firma electrónica', 'Segunda firma'];
   }
 }
@@ -149,6 +151,8 @@ const OPP_ZONA = 'dropdown_mm03g067';
 const OPP_FECHA_LIMITE = 'deal_expected_close_date';
 const OPP_ENTREGA = 'text_mm0gjrrd';
 const OPP_COMENTARIOS = 'long_text_mm1m416j';
+const OPP_CARGO = 'lookup_mm0xf2r5';
+const OPP_VIGENCIA = 'text_mm0gje0';
 // Subitems (líneas) — docs/monday-column-map.md. La solicitud de costeo NO lee
 // ninguna columna de precio/costo: pide los precios, no los trae.
 const SUB_PRODUCTO_NOMBRE = 'lookup_mm0x4kda';
@@ -164,6 +168,8 @@ const SUB_CANTIDAD = 'numeric_mkzm6399';
 const SUB_EMB_STATUS = 'color_mm1b34bg';
 const SUB_EMB_DESC = 'long_text_mm1bj4pt';
 const SUB_COMENTARIOS = 'long_text_mm1hyszv';
+const SUB_TIPO = 'lookup_mm07x7e7';       // "Embellecimiento" se salta (worker/lib/cotizacion.ts)
+const SUB_PRECIO = 'numeric_mkzneg3d';    // Precio de Venta C/U — solo LECTURA aquí
 
 const num = (text?: string | null): number => Number((text ?? '').replace(/,/g, '')) || 0;
 
@@ -228,6 +234,67 @@ async function solicitudCosteoData(env: Env, oppId: number, viewer: Identity): P
   };
 }
 
+const round2 = (n: number): number => Math.round(n * 100) / 100;
+
+/** "Salir de Monday" (Zona Efrain, test): cotización con precios generada
+ * 100% en el portal — mismo patrón que solicitudCosteoData (D1 crudo +
+ * whitelist), pero SÍ lee precio (es lo que este documento le manda al
+ * cliente). `folio` lo mintea el caller UNA vez (generarCotizacionNativeD1,
+ * worker/lib/cotizacion.ts) para no quemar dos números de folio por click
+ * si esta función se llamara más de una vez. */
+async function cotizacionData(env: Env, oppId: number, viewer: Identity, folio: string): Promise<DocData> {
+  const row = await getItem(env, 'oportunidades', oppId, viewer, 'own');
+  if (!row) throw new DocumentError(404, 'oportunidad no encontrada');
+
+  const cols = colMap(row.columns);
+  const text = (id: string): string | undefined =>
+    canRead('oportunidades', id, viewer.role) ? cols.get(id)?.text?.trim() || undefined : undefined;
+  const subText = (c: Map<string, RawCol>, id: string): string | undefined =>
+    canRead('oportunidades_sub', id, viewer.role) ? c.get(id)?.text?.trim() || undefined : undefined;
+  const subNum = (c: Map<string, RawCol>, id: string): number =>
+    canRead('oportunidades_sub', id, viewer.role) ? num(c.get(id)?.text) : 0;
+
+  const hijos = await childrenOf(env, 'oportunidades', oppId, viewer);
+  let numPartida = 1;
+  const lineas = hijos
+    .map(child => colMap(child.columns))
+    .filter(c => (c.get(SUB_TIPO)?.text ?? '').trim().toLowerCase() !== 'embellecimiento')
+    .map(c => {
+      const cantidad = subNum(c, SUB_CANTIDAD);
+      const precio = subNum(c, SUB_PRECIO);
+      return {
+        numPartida: numPartida++,
+        producto: (c.get(SUB_PRODUCTO_NOMBRE)?.text || c.get(SUB_PRODUCTO_TXT)?.text || '').trim(),
+        sku: subText(c, SUB_SKU) ?? subText(c, SUB_SKU_TXT),
+        marca: subText(c, SUB_MARCA),
+        color: subText(c, SUB_COLOR),
+        cantidad,
+        unidad: subText(c, SUB_UNIDAD),
+        precio,
+        importe: round2(cantidad * precio),
+      };
+    });
+
+  const subtotal = round2(lineas.reduce((s, l) => s + l.importe, 0));
+  const iva = round2(subtotal * 0.16);
+  const total = round2(subtotal + iva);
+
+  return {
+    kind: 'cotizacion',
+    folio,
+    cliente: text(OPP_CONTACTO),
+    cargo: text(OPP_CARGO),
+    institucion: text(OPP_INSTITUCION),
+    vendedor: text(OPP_VENDEDOR),
+    vigencia: text(OPP_VIGENCIA),
+    tiempoEntrega: text(OPP_ENTREGA),
+    comentarios: text(OPP_COMENTARIOS),
+    lineas,
+    subtotal, iva, total,
+    totalPalabras: importeEnLetras(total),
+  };
+}
+
 interface MovementJoinRow {
   id: number; type: string; product_name: string; quantity: number;
   origen: string | null; destino: string | null;
@@ -270,6 +337,9 @@ export interface CreateInput {
   sourceLabel?: string;
   /** Evidencia del acuse automático (la IP la pone Cloudflare, no el cliente). */
   acuse?: { ip?: string | null; userAgent?: string | null };
+  /** Solo para templateId 'cotizacion': el folio ya minteado por el caller
+   * (worker/lib/cotizacion.ts generarCotizacionNativeD1) — ver cotizacionData. */
+  folio?: string;
 }
 
 export async function createDocument(env: Env, viewer: Identity, input: CreateInput): Promise<DocumentDTO> {
@@ -309,7 +379,12 @@ export async function createDocument(env: Env, viewer: Identity, input: CreateIn
   if (template.source === 'oportunidad') {
     const oppId = Number(input.sourceId);
     if (!Number.isFinite(oppId)) throw new DocumentError(400, 'sourceId inválido');
-    data = await solicitudCosteoData(env, oppId, viewer);
+    if (template.id === 'cotizacion') {
+      if (!input.folio) throw new DocumentError(400, 'falta folio');
+      data = await cotizacionData(env, oppId, viewer, input.folio);
+    } else {
+      data = await solicitudCosteoData(env, oppId, viewer);
+    }
     boardKey = 'oportunidades';
     baseBytes = renderTemplate({ docId, data, generatedAt: createdAt, signatures: [] });
   } else if (template.source === 'movimiento') {
@@ -343,6 +418,7 @@ export async function createDocument(env: Env, viewer: Identity, input: CreateIn
   if (reusable) await env.FILES.delete(signedKey(docId));
 
   const folio = data.kind === 'solicitud-costeo' ? data.folio ?? null
+    : data.kind === 'cotizacion' ? data.folio
     : data.kind === 'remision-inventario' ? data.folio ?? `MOV-${data.movimientoId}`
     : null;
 

@@ -443,6 +443,45 @@
     `scripts/perf-bench.mjs` + `scripts/perf-results/`) — se dejaron sin
     commitear, solo se stageó el archivo propio de este fix.
 
+- Feat: "salir de Monday" — Paso 5, cotización nativa (PDF al cliente, sin
+  Eledo/Monday/DocuSeal) (`shared/documents.ts`, `worker/lib/pdf/templates.ts`,
+  `worker/lib/documents.ts`, `worker/lib/cotizacion.ts`,
+  `worker/routes/oportunidades.ts`)
+  - Confirmado por Efraín: los documentos (costeo y cotización) se generan
+    desde el portal desde el arranque, no vía Eledo. `solicitud-costeo` ya
+    era así; cotización (el PDF con precio para el cliente) hoy pasaba por
+    Eledo + subida a columna de Monday + DocuSeal — ninguno de los tres
+    aplica a un item nativo.
+  - Nueva plantilla `cotizacion` en el motor propio de PDFs
+    (`worker/lib/pdf/templates.ts`: `CotizacionData`/`cotizacionBlocks`,
+    mismo `wrapTable` que ya usa solicitud-costeo/OC a proveedor) — tabla de
+    líneas CON precio e importe, subtotal/IVA/total e importe en letras
+    (`importeEnLetras`, ya existía). Registrada en `shared/documents.ts`
+    (`DOC_TEMPLATES.cotizacion`, `autoAcuse: true` — mismo criterio simple
+    que solicitud-costeo, sin ceremonia de firma en este primer corte).
+  - `cotizacionData` (`worker/lib/documents.ts`) arma las líneas leyendo SOLO
+    D1 (mismo patrón que `solicitudCosteoData`, respeta `canRead`) — a
+    diferencia de la solicitud, sí lee precio (`numeric_mkzneg3d`).
+  - `generarCotizacionNativeD1` (`worker/lib/cotizacion.ts`): mismos dos
+    checks de skip que el flujo real (sin líneas / sin ningún precio), mintea
+    folio propio (`cotizacion_folios`, ya existía), genera el documento vía
+    `createDocument` (R2 + tabla `documents`, reuso total) y mueve la etapa a
+    "Cotización" con el mismo `submitWrite` nativo. Sin Drive, sin DocuSeal,
+    sin posts de update a Monday.
+  - Dos bugs reales encontrados y corregidos en la prueba (no específicos de
+    "nativo" — cualquier plantilla nueva los habría disparado):
+    `signatureLabels()` no tenía caso para `'cotizacion'` (undefined[0] al
+    armar el acuse) y el cálculo de `folio` en `createDocument` tenía su
+    propio switch manual (distinto de `folioOf` en templates.ts) que tampoco
+    cubría la plantilla nueva — el folio se generaba pero nunca se guardaba.
+  - Probado en local end-to-end con verificación VISUAL del PDF (Read del PDF
+    real generado): folio, institución, vendedor, tabla de producto con
+    color/cantidad/precio/importe, subtotal $750 + IVA $120 = total $870
+    (5 × $150 + 16%, verificado a mano), importe en letras correcto,
+    membrete CMP correcto. Etapa movida a "Cotización" (índice 6), outbox en
+    cero, folio persistido y verificado en la tabla `documents` tras
+    regenerar (incrementa correctamente).
+
 - Feat: "salir de Monday" — Paso 4, "Mandar a costeo" nativo simplificado
   (`worker/lib/costeo.ts`, `worker/routes/oportunidades.ts`)
   - Efraín: los checks elaborados del flujo real (`runCosteoNative` —

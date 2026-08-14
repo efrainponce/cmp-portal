@@ -15,7 +15,7 @@
 // aparte que referencia el hash del archivo original.
 import type { Role } from './types';
 
-export type DocTemplateId = 'solicitud-costeo' | 'remision-inventario' | 'constancia-firma';
+export type DocTemplateId = 'solicitud-costeo' | 'cotizacion' | 'remision-inventario' | 'constancia-firma';
 
 /** De dónde salen los datos del documento. `archivo` = PDF que ya existe en
  * Monday/R2 y que el portal solo sella + certifica (no lo genera). */
@@ -49,6 +49,21 @@ export const DOC_TEMPLATES: Record<DocTemplateId, DocTemplate> = {
     source: 'oportunidad',
     create: ALL,
     // Sin firma manual: el acuse automático es todo lo que lleva.
+    sign: [],
+    maxSignatures: 1,
+    autoAcuse: true,
+  },
+  // "Salir de Monday" (Zona Efrain, test, 2026-08-13): cotización con precios
+  // para el cliente, generada 100% en el portal (sin Eledo, sin subir a una
+  // columna de Monday) — solo la usa generarCotizacionNativeD1
+  // (worker/lib/cotizacion.ts) para items nativos. Auto-acuse, como
+  // solicitud-costeo: sin ceremonia de firma en este primer corte.
+  cotizacion: {
+    id: 'cotizacion',
+    label: 'Cotización',
+    description: 'Cotización con precios para el cliente, generada nativamente en el portal.',
+    source: 'oportunidad',
+    create: ALL,
     sign: [],
     maxSignatures: 1,
     autoAcuse: true,
