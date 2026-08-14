@@ -133,7 +133,9 @@ export function ProyectoBoardList({ config, q, onSearch, onOpen, onReady }: Prop
               {g.items.map((item) => (
                 <Row
                   key={item.id} item={item} estadoProductosCol={estadoProductosCol}
-                  showBattery={config.key === 'ejecucion'} onClick={() => onOpen(item.id)}
+                  showBattery={config.key === 'ejecucion'}
+                  statusCol={config.key === 'ejecucion' ? statusCol : undefined}
+                  onClick={() => onOpen(item.id)}
                 />
               ))}
             </GroupCard>
@@ -144,8 +146,14 @@ export function ProyectoBoardList({ config, q, onSearch, onOpen, onReady }: Prop
   );
 }
 
-function Row({ item, estadoProductosCol, showBattery, onClick }: {
-  item: ItemDTO; estadoProductosCol?: ReturnType<typeof colForBoard>[number]; showBattery: boolean; onClick: () => void;
+function Row({ item, estadoProductosCol, showBattery, statusCol, onClick }: {
+  item: ItemDTO; estadoProductosCol?: ReturnType<typeof colForBoard>[number]; showBattery: boolean;
+  /** Solo el Reporte de Proyectos lo manda: al agrupar por Zona (y no por etapa)
+   * el renglón era el único lugar donde se puede leer en qué etapa va el
+   * proyecto — sin esto, un "Proyecto Terminado" se ve igual que uno en
+   * Ejecución (Efraín, 2026-08-14). */
+  statusCol?: ReturnType<typeof colForBoard>[number];
+  onClick: () => void;
 }) {
   const isMobile = useIsMobile();
   const institucion = item.cols[INSTITUCION_COL]?.text || '—';
@@ -154,6 +162,8 @@ function Row({ item, estadoProductosCol, showBattery, onClick }: {
   const vendedor = item.cols[VENDEDOR_COL]?.text || undefined;
   const estadoVal = estadoProductosCol ? item.cols[estadoProductosCol.id] : undefined;
   const battery = showBattery ? batteryFromMirrorText(estadoVal?.text) : null;
+  const etapaVal = statusCol ? item.cols[statusCol.id] : undefined;
+  const etapa = statusCol && etapaVal?.text ? chipFor(statusCol, etapaVal) : null;
 
   if (isMobile) {
     return (
@@ -171,6 +181,7 @@ function Row({ item, estadoProductosCol, showBattery, onClick }: {
         </div>
         <div style={{ font: 'var(--text-label)', color: 'var(--ink-tertiary)' }}>{institucion}</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 2 }}>
+          {etapa && <StatusBadge label={etapa.label} color={etapa.color} tint={etapa.tint} />}
           <PersonPair vendedor={vendedor} />
           {battery && <div style={{ flex: 1, minWidth: 80 }}><ProgressBattery data={battery} /></div>}
           {!battery && estadoVal?.text && (() => {
@@ -200,6 +211,12 @@ function Row({ item, estadoProductosCol, showBattery, onClick }: {
       </div>
       {battery && <div style={{ width: 160, flex: 'none' }}><ProgressBattery data={battery} /></div>}
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, flex: 'none' }}>
+        {etapa && (
+          <StatusBadge
+            label={etapa.label} color={etapa.color} tint={etapa.tint}
+            style={{ width: 168, justifyContent: 'center', display: 'flex' }}
+          />
+        )}
         <PersonPair vendedor={vendedor} />
         {!battery && estadoVal?.text && (() => {
           const { color, tint } = chipFor(estadoProductosCol!, estadoVal);

@@ -1,5 +1,27 @@
 # Log de commits
 
+## 2026-08-14
+
+- Reporte de Proyectos: la etapa del proyecto ahora se ve en cada renglón
+  - Efraín: "la etapa de proyecto terminado DEBE ESTAR en el reporte de
+    proyectos". Verificado antes de tocar nada, contra producción con
+    `scripts/prod-login.mjs` + Playwright: los proyectos en "Proyecto
+    Terminado" **sí** salían listados (86 renglones, entre ellos CHALECOS
+    JAGUAR MOVILIDAD, GEOS QUINTANA ROO, Zapato Charol Negro, BOTAS PC SAN
+    PEDRO) — el filtro de status ya se había quitado en `47b9455`.
+  - Lo que faltaba era poder **leer** la etapa: este acceso agrupa por Zona (no
+    por `project_status`, a diferencia de Documentación y Tallas / Órdenes de
+    Compra), y el renglón solo mostraba la batería de estado de productos. Un
+    proyecto terminado se veía idéntico a uno en Ejecución.
+  - Ahora el renglón trae el chip de `project_status` con el color de la
+    etiqueta de Monday (`chipFor`, sin inventar colores), solo en este acceso
+    (`statusCol` se le pasa a `Row` únicamente cuando `config.key === 'ejecucion'`;
+    los otros boards siguen agrupando por etapa, ahí sería redundante). Ancho
+    fijo en desktop para que los chips queden alineados en columna; en mobile
+    va en la fila de chips.
+  - Verificado con `npm run typecheck` y en el navegador (1440px y 390px)
+    contra el worker local.
+
 ## 2026-08-13
 
 - Fix + perf: en producción, un fallo de API mostraba oportunidades INVENTADAS
