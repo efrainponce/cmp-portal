@@ -2,6 +2,20 @@
 
 ## 2026-08-14
 
+- Fix: dos tarjetas "CANCELADA" en el board de Oportunidades (reporte de
+  Efraín con captura). Causa: `groupByColumn` (`src/lib/groupBy.ts`) agrupaba
+  por el índice crudo de la columna status, no por el texto visible — mismo
+  patrón ya documentado ayer para "En Negociación" (índice 10 duplicado del
+  3), pero para "Cancelada" (índice archivado/huérfano cuyo texto coincide
+  con el índice 5 vigente, no visible en `settings_str` porque Monday no
+  devuelve opciones archivadas). Fix: tras agrupar por índice, se fusionan
+  los grupos cuyo label normalizado (sin acentos/mayúsculas) coincide,
+  promoviendo el key/color del índice "oficial" (el que aparece en
+  `DEAL_STAGE_ORDER`/`PROJECT_STATUS_ORDER`) para que la tarjeta fusionada
+  ordene y coloree como la etapa real. Cubre de paso el caso pendiente de
+  "En Negociación" sin tener que tocar Monday ni esperar la decisión de
+  negocio sobre cuál índice borrar.
+
 - Feat: "ojitos" (visto por) en Actualizaciones — Elizabeth: "en el nuevo
   sistema no se puede poner el ojito, para ver que si persona ya vio los
   comentarios". El feed de Actualizaciones lee `item.updates` de Monday en

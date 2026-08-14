@@ -10,6 +10,15 @@ export interface ColumnGroup {
   items: ItemDTO[];
 }
 
+/** Case/acento-insensitive, para fusionar grupos cuyo texto visible es el
+ * mismo aunque Monday los traiga bajo índices distintos (p. ej. una opción
+ * archivada cuyo texto sobrevive en items viejos junto a la opción vigente
+ * con el mismo label — ver "Cancelada" 2026-08-14, mismo patrón que el
+ * índice 10 duplicado de "En Negociación"). */
+function normalizeLabel(s: string): string {
+  return s.normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase();
+}
+
 export function groupByColumn(
   items: ItemDTO[],
   col: ColMeta | undefined,
@@ -39,7 +48,22 @@ export function groupByColumn(
     if (!map.has(key)) map.set(key, { key, label, color, items: [] });
     map.get(key)!.items.push(item);
   }
-  const groups = Array.from(map.values());
+  // Fusiona grupos cuyo label normalizado coincide (mismo texto, índice
+  // distinto): promueve el key/color "oficial" (el que aparece en `order`,
+  // si alguno) para que la tarjeta fusionada siga ordenándose y coloreándose
+  // como la etapa real, no como el índice huérfano.
+  const merged = new Map<string, ColumnGroup>();
+  for (const g of map.values()) {
+    const normKey = normalizeLabel(g.label);
+    const existing = merged.get(normKey);
+    if (!existing) { merged.set(normKey, g); continue; }
+    existing.items.push(...g.items);
+    if (order?.includes(g.key) && !order.includes(existing.key)) {
+      existing.key = g.key;
+      existing.color = g.color;
+    }
+  }
+  const groups = Array.from(merged.values());
   if (!order) return groups;
   const rank = (key: string) => { const i = order.indexOf(key); return i === -1 ? order.length : i; };
   return groups
