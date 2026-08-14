@@ -47,6 +47,23 @@ export async function fichasDeProductos(env: Env, productoIds: number[]): Promis
   return out;
 }
 
+/** Id del producto tal como llega en un WRITE del portal a la columna de
+ * relación: el front manda el id pelón ("11013684747"), y los flujos internos
+ * mandan `{item_ids:[…]}`. Null si no se puede leer un id. */
+export function productoIdDeWrite(valor: unknown): number | null {
+  if (typeof valor === 'number' && Number.isFinite(valor)) return valor;
+  if (typeof valor === 'string') {
+    const n = Number(valor.trim());
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }
+  if (valor && typeof valor === 'object') {
+    const ids = (valor as { item_ids?: unknown[]; linked_item_ids?: unknown[] });
+    const lista = ids.item_ids ?? ids.linked_item_ids ?? [];
+    return lista.map(Number).find(Number.isFinite) ?? null;
+  }
+  return null;
+}
+
 /** Primer producto ligado de una línea (el `value` de la board_relation ya viene
  * normalizado a {linked_item_ids:[...]}, ver monday.ts normalizeCols). */
 function productoLigado(item: ItemLike): number | null {

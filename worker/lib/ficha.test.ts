@@ -5,7 +5,7 @@
 // (Efraín, 2026-08-14). Es un GATE: vale un test.
 import { describe, it, expect } from 'vitest';
 import type { Env } from '../env';
-import { hydrateFichaLineas, SUB_FICHA, SUB_PRODUCTO_REL, PRODUCTO_FICHA } from './ficha';
+import { hydrateFichaLineas, productoIdDeWrite, SUB_FICHA, SUB_PRODUCTO_REL, PRODUCTO_FICHA } from './ficha';
 
 interface Col { id: string; type?: string; text?: string | null; value?: string | null }
 
@@ -77,5 +77,29 @@ describe('hydrateFichaLineas', () => {
     await hydrateFichaLineas(env, lineas);
     expect(stats.queries).toBe(1);
     expect(lineas.map(fichaDe)).toEqual(['ficha', 'ficha']);
+  });
+});
+
+// El PATCH del portal ("elegí este producto") manda el id pelón; los flujos
+// internos mandan {item_ids:[…]}. De aquí sale el producto cuyo ficha se
+// arrastra en el merge optimista (worker/lib/outbox.ts) — la ventana en la que
+// el usuario ve la línea recién ligada.
+describe('productoIdDeWrite', () => {
+  it('id pelón como string (lo que manda la grid)', () => {
+    expect(productoIdDeWrite('11013684747')).toBe(11013684747);
+  });
+
+  it('shape de escritura de Monday {item_ids:[…]}', () => {
+    expect(productoIdDeWrite({ item_ids: [11013684747] })).toBe(11013684747);
+  });
+
+  it('shape de lectura {linked_item_ids:[…]}', () => {
+    expect(productoIdDeWrite({ linked_item_ids: ['11013684747'] })).toBe(11013684747);
+  });
+
+  it('desligar el producto (vacío) no resuelve ningún id', () => {
+    expect(productoIdDeWrite('')).toBe(null);
+    expect(productoIdDeWrite({ item_ids: [] })).toBe(null);
+    expect(productoIdDeWrite(null)).toBe(null);
   });
 });

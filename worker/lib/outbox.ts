@@ -13,6 +13,7 @@ import { canonValue, writeHash } from './canon';
 import { encodeColumnValue } from './columnEncode';
 import { refetchItem, upsertItem, confirmOutboxEcho } from '../sync';
 import { getItem } from './dal';
+import { fichasDeProductos, productoIdDeWrite, SUB_FICHA, SUB_PRODUCTO_REL } from './ficha';
 import type { RawCol } from './serialize';
 import type { MondayItem, MondayCol } from './monday';
 import { logProductoStatusFromPortalWrite } from './estadoProducto';
@@ -136,6 +137,35 @@ export async function submitWrite(
       )
       .bind(colId, colId, mergedJson, mergedJson, now, board.id, itemId)
       .run();
+  }
+
+  // Ligar el producto arrastra su ficha comercial en el MISMO merge optimista.
+  // El mirror de Monday (`lookup_mm0xw8p7`) no viene en la respuesta de la
+  // mutación —Monday lo recalcula después y sin webhook— así que sin esto la
+  // línea se queda sin descripción justo en el momento en que el vendedor
+  // acaba de elegir el producto: la grid le pinta "Falta descripción" sobre una
+  // línea que está completa, hasta que llegue un sync posterior (Efraín,
+  // 2026-08-14). Los caminos de sync ya la resuelven igual (worker/lib/ficha.ts);
+  // esto cubre la ventana optimista, que es la que el usuario ve.
+  if (slug === 'oportunidades_sub' && SUB_PRODUCTO_REL in cols) {
+    const productoId = productoIdDeWrite(cols[SUB_PRODUCTO_REL]);
+    const ficha = productoId ? (await fichasDeProductos(env, [productoId])).get(productoId) : undefined;
+    if (ficha) {
+      const fichaJson = JSON.stringify({ id: SUB_FICHA, type: 'mirror', text: ficha, value: null } satisfies RawCol);
+      await env.DB
+        .prepare(
+          `UPDATE items SET columns = CASE
+             WHEN EXISTS (SELECT 1 FROM json_each(columns) WHERE json_extract(value, '$.id') = ?)
+             THEN (SELECT json_group_array(
+               CASE WHEN json_extract(je.value, '$.id') = ? THEN json(?) ELSE je.value END
+             ) FROM json_each(columns) AS je)
+             ELSE json_insert(columns, '$[#]', json(?))
+           END, synced_at = ?
+           WHERE board_id = ? AND item_id = ?`,
+        )
+        .bind(SUB_FICHA, SUB_FICHA, fichaJson, fichaJson, now, board.id, itemId)
+        .run();
+    }
   }
 
   const canonCols: Record<string, string> = {};

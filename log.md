@@ -42,6 +42,28 @@
     UI lee el `text`, así que la zona se ve bien; pero si algún día ese item
     viaja a Monday, arrastra el mismo `{ids:[...]}` de origen.
 
+- Fix (2/2): la ficha también en la ventana optimista — encontrado verificando
+  en producción
+  - El fix de abajo cubría los caminos de SYNC, y en local se veía perfecto. En
+    producción se cayó: se ligó el producto a una línea de prueba por el portal
+    y 40 s después el espejo D1 seguía sin ficha (el mirror de Monday se calculó
+    a los 3.3 s; la línea solo sanó cuando llegó un sync posterior).
+  - Causa del hueco: `submitWrite` parchea en D1 **solo la columna escrita**
+    (merge optimista atómico) y la respuesta de la mutación no trae mirrors
+    recalculados, así que entre "elegí el producto" y el eco/webhook la línea
+    vive sin ficha. Esa ventana es EXACTAMENTE el instante de la captura de
+    Efraín — por eso el aviso se veía con la descripción impresa abajo.
+  - Ahora ligar el producto arrastra su ficha en el MISMO merge optimista
+    (`worker/lib/outbox.ts`, con `productoIdDeWrite` para leer el id tanto del
+    string pelón que manda la grid como del `{item_ids:[…]}` interno).
+  - Verificado en producción con una oportunidad de prueba desechable
+    (12805019767, borrada al terminar): antes del fix, D1 vacío a los 40 s;
+    después, la ficha aparece en el espejo apenas responde el PATCH, con el
+    mirror de Monday todavía vacío — o sea que salió del catálogo.
+  - Lección para la próxima: en este repo un dato "del mirror" tiene TRES
+    caminos de entrada a D1 (sync, eco del outbox y merge optimista); cubrir
+    solo el sync se ve bien en local y falla en la mano del usuario.
+
 - Fix: "Falta descripción" en líneas que SÍ tienen descripción
   - Efraín mandó la captura: la línea "12380 - Fast-Tac 6 Boot" marcada en rojo
     con "⚠️ Falta descripción" y, dos centímetros abajo, la descripción y las
