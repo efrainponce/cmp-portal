@@ -17,7 +17,12 @@ jobs:
 
       - run: npm ci
 
-      - run: npx tsc --noEmit
+      # `npx tsc --noEmit` a secas NO revisaba nada: tsconfig.json es solo un
+      # archivo solución ("files": [] + references), así que ese comando salía 0
+      # siempre y el worker encima ni siquiera está referenciado. `npm run
+      # typecheck` corre las tres configs de verdad (app + node vía tsc -b, y
+      # worker aparte).
+      - run: npm run typecheck
 
       # Corre ANTES del deploy: un push a main sale a producción, y los tests
       # cubren el write path a Monday (canon/echo + shapes de columna) y la

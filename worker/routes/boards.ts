@@ -25,8 +25,11 @@ import { refetchItem, refetchItemTree } from '../sync';
 import { jsonStatus } from '../lib/http';
 import { emitNotification } from '../lib/notify';
 
-function isBoardSlug(s: string): s is BoardSlug {
-  return Object.prototype.hasOwnProperty.call(BOARDS, s);
+// `s` acepta undefined porque c.req.param() lo devuelve así cuando la ruta no
+// trae el parámetro — y ahí la respuesta correcta es la misma que para un slug
+// inventado: no es un board.
+function isBoardSlug(s: string | undefined): s is BoardSlug {
+  return s !== undefined && Object.prototype.hasOwnProperty.call(BOARDS, s);
 }
 
 /** El `:slug` de la ruta, solo si además es un board que el viewer puede ver.

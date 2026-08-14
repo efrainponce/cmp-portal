@@ -11,7 +11,11 @@ con el Worker (`/api/*`). Bot de WhatsApp + chat del portal comparten agente Cla
   sesión con ellos arriba; no los relances a ciegas).
 - Worker local: `npx wrangler dev --env-file=.dev.vars` — **SIEMPRE `--env-file=.dev.vars`**:
   el `.env` del repo trae un token de CF que secuestra a wrangler si no.
-- `npx tsc --noEmit` — typecheck (3 tsconfigs: app/worker/node). `npm run build` = tsc -b + vite.
+- `npm run typecheck` — typecheck REAL de las 3 tsconfigs (app/node vía `tsc -b`,
+  worker aparte). **No uses `npx tsc --noEmit`**: `tsconfig.json` es solo archivo
+  solución (`"files": []` + references), así que ese comando no revisa nada y sale
+  0 siempre — dejó pasar errores hasta 2026-08-13. `npm run build` = tsc -b + vite
+  (o sea, el build tampoco cubre el worker por su cuenta).
 - `npm run lint` — oxlint.
 - `npm test` — vitest sobre lógica pura (`{src,worker,shared}/**/*.test.ts`): canon/echo
   del write path a Monday, shapes de `columnEncode`, whitelist de `visibility`. Corre en

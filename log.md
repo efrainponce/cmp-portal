@@ -2,6 +2,35 @@
 
 ## 2026-08-13
 
+- Fix: el typecheck no revisaba nada — se cierra el hueco y se arreglan los 2
+  errores que tapaba (`package.json`, `deploy.yml`, `CLAUDE.md`, `admin.ts`,
+  `boards.ts`)
+  - Salió al corregir un import en la ronda de performance: `npx tsc --noEmit`
+    (el comando que documentaba CLAUDE.md y que corría CI) devolvía 0 con un
+    símbolo inexistente en el código. Causa: `tsconfig.json` es solo un archivo
+    solución (`"files": []` + `references`), así que ese comando no compila
+    NADA. Y encima el worker ni siquiera está en las references, o sea que ni
+    `tsc -b` ni `npm run build` lo cubrían: los cambios al worker se venían
+    yendo a producción sin verificación de tipos.
+  - Nuevo `npm run typecheck` = `tsc -b && tsc -p tsconfig.worker.json
+    --noEmit`. CI y CLAUDE.md apuntan ahí. Comprobado que YA NO es vacío:
+    inyectando un error de tipo en el worker sale exit 2; limpio, exit 0.
+  - Los 2 errores preexistentes que el comando vacío escondía:
+    - `admin.ts:87` — `Identity.active` está tipado `boolean` pero la columna
+      guarda 0/1 y `upsertIdentity` pide `number`. El código pasaba
+      `existing?.active ?? 1` directo a `.bind()`. Con un boolean de verdad eso
+      revienta (D1 no soporta booleanos: `D1_TYPE_ERROR`); no estallaba solo
+      porque D1 devuelve 0/1. Ahora se convierte explícito. Verificado caso por
+      caso que el resultado es idéntico para todos los valores que D1 puede
+      devolver (undefined / 0 / 1) y para el body explícito.
+    - `boards.ts:42` — `c.req.param('slug')` es `string | undefined` e
+      `isBoardSlug` pedía `string`. Se amplía la firma y se chequea undefined
+      explícito; el resultado ya era `false` por coerción, así que no cambia
+      comportamiento.
+  - No se tocaron las `references` de `tsconfig.json` (meter el worker ahí
+    exigiría volverlo `composite`, que choca con su `noEmit`); el script cubre
+    lo mismo sin ese enredo.
+
 - Perf (2a ronda): selectores de catálogo, ETag compartido y relectura más barata
   - Efraín pidió "qué más optimizaciones quieres" y eligió las tres que salieron
     de medir los boards restantes.

@@ -84,7 +84,10 @@ export function adminRoutes(app: Hono<{ Bindings: Env }>) {
       nombre: body.nombre !== undefined ? (body.nombre?.trim() || null) : (existing?.nombre ?? null),
       monday_user_id: mondayUserId as number,
       role,
-      active: body.active !== undefined ? (body.active === false ? 0 : 1) : (existing?.active ?? 1),
+      // `Identity.active` está tipado boolean pero la columna guarda 0/1, y
+      // upsertIdentity pide number — se convierte explícito. Mismo resultado
+      // que antes: sin fila previa el default es activo (1).
+      active: body.active !== undefined ? (body.active === false ? 0 : 1) : (existing ? (existing.active ? 1 : 0) : 1),
     });
     return c.json({ ok: true });
   });
