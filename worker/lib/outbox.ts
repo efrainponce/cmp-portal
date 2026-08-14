@@ -21,11 +21,15 @@ import { syncTallasPortal } from './airtable';
 /** Shape REAL de lectura de Monday para board_relation ({linked_item_ids:[...]}
  * — distinto del shape de ESCRITURA que espera la mutación, {item_ids:[...]},
  * ver columnEncode.ts). `canon` ya es el id plano (canonValue's board_relation
- * branch = colVal.trim()). Solo single-select — igual que columnEncode.ts,
- * ningún camino de este repo escribe relaciones múltiples. */
-export function boardRelationValue(canon: string): { linked_item_ids: number[] } {
+ * branch = colVal.trim()). IDs como STRING — verificado contra un
+ * board_relation real de Monday en el mirror (deal_contact: linked_item_ids
+ * llega como ["12017028945"], no [12017028945]; worker/lib/ocProveedorPdf.ts
+ * compara por === contra un id de string, así que un number ahí nunca hace
+ * match). Solo single-select — igual que columnEncode.ts, ningún camino de
+ * este repo escribe relaciones múltiples. */
+export function boardRelationValue(canon: string): { linked_item_ids: string[] } {
   const id = Number(canon);
-  return { linked_item_ids: canon !== '' && Number.isFinite(id) ? [id] : [] };
+  return { linked_item_ids: canon !== '' && Number.isFinite(id) ? [canon] : [] };
 }
 
 export class OutboxError extends Error {

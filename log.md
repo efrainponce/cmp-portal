@@ -443,6 +443,42 @@
     `scripts/perf-bench.mjs` + `scripts/perf-results/`) — se dejaron sin
     commitear, solo se stageó el archivo propio de este fix.
 
+- Feat: "salir de Monday" — Paso 8, OC nativa a proveedor
+  (`worker/lib/oc.ts`, `worker/routes/oportunidades.ts`)
+  - `generarOcNativeD1`: agrupa por proveedor con `groupSubitemsByProveedor`/
+    `groupTotals` (funciones puras ya existentes, reusadas tal cual sobre
+    filas de D1 envueltas en el shape mínimo de `MondayItem` que necesitan) y
+    el mismo folio global "OC-n" (`nextOcFolio`, ya 100% D1). El PDF no sale
+    de Eledo: sale de `generarOcProveedorPdf`
+    (`worker/lib/ocProveedorPdf.ts`) — un generador que YA corría en paralelo
+    como preview 100% D1 desde el mismo 2026-08-13 (`GET /api/proyectos/:id/
+    oc-nativa/:proveedorId/pdf`), sin folio ni firma. Esta fase lo vuelve el
+    flujo OFICIAL para proyectos nativos: mintea folio, genera con ese mismo
+    motor, guarda en R2 (mismo patrón `oportunidadFileKey`). Sin DocuSeal ni
+    Drive.
+  - Bug real encontrado y corregido, con blast radius más amplio que solo
+    OC: `linked_item_ids` de un board_relation escrito por código nativo
+    guardaba los ids como NÚMERO — verificado contra un board_relation real
+    del mirror (`deal_contact` de una oportunidad real: `["12017028945"]`,
+    string) que Monday los manda como STRING. `ocProveedorPdf.ts` compara
+    por `===` contra un string y nunca hacía match con un número. Corregido
+    en las tres fuentes: `boardRelationValue` (`outbox.ts`, Paso 6),
+    `nativeTallaColumns` (`proyectoTallas.ts`, Paso 7) y, uno nuevo
+    encontrado de paso, `submitCreateNative` (`createRecord.ts`, Paso 1) —
+    que además tenía un bug más grave todavía: para columnas board_relation
+    en la CREACIÓN de una oportunidad (ej. `deal_contact`) usaba
+    `encodeColumnValue`, que da el shape de ESCRITURA (`{item_ids}`, la
+    clave que espera la mutación) en vez del shape de LECTURA
+    (`{linked_item_ids}`) — un contacto elegido al crear una oportunidad
+    nativa habría quedado guardado bajo una clave que nadie busca.
+  - Probado en local end-to-end: preview existente (`oc-nativa/:id/pdf`,
+    sanity check de que seguía funcionando) → "Generar OC" oficial sobre el
+    Proyecto de los Pasos 6-7 → PDF real verificado VISUALMENTE (folio OC-2,
+    proveedor, razón social, tabla de línea con costo/desc. real del
+    snapshot de costeo, subtotal $450 + IVA $72 = total $522 — verificado a
+    mano —, importe en letras, firmantes Elaborado/Revisado/Autorizado con
+    nombres reales). Outbox en cero.
+
 - Feat: "salir de Monday" — Paso 7, tallas nativas (captura + confirmación,
   100% en el portal) (`worker/lib/proyectoTallas.ts`,
   `worker/routes/oportunidades.ts`)

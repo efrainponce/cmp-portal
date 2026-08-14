@@ -14,6 +14,7 @@ import { rawHash, type RawColumn } from './canon';
 import { cachedFetchUsers } from './rosterCache';
 import { isZonaPrivadaAdminPermitido } from './zonas';
 import { dealStageValue } from '../../shared/dealStages';
+import { boardRelationValue } from './outbox';
 
 export class CreateError extends Error {
   status: number;
@@ -137,6 +138,15 @@ export async function submitCreateNative(
     // recibe el echo de Monday que normalmente lo rellena.
     if (id === 'deal_stage') {
       rawColumns.push({ id, type, text: trimmed, value: JSON.stringify(dealStageValue(trimmed)) });
+      continue;
+    }
+    // board_relation (ej. deal_contact): encodeColumnValue da el shape de
+    // ESCRITURA ({item_ids}) que espera la mutación de Monday — dal.ts
+    // (linkedItemId) y ocProveedorPdf.ts esperan el shape de LECTURA
+    // ({linked_item_ids}, ids como string) que normalmente rellena el echo.
+    if (type === 'board_relation') {
+      const text = await nativeDisplayText(env, type, id, trimmed);
+      rawColumns.push({ id, type, text, value: JSON.stringify(boardRelationValue(trimmed)) });
       continue;
     }
     const value = encodeColumnValue(type, trimmed);

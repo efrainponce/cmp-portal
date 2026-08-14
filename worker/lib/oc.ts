@@ -8,13 +8,16 @@
 // la firma. Folio "OC-n" GLOBAL en D1 (nunca decrece — reemplaza el ledger de
 // Google Sheets, mismo criterio que costeo/cotización/tallas).
 import type { Env } from '../env';
-import type { Identity } from '../../shared/types';
-import { ownsItem, PROYECTO_OPP_REL } from './dal';
+import type { Identity, MirrorItem } from '../../shared/types';
+import { ownsItem, childrenOf, linkedItemId, getItemTrusted, PROYECTO_OPP_REL } from './dal';
 import { fetchItemWithSubitems, addFileToColumn, createUpdate, fetchUserById, cvText, cvNum, firstPersonId, type MondayCol, type MondayItem } from './monday';
 import { renderEledoPdf, ELEDO_TEMPLATE_OC } from './eledo';
 import { createDocuSealSubmission } from './docuseal';
 import { importeEnLetras } from './importeEnLetras';
 import { getOrCreateDriveFolderForOportunidad, uploadPdfToDrive } from './drive';
+import { isNativeId } from '../../shared/nativeId';
+import { oportunidadFileKey, putFile } from './r2';
+import { generarOcProveedorPdf } from './ocProveedorPdf';
 
 // Proyecto (18395657594) — ids verificados contra shared/column-meta.gen.ts,
 // mismos que cmp-tallas api/generate_oc.py.
@@ -216,6 +219,68 @@ export interface GenerarOcResult {
   skipped?: boolean;
   reason?: string;
   ordenes: OrdenResult[];
+}
+
+/** Fila de D1 (MirrorItem) con el shape mínimo de MondayItem que
+ * groupSubitemsByProveedor/groupTotals necesitan (solo leen `column_values`
+ * — el resto de campos no se usan, se rellenan vacíos). Reusar esas dos
+ * funciones puras evita reimplementar el agrupado por proveedor. */
+function asMondayItemShape(row: MirrorItem): MondayItem {
+  let column_values: MondayCol[] = [];
+  try { column_values = JSON.parse(row.columns || '[]'); } catch { /* fila corrupta — sin columnas */ }
+  return { id: String(row.item_id), name: row.name, updated_at: row.synced_at, group: null, parent_item: null, column_values };
+}
+
+/** "Generar OC" para un Proyecto nativo (Zona Efrain, "salir de Monday"):
+ * mismo agrupado por proveedor y mismo folio global "OC-n" (D1, ya existía)
+ * que el flujo real, pero el PDF se arma con el generador que ya corría en
+ * paralelo como preview 100% D1 (`generarOcProveedorPdf`,
+ * worker/lib/ocProveedorPdf.ts, 2026-08-13) en vez de Eledo, y va a R2 en
+ * vez de a una columna de Monday. Sin firmas DocuSeal ni Drive. */
+export async function generarOcNativeD1(
+  env: Env, viewer: Identity, proyectoId: number,
+  opts: { onlyProveedor?: string } = {},
+): Promise<GenerarOcResult> {
+  const subitems = (await childrenOf(env, 'proyectos', proyectoId, viewer)).map(asMondayItemShape);
+  const groups = groupSubitemsByProveedor(subitems, opts.onlyProveedor);
+
+  if (groups.size === 0) {
+    return { ok: true, skipped: true, reason: 'No hay subitems con proveedor asignado.', ordenes: [] };
+  }
+
+  // Mismo prefijo/carpeta que documento/tallas (worker/lib/proyectoTallas.ts,
+  // /api/proyectos/:id/documento) para reusar el gate de lectura existente de
+  // /api/files/:key (solo sirve claves bajo "oportunidades/").
+  const proyectoRow = await getItemTrusted(env, 'proyectos', proyectoId);
+  const oppId = proyectoRow ? linkedItemId(proyectoRow, PROYECTO_OPP_REL) : null;
+
+  const ordenes: OrdenResult[] = [];
+  for (const group of groups.values()) {
+    const orden: OrdenResult = { proveedorId: group.proveedorId, proveedorNombre: group.proveedorNombre };
+    try {
+      const { monto, moneda } = groupTotals(group);
+      orden.monto = monto;
+      orden.moneda = moneda;
+
+      const folioOrden = await nextOcFolio(env);
+      orden.folioOrden = folioOrden;
+
+      const pdfBytes = await generarOcProveedorPdf(env, proyectoId, group.proveedorId, viewer);
+      const safeRZ = (group.proveedorRZ || group.proveedorNombre).replace(/[^\w\- ]/g, '_').slice(0, 40).trim();
+      const filename = `OC_${folioOrden}_${safeRZ}.pdf`;
+
+      if (oppId != null) {
+        const key = oportunidadFileKey(oppId, 'oc', filename);
+        await putFile(env, key, new Blob([pdfBytes], { type: 'application/pdf' }));
+        orden.pdfUrl = `/api/files/${key}`;
+      }
+    } catch (err) {
+      orden.error = String(err);
+    }
+    ordenes.push(orden);
+  }
+
+  return { ok: !ordenes.some(o => o.error), ordenes };
 }
 
 /** Botón "Generar OC" — una orden por proveedor con subitems ligados.

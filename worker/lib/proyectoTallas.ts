@@ -277,7 +277,9 @@ function nativeTallaColumns(desired: Record<string, unknown>): RawColumn[] {
   return Object.entries(desired).map(([id, raw]) => {
     const type = TALLA_COL_TYPES[id] ?? 'text';
     if (type === 'board_relation') {
-      const ids = (raw as { item_ids?: number[] }).item_ids ?? [];
+      // linked_item_ids como STRING (no number) — mismo shape que Monday
+      // realmente manda, ver el comentario en outbox.ts's boardRelationValue.
+      const ids = ((raw as { item_ids?: number[] }).item_ids ?? []).map(String);
       return { id, type, text: ids.join(','), value: JSON.stringify({ linked_item_ids: ids }) };
     }
     const text = String(raw);

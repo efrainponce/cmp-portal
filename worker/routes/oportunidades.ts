@@ -22,7 +22,7 @@ import { listVersions, duplicateVersion, restoreVersion, esDraftVigente, recordF
 import { ajustarLinea, AjusteLineaError } from '../lib/lineaAjustes';
 import { listCotizacionVirtual, ajustarLineaVirtual, ProyectoCotizacionError } from '../lib/proyectoCotizacionVirtual';
 import { capturarTallas, reportarTallasIncorrectas, checkOcCliente, confirmTallasNative, confirmTallasNativeD1 } from '../lib/proyectoTallas';
-import { generarOcNative } from '../lib/oc';
+import { generarOcNative, generarOcNativeD1 } from '../lib/oc';
 import { listEstadoHistorial } from '../lib/estadoProducto';
 import { listProductoResumen, upsertProductoResumen } from '../lib/productoResumen';
 import { listGeneroMF, setGeneroMF } from '../lib/productoGenero';
@@ -1118,6 +1118,8 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
         ? await confirmTallasNativeD1(c.env, c.executionCtx, viewer, itemId)
         : actionKey === 'tallas-confirmar' && c.env.TALLAS_NATIVE === '1'
         ? await confirmTallasNative(c.env, viewer, itemId)
+        : actionKey === 'generar-oc' && isNativeId(itemId)
+        ? await generarOcNativeD1(c.env, viewer, itemId, opts)
         : actionKey === 'generar-oc' && c.env.OC_NATIVE === '1'
         ? await generarOcNative(c.env, viewer, itemId, opts)
         : await action.run(c.env, itemId, opts);
