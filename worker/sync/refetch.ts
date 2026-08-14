@@ -8,6 +8,7 @@ import { rawHash } from '../lib/canon';
 import { isNativeId } from '../../shared/nativeId';
 import { confirmOutboxEcho } from './echo';
 import { logSync } from './log';
+import { upsertMondayOrder } from '../lib/itemOrder';
 
 export async function refetchItem(env: Env, boardId: number, itemId: number): Promise<void> {
   // Item nativo (Zona Efrain): D1 ya es la fuente de verdad, no existe en Monday
@@ -84,6 +85,10 @@ export async function refetchItemTree(env: Env, boardId: number, itemId: number)
     if (childSlug === 'oportunidades_sub') await hydrateFichaLineas(env, tree.subitems);
 
     const subIds = tree.subitems.map(s => Number(s.id));
+    // El orden en sí no entra en content_hash (no es una columna) — se captura
+    // siempre, aunque ninguna línea haya cambiado de valor, para que un
+    // reacomodo puro en Monday no se quede sin reflejar (worker/lib/itemOrder.ts).
+    await upsertMondayOrder(env, childBoardId, itemId, subIds);
     const hashActual = new Map<number, string>();
     if (subIds.length) {
       const placeholders = subIds.map(() => '?').join(',');

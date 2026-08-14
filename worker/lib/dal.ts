@@ -4,6 +4,7 @@ import type { Identity, MirrorItem } from '../../shared/types';
 import type { BoardDef, BoardSlug } from '../../shared/boards';
 import { BOARDS } from '../../shared/boards';
 import { ZONA_PRIVADA_BOARDS } from './zonas';
+import { ensureItemOrderTable } from './itemOrder';
 
 interface Scope {
   where: string;
@@ -205,12 +206,19 @@ export async function getItemTrusted(env: Env, slug: BoardSlug, itemId: number):
   return row ?? null;
 }
 
+// Orden: manual (Fase 2, futura) > el que Monday muestra > alfabético como
+// último respaldo para líneas que aún no tuvieron una relectura de árbol
+// completo (worker/sync/refetch.ts refetchItemTree — ver worker/lib/itemOrder.ts).
 export async function childrenOf(env: Env, parentSlug: BoardSlug, itemId: number, viewer: Identity): Promise<MirrorItem[]> {
   const childSlug = childSlugOf(parentSlug);
   if (!childSlug) return [];
   const childBoard = BOARDS[childSlug];
   const scope = scopeFor(childSlug, viewer);
-  const sql = `SELECT * FROM items WHERE board_id = ? AND parent_item_id = ? AND (${scope.where}) ORDER BY name`;
+  await ensureItemOrderTable(env);
+  const sql = `SELECT items.* FROM items
+    LEFT JOIN item_order io ON io.board_id = items.board_id AND io.item_id = items.item_id
+    WHERE items.board_id = ? AND items.parent_item_id = ? AND (${scope.where})
+    ORDER BY COALESCE(io.manual_order, io.monday_order, 999999), items.name`;
   const res = await env.DB.prepare(sql).bind(childBoard.id, itemId, ...scope.binds).all<MirrorItem>();
   return res.results ?? [];
 }

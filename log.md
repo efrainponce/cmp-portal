@@ -212,6 +212,28 @@
   - Verificado con `npm run typecheck` y en el navegador (1440px y 390px)
     contra el worker local.
 
+- Fix: las líneas de cotización se mostraban en orden alfabético, ignorando
+  cómo las acomodó el vendedor en Monday (Efraín, capturas de OPP-0893: "no
+  estan en el orden como lo acomodo el vendedor"). `childrenOf`
+  (`worker/lib/dal.ts`) siempre hacía `ORDER BY name` — nunca respetó el orden
+  de Monday, que además no tiene un campo `position` formal para subitems: el
+  orden real es implícito en el array que regresa su API.
+  - Nueva tabla lazy `item_order` (`worker/lib/itemOrder.ts`, mismo patrón que
+    `lineaAjustes.ts` — nunca se altera `items`), con `monday_order` y
+    `manual_order` (esta última sin usar todavía: queda lista para una Fase 2
+    futura de reacomodo manual dentro del portal, decidida con Efraín pero no
+    implementada aún — cuando llegue, gana siempre sobre el bloqueo de edición
+    de la grid, por ser preferencia visual y no dato de negocio).
+  - Se captura en `refetchItemTree` (`worker/sync/refetch.ts`), la única
+    relectura que trae las líneas de UN padre en el orden real de Monday
+    (`upsertItem`/`reconcileBoard` procesan items sueltos o páginas de board
+    sin contexto de hermanos, así que no sirven para esto). Se guarda siempre,
+    aunque ninguna línea cambie de valor — un reacomodo puro en Monday no
+    mueve `content_hash`.
+  - `childrenOf` ahora ordena `COALESCE(manual_order, monday_order, alfabético)`
+    — líneas nunca releídas en árbol completo (previas a este cambio) caen al
+    alfabético de antes hasta su próxima apertura.
+
 ## 2026-08-13
 
 - Fix + perf: en producción, un fallo de API mostraba oportunidades INVENTADAS
