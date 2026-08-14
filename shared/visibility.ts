@@ -25,7 +25,13 @@ const vis = (ids: string[], r: Role[]): Record<string, ColRule> =>
 
 export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
   oportunidades: {
-    ...vis(['name', 'pulse_id_mm0qcq0m',
+    // Nombre de la oportunidad — editable desde el drawer por vendedor, compras
+    // y admin en LOS 6 boards de etapa (Efraín, 2026-08-13). No es una columna
+    // de Monday: viaja como pseudo-columna `name` en change_multiple_column_values
+    // (aceptado, verificado en vivo 2026-08-13) y en el espejo vive en
+    // items.name — ver el caso especial en worker/lib/outbox.ts.
+    name: { vis: V, w: V },
+    ...vis(['pulse_id_mm0qcq0m',
       'multiple_person_mm0wt53c', 'deal_expected_close_date',
       'lookup_mm1bs976', 'lookup_mm0xf2r5', 'dropdown_mm03g067', 'lookup_mm0pt4mj',
       'lookup_mkznd66k', 'lookup_mm00p07m', 'date_mm09mv5b', 'file_mm0fgrzq',
@@ -131,7 +137,9 @@ export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
   },
 
   proyectos: {
-    ...vis(['name', 'pulse_id_mm1a12gy', 'project_status', 'lookup_mm20g4n6',
+    // Nombre del proyecto — mismo trato que el de la oportunidad (Efraín, 2026-08-13).
+    name: { vis: V, w: V },
+    ...vis(['pulse_id_mm1a12gy', 'project_status', 'lookup_mm20g4n6',
       'link_mm1amwz8', 'file_mm0hwapr', 'lookup_mm1dwn6',
       'color_mm0mcrjq',                          // Estado Pago — recomendación aceptada
       'multiple_person_mm0hrnqq', 'board_relation_mm0hb0gy', 'lookup_mm1d1546',

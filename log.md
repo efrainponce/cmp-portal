@@ -2,6 +2,31 @@
 
 ## 2026-08-13
 
+- Feat: renombrar la oportunidad (los 6 boards) y el proyecto desde el drawer
+  - Efraín: "que todos puedan cambiar el nombre de una oportunidad — admin,
+    vendedor y compras; al abrirla en CUALQUIER board, y lo mismo en Proyectos".
+    Lápiz junto al título → input inline (Enter guarda, Esc cancela); el nombre
+    nuevo se pinta de inmediato (el espejo tarda en confirmar el echo) y también
+    se corrige en el cache de sesión del drawer.
+  - `name` NO es una columna de Monday, es el nombre del item, así que entra a
+    la whitelist como pseudo-columna (`shared/visibility.ts`, `w: V` en
+    `oportunidades` y `proyectos` — almacén no, y el resto de los boards se
+    quedan de solo lectura; anclado en `visibility.test.ts`). Se verificó EN
+    VIVO contra la API 2025-04 que `change_multiple_column_values` acepta la
+    llave `name` (no está inventado: se probó con un rename no-op).
+  - Tres casos especiales en el write path, por lo mismo:
+    - `worker/lib/outbox.ts` — el espejo lo guarda en `items.name`, no en el
+      blob de columnas (ahí no existe tal columna); valida vacío y >255.
+    - `worker/sync/echo.ts` — el nombre no viaja en `column_values`, así que el
+      echo lo compara aparte contra `item.name`. Sin esto CADA rename quedaba
+      marcado `conflict` en el outbox aunque Monday lo hubiera aplicado bien.
+    - `columnEncode` ya mandaba string pelón para el default (text/long_text/name).
+  - Probado de punta a punta contra el worker local + Monday real (item de
+    prueba OPP-0892): PATCH → `items.name` actualizado → Monday renombrado →
+    `outbox -> confirmed`; nombre restaurado al terminar. Nombre vacío = 400.
+  - Un líder de zona sigue sin poder renombrar lo de su equipo (el PATCH pide
+    scope `'own'`, y el lápiz se oculta con `ownedByViewer === false`).
+
 - Fix: el typecheck no revisaba nada — se cierra el hueco y se arreglan los 2
   errores que tapaba (`package.json`, `deploy.yml`, `CLAUDE.md`, `admin.ts`,
   `boards.ts`)

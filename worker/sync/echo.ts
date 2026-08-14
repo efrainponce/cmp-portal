@@ -11,6 +11,10 @@ export async function confirmOutboxEcho(
   boardId: number,
   itemId: number,
   freshColumns: MondayCol[],
+  // El nombre del item NO viene en column_values: es un campo aparte. Un
+  // rename (pseudo-columna `name`, ver worker/lib/outbox.ts) quedaría siempre
+  // en 'conflict' si no se compara con esto.
+  freshName?: string | null,
 ): Promise<void> {
   const rows = await env.DB.prepare(
     `SELECT id, cols, content_hash FROM outbox WHERE board_id = ? AND item_id = ? AND status IN ('pending','sent')`,
@@ -27,6 +31,10 @@ export async function confirmOutboxEcho(
       if (!colIds.has(c.id)) continue;
       freshMap[c.id] = { text: c.text, value: c.value };
       typesMap[c.id] = c.type;
+    }
+    if (colIds.has('name') && freshName != null) {
+      freshMap.name = { text: freshName, value: null };
+      typesMap.name = 'text';
     }
 
     const freshHash = writeHash(freshMap, typesMap);

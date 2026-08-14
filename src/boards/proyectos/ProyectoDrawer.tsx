@@ -12,7 +12,8 @@ import { useEffect, useState } from 'react';
 import { Button } from '../../components/core/Button';
 import { IconBack } from '../../components/icons';
 import { SyncIndicator } from '../../components/board/SyncIndicator';
-import { getItemDetail, refreshItem, getProyectoOportunidad, type ItemDetailDTO } from '../../lib/api';
+import { EditableItemName } from '../../components/board/EditableItemName';
+import { getItemDetail, refreshItem, getProyectoOportunidad, useBoards, colForBoard, type ItemDetailDTO } from '../../lib/api';
 import { useIsMobile } from '../../lib/useIsMobile';
 import { useMe } from '../../lib/useMe';
 import { ActualizacionesTab } from '../oportunidades/tabs/ActualizacionesTab';
@@ -74,6 +75,9 @@ export function ProyectoDrawer({ id, boardKey, backLabel, defaultTab, onBack, on
   const [refreshing, setRefreshing] = useState(false);
   const [tab, setTab] = useState<ProyectoTabKey>(defaultTab as ProyectoTabKey);
   const [oportunidadId, setOportunidadId] = useState<string | null>(null);
+  // Nombre del proyecto: mismo permiso que el de la oportunidad (Efraín, 2026-08-13).
+  const { boards } = useBoards();
+  const canEditNombre = !!colForBoard(boards, 'proyectos').find((c) => c.id === 'name')?.w;
 
   const load = () => {
     setError(null);
@@ -124,7 +128,19 @@ export function ProyectoDrawer({ id, boardKey, backLabel, defaultTab, onBack, on
         </div>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
           <div>
-            <div style={{ font: 'var(--text-title)', color: 'var(--ink)' }}>{item.name}</div>
+            <EditableItemName
+              slug="proyectos"
+              itemId={id}
+              name={item.name}
+              canEdit={canEditNombre && item.ownedByViewer !== false}
+              font="var(--text-title)"
+              onRenamed={(nombre) => setItem((cur) => {
+                if (!cur) return cur;
+                const next = { ...cur, name: nombre };
+                detailCache.set(id, next);
+                return next;
+              })}
+            />
             <div style={{ font: 'var(--text-label)', color: 'var(--ink-tertiary)', marginTop: 2 }}>
               Folio: {folio}{subtitle ? ` · ${subtitle}` : ''}
             </div>

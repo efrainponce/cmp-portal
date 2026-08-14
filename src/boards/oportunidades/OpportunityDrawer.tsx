@@ -31,6 +31,7 @@ import { TallasTab } from './tabs/TallasTab';
 import { EmptyDocTab } from './tabs/EmptyDocTab';
 import { useProyecto, ProyectoOrdenesSection, EjecucionSection } from './ProyectoSection';
 import { PaymentRequestButton } from '../../components/board/PaymentRequestButton';
+import { EditableItemName } from '../../components/board/EditableItemName';
 import { EditClienteModal } from './EditClienteModal';
 import { EditPersonaModal } from './EditPersonaModal';
 
@@ -110,6 +111,9 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
   const canEditCliente = !!oppCols.find((c) => c.id === CONTACTO_COL)?.w;
   const canEditVendedor = !!oppCols.find((c) => c.id === VENDEDOR_COL)?.w;
   const canEditComprador = !!oppCols.find((c) => c.id === COMPRAS_COL)?.w;
+  // Nombre de la oportunidad: editable en los 6 boards de etapa, incluidos los
+  // de Compras (Efraín, 2026-08-13) — por eso no mira readOnlyCosteo/isValidacion.
+  const canEditNombre = !!oppCols.find((c) => c.id === 'name')?.w;
   const [item, setItem] = useState<ItemDetailDTO | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -568,7 +572,19 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
       }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-            <div style={{ font: 'var(--text-subtitle)', color: 'var(--ink)' }}>{item.name}</div>
+            <EditableItemName
+              slug="oportunidades"
+              itemId={id}
+              name={item.name}
+              canEdit={canEditNombre && !ajena}
+              font="var(--text-subtitle)"
+              onRenamed={(nombre) => setItem((cur) => {
+                if (!cur) return cur;
+                const next = { ...cur, name: nombre };
+                cacheSet(detailCache, id, next);
+                return next;
+              })}
+            />
             {item.cols.deal_stage?.text && (() => {
               const dealStageCol = oppCols.find((c) => c.id === 'deal_stage');
               const { color, tint } = dealStageCol ? chipFor(dealStageCol, item.cols.deal_stage) : { color: 'var(--ink-quiet)', tint: 'var(--bg-sunken)' };

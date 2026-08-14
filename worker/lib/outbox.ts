@@ -38,6 +38,20 @@ export async function submitWrite(
   // itself before anything downstream reads Monday (see quoteVersions).
   opts: { trusted?: boolean; skipFlush?: boolean } = {},
 ): Promise<WriteResponse> {
+  // `name` no es una columna de Monday: es el nombre del item. Se acepta como
+  // pseudo-columna dentro del mismo PATCH (change_multiple_column_values la
+  // toma en su JSON — verificado en vivo 2026-08-13) y aquí abajo tiene tres
+  // casos especiales: el espejo la guarda en items.name (no en el blob de
+  // columnas), encodeColumnValue la manda como string pelón, y el echo la
+  // compara contra item.name (worker/sync/echo.ts). Permiso normal por
+  // whitelist: shared/visibility.ts la tiene con `w` en oportunidades/proyectos.
+  if (cols && 'name' in cols) {
+    const nombre = (cols.name ?? '').trim();
+    if (!nombre) throw new OutboxError(400, 'El nombre no puede quedar vacío');
+    if (nombre.length > 255) throw new OutboxError(400, 'El nombre no puede pasar de 255 caracteres');
+    cols = { ...cols, name: nombre };
+  }
+
   const colIds = Object.keys(cols ?? {});
   if (colIds.length === 0) throw new OutboxError(400, 'no columns');
   if (!opts.trusted) {
@@ -69,6 +83,13 @@ export async function submitWrite(
   // esa columna en una sola operación atómica, sin ventana de carrera.
   const now = new Date().toISOString();
   for (const colId of colIds) {
+    if (colId === 'name') {
+      await env.DB
+        .prepare(`UPDATE items SET name = ?, synced_at = ? WHERE board_id = ? AND item_id = ?`)
+        .bind(cols.name, now, board.id, itemId)
+        .run();
+      continue;
+    }
     const canon = canonValue(types[colId], cols[colId]);
     const mergedCol: RawCol = { id: colId, type: types[colId], text: canon, value: JSON.stringify(canon) };
     const mergedJson = JSON.stringify(mergedCol);
@@ -244,7 +265,7 @@ async function flushGroup(env: Env, group: OutboxRow[]): Promise<void> {
       // el webhook posterior o el reconcile de 6h, igual que antes. No "arreglar" esto
       // agregando otro fetch aquí.
       await upsertItem(env, slug, item);
-      await confirmOutboxEcho(env, board_id, item_id, item.column_values);
+      await confirmOutboxEcho(env, board_id, item_id, item.column_values, item.name);
     } else {
       // Defensivo: la respuesta de la mutación no trajo column_values utilizables
       // (o board_id no resolvió a un slug conocido) — cae de vuelta al refetch clásico.

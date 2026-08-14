@@ -25,7 +25,7 @@ export async function refetchItem(env: Env, boardId: number, itemId: number): Pr
   // Mismo motivo que en refetchItemTree: no mover `synced_at` si nada cambió,
   // para no invalidarle la lista a todos los demás.
   await upsertItem(env, def.slug, item, { skipIfUnchanged: true });
-  await confirmOutboxEcho(env, boardId, itemId, item.column_values);
+  await confirmOutboxEcho(env, boardId, itemId, item.column_values, item.name);
   await logSync(env, 'manual', boardId, itemId, true, 'refetched');
 }
 
@@ -57,7 +57,7 @@ export async function refetchItemTree(env: Env, boardId: number, itemId: number)
   // verdad, que es lo que ya hacía reconcile. Los cambios de columnas mirror sí
   // quedan cubiertos: entran en `content_hash`, no en `updated_at` de Monday.
   await upsertItem(env, def.slug, tree.item, { skipIfUnchanged: true });
-  await confirmOutboxEcho(env, boardId, itemId, tree.item.column_values);
+  await confirmOutboxEcho(env, boardId, itemId, tree.item.column_values, tree.item.name);
 
   const childSlug = (Object.keys(BOARDS) as BoardSlug[]).find(k => BOARDS[k].parent === def.slug);
   if (childSlug) {

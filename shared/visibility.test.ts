@@ -209,3 +209,28 @@ describe('cantidad por talla — editable inline post-import (Efraín, 2026-08-0
     }
   });
 });
+
+describe('nombre del item — renombrable desde el drawer (Efraín, 2026-08-13)', () => {
+  // `name` no es una columna de Monday: viaja como pseudo-columna en el mismo
+  // PATCH y worker/lib/outbox.ts la trata aparte (espejo en items.name, echo
+  // contra item.name). El permiso es el normal de la whitelist, así que este es
+  // el candado real de "todos pueden renombrar" y de "solo en estos 2 boards".
+  it('vendedor, compras y admin renombran oportunidades y proyectos', () => {
+    for (const slug of ['oportunidades', 'proyectos'] as BoardSlug[]) {
+      for (const role of ['vendedor', 'compras', 'admin'] as Role[]) {
+        expect(canWrite(slug, 'name', role), `${slug}/${role}`).toBe(true);
+      }
+      expect(canWrite(slug, 'name', 'almacen'), slug).toBe(false);
+      expect(canRead(slug, 'name', 'vendedor'), slug).toBe(true);
+    }
+  });
+
+  it('el resto de los boards siguen con el nombre de solo lectura', () => {
+    for (const slug of ['oportunidades_sub', 'proyectos_sub', 'productos',
+      'instituciones', 'contactos', 'proveedores'] as BoardSlug[]) {
+      for (const role of ROLES) {
+        expect(canWrite(slug, 'name', role), `${slug}/${role}`).toBe(false);
+      }
+    }
+  });
+});
