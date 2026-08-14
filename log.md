@@ -2,6 +2,34 @@
 
 ## 2026-08-13
 
+- Tooling: verificación contra PRODUCCIÓN (`scripts/prod-login.mjs`,
+  `scripts/prod-smoke.mjs`)
+  - Efraín preguntó si había forma de que yo pudiera entrar a producción para
+    confirmar que lo desplegado funciona. El portal está tras Cloudflare Access,
+    así que anónimo solo se ve un 302 al login.
+  - **Por qué NO un service token de Access** (que sería lo obvio): el worker
+    exige el claim `email` del JWT (`worker/mw/access.ts:75`) y un service token
+    trae `common_name`, no `email` — pasaría Access y el portal contestaría 401.
+    Darle soporte significaría abrir una vía de entrada a producción que no pasa
+    por SSO; se descartó por eso, no por dificultad.
+  - En su lugar: perfil de Chrome persistente con login real (`prod-login.mjs`).
+    Usa la identidad de quien entra, así que el portal se comporta igual que
+    para esa persona (rol, zonas, permisos) y no crea ninguna credencial nueva
+    de servicio. Usa Chrome del sistema (`channel: 'chrome'`), no el Chromium de
+    Playwright: Google bloquea el login en navegadores que detecta automatizados.
+  - `scripts/.prod-profile` está en `.gitignore` y **es una credencial** mientras
+    la sesión de Access no expire: no sale de la máquina; para cerrarla,
+    `rm -rf scripts/.prod-profile`.
+  - `prod-smoke.mjs` NO es un banco de performance (los tiempos serían de la red
+    de esta máquina, no la de la gente en campo) — responde "¿lo desplegado hace
+    lo que debía?". Resultado del primer corrida contra prod, **10/10**:
+    - fuente propia servida y cacheada a un año; assets con hash `immutable`
+    - lista de Oportunidades proyectada: 74.2 KB para 751 items
+    - **abrir una oportunidad baja 0 bytes de PDFs** (antes 1.83 MB)
+    - "sincronizado hace unos segundos" — confirma que el cambio de `synced_at`
+      /ETag no rompió el indicador del drawer, que era el riesgo de ese cambio
+    - picker de productos: 47.4 KB para 1330 productos
+
 - Feat: renombrar la oportunidad (los 6 boards) y el proyecto desde el drawer
   - Efraín: "que todos puedan cambiar el nombre de una oportunidad — admin,
     vendedor y compras; al abrirla en CUALQUIER board, y lo mismo en Proyectos".

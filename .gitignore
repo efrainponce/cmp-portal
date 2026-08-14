@@ -21,6 +21,12 @@ dist-ssr
 # máquina y la corrida, no del repo. Los .woff2 de public/fonts/ SÍ se commitean.
 scripts/perf-results
 
+# Perfil de Chrome con la sesión de Cloudflare Access ya iniciada
+# (scripts/prod-login.mjs). ES UNA CREDENCIAL: mientras la sesión no expire, ese
+# directorio da entrada a producción con la identidad de quien hizo login.
+# Nunca se commitea y no sale de la máquina.
+scripts/.prod-profile
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
