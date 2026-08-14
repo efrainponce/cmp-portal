@@ -1,0 +1,28 @@
+# Cabeceras para los assets estáticos (Cloudflare Workers Assets las lee de
+# aquí, igual que Pages). `public/` se copia tal cual a dist/ en el build.
+#
+# El problema que arregla: Workers Assets sirve por default
+# `Cache-Control: public, max-age=0, must-revalidate`, o sea que TODOS los
+# archivos revalidan en cada carga aunque el nombre ya traiga hash de
+# contenido. Medido en red lenta (1.5 Mbps, 300 ms de latencia), eran 22
+# round-trips antes del primer render — puro esperar por bytes que el
+# navegador ya tenía.
+
+# Vite le pone hash de contenido a todo lo de /assets/ (index-B9doEKwA.js): si
+# el contenido cambia, cambia el nombre. Por eso se puede cachear para siempre
+# sin riesgo de servir algo viejo — un deploy nuevo pide URLs nuevas.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# Las fuentes viven en /fonts/ con nombre estable (no llevan hash), así que no
+# pueden ser `immutable`: se cachean un año pero revalidando cuando expira.
+# En la práctica no cambian nunca.
+/fonts/*
+  Cache-Control: public, max-age=31536000
+
+# El HTML NO se cachea: es el que apunta a los assets con hash, así que tiene
+# que poder cambiar al instante o un deploy nuevo nunca se vería.
+/
+  Cache-Control: public, max-age=0, must-revalidate
+/index.html
+  Cache-Control: public, max-age=0, must-revalidate

@@ -17,6 +17,10 @@ dist-ssr
 .wrangler
 *.tsbuildinfo
 
+# Resultados del banco de performance (scripts/perf-bench.mjs) — son de la
+# máquina y la corrida, no del repo. Los .woff2 de public/fonts/ SÍ se commitean.
+scripts/perf-results
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

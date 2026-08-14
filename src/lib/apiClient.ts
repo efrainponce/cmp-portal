@@ -130,13 +130,54 @@ export async function listItems(slug: BoardSlug, q?: string): Promise<ItemDTO[]>
   return body.items;
 }
 
+// Último detalle servido por el worker, por item, con su ETag. Abrir una
+// oportunidad hace DOS GETs a este endpoint (espejo + ?fresh=1 tras releer
+// Monday) y casi siempre devuelven lo mismo; con esto el segundo contesta 304
+// y nos ahorramos re-bajar el cuerpo (~138 KB en una oportunidad de 31
+// líneas). No es un caché de lectura: el request SIEMPRE sale, solo evita el
+// cuerpo cuando el contenido no cambió.
+// Tope chico a propósito: cada entrada guarda el DTO completo (~138 KB en una
+// oportunidad de 31 líneas) y esto corre en máquinas con poca RAM — sin tope,
+// recorrer 50 oportunidades dejaría ~7 MB colgados. Map preserva orden de
+// inserción, así que el más viejo es el primero.
+const DETAIL_CACHE_MAX = 6;
+const detailEtags = new Map<string, { etag: string; item: ItemDetailDTO }>();
+
+function rememberDetail(key: string, entry: { etag: string; item: ItemDetailDTO }): void {
+  detailEtags.delete(key); // re-insertar lo manda al final (más reciente)
+  detailEtags.set(key, entry);
+  while (detailEtags.size > DETAIL_CACHE_MAX) {
+    const oldest = detailEtags.keys().next().value;
+    if (oldest === undefined) break;
+    detailEtags.delete(oldest);
+  }
+}
+
 /** `fresh` fuerza al worker a releer el item y sus líneas de Monday antes de
  * responder — lo que se abre tiene que ser idéntico a Monday (Efraín 2026-07-30).
  * Cuesta un round-trip a Monday, así que solo lo piden aperturas/refrescos. */
 export async function getItem(slug: BoardSlug, id: string, opts?: { fresh?: boolean }): Promise<ItemDetailDTO> {
-  const res = await apiFetch(`/boards/${slug}/items/${id}${opts?.fresh ? '?fresh=1' : ''}`);
+  const key = `${slug}:${id}`;
+  const known = detailEtags.get(key);
+  const res = await apiFetch(`/boards/${slug}/items/${id}${opts?.fresh ? '?fresh=1' : ''}`, {
+    headers: known ? { 'If-None-Match': known.etag } : undefined,
+  });
+  if (res.status === 304 && known) {
+    // Sin cuerpo, pero la relectura SÍ ocurrió: el worker manda la hora real
+    // en X-Synced-At para que el "sincronizado hace …" no se quede viejo.
+    const syncedAt = res.headers.get('X-Synced-At');
+    const item = syncedAt && syncedAt !== known.item.syncedAt
+      ? { ...known.item, syncedAt }
+      : known.item;
+    rememberDetail(key, { etag: known.etag, item });
+    return item;
+  }
   if (!res.ok) throw new Error('GET item failed: ' + res.status);
-  return res.json();
+  const item: ItemDetailDTO = await res.json();
+  const etag = res.headers.get('ETag');
+  if (etag) rememberDetail(key, { etag, item });
+  else detailEtags.delete(key);
+  return item;
 }
 
 export async function patchItem(slug: BoardSlug, id: string, cols: Record<string, string>): Promise<WriteResponse> {

@@ -2,7 +2,7 @@
 // (Oportunidades, Costeo, Validación Costeo, Documentación y Tallas, Órdenes
 // de Compra, Logística) — same row template as Board Costeo/Validacion in the
 // design, just a different deal_stage filter + grouping column per board.
-import { useMemo } from 'react';
+import { memo, useMemo } from 'react';
 import { useBoards, usePoll, colForBoard, type ItemDTO } from '../../lib/api';
 import { useMe } from '../../lib/useMe';
 import { groupByColumn } from '../../lib/groupBy';
@@ -38,6 +38,19 @@ const COMPRAS_COL = 'multiple_person_mm03qyw9';
 const VENDEDOR_SECUNDARIO_COL = 'multiple_person_mm0wt53c';
 const CONTACTO_COL = 'deal_contact';
 const ETAPA_COL = 'deal_stage';
+
+// Las ÚNICAS columnas que esta lista lee — de renglón, de filtros y de
+// agrupación. Se le pasan a usePoll para que el worker no mande las ~34 que
+// trae cada oportunidad: medido, la respuesta completa eran 2.15 MB (158 KB
+// gz) por 628 items y se re-bajaba cada vez que cualquier item se sincronizaba.
+//
+// Si agregas algo que lea otra columna de `item.cols` en este archivo, agrégala
+// AQUÍ también o llegará vacía. `name`, `group` y `mondayUpdatedAt` no van en
+// la lista: son campos propios del item, no columnas, y siempre viajan.
+const LIST_COLS = [
+  FOLIO_COL, INSTITUCION_COL, ETAPA_COSTEO_COL, VENDEDOR_COL,
+  COMPRAS_COL, VENDEDOR_SECUNDARIO_COL, CONTACTO_COL, ETAPA_COL,
+] as const;
 
 /** El viewer ve este item por estar como "Vendedor secundario" ahí, no por ser
  * el dueño (deal_owner) ni por su zona — worker/lib/zonas.ts amplía lectura por
@@ -117,14 +130,30 @@ export function StageBoardList({ config, groupColId = 'deal_stage', q, onSearch,
   const cols = colForBoard(boards, 'oportunidades');
   const groupCol = cols.find((c) => c.id === groupColId);
   const etapaCosteoCol = cols.find((c) => c.id === ETAPA_COSTEO_COL);
-  const { status, data } = usePoll('oportunidades', q);
-  const allItems = data?.items ?? [];
-  const stageItems = allItems
-    .filter((it) => !config.stages || config.stages.includes(statusIndex(it.cols.deal_stage)))
-    .filter((it) => !config.excludeStages || !config.excludeStages.includes(statusIndex(it.cols.deal_stage)))
-    .filter((it) => !config.namePrefix || it.name.trim().toUpperCase().startsWith(config.namePrefix.toUpperCase()))
-    .filter((it) => !config.vendedorNames || vendedorNamesMatch(it, config.vendedorNames));
-  const sync = lastMondayUpdateFromItems(stageItems);
+  // groupColId es configurable por board (StageBoardConfig): si agrupa por una
+  // columna fuera de LIST_COLS hay que pedirla también, o el group card se
+  // quedaría sin etiqueta.
+  const pollCols = useMemo(
+    () => (LIST_COLS.includes(groupColId as typeof LIST_COLS[number]) ? LIST_COLS : [...LIST_COLS, groupColId]),
+    [groupColId],
+  );
+  const { status, data } = usePoll('oportunidades', q, pollCols);
+  // Memoizado sobre data.items: el poll de 5 s re-renderiza este componente y
+  // antes esta cadena de filtros corría de nuevo sobre los 628 items en CADA
+  // render, devolviendo siempre un array nuevo. Eso además rompía los useMemo
+  // de abajo (los tenían como dependencia, así que nunca acertaban) y forzaba
+  // a re-renderizar los 628 renglones. Cuando el poll contesta 304, usePoll no
+  // toca el estado, así que `data.items` conserva identidad y aquí no se
+  // recalcula nada.
+  const stageItems = useMemo(() => {
+    const all = data?.items ?? [];
+    return all
+      .filter((it) => !config.stages || config.stages.includes(statusIndex(it.cols.deal_stage)))
+      .filter((it) => !config.excludeStages || !config.excludeStages.includes(statusIndex(it.cols.deal_stage)))
+      .filter((it) => !config.namePrefix || it.name.trim().toUpperCase().startsWith(config.namePrefix.toUpperCase()))
+      .filter((it) => !config.vendedorNames || vendedorNamesMatch(it, config.vendedorNames));
+  }, [data?.items, config]);
+  const sync = useMemo(() => lastMondayUpdateFromItems(stageItems), [stageItems]);
 
   // Filter + collapsed-etapa state lives here, not in the wrapper — these
   // three selects only narrow what's already loaded, they never touch the
@@ -146,7 +175,7 @@ export function StageBoardList({ config, groupColId = 'deal_stage', q, onSearch,
   // Instant client-side narrowing on top of whatever the server already
   // returned for `q` — covers columns the server search doesn't (yet) hit,
   // and doesn't wait for the next 5s poll.
-  const items = stageItems.filter((it) => {
+  const items = useMemo(() => stageItems.filter((it) => {
     if (vendedorFilter !== ALL_VALUE && (it.cols[VENDEDOR_COL]?.text || '') !== vendedorFilter) return false;
     if (comprasFilter !== ALL_VALUE && (it.cols[COMPRAS_COL]?.text || '') !== comprasFilter) return false;
     if (etapaFilter !== ALL_VALUE && statusIndex(it.cols[ETAPA_COL]) !== etapaFilter) return false;
@@ -160,13 +189,15 @@ export function StageBoardList({ config, groupColId = 'deal_stage', q, onSearch,
       it.cols[CONTACTO_COL]?.text,
     ].filter(Boolean).join(' ');
     return textIncludes(haystack, q);
-  });
+  }), [stageItems, vendedorFilter, comprasFilter, etapaFilter, q]);
 
   const hasActiveFilters = vendedorFilter !== ALL_VALUE || comprasFilter !== ALL_VALUE || etapaFilter !== ALL_VALUE;
   const clearFilters = clearSavedFilters;
 
-  const order = groupColId === 'deal_stage' ? DEAL_STAGE_ORDER : undefined;
-  const groups = groupByColumn(items, groupCol, undefined, undefined, order);
+  const groups = useMemo(() => {
+    const order = groupColId === 'deal_stage' ? DEAL_STAGE_ORDER : undefined;
+    return groupByColumn(items, groupCol, undefined, undefined, order);
+  }, [items, groupCol, groupColId]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -211,7 +242,9 @@ export function StageBoardList({ config, groupColId = 'deal_stage', q, onSearch,
               collapsed={!!collapsedGroups[g.key]} onToggleCollapsed={() => toggleGroup(g.key)}
             >
               {g.items.map((item) => (
-                <Row key={item.id} item={item} etapaCosteoCol={etapaCosteoCol} viewerNombre={viewerNombre} onClick={() => onOpen(item.id)} />
+                // onOpen (no una arrow nueva por renglón): Row está memoizado y
+                // una closure distinta en cada render le rompería la memo.
+                <Row key={item.id} item={item} etapaCosteoCol={etapaCosteoCol} viewerNombre={viewerNombre} onOpen={onOpen} />
               ))}
             </GroupCard>
           ))}
@@ -221,10 +254,17 @@ export function StageBoardList({ config, groupColId = 'deal_stage', q, onSearch,
   );
 }
 
-function Row({ item, etapaCosteoCol, viewerNombre, onClick }: {
-  item: ItemDTO; etapaCosteoCol?: ReturnType<typeof colForBoard>[number]; viewerNombre: string | undefined; onClick: () => void;
+/** memo: la lista puede traer cientos de renglones y el poll de 5 s vuelve a
+ * renderizar el board completo. Sin esto, cada refresco re-renderizaba los 628
+ * renglones aunque no hubiera cambiado ninguno — el costo que más se nota en
+ * las máquinas lentas. Con `items` memoizado arriba, los objetos `item`
+ * conservan identidad entre polls y esta comparación por props corta el
+ * re-render de raíz. */
+const Row = memo(function Row({ item, etapaCosteoCol, viewerNombre, onOpen }: {
+  item: ItemDTO; etapaCosteoCol?: ReturnType<typeof colForBoard>[number]; viewerNombre: string | undefined; onOpen: (id: string) => void;
 }) {
   const isMobile = useIsMobile();
+  const onClick = () => onOpen(item.id);
   const institucion = item.cols[INSTITUCION_COL]?.text || '—';
   const folio = item.cols[FOLIO_COL]?.text || '—';
   const etapaCosteoVal = etapaCosteoCol ? item.cols[etapaCosteoCol.id] : undefined;
@@ -289,4 +329,4 @@ function Row({ item, etapaCosteoCol, viewerNombre, onClick }: {
       </div>
     </div>
   );
-}
+});

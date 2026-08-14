@@ -8,6 +8,14 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="CMP Portal" />
     <title>CMP Portal</title>
+    <!-- A PROPÓSITO sin <link rel="preload"> de la fuente. Se probó y en red
+         lenta EMPEORA: el preload es alta prioridad y le pelea el ancho de
+         banda al JS, y como el portal renderiza en cliente, hasta que no llega
+         el JS no hay nada que pintar (medido con scripts/perf-bench.mjs: FCP
+         1140 → 1420 ms). Con font-display: swap el texto igual aparece de
+         inmediato con la fuente de sistema y cambia cuando llega el woff2, así
+         que el preload no compraba nada visible. -->
+
     <link rel="icon" type="image/webp" href="/src/assets/logo.webp" />
     <link rel="apple-touch-icon" href="/src/assets/logo.webp" />
     <link rel="manifest" href="/manifest.json" />

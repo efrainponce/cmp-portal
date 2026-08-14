@@ -55,8 +55,26 @@ const COMPRAS_COL = 'multiple_person_mm03qyw9'; // people ("Comprador")
 // SWR de sesión: al reabrir una oportunidad ya visitada, el drawer pinta al
 // instante desde este cache y el fetch fresco lo corrige en background. Vive a
 // nivel módulo (sobrevive mount/unmount del drawer, muere con el reload).
+//
+// Con tope: un detalle pesa ~138 KB y sus versiones ~31 KB, así que sin límite
+// una jornada recorriendo oportunidades dejaba varios MB retenidos en máquinas
+// que ya andan justas de RAM. 6 entradas cubren el ir y venir entre unas pocas
+// oportunidades, que es para lo que existe el cache.
+const CACHE_MAX = 6;
 const detailCache = new Map<string, ItemDetailDTO>();
 const versionsCache = new Map<string, QuoteVersionDTO[]>();
+
+/** set con tope LRU — Map preserva orden de inserción, así que re-insertar
+ * manda la entrada al final y la primera llave es la más vieja. */
+function cacheSet<T>(cache: Map<string, T>, key: string, value: T): void {
+  cache.delete(key);
+  cache.set(key, value);
+  while (cache.size > CACHE_MAX) {
+    const oldest = cache.keys().next().value;
+    if (oldest === undefined) break;
+    cache.delete(oldest);
+  }
+}
 
 interface Notice { kind: 'ok' | 'error'; title: string; lines: string[] }
 
@@ -134,7 +152,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
     getItemDetail('oportunidades', id)
       .then(({ item: it }) => {
         if (loadSeqRef.current !== seq) return;
-        detailCache.set(id, it);
+        cacheSet(detailCache, id, it);
         setItem(it);
       })
       .catch(() => {
@@ -154,7 +172,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
     setSyncing(true);
     return getItemDetail('oportunidades', reqId, { fresh: true })
       .then(({ item: it }) => {
-        detailCache.set(reqId, it);
+        cacheSet(detailCache, reqId, it);
         if (currentIdRef.current === reqId) setItem(it);
       })
       .catch(() => { /* el mirror ya está pintado; no rompas la vista */ })
@@ -162,7 +180,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
   };
   const loadVersions = () => {
     getVersiones(id)
-      .then((v) => { versionsCache.set(id, v); setVersions(v); })
+      .then((v) => { cacheSet(versionsCache, id, v); setVersions(v); })
       .catch(() => setVersions([]));
   };
 
@@ -290,7 +308,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
       const res = await duplicarVersion(id);
       if (!res.ok) throw new Error(res.error ?? 'No se pudo crear la nueva versión.');
       const nueva = res.versions?.find((v) => v.status === 'vigente');
-      if (res.versions) { versionsCache.set(id, res.versions); setVersions(res.versions); }
+      if (res.versions) { cacheSet(versionsCache, id, res.versions); setVersions(res.versions); }
       setNotice({
         kind: 'ok', title: 'Nueva versión creada',
         lines: [
@@ -316,7 +334,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
     try {
       const res = await restaurarVersion(id, restoreTarget.id);
       if (!res.ok) throw new Error(res.error ?? 'No se pudo restaurar la versión.');
-      if (res.versions) { versionsCache.set(id, res.versions); setVersions(res.versions); }
+      if (res.versions) { cacheSet(versionsCache, id, res.versions); setVersions(res.versions); }
       const nueva = res.versions?.find((v) => v.status === 'vigente');
       setNotice({
         kind: 'ok', title: `${restoreTarget.label} restaurada`,
@@ -729,7 +747,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
           key={`cot-${versions.length}`}
           subCols={subCols} oppCols={oppCols} products={products} variant={cotizacionVariant} onSaved={load} versions={versions}
           onVersioned={(v) => {
-            versionsCache.set(id, v);
+            cacheSet(versionsCache, id, v);
             setVersions(v);
             const nueva = v.find((x) => x.status === 'vigente');
             setNotice({

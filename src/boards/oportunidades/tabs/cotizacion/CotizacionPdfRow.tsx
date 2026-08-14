@@ -4,12 +4,10 @@
 // tener que cambiar de pestaña.
 //
 // pdfjs-dist (~370 KB min) se carga de forma diferida: PdfCanvasPreview entra
-// vía React.lazy y warmPdfWorker vía import() dinámico, así el chunk del
-// drawer no arrastra pdf.js para oportunidades sin PDF. La precarga en el
-// useEffect de abajo dispara la descarga del chunk + worker + bytes del PDF en
-// cuanto se sabe que hay PDF que ver, no al clic — misma latencia percibida
-// (~500 ms) que cuando era import estático.
-import { lazy, Suspense, useEffect, useState, type ChangeEvent } from 'react';
+// vía React.lazy, así el chunk del drawer no arrastra pdf.js. Ni el chunk ni
+// los bytes del PDF se piden hasta que alguien da clic en "Ver" — abrir la
+// oportunidad no debe costar nada aquí (ver el comentario en CotizacionPdfRow).
+import { lazy, Suspense, useState, type ChangeEvent } from 'react';
 import { Modal } from '../../../../components/core/Modal';
 import { useMe } from '../../../../lib/useMe';
 import { uploadOportunidadInventario } from '../../../../lib/api';
@@ -235,7 +233,6 @@ export function CotizacionPdfRow({ oppId, item, hasSolicitud, hasSinFirmar, hasF
 }) {
   const me = useMe();
   const [preview, setPreview] = useState<PdfKind | null>(null);
-  const [bytes, setBytes] = useState<Partial<Record<PdfKind, ArrayBuffer>>>({});
   const hasInventario = !!item && inventarioFiles(item).length > 0;
   // Compras siempre ve su cuadro de upload aunque todavía no exista ningún PDF
   // de cotización — si no, no tiene dónde subir el inventario en una
@@ -243,26 +240,17 @@ export function CotizacionPdfRow({ oppId, item, hasSolicitud, hasSinFirmar, hasF
   const canUploadInventario = me?.role === 'compras' || me?.role === 'admin';
   const showInventario = !!(item && (hasInventario || canUploadInventario));
 
-  // Precarga en cuanto se sabe que hay PDF que ver — no espera al clic en
-  // "Ver". Así, cuando el usuario abre el modal, el chunk de pdf.js, su worker
-  // y los bytes del PDF ya están listos (o casi) en vez de arrancar la
-  // descarga ahí mismo, que es lo que hacía sentir lenta la primera apertura.
-  useEffect(() => {
-    if (!oppId || (!hasSolicitud && !hasSinFirmar && !hasFirmada)) return;
-    import('../../../../components/core/PdfCanvasPreview').then((m) => m.warmPdfWorker()).catch(() => {});
-    let cancelled = false;
-    const kinds: PdfKind[] = [];
-    if (hasSolicitud) kinds.push('solicitud_costeo');
-    if (hasSinFirmar) kinds.push('sin_firmar');
-    if (hasFirmada) kinds.push('firmada');
-    kinds.forEach((kind) => {
-      fetch(`/api/oportunidades/${oppId}/cotizacion-pdf/${kind}`)
-        .then((r) => (r.ok ? r.arrayBuffer() : null))
-        .then((buf) => { if (buf && !cancelled) setBytes((b) => ({ ...b, [kind]: buf })); })
-        .catch(() => { /* PdfCanvasPreview reintenta por URL si no hubo prefetch */ });
-    });
-    return () => { cancelled = true; };
-  }, [oppId, hasSolicitud, hasSinFirmar, hasFirmada]);
+  // Los PDFs se bajan al DAR CLIC en "Ver", no al abrir la oportunidad.
+  //
+  // Antes esto precargaba los tres PDFs completos (arrayBuffer) en cuanto el
+  // drawer montaba, para que el modal abriera instantáneo. Medido en una
+  // máquina lenta con red de 1.5 Mbps (scripts/perf-bench.mjs), eso costaba
+  // 1.83 MB y ~10 s en CADA apertura de oportunidad — y la miniatura ni
+  // siquiera usa esos bytes: es un ícono SVG (ver PdfIcon), no un render del
+  // PDF. O sea, se pagaba el ancho de banda de tres PDFs para dibujar tres
+  // íconos, y quien nunca daba clic en "Ver" los bajaba igual (Efraín,
+  // 2026-08-13). PdfCanvasPreview ya sabe bajar por `url` cuando no recibe
+  // `data`, así que el modal se encarga solo.
 
   if (!oppId || (!hasSolicitud && !hasSinFirmar && !hasFirmada && !hasLineas && !showInventario)) return null;
   return (
@@ -283,7 +271,6 @@ export function CotizacionPdfRow({ oppId, item, hasSolicitud, hasSinFirmar, hasF
           <Suspense fallback={<div style={{ font: 'var(--text-label)', color: 'var(--ink-quiet)' }}>Cargando…</div>}>
             <PdfCanvasPreview
               url={`/api/oportunidades/${oppId}/cotizacion-pdf/${preview}`}
-              data={bytes[preview]}
               maxWidth={712}
             />
           </Suspense>

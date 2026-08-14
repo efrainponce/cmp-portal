@@ -1,7 +1,7 @@
 // worker/lib/serialize.ts — mirror row -> role-scoped DTOs. Sole producer of ItemDTO/ColMeta.
 import type { MirrorItem, Role } from '../../shared/types';
 import type { BoardSlug } from '../../shared/boards';
-import type { ItemDTO, ColVal, ColMeta } from '../../shared/dto';
+import type { ItemDTO, ItemDetailDTO, ColVal, ColMeta } from '../../shared/dto';
 import { VISIBILITY, readableCols, canWrite } from '../../shared/visibility';
 import { COLUMN_META } from '../../shared/column-meta.gen';
 
@@ -45,7 +45,17 @@ function readableSet(slug: BoardSlug, role: Role): Set<string> {
   return set;
 }
 
-export function toItemDTO(row: MirrorItem, slug: BoardSlug, role: Role, pendingWrite = false): ItemDTO {
+/** `only` = proyección pedida por el cliente (?cols=). Se INTERSECTA con lo que
+ * el rol puede leer, nunca lo amplía: `allowed` sigue mandando y `only` solo
+ * puede quitar. Sirve para que una lista no arrastre las ~34 columnas del board
+ * cuando pinta 8 (ver la ruta GET /items). */
+export function toItemDTO(
+  row: MirrorItem,
+  slug: BoardSlug,
+  role: Role,
+  pendingWrite = false,
+  only?: ReadonlySet<string>,
+): ItemDTO {
   const allowed = readableSet(slug, role);
   let rawCols: RawCol[] = [];
   try {
@@ -56,6 +66,7 @@ export function toItemDTO(row: MirrorItem, slug: BoardSlug, role: Role, pendingW
   const cols: Record<string, ColVal> = {};
   for (const col of rawCols) {
     if (!allowed.has(col.id)) continue;
+    if (only && !only.has(col.id)) continue;
     cols[col.id] = buildColVal(col);
   }
   return {
@@ -68,6 +79,26 @@ export function toItemDTO(row: MirrorItem, slug: BoardSlug, role: Role, pendingW
     pendingWrite: pendingWrite || undefined,
     cols,
   };
+}
+
+/** ETag de CONTENIDO para el detalle de un item, ignorando `syncedAt`.
+ *
+ * `syncedAt` es la hora en que el espejo leyó a Monday, no un dato del
+ * negocio: cambia en CADA relectura aunque la oportunidad sea idéntica. Si
+ * entrara en la llave, el `?fresh=1` que dispara el drawer al abrir nunca
+ * podría contestar 304 y siempre re-mandaría el cuerpo completo (~138 KB en
+ * una oportunidad de 31 líneas) — que es justo lo que se quiere evitar. Se
+ * ignora también en los `children` porque el replacer aplica a todo el árbol.
+ *
+ * El cliente recupera la hora real por el header `X-Synced-At`, así que un 304
+ * sigue pudiendo actualizar el "sincronizado hace …" sin bajar el cuerpo. */
+export async function itemDetailEtag(dto: ItemDetailDTO): Promise<string> {
+  const canon = JSON.stringify(dto, (k, v) => (k === 'syncedAt' ? undefined : v));
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canon));
+  const hex = Array.from(new Uint8Array(digest).slice(0, 16))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+  return `"${hex}"`;
 }
 
 export function toColMeta(slug: BoardSlug, role: Role): ColMeta[] {

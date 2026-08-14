@@ -2,6 +2,118 @@
 
 ## 2026-08-13
 
+- Perf: portal mucho más liviano en máquinas lentas y conexiones malas
+  (banco de medición + 5 arreglos)
+  - Efraín reportó que la gente se queja de que el portal va lento, sobre todo
+    en equipos modestos y con mala conexión, y que "el problema está dentro de
+    oportunidades o proyectos, no solo en los boards". Preguntó primero **cómo
+    lo iba a MEDIR** antes de aceptar cambios — así que lo primero fue el banco.
+  - **`scripts/perf-bench.mjs`** (nuevo): mide el build de producción servido
+    por `wrangler dev`, con CPU a 4x y red estrangulada (1.5 Mbps, 300 ms de
+    latencia) vía CDP. Saca FCP/LCP, tiempo hasta tener datos en pantalla,
+    bytes reales sobre el cable, hilo principal bloqueado, nodos DOM, heap,
+    costo de ABRIR una oportunidad, tráfico en reposo y segunda visita con
+    caché tibia. Guarda cada corrida en `scripts/perf-results/` (gitignored)
+    y compara con `--compare antes despues`.
+    - Tres artefactos de medición que hubo que corregir antes de creerle al
+      banco, anotados en el propio archivo: (1) contar solo en
+      `loadingFinished` hacía invisibles los 304 del poll (no dispara para
+      304); (2) registrar el recurso en `responseReceived` con `bytes: 0` y
+      rellenarlos después atribuía a la ventana de reposo respuestas grandes
+      pedidas ANTES — inventaba "3.6 MB/min" que no existían, ahora se filtra
+      por `finAt` dentro de la ventana; (3) el drawer se medía abriendo el
+      primer renglón, que es una oportunidad de prueba vacía — ahora se fija
+      con `--folio` (OPP-0264, 31 líneas) para que antes/después comparen lo
+      mismo.
+  - **Hallazgo principal — 1.83 MB de PDFs por cada apertura**
+    (`CotizacionPdfRow.tsx`): al montar, precargaba los TRES PDFs completos
+    (`arrayBuffer`) de la oportunidad para que el clic en "Ver" fuera
+    instantáneo. Pero la miniatura es un ícono SVG (`PdfIcon`), no un render
+    del PDF: se pagaban 1.83 MB y ~10 s de red lenta para dibujar tres
+    íconos, y quien nunca daba clic los bajaba igual. Decisión de Efraín:
+    bajar al hacer clic. `PdfCanvasPreview` ya sabía bajar por `url` cuando no
+    recibe `data`, así que fue quitar el prefetch. Verificado en navegador:
+    0 PDFs al abrir, 1 (solo el pedido) al dar clic, canvas renderiza igual.
+  - **Relectura de Monday: se conserva, pero deja de costar bytes**
+    (`boards.ts`, `serialize.ts`, `apiClient.ts`): abrir una oportunidad hace
+    dos GETs al detalle (espejo + `?fresh=1`) y los dos devolvían ~138 KB
+    idénticos — 276 KB para abrir UNA. Se le puso ETag de contenido
+    (`itemDetailEtag`) que **ignora `syncedAt`**, porque ese campo cambia en
+    cada relectura aunque el dato sea el mismo y si entrara en la llave nunca
+    habría 304. La hora real viaja en `X-Synced-At` para que el "sincronizado
+    hace …" no se quede viejo. Medido: el segundo GET pasa de 138 KB a 0.
+    - Efraín fue explícito: **la relectura se queda** ("a veces hacen ráfagas
+      de cambios, imagínate tener data stale aparte de lento"). No se tocó
+      `FRESH_WINDOW_MS` ni se condicionó por etapa. De paso se verificó que
+      `syncing` sólo cambia el texto del indicador — no bloquea ningún botón,
+      así que la UI ya no estaba "trabada" durante esos segundos.
+  - **Listas: `?cols=`** (`boards.ts`, `dal.ts`, `serialize.ts`, `api.ts`,
+    `StageBoardList.tsx`): el board Oportunidades manda ~34 columnas por item
+    y la lista pinta 8 → 2.15 MB (158 KB gz) por 628 items, re-bajados cada
+    vez que CUALQUIER item se sincroniza (el ETag va sobre `MAX(synced_at)`).
+    Ahora la vista declara sus columnas y el worker manda sólo esas: **2.06 MB
+    → 0.63 MB, 158.6 → 64.6 KB gz**. Es sólo transporte: `toItemDTO`
+    intersecta contra `shared/visibility.ts`, nunca amplía — anclado en
+    `worker/lib/serialize.test.ts` (pedir por `?cols=` una columna admin-only
+    siendo vendedor no la devuelve). La proyección entra en el ETag
+    (`etagFor(..., variant)`) para que dos clientes con formas distintas no
+    compartan llave y un 304 le sirva a uno la forma del otro.
+  - **Caché de assets** (`public/_headers`, nuevo): Workers Assets servía
+    `max-age=0, must-revalidate` para TODO, aunque Vite ya le pone hash de
+    contenido al nombre — o sea 21 revalidaciones antes del primer render en
+    cada visita. Ahora `/assets/*` es `immutable` a un año (el HTML sigue sin
+    cachear, si no un deploy nuevo no se vería). Aislado midiendo la misma
+    build con y sin el archivo: **2a visita 2297 → 1595 ms (-31%)**, aciertos
+    de caché 2 → 17 de 22 requests.
+  - **Fuentes propias** (`scripts/fetch-fonts.mjs`, `public/fonts/`,
+    `src/tokens/fonts.css`): el `@import` a fonts.googleapis.com dentro del
+    CSS es el peor caso — bloquea el render y encadena DNS+TLS a dos orígenes
+    ajenos antes de pintar texto. Ahora se sirven del propio origen. Inter y
+    JetBrains Mono son fuentes VARIABLES: Google devuelve el mismo woff2 para
+    todos los pesos (mismo md5), así que se baja UNO por familia con
+    `font-weight: 400 800` — 72 KB en 2 archivos en vez de 7 peticiones.
+    Sólo subset latin (cubre español completo) y sólo los pesos en uso.
+    - Se probó `<link rel="preload">` de la fuente y se QUITÓ: en red lenta
+      empeoraba el FCP (1140 → 1420 ms) porque le pelea ancho de banda al JS,
+      y como el portal renderiza en cliente no hay nada que pintar hasta que
+      llega el JS. Con `font-display: swap` el preload no compraba nada
+      visible. Queda comentado en `index.html` para que no se vuelva a
+      intentar.
+  - **Render de la lista** (`StageBoardList.tsx`): la cadena de filtros corría
+    sobre los 628 items en CADA render y devolvía un array nuevo, lo que
+    además rompía los tres `useMemo` de opciones de filtro (lo tenían como
+    dependencia, así que nunca acertaban) y re-renderizaba los 628 renglones
+    en cada poll. Se memoizó la cadena (`stageItems` → `items` → `groups`) y
+    `Row` pasó a `memo()`, recibiendo `onOpen` en vez de una arrow nueva por
+    renglón.
+  - **Topes de caché en memoria** (`OpportunityDrawer.tsx`, `apiClient.ts`):
+    `detailCache`/`versionsCache` eran Maps sin límite a nivel módulo (~138 KB
+    + ~31 KB por oportunidad visitada) — una jornada recorriendo el pipeline
+    dejaba varios MB retenidos en equipos que ya andan justos de RAM. Ahora
+    LRU de 6.
+  - **Resultado medido** (red lenta 1.5 Mbps / 300 ms, CPU 4x, board
+    Oportunidades con 628 items, abriendo OPP-0264):
+    | | antes | después |
+    |---|---|---|
+    | Bytes de carga inicial | 364.1 KB | 269.0 KB (-26%) |
+    | └ de API | 166.5 KB | 72.2 KB (-57%) |
+    | Datos en pantalla | 3475 ms | 3015 ms (-13%) |
+    | Abrir oportunidad | 414.2 KB | 290.9 KB (-30%) |
+    | Con la oportunidad abierta | 3660 KB/min | 2.2 KB/min |
+    | Heap JS | 11.3 MB | 9.5 MB (-16%) |
+    | 2a visita (caché tibia) | 2297 ms | 1595 ms (-31%) |
+    - FCP/LCP quedan igual dentro del ruido entre corridas (baseline osciló
+      1128–1196 ms); lo que se movió son bytes, memoria y el costo de trabajar
+      dentro de una oportunidad. El "reconciliado" del drawer sigue mandado
+      por la latencia de la API de Monday, que por sí sola varía 1.9–6.7 s
+      entre llamadas — no depende de nada de este cambio.
+  - Pendiente deliberado, no hecho: virtualizar la lista (628 renglones son
+    7156 nodos DOM). Cambia el scroll y rompe el Ctrl+F del navegador, así que
+    es decisión de Efraín; hoy el costo por poll ya se atacó con memoización.
+    Tampoco se tocó el `warmPdfWorker` de `ActualizacionesTab.tsx` (baja el
+    chunk de pdf.js al ver un adjunto PDF): ese archivo lo estaba editando
+    otra sesión en paralelo.
+
 - Fix: pestaña "Actualizaciones" del drawer se quedaba en "Cargando…" para
   siempre en mobile (`ActualizacionesTab.tsx`)
   - Efraín reportó que a Ricardo no le cargaba esa pestaña en el celular. Se

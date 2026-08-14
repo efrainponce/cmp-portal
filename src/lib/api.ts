@@ -21,8 +21,14 @@ export interface PollResult {
 
 /** Fetches the item list for `slug`, then re-polls every 5s using If-None-Match
  * (a 304 leaves state untouched). Falls back to mock data for `oportunidades`
- * when the request fails outright (worker not running). */
-export function usePoll(slug: BoardSlug, q = ''): PollResult {
+ * when the request fails outright (worker not running).
+ *
+ * `cols` = las columnas que la vista realmente pinta. El worker manda SOLO esas
+ * (ver ?cols= en la ruta GET /items) — Oportunidades trae ~34 por item y la
+ * lista usa 8, lo que hacía que cada refresco bajara 2.15 MB. Omitirlo trae
+ * todas las columnas legibles, que es lo que necesitan las vistas genéricas.
+ * Nunca amplía permisos: el server intersecta contra shared/visibility.ts. */
+export function usePoll(slug: BoardSlug, q = '', cols?: readonly string[]): PollResult {
   const [status, setStatus] = useState<PollStatus>('loading');
   const [data, setData] = useState<ListResponse | null>(null);
   const [offlineMock, setOfflineMock] = useState(false);
@@ -33,12 +39,19 @@ export function usePoll(slug: BoardSlug, q = ''): PollResult {
   // llega con un debounce corto.
   const hasDataRef = useRef(false);
 
+  // Se serializa para poder usarlo como dep estable: un array literal en el
+  // call site cambia de identidad en cada render y reiniciaría el polling.
+  const colsParam = cols?.length ? cols.join(',') : '';
+
   const load = useCallback(async () => {
     // Pestaña oculta: no gastes requests — al volver, el listener de
     // visibilitychange de abajo recarga de inmediato.
     if (document.hidden) return;
     try {
-      const params = q ? `?q=${encodeURIComponent(q)}` : '';
+      const qs = new URLSearchParams();
+      if (q) qs.set('q', q);
+      if (colsParam) qs.set('cols', colsParam);
+      const params = qs.size ? `?${qs}` : '';
       const headers: Record<string, string> = {};
       if (etagRef.current) headers['If-None-Match'] = etagRef.current;
       const res = await apiFetch(`/boards/${slug}/items${params}`, { headers });
@@ -53,6 +66,7 @@ export function usePoll(slug: BoardSlug, q = ''): PollResult {
     } catch (e) {
       if (e instanceof AccessError) { setStatus('denied'); return; }
       const fallback = mockList(slug, q);
+      // (el mock no proyecta columnas: es solo el modo offline de demo)
       if (fallback) {
         hasDataRef.current = true;
         setData(fallback);
@@ -62,7 +76,7 @@ export function usePoll(slug: BoardSlug, q = ''): PollResult {
         setStatus('offline');
       }
     }
-  }, [slug, q]);
+  }, [slug, q, colsParam]);
 
   useEffect(() => {
     etagRef.current = undefined;

@@ -267,7 +267,23 @@ export async function proyectoForOportunidad(env: Env, oppItemId: number, viewer
 // list. 'admin' always shares one scope key (unrestricted everywhere); 'compras'
 // shares it too, but only on boards without comprasCol — on Oportunidades/
 // Proyectos it's scoped same as vendedor, so it needs the per-viewer key too.
-export async function etagFor(env: Env, slug: BoardSlug, viewer: Identity): Promise<string> {
+/** Hash corto y estable (FNV-1a) para meter la forma de la respuesta en el
+ * ETag sin alargarlo con la lista completa de columnas. No es criptográfico:
+ * solo tiene que distinguir proyecciones distintas, y una colisión aquí sería
+ * entre dos listas de columnas que el mismo cliente ni siquiera mezcla. */
+function fnv1a(s: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(36);
+}
+
+/** `variant` distingue respuestas con distinta FORMA para el mismo board+viewer
+ * (hoy: la proyección ?cols=). Sin él, dos clientes que piden columnas
+ * distintas comparten llave y el 304 le entrega a uno la forma del otro. */
+export async function etagFor(env: Env, slug: BoardSlug, viewer: Identity, variant?: string): Promise<string> {
   const board = BOARDS[slug];
   const owningBoard = board.parent ? BOARDS[board.parent] : board;
   const row = await env.DB
@@ -289,7 +305,8 @@ export async function etagFor(env: Env, slug: BoardSlug, viewer: Identity): Prom
     : zonaPrivadaRestringe
       ? `h${hiddenOwners.sort((a, b) => a - b).join('.')}`
       : `u${ownerIdsFor(viewer, 'read').sort((a, b) => a - b).join('.')}`;
-  return `"${slug}:${scopeKey}:${row?.c ?? 0}:${row?.m ?? ''}"`;
+  const shape = variant ? `:${fnv1a(variant)}` : '';
+  return `"${slug}:${scopeKey}:${row?.c ?? 0}:${row?.m ?? ''}${shape}"`;
 }
 
 // role: 'vendedor' (default) o 'compras' — alimenta los selects de personas del

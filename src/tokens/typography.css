@@ -1,4 +1,7 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+/* Fuentes propias (public/fonts/), generadas por scripts/fetch-fonts.mjs.
+   Antes esto era un @import a fonts.googleapis.com: bloqueaba el render y
+   encadenaba DNS+TLS a dos orígenes ajenos antes de poder pintar texto. */
+@import './fonts.css';
 
 :root {
   --font-ui: 'Inter', system-ui, sans-serif;

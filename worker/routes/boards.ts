@@ -13,7 +13,7 @@ import {
   listItems, getItem, childrenOf, childSlugOf, etagFor, pendingItemIds, listVendedores,
   ownsItem, leadsOthers, hasPendingWrites, upsertIdentity,
 } from '../lib/dal';
-import { toItemDTO, toColMeta } from '../lib/serialize';
+import { toItemDTO, toColMeta, itemDetailEtag } from '../lib/serialize';
 import { canReadBoard } from '../../shared/visibility';
 import { submitWrite, OutboxError } from '../lib/outbox';
 import { submitCreate, CreateError } from '../lib/createRecord';
@@ -167,7 +167,22 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
     const viewer = c.get('viewer');
     const q = c.req.query('q');
 
-    const etag = await etagFor(c.env, slug, viewer);
+    // ?cols=a,b,c — el cliente declara qué columnas va a pintar y el resto no
+    // viaja. El board Oportunidades trae ~34 columnas por item y la lista pinta
+    // 8: medido, la respuesta completa son 2.15 MB (158 KB gz) por 628 items, y
+    // se re-manda cada vez que CUALQUIER item se sincroniza (el ETag va sobre
+    // MAX(synced_at) del board). Esto es solo transporte: `toItemDTO` sigue
+    // intersectando contra shared/visibility.ts, así que pedir una columna que
+    // el rol no puede leer no la devuelve.
+    const colsParam = c.req.query('cols');
+    const only = colsParam
+      ? new Set(colsParam.split(',').map(s => s.trim()).filter(Boolean))
+      : undefined;
+
+    // La proyección entra en el ETag: si no, un cliente que pide 8 columnas y
+    // otro que pide todas comparten llave y el 304 le sirve a uno la forma del
+    // otro (se quedaría sin columnas, o con la lista vieja).
+    const etag = await etagFor(c.env, slug, viewer, colsParam ?? undefined);
     c.header('ETag', etag);
     if (c.req.header('If-None-Match') === etag) return c.body(null, 304);
 
@@ -175,7 +190,7 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
       listItems(c.env, slug, viewer, q),
       pendingItemIds(c.env, BOARDS[slug].id),
     ]);
-    const items = rows.map(r => toItemDTO(r, slug, viewer.role, pending.has(r.item_id)));
+    const items = rows.map(r => toItemDTO(r, slug, viewer.role, pending.has(r.item_id), only));
     const body: ListResponse = { board: slug, items, total: items.length, etag };
     return c.json(body);
   });
@@ -215,6 +230,25 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
     // predicado que el write path (scope 'own'), así la UI nunca ofrece editar
     // algo que el server va a rechazar. La consulta extra solo la paga un líder.
     dto.ownedByViewer = leadsOthers(viewer) ? await ownsItem(c.env, slug, itemId, viewer) : true;
+
+    // ETag sobre el CONTENIDO ya serializado (no sobre synced_at): abrir una
+    // oportunidad dispara dos GETs de este endpoint — uno al espejo y otro con
+    // ?fresh=1 tras releer Monday — y los dos devuelven exactamente lo mismo
+    // salvo que alguien haya tocado el item en Monday mientras tanto. Medido:
+    // ~138 KB cada uno en una oportunidad de 31 líneas, o sea 276 KB para
+    // abrir UNA oportunidad. Con esto el segundo se va en 304 y no manda
+    // cuerpo, sin tocar la garantía de que sí se relee Monday (Efraín,
+    // 2026-08-13). Va sobre el JSON final porque `synced_at` cambia en cada
+    // relectura aunque el dato sea idéntico — justo lo que NO queremos que
+    // invalide. El rol del viewer ya está dentro del cuerpo (toItemDTO filtra
+    // columnas por rol), así que no hace falta meterlo aparte en la llave.
+    const etag = await itemDetailEtag(dto);
+    c.header('ETag', etag);
+    c.header('Cache-Control', 'no-cache'); // revalidar siempre, nunca servir de caché sin preguntar
+    // La hora de sincronización viaja aparte porque NO entra en el ETag: así un
+    // 304 igual puede refrescar el "sincronizado hace …" del drawer.
+    if (dto.syncedAt) c.header('X-Synced-At', dto.syncedAt);
+    if (c.req.header('If-None-Match') === etag) return c.body(null, 304);
     return c.json(dto);
   });
 
