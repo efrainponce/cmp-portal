@@ -11,10 +11,13 @@ import type { ExecutionContext } from 'hono';
 import type { Env } from '../env';
 import type { Identity, MirrorItem } from '../../shared/types';
 import { BOARDS } from '../../shared/boards';
+import { isNativeId } from '../../shared/nativeId';
 import { getItem, proyectoForOportunidad, PROYECTO_OPP_REL } from './dal';
 import { createItem, moveItemToGroup, addFileToColumn, fetchAssetPublicUrls } from './monday';
 import { upsertItem, refetchItem } from '../sync';
-import { submitWrite } from './outbox';
+import { submitWrite, boardRelationValue } from './outbox';
+import { reserveNativeId } from './nativeSeq';
+import { rawHash, type RawColumn } from './canon';
 import type { RawCol } from './serialize';
 
 export class GanarOportunidadError extends Error {
@@ -92,6 +95,61 @@ async function copyFiles(env: Env, sourceCols: Map<string, RawCol>, sourceColId:
   }
 }
 
+/** Primer person id de un value ya parseado ({personsAndTeams:[{id}]}) —
+ * mismo shape que passthroughValue produce, para derivar vendedor_ids del
+ * Proyecto nativo (authzCols de shared/boards.ts). */
+function firstId(value: unknown): number | undefined {
+  const ids = (value as { personsAndTeams?: { id: number }[] } | undefined)?.personsAndTeams;
+  const n = ids?.[0]?.id;
+  return Number.isFinite(n) ? n : undefined;
+}
+
+/** "Ganar" para una oportunidad nativa (Zona Efrain, "salir de Monday"): crea
+ * el Proyecto como una fila más de D1 (mismo espacio de ids sintéticos), sin
+ * create_item ni move_to_group en Monday. Copia compras/vendedor/zona
+ * VERBATIM del RawCol de la oportunidad — ya vienen en el shape real de
+ * Monday desde que se creó (submitCreateNative usa encodeColumnValue), así
+ * que no hace falta reconstruirlos. Sin copyFiles (no hay cotización firmada
+ * vía DocuSeal que copiar en este flujo). */
+async function ganarOportunidadNativeD1(
+  env: Env, ctx: ExecutionContext, itemId: number, source: MirrorItem, srcCols: Map<string, RawCol>, viewer: Identity,
+): Promise<{ proyectoId: number }> {
+  const proyectoId = await reserveNativeId(env);
+  const columns: RawColumn[] = [
+    { id: PROYECTO_OPP_REL, type: 'board_relation', text: source.name, value: JSON.stringify(boardRelationValue(String(itemId))) },
+  ];
+  const compras = srcCols.get(OPP_COMPRAS);
+  if (compras?.value) {
+    columns.push({ ...compras, id: PROYECTO_OWNER });
+    columns.push({ ...compras, id: PROYECTO_ELABORADO_POR });
+  }
+  const vendedorCol = srcCols.get(OPP_VENDEDOR);
+  if (vendedorCol?.value) columns.push({ ...vendedorCol, id: PROYECTO_VENDEDOR });
+  const zonaCol = srcCols.get(OPP_ZONA);
+  if (zonaCol?.value) columns.push({ ...zonaCol, id: PROYECTO_ZONA });
+
+  const vendedorIds: number[] = [];
+  const vId = firstId(vendedorCol?.value ? JSON.parse(vendedorCol.value) : undefined);
+  if (vId !== undefined) vendedorIds.push(vId);
+
+  const now = new Date().toISOString();
+  await env.DB
+    .prepare(
+      `INSERT INTO items (board_id, item_id, parent_item_id, name, group_id, vendedor_ids, monday_updated_at, synced_at, content_hash, columns)
+       VALUES (?, ?, NULL, ?, NULL, ?, ?, ?, ?, ?)`,
+    )
+    .bind(
+      BOARDS.proyectos.id, proyectoId, source.name, JSON.stringify(vendedorIds),
+      now, now, rawHash(columns), JSON.stringify(columns),
+    )
+    .run();
+
+  await submitWrite(env, ctx, 'oportunidades', itemId, { deal_stage: 'Ganada' }, viewer, { trusted: true });
+  await submitWrite(env, ctx, 'oportunidades', itemId, { [OPP_PROYECTO_REL]: String(proyectoId) }, viewer, { trusted: true });
+
+  return { proyectoId };
+}
+
 const GANAR_ROLES: Identity['role'][] = ['vendedor', 'compras', 'admin'];
 
 /** "Ganar": marca Ganada y crea el Proyecto ligado si todavía no existe uno
@@ -114,6 +172,8 @@ export async function ganarOportunidad(
     await submitWrite(env, ctx, 'oportunidades', itemId, { deal_stage: 'Ganada' }, viewer, { trusted: true });
     return { proyectoId: existing.item_id };
   }
+
+  if (isNativeId(itemId)) return ganarOportunidadNativeD1(env, ctx, itemId, source, srcCols, viewer);
 
   const proyectoCols: Record<string, unknown> = {
     [PROYECTO_OPP_REL]: { item_ids: [itemId] },

@@ -443,6 +443,38 @@
     `scripts/perf-bench.mjs` + `scripts/perf-results/`) — se dejaron sin
     commitear, solo se stageó el archivo propio de este fix.
 
+- Feat: "salir de Monday" — Paso 6, "Ganar" → Proyecto nativo
+  (`worker/lib/ganarOportunidad.ts`, `worker/lib/outbox.ts`)
+  - `ganarOportunidadNativeD1`: crea el Proyecto como fila de `items` (mismo
+    espacio de ids sintéticos), sin `create_item`/`move_to_group` en Monday.
+    Copia compras/vendedor/zona VERBATIM del `RawCol` de la oportunidad —
+    esas columnas ya traen el shape real de Monday desde que se creó
+    (`submitCreateNative` usa `encodeColumnValue`), así que copiarlas es
+    correcto y no hay que reconstruirlas. Sin `copyFiles` (no hay cotización
+    firmada vía DocuSeal que copiar en este flujo nativo). La idempotencia
+    (`proyectoForOportunidad`, doble click no duplica) ya era 100% D1 y
+    funcionó sin tocarla.
+  - Gap real encontrado y corregido en `worker/lib/outbox.ts` (afecta a
+    CUALQUIER escritura futura de una columna board_relation en un item
+    nativo, no solo a "Ganar"): el bypass de outbox para nativos escribía
+    board_relation con el `value` genérico de `canonValue` (string plano),
+    pero `dal.ts` (`linkedItemId`/`proyectoForOportunidad`) espera
+    `{linked_item_ids:[...]}` — sin el fix, la relación Oportunidad↔Proyecto
+    quedaba guardada pero invisible/inencontrable para ese lookup. Mismo
+    patrón que el fix de `deal_stage`/`.index` del Paso 4: `boardRelationValue`
+    nueva, exportada, reusada también en la creación del Proyecto.
+  - Probado en local end-to-end: "Ganar" sobre la oportunidad de prueba →
+    Proyecto nativo creado con el link bidireccional correcto en ambos
+    sentidos (verificado con consulta directa a D1: Proyecto→Oportunidad vía
+    `board_relation_mm0hf0y3` legible en la API; Oportunidad→Proyecto vía
+    `board_relation_mm0hw8ew` con el shape correcto en D1, aunque invisible
+    en la API por un gap de whitelist PREEXISTENTE — esa columna nunca tuvo
+    entrada en `shared/visibility.ts`, ni para oportunidades reales de
+    Monday; no se toca sin que Efraín decida). Etapa "Ganada" con índice
+    correcto, personas/zona copiadas con nombre y shape correctos, doble
+    click confirmado idempotente (mismo proyectoId, no duplica), outbox en
+    cero en todo momento.
+
 - Feat: "salir de Monday" — Paso 5, cotización nativa (PDF al cliente, sin
   Eledo/Monday/DocuSeal) (`shared/documents.ts`, `worker/lib/pdf/templates.ts`,
   `worker/lib/documents.ts`, `worker/lib/cotizacion.ts`,

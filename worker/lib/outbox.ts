@@ -18,6 +18,16 @@ import type { MondayItem, MondayCol } from './monday';
 import { logProductoStatusFromPortalWrite } from './estadoProducto';
 import { syncTallasPortal } from './airtable';
 
+/** Shape REAL de lectura de Monday para board_relation ({linked_item_ids:[...]}
+ * — distinto del shape de ESCRITURA que espera la mutación, {item_ids:[...]},
+ * ver columnEncode.ts). `canon` ya es el id plano (canonValue's board_relation
+ * branch = colVal.trim()). Solo single-select — igual que columnEncode.ts,
+ * ningún camino de este repo escribe relaciones múltiples. */
+export function boardRelationValue(canon: string): { linked_item_ids: number[] } {
+  const id = Number(canon);
+  return { linked_item_ids: canon !== '' && Number.isFinite(id) ? [id] : [] };
+}
+
 export class OutboxError extends Error {
   status: number;
   constructor(status: number, message: string) {
@@ -93,12 +103,20 @@ export async function submitWrite(
       continue;
     }
     const canon = canonValue(types[colId], cols[colId]);
-    // deal_stage en un item nativo: nunca llega el echo de Monday que rellena
-    // `.index` (de lo que depende TODO el pipeline — crear línea, quoteVersions,
-    // notify — para decidir la etapa, no del label). Se stampea acá de una vez.
-    const mergedValue = isNativeId(itemId) && colId === 'deal_stage'
-      ? JSON.stringify(dealStageValue(canon))
-      : JSON.stringify(canon);
+    // Dos columnas necesitan un `value` con el shape REAL de Monday (no el
+    // string plano de canonValue) porque algo más adelante lo parsea así —
+    // y un item nativo nunca recibe el echo de Monday que normalmente lo
+    // rellena, así que se stampea acá de una vez:
+    //  - deal_stage: TODO el pipeline (crear línea, quoteVersions, notify)
+    //    decide la etapa por `.index`, nunca por el label.
+    //  - board_relation: dal.ts (linkedItemId/proyectoForOportunidad) espera
+    //    {linked_item_ids:[...]} — lo necesita "Ganar" para encontrar el
+    //    Proyecto ya ligado a una oportunidad nativa.
+    let mergedValue = JSON.stringify(canon);
+    if (isNativeId(itemId)) {
+      if (colId === 'deal_stage') mergedValue = JSON.stringify(dealStageValue(canon));
+      else if (types[colId] === 'board_relation') mergedValue = JSON.stringify(boardRelationValue(canon));
+    }
     const mergedCol: RawCol = { id: colId, type: types[colId], text: canon, value: mergedValue };
     const mergedJson = JSON.stringify(mergedCol);
     await env.DB
