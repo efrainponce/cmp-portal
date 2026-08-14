@@ -615,9 +615,22 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
 
     const rows = await listActivity(c.env, targets);
     // Roster cacheado (mismo TTL que /api/users) — solo para mostrar nombre en
-    // vez de un monday_user_id crudo.
-    const users = await cachedFetchUsers(c.env, 6 * 3600_000).catch(() => []);
+    // vez de un monday_user_id crudo. Un usuario NATIVO del portal (alta sin
+    // Monday, worker/lib/dal.ts upsertIdentity: monday_user_id sintético
+    // NEGATIVO) nunca aparece en el roster de Monday — sus ediciones a un item
+    // nativo (worker/lib/activityLog.ts recordDirectChanges) se resuelven aparte
+    // por `identity`, la única fuente que sí lo conoce.
+    const userIds = [...new Set(rows.map(r => r.user_id).filter((id): id is number => id != null))];
+    const [users, identityRows] = await Promise.all([
+      cachedFetchUsers(c.env, 6 * 3600_000).catch(() => []),
+      userIds.length > 0
+        ? c.env.DB.prepare(
+            `SELECT monday_user_id, nombre FROM identity WHERE monday_user_id IN (${userIds.map(() => '?').join(',')})`,
+          ).bind(...userIds).all<{ monday_user_id: number; nombre: string | null }>().then(r => r.results ?? [])
+        : Promise.resolve([]),
+    ]);
     const nameById = new Map(users.map(u => [Number(u.id), u.name]));
+    for (const r of identityRows) if (r.nombre) nameById.set(r.monday_user_id, r.nombre);
 
     const dto: ActivityResponse = {
       entries: rows.map(r => ({

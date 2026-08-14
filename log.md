@@ -302,6 +302,37 @@
     mismo bug que Efraín reportó ("en mobil la barra de archivos esta un poco
     rota"). Se agregó `flexWrap: 'wrap'`, mismo criterio que el resto del board.
 
+- Feature: el log de actividad (commit anterior de hoy) no cubría items
+  nativos de Zona Efrain ("salir de Monday") — Efraín preguntó explícitamente
+  ("funciona para items solo D1? como zona Efrain?") y aclaró el criterio:
+  "no quiero duplicar info, cuando está en Monday es solo Monday". Un item
+  nativo (`shared/nativeId.ts`, id sintético ≥900,000,000,000) nunca toca
+  Monday — no genera `activity_logs` que el delta sync pueda jalar, así que
+  el log se quedaba vacío para siempre en Zona Efrain, sin aviso.
+  - `worker/lib/activityLog.ts`: `recordDirectChanges` (nuevo) — mismo shape/
+    tabla/whitelist que el camino de Monday, pero escrito DIRECTO en el
+    momento del write en vez de leído de un activity_log ajeno. Un item real
+    de Monday nunca pasa por aquí; uno nativo nunca pasa por
+    `persistActivityEntries` — nunca los dos orígenes para el mismo item.
+  - `worker/lib/outbox.ts` (`submitWrite`, rama nativa) y `worker/lib/
+    createRecord.ts` (`submitCreateNative`) llaman a `recordDirectChanges` con
+    el valor previo (leído de `row`, el snapshot de ANTES del merge
+    optimista) y el actor (`viewer.monday_user_id`, ya en mano — sin query
+    extra). `worker/routes/oportunidades.ts` (alta de "Nueva línea" nativa)
+    igual, para que una línea recién agregada no aparezca sin rastro de
+    creación.
+  - Gap que casi se cuela: `viewer.monday_user_id` de un usuario NATIVO del
+    portal (alta sin Monday, `worker/lib/dal.ts`) es un id sintético
+    NEGATIVO — nunca aparece en el roster de Monday que el endpoint de
+    lectura ya usaba para resolver nombres. `GET .../activity`
+    (`worker/routes/boards.ts`) ahora también consulta `identity` por esos
+    ids y la usa como fallback/complemento del roster.
+  - Probado en vivo contra el worker local con `X-Dev-Email`: creé una
+    oportunidad nativa real en Zona Efrain, la edité (nombre + etapa),
+    agregué una línea, confirmé el feed completo en el navegador (creación +
+    ediciones, orden correcto, nombre del actor resuelto) y borré todo el
+    rastro de prueba (item + filas de `activity_log`) al terminar.
+
 ## 2026-08-13
 
 - Fix + perf: en producción, un fallo de API mostraba oportunidades INVENTADAS

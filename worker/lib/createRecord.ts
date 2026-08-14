@@ -15,6 +15,7 @@ import { cachedFetchUsers } from './rosterCache';
 import { isZonaPrivadaAdminPermitido } from './zonas';
 import { dealStageValue } from '../../shared/dealStages';
 import { boardRelationValue } from './outbox';
+import { recordDirectChanges } from './activityLog';
 
 export class CreateError extends Error {
   status: number;
@@ -174,6 +175,16 @@ export async function submitCreateNative(
       now, now, rawHash(rawColumns), JSON.stringify(rawColumns),
     )
     .run();
+
+  // Sin Monday del otro lado no hay activity_logs que jalar (worker/lib/
+  // activityLog.ts) — se registra directo, best-effort.
+  try {
+    await recordDirectChanges(env, slug, [{
+      boardId: board.id, itemId, event: 'create_pulse',
+      columnId: null, columnTitle: null, previousText: null, newText: name.trim(),
+      userId: viewer.monday_user_id,
+    }]);
+  } catch { /* best-effort */ }
 
   return { ok: true, id: String(itemId) };
 }

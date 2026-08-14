@@ -24,6 +24,7 @@ import { listCotizacionVirtual, ajustarLineaVirtual, ProyectoCotizacionError } f
 import { capturarTallas, reportarTallasIncorrectas, checkOcCliente, confirmTallasNative, confirmTallasNativeD1 } from '../lib/proyectoTallas';
 import { generarOcNative, generarOcNativeD1 } from '../lib/oc';
 import { listEstadoHistorial } from '../lib/estadoProducto';
+import { recordDirectChanges } from '../lib/activityLog';
 import { listProductoResumen, upsertProductoResumen } from '../lib/productoResumen';
 import { listGeneroMF, setGeneroMF } from '../lib/productoGenero';
 import { syncTallasPortal } from '../lib/airtable';
@@ -484,6 +485,13 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
           )
           .bind(BOARDS.oportunidades_sub.id, lineId, itemId, subitemName, now, now, rawHash(columns), JSON.stringify(columns))
           .run();
+        try {
+          await recordDirectChanges(c.env, 'oportunidades_sub', [{
+            boardId: BOARDS.oportunidades_sub.id, itemId: lineId, event: 'create_pulse',
+            columnId: null, columnTitle: null, previousText: null, newText: subitemName,
+            userId: viewer.monday_user_id,
+          }]);
+        } catch { /* best-effort */ }
         return c.json({ ok: true, id: String(lineId) });
       }
 

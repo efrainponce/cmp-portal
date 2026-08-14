@@ -18,6 +18,7 @@ import type { RawCol } from './serialize';
 import type { MondayItem, MondayCol } from './monday';
 import { logProductoStatusFromPortalWrite } from './estadoProducto';
 import { syncTallasPortal } from './airtable';
+import { recordDirectChanges, type DirectChange } from './activityLog';
 
 /** Shape REAL de lectura de Monday para board_relation ({linked_item_ids:[...]}
  * — distinto del shape de ESCRITURA que espera la mutación, {item_ids:[...]},
@@ -199,7 +200,30 @@ export async function submitWrite(
   // authzCol (deal_owner/vendedor secundario), `vendedor_ids` NO se recalcula
   // aquí — solo se fija en la creación (submitCreateNative). Zona Efrain nace y
   // vive con un solo dueño fijo, así que no es una ruta que se ejercite hoy.
-  if (isNativeId(itemId)) return { ok: true, pending: false };
+  if (isNativeId(itemId)) {
+    // Tampoco hay activity_logs de Monday que jalar para este item — se
+    // registra directo (worker/lib/activityLog.ts), leyendo el valor previo de
+    // `row` (snapshot de ANTES del merge de arriba, todavía intacto). Best-effort:
+    // nunca debe tumbar el write real que ya quedó firme en D1.
+    try {
+      const rawCols: RawCol[] = JSON.parse(row.columns || '[]');
+      const changes: DirectChange[] = colIds.map(colId => colId === 'name'
+        ? {
+            boardId: board.id, itemId, event: 'update_name' as const,
+            columnId: 'name', columnTitle: 'Nombre',
+            previousText: row.name, newText: cols.name, userId: viewer.monday_user_id,
+          }
+        : {
+            boardId: board.id, itemId, event: 'update_column_value' as const,
+            columnId: colId, columnTitle: boardMeta[colId]?.title ?? colId,
+            previousText: rawCols.find(c => c.id === colId)?.text ?? null,
+            newText: canonValue(types[colId], cols[colId]),
+            userId: viewer.monday_user_id,
+          });
+      await recordDirectChanges(env, slug, changes);
+    } catch { /* best-effort */ }
+    return { ok: true, pending: false };
+  }
 
   await env.DB
     .prepare(

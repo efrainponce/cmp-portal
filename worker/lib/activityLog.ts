@@ -1,13 +1,22 @@
 // worker/lib/activityLog.ts — Log de actividad por item (Oportunidades +
-// líneas, Productos), sourced de los mismos activity_logs de Monday que ya
-// jala el delta sync (worker/sync/delta.ts) — antes se tiraban tras usar solo
-// `data.pulse_id`, aquí se persisten filtrados. NO usa shared/visibility.ts:
-// esa whitelist es de PERMISOS (quién lee/escribe), esta es de RUIDO (qué
-// columna vale la pena mostrar como "actividad" — la mayoría de las columnas
-// de un item son mirrors/formulas que se recalculan solas, o campos que
-// automatizaciones tocan constantemente sin que sea una decisión de alguien).
-// PROPUESTA 2026-08-14, pendiente ajuste de Efraín — mismo trato que las
-// columnas "PROPOSED" de shared/visibility.ts.
+// líneas, Productos). Dos orígenes, misma tabla/shape — nunca los dos para el
+// mismo item:
+//  - Items REALES de Monday: sourced de los mismos activity_logs que ya jala
+//    el delta sync (worker/sync/delta.ts) — antes se tiraban tras usar solo
+//    `data.pulse_id`, aquí se persisten filtrados (parseEntry/persistActivityEntries).
+//  - Items NATIVOS ("salir de Monday", Zona Efrain, shared/nativeId.ts): no
+//    existen del lado de Monday, así que no hay activity_logs que jalar —
+//    worker/lib/outbox.ts y worker/lib/createRecord.ts escriben aquí DIRECTO
+//    en el momento del write (recordDirectChanges), con el mismo shape para
+//    que el mismo GET .../activity y el mismo ActividadTab sirvan a los dos
+//    sin que el front tenga que saber cuál es cuál (Efraín, 2026-08-14: "no
+//    quiero duplicar info, cuando está en Monday es solo Monday").
+// NO usa shared/visibility.ts: esa whitelist es de PERMISOS (quién lee/escribe),
+// esta es de RUIDO (qué columna vale la pena mostrar como "actividad" — la
+// mayoría de las columnas de un item son mirrors/formulas que se recalculan
+// solas, o campos que automatizaciones tocan constantemente sin que sea una
+// decisión de alguien). PROPUESTA 2026-08-14, pendiente ajuste de Efraín —
+// mismo trato que las columnas "PROPOSED" de shared/visibility.ts.
 import type { Env } from '../env';
 import type { BoardSlug } from '../../shared/boards';
 import { boardById } from '../../shared/boards';
@@ -45,6 +54,10 @@ const WHITELIST: Partial<Record<BoardSlug, Set<string>>> = {
     'long_text_mm1tcga0',
   ]),
 };
+
+function isWhitelisted(boardSlug: BoardSlug, columnId: string): boolean {
+  return WHITELIST[boardSlug]?.has(columnId) ?? false;
+}
 
 /** `created_at` de Monday son ticks de 100ns desde epoch Unix (verificado en
  * vivo 2026-08-14: dividir entre 10,000 da milisegundos que calzan con la
@@ -92,7 +105,7 @@ export function parseEntry(entry: ActivityLogEntry): ParsedRow | null {
   }
   if (entry.event !== 'update_column_value') return null;
   const columnId = parsed.column_id as string | undefined;
-  if (!columnId || !WHITELIST[board.slug]!.has(columnId)) return null;
+  if (!columnId || !isWhitelisted(board.slug, columnId)) return null;
   return {
     ...base, event: entry.event, columnId,
     columnTitle: (parsed.column_title as string) ?? columnId,
@@ -154,6 +167,40 @@ export async function persistActivityEntries(env: Env, entries: ActivityLogEntry
     } catch { /* fila rara (tick no numérico, etc.) — se salta, no tumba el batch */ }
   }
   return inserted;
+}
+
+export interface DirectChange {
+  boardId: number; itemId: number; event: 'create_pulse' | 'update_name' | 'update_column_value';
+  columnId: string | null; columnTitle: string | null;
+  previousText: string | null; newText: string | null;
+  userId: number;
+}
+
+/** Escritura directa para items NATIVOS (ver nota de archivo) — sin Monday del
+ * otro lado, el caller (outbox.ts/createRecord.ts) ya trae todo lo que
+ * parseEntry normalmente extrae de un activity_log real: valor previo/nuevo,
+ * actor y momento del write. Misma whitelist que el camino de Monday, mismo
+ * best-effort por fila (nunca debe tumbar el write real que la dispara).
+ * Dedupe con UUID: a diferencia del camino de Monday (poll con ventanas que
+ * se traslapan), esto es un INSERT único por write — no hay nada que
+ * deduplicar contra corridas anteriores. */
+export async function recordDirectChanges(env: Env, boardSlug: BoardSlug, changes: DirectChange[]): Promise<void> {
+  const relevant = changes.filter(c => c.event !== 'update_column_value' || isWhitelisted(boardSlug, c.columnId ?? ''));
+  if (relevant.length === 0) return;
+  await ensureTable(env);
+  const now = new Date().toISOString();
+  for (const c of relevant) {
+    try {
+      await env.DB.prepare(
+        `INSERT OR IGNORE INTO activity_log
+          (board_id, item_id, event, column_id, column_title, previous_text, new_text, user_id, created_at, dedupe_key)
+         VALUES (?,?,?,?,?,?,?,?,?,?)`,
+      ).bind(
+        c.boardId, c.itemId, c.event, c.columnId, c.columnTitle,
+        c.previousText, c.newText, c.userId, now, `native:${crypto.randomUUID()}`,
+      ).run();
+    } catch { /* best-effort — nunca debe tumbar el write real */ }
+  }
 }
 
 export interface ActivityLogRow {
