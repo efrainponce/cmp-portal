@@ -10,6 +10,7 @@ import { IconPlus } from '../../components/icons';
 import { lastMondayUpdateFromItems } from '../../lib/syncStatus';
 import { CreateRecordModal } from './CreateRecordModal';
 import { EditContactoModal } from './EditContactoModal';
+import { ProductoActividadDrawer } from './ProductoActividadDrawer';
 import { useIsMobile } from '../../lib/useIsMobile';
 import type { ItemDTO } from '../../lib/api';
 import type { ColMeta } from '../../../shared/dto';
@@ -42,6 +43,7 @@ export function GenericBoardView({ slug, title }: Props) {
   const [q, setQ] = useState('');
   const [creating, setCreating] = useState(false);
   const [editingContact, setEditingContact] = useState<ItemDTO | null>(null);
+  const [activityProducto, setActivityProducto] = useState<ItemDTO | null>(null);
   const { boards } = useBoards();
   const cols = colForBoard(boards, slug);
   const { status, data, refetch } = usePoll(slug, q);
@@ -52,6 +54,7 @@ export function GenericBoardView({ slug, title }: Props) {
   const createSlug = slug === 'instituciones' || slug === 'contactos' ? slug : null;
   const creatable = createSlug !== null;
   const canEditContacto = slug === 'contactos' && cols.some((c) => (c.id === 'contact_account' || c.id === 'multiple_person_mm03vqwx') && c.w);
+  const onRowClick = canEditContacto ? setEditingContact : slug === 'productos' ? setActivityProducto : undefined;
   const listColIds = LIST_COLS[slug];
   const hidden = HIDDEN_LIST_COLS[slug];
   const tableCols: ColMeta[] = listColIds
@@ -85,7 +88,7 @@ export function GenericBoardView({ slug, title }: Props) {
 
       <div style={{ overflow: 'auto', flex: 1 }}>
         <BoardStatus status={status}>
-          <BoardTable cols={tableCols} items={items} onRowClick={canEditContacto ? setEditingContact : undefined} />
+          <BoardTable cols={tableCols} items={items} onRowClick={onRowClick} />
         </BoardStatus>
       </div>
 
@@ -104,6 +107,10 @@ export function GenericBoardView({ slug, title }: Props) {
           onClose={() => setEditingContact(null)}
           onSaved={refetch}
         />
+      )}
+
+      {activityProducto && (
+        <ProductoActividadDrawer producto={activityProducto} onClose={() => setActivityProducto(null)} />
       )}
     </div>
   );

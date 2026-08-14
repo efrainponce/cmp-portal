@@ -148,24 +148,31 @@ export async function fetchBoardsUpdatedAt(env: Env, boardIds: number[]): Promis
   return out;
 }
 
-export interface ActivityLogEntry { boardId: number; entity: string; data: string }
+export interface ActivityLogEntry {
+  boardId: number; entity: string; event: string; userId: string; createdAt: string; data: string;
+}
 
 /** Eventos de actividad de todas las boards dadas, en UNA sola call (cada Board
- * trae sus propios activity_logs ya filtrados por rango) — usado por el delta
- * sync (worker/sync/delta.ts) para saber qué items tocar sin pagear un full
- * reconcile. `from`/`to` van en ISO8601; el campo `created_at` de la respuesta
- * es un timestamp propietario de Monday (NO epoch), así que no se parsea —
- * solo se usa `data.pulse_id` de cada evento. */
+ * trae sus propios activity_logs ya filtrados por rango). Dos consumidores:
+ * el delta sync (worker/sync/delta.ts, solo usa `data.pulse_id` para saber qué
+ * refetchear) y el log de actividad por item (worker/lib/activityLog.ts, usa
+ * todo lo demás). `from`/`to` van en ISO8601; `created_at` de la RESPUESTA es
+ * un timestamp propietario de Monday (ticks de 100ns desde epoch Unix — NO
+ * ISO, NO epoch en ms; verificado en vivo 2026-08-14 contra la fecha real de
+ * un evento reciente), por eso viaja crudo — worker/lib/activityLog.ts lo
+ * convierte con BigInt (Number pierde precisión pasado 2^53). */
 export async function fetchActivityLogs(
   env: Env, boardIds: number[], from: string, to: string,
 ): Promise<ActivityLogEntry[]> {
   const query = `query($ids:[ID!],$from:ISO8601DateTime,$to:ISO8601DateTime){
-    boards(ids:$ids){ id activity_logs(from:$from,to:$to,limit:200){ entity data } } }`;
+    boards(ids:$ids){ id activity_logs(from:$from,to:$to,limit:200){ entity event user_id created_at data } } }`;
   const data = await gql(env, query, { ids: boardIds.map(String), from, to });
   const out: ActivityLogEntry[] = [];
   for (const b of data?.boards ?? []) {
     const boardId = Number(b.id);
-    for (const log of b.activity_logs ?? []) out.push({ boardId, entity: log.entity, data: log.data });
+    for (const log of b.activity_logs ?? []) {
+      out.push({ boardId, entity: log.entity, event: log.event, userId: log.user_id, createdAt: log.created_at, data: log.data });
+    }
   }
   return out;
 }

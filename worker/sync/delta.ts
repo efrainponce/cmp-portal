@@ -6,6 +6,7 @@
 // congelado desde su creación.
 import type { Env } from '../env';
 import { fetchActivityLogs } from '../lib/monday';
+import { persistActivityEntries } from '../lib/activityLog';
 import { BOARDS, boardById } from '../../shared/boards';
 import { refetchItem } from './refetch';
 import { logSync } from './log';
@@ -33,6 +34,18 @@ export async function deltaSync(env: Env): Promise<void> {
   } catch (e) {
     await logSync(env, 'delta', 0, null, false, `activity_logs failed: ${e}`);
     return;
+  }
+
+  // Log de actividad (worker/lib/activityLog.ts) — mismos `entries` que ya se
+  // pidieron para el refetch de abajo, filtrados y persistidos aparte. Nunca
+  // debe tumbar el refetch: sin esto, un bug en el parseo de actividad dejaría
+  // el checkpoint sin avanzar y el portal se quedaría mudo de nuevo (mismo
+  // riesgo documentado abajo para el refetch).
+  let activityLogged = 0;
+  try {
+    activityLogged = await persistActivityEntries(env, entries);
+  } catch (e) {
+    await logSync(env, 'delta', 0, null, false, `activity_log failed: ${e}`);
   }
 
   // board_id -> set de pulse_ids tocados en la ventana.
@@ -74,5 +87,5 @@ export async function deltaSync(env: Env): Promise<void> {
     `INSERT INTO sync_state (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
   ).bind(STATE_KEY, to).run();
 
-  await logSync(env, 'delta', 0, null, true, `events=${entries.length} refetched=${refetched} failed=${failed}`);
+  await logSync(env, 'delta', 0, null, true, `events=${entries.length} refetched=${refetched} failed=${failed} activity=${activityLogged}`);
 }

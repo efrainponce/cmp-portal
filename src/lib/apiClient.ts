@@ -1,6 +1,7 @@
 // Plain (non-hook) typed client for the worker API — see docs/dev-contracts.md.
 import type { BoardSlug } from '../../shared/boards';
 import type {
+  ActivityEntryDTO, ActivityResponse,
   AjusteDTO, AjustarLineaRequest, AjustarLineaResponse,
   AssistantChatRequest, AssistantChatResponse, AssistantHistoryResponse, AssistantMessage,
   BoardAccessDTO, ColMeta, ColVal, CostoDivergenciaDTO, CotizacionVirtualDTO, CreateResponse, DuplicarOportunidadRequest, DuplicarOportunidadResponse, DuplicarVersionResponse, EnviarCosteoResponse, IdentityDTO, ItemDTO, ItemDetailDTO,
@@ -18,6 +19,7 @@ import { markSessionExpired } from './sessionState';
 import { CATALOGO_COLS } from './productSearch';
 
 export type {
+  ActivityEntryDTO,
   AjusteDTO, BoardAccessDTO, BoardSlug, ColMeta, ColVal, CostoDivergenciaDTO, CotizacionVirtualDTO, IdentityDTO, ItemDTO, ItemDetailDTO, ListResponse, MeDTO, MentionUserDTO,
   MondayUserDTO, ProposedProductDTO, QuoteLineSnapshot, QuoteVersionDTO, TallaBoxInput, CapturarTallasResponse,
   EstadoHistorialEntryDTO, ProductoResumenDTO,
@@ -695,6 +697,15 @@ export async function getMentionUsers(): Promise<MentionUserDTO[]> {
   const res = await apiFetch('/users');
   if (!res.ok) return [];
   return res.json();
+}
+
+/** Log de actividad (worker/lib/activityLog.ts) — mirror filtrado de Monday,
+ * newest first. Para 'oportunidades' incluye también sus líneas. */
+export async function getActivity(slug: BoardSlug, id: string): Promise<ActivityEntryDTO[]> {
+  const res = await apiFetch(`/boards/${slug}/items/${id}/activity`);
+  if (!res.ok) throw new Error('GET activity failed: ' + res.status);
+  const body: ActivityResponse = await res.json();
+  return body.entries;
 }
 
 // Admin-only Settings: identity roster + Monday user directory for import.

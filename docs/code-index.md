@@ -42,6 +42,7 @@ y `src/lib/estadoProductoBuckets.ts`.
 
 - [worker/lib/agentLoop.ts](worker/lib/agentLoop.ts) — Loop del agente Claude compartido por WhatsApp y portal. Exports: RESET_WORDS, RESET_REPLY, finalText, runAgentLoop.
 - [worker/lib/airtable.ts](worker/lib/airtable.ts) — Cliente delgado de Airtable (Fase 0) que resuelve la imagen de producto para la cotización, con degradación silenciosa si falla. Exports: fetchAirtableImageUrl.
+- [worker/lib/activityLog.ts](worker/lib/activityLog.ts) — Log de actividad por item (Oportunidades+líneas, Productos): whitelist propia de columnas (ruido, no permisos) sobre los activity_logs de Monday que ya jala el delta sync, persistidos en D1. Exports: ticksToIso, parseEntry, persistActivityEntries, listActivity.
 - [worker/lib/assistantPersonas.ts](worker/lib/assistantPersonas.ts) — Una persona de agente por rol (vendedor/compras/admin/almacen), compartida por ambos canales. Exports: Channel, systemPromptFor.
 - [worker/lib/assistantTools.ts](worker/lib/assistantTools.ts) — Superficie de herramientas del agente Claude compartida por todos los canales. Exports: TOOL_ROLES, TOOLS, toolsFor, runTool.
 - [worker/lib/automations.ts](worker/lib/automations.ts) — Cliente de automaciones cmp-tallas Vercel (trigger, no reimplementar). Exports: AutomationError, AutomationResult, CotizacionResult, validarCosteo.
@@ -103,7 +104,7 @@ y `src/lib/estadoProductoBuckets.ts`.
 ### worker/routes/
 
 - [worker/routes/admin.ts](worker/routes/admin.ts) — Admin-only: gestionar roster y pullear users de Monday. Exports: adminRoutes.
-- [worker/routes/boards.ts](worker/routes/boards.ts) — Rutas genéricas de boards espejados (list/detail/patch/create). Exports: boardRoutes.
+- [worker/routes/boards.ts](worker/routes/boards.ts) — Rutas genéricas de boards espejados (list/detail/patch/create/updates/activity). Exports: boardRoutes.
 - [worker/routes/home.ts](worker/routes/home.ts) — Ruta GET /api/home de la pantalla "Inicio", con ETag propio sobre el fingerprint de items pendientes. Exports: homeRoutes.
 - [worker/routes/inventario.ts](worker/routes/inventario.ts) — Inventario D1 nativo (no espejado de Monday). Exports: inventarioRoutes.
 - [worker/routes/documents.ts](worker/routes/documents.ts) — API /api/documents*: generar, listar, PDF (base/firmado), firmar, trazo. Exports: documentRoutes.
@@ -225,6 +226,7 @@ y `src/lib/estadoProductoBuckets.ts`.
 - [src/boards/generic/CreateRecordModal.tsx](src/boards/generic/CreateRecordModal.tsx) — Formulario crear registro genérico (via createFields whitelist). Exports: CreateRecordModal.
 - [src/boards/generic/EditContactoModal.tsx](src/boards/generic/EditContactoModal.tsx) — Vendedor relinquea Institución de Contacto. Exports: EditContactoModal.
 - [src/boards/generic/GenericBoardView.tsx](src/boards/generic/GenericBoardView.tsx) — Tabla full-board + búsqueda (Productos, Instituciones, Contactos). Exports: GenericBoardView.
+- [src/boards/generic/ProductoActividadDrawer.tsx](src/boards/generic/ProductoActividadDrawer.tsx) — Drawer lateral mínimo al hacer click en un producto (Productos no tiene detalle propio) — hoy solo la pestaña Actividad. Exports: ProductoActividadDrawer.
 
 ### src/boards/inventario/
 
@@ -261,6 +263,7 @@ Antes un solo archivo (`ProyectoSection.tsx`, 1196 líneas) — dividido 2026-08
 ### src/boards/oportunidades/tabs/
 
 - [src/boards/oportunidades/tabs/ActualizacionesTab.tsx](src/boards/oportunidades/tabs/ActualizacionesTab.tsx) — Live feed de item.updates de Monday (GET/POST). Exports: ActualizacionesTab.
+- [src/boards/oportunidades/tabs/ActividadTab.tsx](src/boards/oportunidades/tabs/ActividadTab.tsx) — Log de actividad (worker/lib/activityLog.ts), solo lectura: quién cambió qué columna y cuándo. Reusado por el drawer de Productos. Exports: ActividadTab.
 - [src/boards/oportunidades/tabs/CotizacionTab.tsx](src/boards/oportunidades/tabs/CotizacionTab.tsx) — Grid de línea de producto (espeja diseño fixed-column). Exports: CotizacionTab.
 - [src/boards/oportunidades/tabs/DocumentacionTab.tsx](src/boards/oportunidades/tabs/DocumentacionTab.tsx) — Cotizaciones/solicitudes son columnas file Oportunidades. Exports: SOLICITUDES_COL, NO_FIRMADAS_COL, FIRMADA_COL.
 - [src/boards/oportunidades/tabs/EmbellecimientosTab.tsx](src/boards/oportunidades/tabs/EmbellecimientosTab.tsx) — Resumen read-only embellecimiento per línea (diseño per-zona). Exports: EmbellecimientosTab.

@@ -5,7 +5,7 @@
 import { useIsMobile } from '../../lib/useIsMobile';
 
 export type DrawerTabKey =
-  | 'actualizaciones' | 'cotizacion' | 'embellecimientos' | 'nuevosproductos'
+  | 'actualizaciones' | 'cotizacion' | 'embellecimientos' | 'nuevosproductos' | 'actividad'
   | 'documentacion' | 'tallas' | 'ordenes' | 'ejecucion' | 'logistica';
 
 interface Props {
@@ -21,6 +21,7 @@ const UNDERLINE_TABS: { key: DrawerTabKey; label: string }[] = [
   { key: 'cotizacion', label: 'Cotizaciones' },
   { key: 'embellecimientos', label: 'Embellecimientos' },
   { key: 'nuevosproductos', label: 'Nuevos productos' },
+  { key: 'actividad', label: 'Actividad' },
 ];
 
 const POSTVENTA_TABS: { key: DrawerTabKey; label: string }[] = [

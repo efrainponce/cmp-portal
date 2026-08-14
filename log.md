@@ -234,6 +234,41 @@
     — líneas nunca releídas en árbol completo (previas a este cambio) caen al
     alfabético de antes hasta su próxima apertura.
 
+- Feature: log de actividad en Oportunidades y Productos (pedido de Efraín).
+  Verificado en vivo con MCP monday.com contra Oportunidades antes de
+  construir: `activity_logs` de Monday trae `column_id`/`previous_textual_value`/
+  `textual_value`/`user_id` por evento — pero es MUY ruidoso (820 eventos/día
+  en Oportunidades, 590 de ellos `update_column_value`, la mayoría archivos de
+  cotización que sube una automatización, no ediciones humanas) y su
+  `created_at` no es ISO ni epoch: son ticks de 100ns desde epoch Unix
+  (confirmado dividiendo entre 10,000 contra la fecha real de un evento).
+  - `worker/lib/activityLog.ts` (nuevo): whitelist propia por board — columnas
+    "PROPOSED", mismo trato que `shared/visibility.ts` pero para RUIDO, no
+    permisos (incluye `numeric_mkzneg3d` Precio de Venta C/U a propósito,
+    la columna "solo admin escribe"). `create_pulse`/`update_name` siempre se
+    registran; el resto solo si la columna está en la whitelist del board.
+    `ticksToIso` convierte con BigInt (Number pierde precisión pasado 2^53).
+    Dedupe propio (`board+item+evento+columna+tick`): `action_record_uuid` de
+    Monday NO siempre viene en la respuesta, no sirve como UNIQUE.
+  - `worker/lib/monday.ts`: `fetchActivityLogs` ahora también pide
+    `event`/`user_id`/`created_at` (antes solo `entity data` — el delta sync
+    los tiraba tras usar solo `pulse_id`).
+  - `worker/sync/delta.ts` persiste vía `persistActivityEntries` en la misma
+    corrida de 15 min que ya jalaba `activity_logs` — sin llamada extra a
+    Monday.
+  - Tabla nueva `activity_log` (`worker/schema.sql`, lazy-create).
+  - `GET /api/boards/:slug/items/:id/activity` (`worker/routes/boards.ts`):
+    para `oportunidades` incluye también las líneas (`oportunidades_sub`) —
+    un cambio de precio vive ahí, no en el item padre.
+  - Frontend: pestaña "Actividad" nueva en el drawer de Oportunidades
+    (`ActividadTab.tsx`, mismo componente reusado). Productos no tenía
+    detalle de renglón — se agregó `ProductoActividadDrawer.tsx`, un drawer
+    lateral mínimo a propósito (solo esta pestaña por ahora).
+  - Probado en vivo contra Monday real: se disparó el cron del delta sync a
+    mano (`/cdn-cgi/handler/scheduled`) contra el worker local, confirmado en
+    D1 (`activity_log`) y en el navegador — el feed de Actividad de una
+    oportunidad real mostró correctamente quién cambió qué columna y cuándo.
+
 ## 2026-08-13
 
 - Fix + perf: en producción, un fallo de API mostraba oportunidades INVENTADAS

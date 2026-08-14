@@ -8,7 +8,7 @@ import { BOARDS } from '../../shared/boards';
 import type { BoardSlug } from '../../shared/boards';
 import { isNativeId } from '../../shared/nativeId';
 import type {
-  CreateRequest, CreateResponse, CreateUpdateRequest, ItemDetailDTO, ListResponse,
+  ActivityResponse, CreateRequest, CreateResponse, CreateUpdateRequest, ItemDetailDTO, ListResponse,
   MeDTO, MentionUserDTO, UpdateDTO, VendedorDTO, WriteRequest, WriteResponse,
 } from '../../shared/dto';
 import {
@@ -21,6 +21,7 @@ import { submitWrite, OutboxError } from '../lib/outbox';
 import { submitCreate, submitCreateNative, CreateError } from '../lib/createRecord';
 import { duplicateVersion, esDraftVigente, QuoteVersionError, LINE_DEFINING_COLS } from '../lib/quoteVersions';
 import { fetchUpdates, createUpdate, addFileToUpdate, fetchAssetPublicUrls, deleteItem, type MentionInput } from '../lib/monday';
+import { listActivity } from '../lib/activityLog';
 import { cachedFetchUsers } from '../lib/rosterCache';
 import { getBoardAccess } from '../lib/boardAccess';
 import { isZonaPrivadaAdminPermitido } from '../lib/zonas';
@@ -587,5 +588,48 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
         'Cache-Control': 'private, max-age=60',
       },
     });
+  });
+
+  // Log de actividad (worker/lib/activityLog.ts) — mirror filtrado (whitelist
+  // propia, no shared/visibility.ts) de activity_logs de Monday, persistido
+  // cada 15 min por el delta sync. Para `oportunidades` incluye también sus
+  // líneas (oportunidades_sub): un cambio de Precio de Venta vive ahí, no en
+  // el item padre. Mismo scoping de lectura que el resto (getItem del propio
+  // item alcanza — las líneas son del mismo dueño).
+  app.get('/api/boards/:slug/items/:id/activity', async c => {
+    const slug = boardFor(c);
+    if (!slug) return c.json({ error: 'not found' }, 404);
+    const itemId = Number(c.req.param('id'));
+    if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
+    const viewer = c.get('viewer');
+
+    const row = await getItem(c.env, slug, itemId, viewer);
+    if (!row) return c.json({ error: 'not found' }, 404);
+
+    const targets = [{ boardId: BOARDS[slug].id, itemId }];
+    const childSlug = childSlugOf(slug);
+    if (childSlug) {
+      const children = await childrenOf(c.env, slug, itemId, viewer);
+      for (const child of children) targets.push({ boardId: BOARDS[childSlug].id, itemId: child.item_id });
+    }
+
+    const rows = await listActivity(c.env, targets);
+    // Roster cacheado (mismo TTL que /api/users) — solo para mostrar nombre en
+    // vez de un monday_user_id crudo.
+    const users = await cachedFetchUsers(c.env, 6 * 3600_000).catch(() => []);
+    const nameById = new Map(users.map(u => [Number(u.id), u.name]));
+
+    const dto: ActivityResponse = {
+      entries: rows.map(r => ({
+        itemId: String(r.item_id),
+        event: r.event,
+        columnTitle: r.column_title,
+        previousText: r.previous_text,
+        text: r.new_text,
+        actorName: r.user_id != null ? (nameById.get(r.user_id) ?? null) : null,
+        at: r.created_at,
+      })),
+    };
+    return c.json(dto);
   });
 }

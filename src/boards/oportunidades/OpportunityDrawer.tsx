@@ -25,6 +25,7 @@ import { ETAPA_COSTEO_COL } from './tabs/cotizacion/gridMeta';
 import { Modal } from '../../components/core/Modal';
 import { EmbellecimientosTab } from './tabs/EmbellecimientosTab';
 import { ActualizacionesTab } from './tabs/ActualizacionesTab';
+import { ActividadTab } from './tabs/ActividadTab';
 import { NuevosProductosTab } from './tabs/NuevosProductosTab';
 import { DocumentacionTab } from './tabs/DocumentacionTab';
 import { TallasTab } from './tabs/TallasTab';
@@ -802,6 +803,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
         />
       )}
       {activeTab === 'nuevosproductos' && <NuevosProductosTab oppId={id} readOnly={noLineEdits} />}
+      {activeTab === 'actividad' && <ActividadTab slug="oportunidades" itemId={id} />}
       {activeTab === 'documentacion' && <DocumentacionTab item={item} proyecto={showPostventa ? proyecto : undefined} />}
       {activeTab === 'tallas' && <TallasTab subCols={subCols} products={products} proyecto={showPostventa ? proyecto : undefined} />}
       {activeTab === 'ordenes' && (

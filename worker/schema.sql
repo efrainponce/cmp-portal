@@ -397,6 +397,28 @@ CREATE TABLE IF NOT EXISTS producto_resumen (
 );
 CREATE INDEX IF NOT EXISTS idx_producto_resumen_proyecto ON producto_resumen(proyecto_id);
 
+-- Log de actividad por item (2026-08-14, worker/lib/activityLog.ts) — mirror
+-- filtrado de activity_logs de Monday (Oportunidades+líneas, Productos), que
+-- el delta sync ya pedía y tiraba tras usar solo pulse_id. `dedupe_key` es
+-- propio (board+item+evento+columna+tick de Monday): `action_record_uuid` de
+-- Monday no siempre viene en la respuesta, así que no sirve como UNIQUE. Se
+-- crea LAZY en runtime (mismo patrón que estado_producto_historial) — está
+-- aquí solo como documentación.
+CREATE TABLE IF NOT EXISTS activity_log (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  board_id      INTEGER NOT NULL,
+  item_id       INTEGER NOT NULL,
+  event         TEXT NOT NULL,
+  column_id     TEXT,
+  column_title  TEXT,
+  previous_text TEXT,
+  new_text      TEXT,
+  user_id       INTEGER,
+  created_at    TEXT NOT NULL,
+  dedupe_key    TEXT NOT NULL UNIQUE
+);
+CREATE INDEX IF NOT EXISTS idx_activity_log_item ON activity_log(board_id, item_id);
+
 -- Seguimiento del vendedor sobre una oportunidad stale (2026-08-10, pantalla
 -- "Inicio", worker/lib/home.ts insertSeguimiento). El mensaje SIEMPRE se postea
 -- primero como Update real en Monday (worker/lib/monday.ts createUpdate) — esta

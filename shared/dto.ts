@@ -291,6 +291,22 @@ export interface UpdateAttachmentDTO { id: string; name: string; ext: string }
 export interface UpdateDTO { id: string; body: string; author: string; createdAt: string; attachments: UpdateAttachmentDTO[]; seenBy: string[] }
 export interface CreateUpdateRequest { body: string; mentions?: { id: number; nombre: string }[] }
 
+// GET /api/boards/:slug/items/:id/activity — log de cambios de columna (mirror
+// D1 de activity_logs de Monday, worker/lib/activityLog.ts). Solo columnas en
+// la whitelist propia de ese módulo (no shared/visibility.ts: son propósitos
+// distintos — permisos vs. ruido). Para `oportunidades` incluye también las
+// líneas (oportunidades_sub) de esa oportunidad.
+export interface ActivityEntryDTO {
+  itemId: string;
+  event: string;              // 'create_pulse' | 'update_name' | 'update_column_value'
+  columnTitle: string | null;
+  previousText: string | null;
+  text: string | null;
+  actorName: string | null;
+  at: string;                 // ISO
+}
+export interface ActivityResponse { entries: ActivityEntryDTO[] }
+
 // GET /api/users — full Monday account roster (any authenticated viewer), used
 // to power @-tagging in Actualizaciones. Distinct from /api/vendedores, which
 // is the smaller D1 identity roster scoped to portal roles.
