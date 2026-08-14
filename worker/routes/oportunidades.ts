@@ -160,6 +160,23 @@ async function generarSolicitudCosteo(
   }
 }
 
+/** Hoja de costeo (todas las columnas de Costeo, en horizontal) al mandar a
+ * Validación — sola, sin pedirle nada a nadie, mismo trato de "acuse
+ * automático" que la solicitud de costeo. Best-effort: "Mandar a Validación"
+ * ya movió la etapa y no se puede deshacer por esto. Solo la ven compras/admin
+ * (shared/documents.ts DOC_TEMPLATES['validacion-costeo'].view). */
+async function generarHojaValidacion(c: Context<{ Bindings: Env }>, itemId: number, viewer: Identity): Promise<void> {
+  try {
+    await createDocument(c.env, viewer, {
+      templateId: 'validacion-costeo',
+      sourceId: String(itemId),
+      acuse: { ip: c.req.header('CF-Connecting-IP') ?? null, userAgent: c.req.header('User-Agent') ?? null },
+    });
+  } catch (err) {
+    console.log('[validacion-costeo] ' + String(err));
+  }
+}
+
 export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
   // Pre-chequeo de solo lectura: la UI deshabilita "Mandar a costeo" y lista lo
   // que falta ANTES de que alguien pueda dar click. Sin ningún efecto.
@@ -235,6 +252,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
 
     try {
       const result = await enviarAValidacion(c.env, c.executionCtx, itemId, viewer);
+      if (result.ok) await generarHojaValidacion(c, itemId, viewer);
       return result.ok ? c.json(result) : jsonStatus(result, 422);
     } catch (err) {
       if (err instanceof CosteoError) return jsonStatus({ ok: false, errors: [err.message] }, err.status);

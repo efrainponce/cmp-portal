@@ -7,12 +7,13 @@
 // vía React.lazy, así el chunk del drawer no arrastra pdf.js. Ni el chunk ni
 // los bytes del PDF se piden hasta que alguien da clic en "Ver" — abrir la
 // oportunidad no debe costar nada aquí (ver el comentario en CotizacionPdfRow).
-import { lazy, Suspense, useState, type ChangeEvent } from 'react';
+import { lazy, Suspense, useEffect, useState, type ChangeEvent } from 'react';
 import { Modal } from '../../../../components/core/Modal';
 import { useMe } from '../../../../lib/useMe';
 import { uploadOportunidadInventario } from '../../../../lib/api';
 import { inventarioFiles } from '../DocumentacionTab';
 import type { ItemDetailDTO } from '../../../../lib/api';
+import { listDocuments, documentPdfUrl, type DocumentDTO } from '../../../../lib/documentsApi';
 
 const PdfCanvasPreview = lazy(() =>
   import('../../../../components/core/PdfCanvasPreview').then((m) => ({ default: m.PdfCanvasPreview })),
@@ -144,6 +145,78 @@ function CotizacionPreviewThumb({ oppId, hasLineas }: { oppId: string; hasLineas
   );
 }
 
+/** Hoja de costeo en horizontal (todas las columnas de Costeo) que sale sola al
+ * dar "Mandar a Validación de costeo" — ESTE cuadro solo lo monta compras/admin
+ * (ver el filtro en CotizacionPdfRow más abajo), y el server la vuelve a filtrar
+ * igual por rol (`DOC_TEMPLATES['validacion-costeo'].view`, worker/lib/documents.ts):
+ * un vendedor nunca ve costos ni utilidad (Efraín, 2026-08-14).
+ * `undefined` = todavía buscando el documento (evita parpadear "Sin PDF" antes
+ * de saber si existe); la búsqueda es solo metadata (GET /api/documents), nunca
+ * los bytes del PDF — esos se piden hasta dar clic en "Ver", mismo criterio que
+ * el resto de la fila. */
+function ValidacionCosteoThumb({ oppId }: { oppId: string }) {
+  const [doc, setDoc] = useState<DocumentDTO | null | undefined>(undefined);
+  const [preview, setPreview] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    listDocuments('oportunidad', oppId)
+      .then((docs) => { if (alive) setDoc(docs.find((d) => d.templateId === 'validacion-costeo') ?? null); })
+      .catch(() => { if (alive) setDoc(null); });
+    return () => { alive = false; };
+  }, [oppId]);
+
+  if (doc === undefined) return null;
+  const url = doc ? documentPdfUrl(doc, false) : '';
+
+  return (
+    <div style={{ width: 108 }}>
+      <div style={{
+        font: '600 10px \'Inter\', sans-serif', color: 'var(--status-esperando)', textTransform: 'uppercase',
+        letterSpacing: '.3px', marginBottom: 6,
+      }}>
+        Validación
+      </div>
+      {doc ? (
+        <>
+          <div
+            onClick={() => setPreview(true)}
+            title="Hoja de costeo completa (todas las columnas), generada sola al mandar a validación"
+            style={{
+              cursor: 'pointer', width: 108, height: 92, border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)',
+              background: 'var(--bg-sunken)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <PdfIcon color="var(--status-esperando)" />
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: 6, marginTop: 4 }}>
+            <span onClick={() => setPreview(true)} style={{ cursor: 'pointer', font: 'var(--text-caption)', color: 'var(--accent)' }}>Ver</span>
+            <span style={{ font: 'var(--text-caption)', color: 'var(--ink-faint)' }}>·</span>
+            <a href={url} download style={{ font: 'var(--text-caption)', color: 'var(--accent)', textDecoration: 'none' }}>Descargar</a>
+          </div>
+        </>
+      ) : (
+        <div style={{
+          width: 108, height: 92, border: '1px dashed var(--ink-faint)', borderRadius: 'var(--radius-lg)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: 8,
+        }}>
+          <span style={{ font: 'var(--text-caption)', color: 'var(--ink-faint)' }}>Sin PDF</span>
+        </div>
+      )}
+      {preview && doc && (
+        <Modal title="Costeo — Validación" onClose={() => setPreview(false)} width={760}>
+          <Suspense fallback={<div style={{ font: 'var(--text-label)', color: 'var(--ink-quiet)' }}>Cargando…</div>}>
+            <PdfCanvasPreview url={url} maxWidth={712} />
+          </Suspense>
+          <a href={url} download style={{ display: 'inline-block', marginTop: 12, font: 'var(--text-label)', color: 'var(--accent)' }}>
+            Descargar
+          </a>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
 /** "Inventario Actual (Imagen)" — mismo cuadro que los PdfThumb de al lado,
  * pero es un upload real (Compras/admin, `w: WAC` en shared/visibility.ts):
  * el cuadro vacío ES el dropzone; con archivo ya subido, se ve como link
@@ -239,6 +312,8 @@ export function CotizacionPdfRow({ oppId, item, hasSolicitud, hasSinFirmar, hasF
   // oportunidad recién creada (Efraín reportó "no veo donde subir el inventario").
   const canUploadInventario = me?.role === 'compras' || me?.role === 'admin';
   const showInventario = !!(item && (hasInventario || canUploadInventario));
+  // Hoja de costeo de Validación: solo compras/admin la ven (Efraín, 2026-08-14).
+  const showValidacionCosteo = me?.role === 'compras' || me?.role === 'admin';
 
   // Los PDFs se bajan al DAR CLIC en "Ver", no al abrir la oportunidad.
   //
@@ -252,14 +327,19 @@ export function CotizacionPdfRow({ oppId, item, hasSolicitud, hasSinFirmar, hasF
   // 2026-08-13). PdfCanvasPreview ya sabe bajar por `url` cuando no recibe
   // `data`, así que el modal se encarga solo.
 
-  if (!oppId || (!hasSolicitud && !hasSinFirmar && !hasFirmada && !hasLineas && !showInventario)) return null;
+  if (!oppId || (!hasSolicitud && !hasSinFirmar && !hasFirmada && !hasLineas && !showInventario && !showValidacionCosteo)) return null;
   return (
     <>
-      <div style={{ display: 'flex', gap: 16, marginBottom: 16 }}>
+      {/* flexWrap: los cuadros son de ancho fijo (108px) y ya son 5-6 en fila —
+          sin wrap se desbordan del contenedor en mobile (390px) en vez de
+          bajar a una segunda línea, mismo criterio que el resto del board
+          (Efraín, 2026-08-14: "en mobil la barra de archivos esta un poco rota"). */}
+      <div style={{ display: 'flex', gap: 16, marginBottom: 16, flexWrap: 'wrap' }}>
         <PdfThumb oppId={oppId} kind="solicitud_costeo" available={hasSolicitud} label="Costeo" accentColor="var(--status-en-coste)" onPreview={() => setPreview('solicitud_costeo')} />
         <PdfThumb oppId={oppId} kind="sin_firmar" available={hasSinFirmar} label="Sin firmar" accentColor="var(--status-esperando)" onPreview={() => setPreview('sin_firmar')} />
         <PdfThumb oppId={oppId} kind="firmada" available={hasFirmada} label="Firmada" accentColor="var(--status-ganada)" onPreview={() => setPreview('firmada')} />
         <CotizacionPreviewThumb oppId={oppId} hasLineas={hasLineas} />
+        {showValidacionCosteo && <ValidacionCosteoThumb oppId={oppId} />}
         {showInventario && item && <InventarioThumb oppId={oppId} item={item} onUploaded={onInventarioUploaded} />}
       </div>
       {preview && (

@@ -6,7 +6,7 @@ import { PdfWriter, LETTER, widthOf, type FontName } from './writer';
 
 const MARGIN = 48;
 const HEADER_BOTTOM = 96;   // primera línea base disponible del contenido
-const FOOTER_TOP = 748;     // por debajo de esto solo va el pie
+const FOOTER_MARGIN = 44;   // espacio reservado al pie, medido desde abajo
 
 const INK = '#111111';
 const INK_SOFT = '#5b6472';
@@ -38,6 +38,10 @@ export type Block =
       /** Override de color del renglón de encabezado — default gris. La OC a
        * proveedor usa el naranja de marca de CMP (sacado del logo). */
       headerFill?: string; headerTextColor?: string;
+      /** Tamaño de fuente de celdas/encabezado — default 9/7.5. La hoja de
+       * costeo de Validación (2026-08-14) trae ~20 columnas en horizontal y
+       * necesita texto más chico para que quepan sin desbordar. */
+      cellSize?: number; headerSize?: number;
     }
   | { kind: 'divider' }
   | { kind: 'spacer'; height: number }
@@ -62,11 +66,39 @@ export interface DocumentMeta {
    * verificable (docs/documentos-firma.md); un documento sin ceremonia de
    * firma (como la OC a proveedor v1) no la necesita. */
   hideGeneratedByLine?: boolean;
+  /** Página apaisada (792×612) en vez de carta vertical — para tablas anchas
+   * que no caben en 516pt de contenido (hoja de costeo de Validación,
+   * 2026-08-14: ~20 columnas). */
+  landscape?: boolean;
 }
 
-const CONTENT_LEFT = MARGIN;
-const CONTENT_RIGHT = LETTER.width - MARGIN;
-const CONTENT_WIDTH = CONTENT_RIGHT - CONTENT_LEFT;
+/** Medidas de página resueltas UNA vez por documento — todo lo que dibuja
+ * bloques recibe esto en vez de leer constantes de módulo, así el mismo motor
+ * sirve para carta vertical y apaisada. */
+interface Metrics {
+  pageWidth: number;
+  pageHeight: number;
+  contentLeft: number;
+  contentRight: number;
+  contentWidth: number;
+  headerBottom: number;
+  footerTop: number;
+}
+
+function metricsFor(landscape: boolean): Metrics {
+  const size = landscape ? { width: LETTER.height, height: LETTER.width } : LETTER;
+  const contentLeft = MARGIN;
+  const contentRight = size.width - MARGIN;
+  return {
+    pageWidth: size.width,
+    pageHeight: size.height,
+    contentLeft,
+    contentRight,
+    contentWidth: contentRight - contentLeft,
+    headerBottom: HEADER_BOTTOM,
+    footerTop: size.height - FOOTER_MARGIN,
+  };
+}
 
 /** Corta `text` en líneas que caben en `maxWidth`. Palabras más largas que el
  * ancho se parten por carácter para que nunca se desborden de la caja. */
@@ -102,12 +134,12 @@ function ellipsize(text: string, maxWidth: number, size: number, font: FontName 
   return out + '…';
 }
 
-function columnBoxes(columns: TableColumn[]): { left: number; right: number }[] {
+function columnBoxes(columns: TableColumn[], m: Metrics): { left: number; right: number }[] {
   const total = columns.reduce((s, c) => s + c.width, 0) || 1;
   const boxes: { left: number; right: number }[] = [];
-  let x = CONTENT_LEFT;
+  let x = m.contentLeft;
   for (const col of columns) {
-    const w = (col.width / total) * CONTENT_WIDTH;
+    const w = (col.width / total) * m.contentWidth;
     boxes.push({ left: x + 4, right: x + w - 4 });
     x += w;
   }
@@ -117,51 +149,52 @@ function columnBoxes(columns: TableColumn[]): { left: number; right: number }[] 
 /** Cursor de escritura: sabe abrir páginas nuevas cuando el bloque no cabe. */
 class Cursor {
   page: number;
-  y = HEADER_BOTTOM;
+  y: number;
 
-  constructor(private readonly pdf: PdfWriter) {
+  constructor(private readonly pdf: PdfWriter, private readonly m: Metrics) {
     this.page = pdf.addPage();
+    this.y = m.headerBottom;
   }
 
   /** Asegura `height` puntos disponibles; abre página si no. Devuelve true si saltó. */
   ensure(height: number): boolean {
-    if (this.y + height <= FOOTER_TOP) return false;
+    if (this.y + height <= this.m.footerTop) return false;
     this.page = this.pdf.addPage();
-    this.y = HEADER_BOTTOM;
+    this.y = this.m.headerBottom;
     return true;
   }
 }
 
-function drawHeading(pdf: PdfWriter, cur: Cursor, text: string): void {
+function drawHeading(pdf: PdfWriter, cur: Cursor, m: Metrics, text: string): void {
   cur.ensure(30);
   cur.y += 6;
-  pdf.text(cur.page, CONTENT_LEFT, cur.y, text.toUpperCase(), { size: 9, font: 'HB', color: ACCENT });
+  pdf.text(cur.page, m.contentLeft, cur.y, text.toUpperCase(), { size: 9, font: 'HB', color: ACCENT });
   cur.y += 5;
-  pdf.line(cur.page, CONTENT_LEFT, cur.y, CONTENT_RIGHT, cur.y, { color: ACCENT, width: 0.8 });
+  pdf.line(cur.page, m.contentLeft, cur.y, m.contentRight, cur.y, { color: ACCENT, width: 0.8 });
   cur.y += 15;
 }
 
-function drawText(pdf: PdfWriter, cur: Cursor, block: Extract<Block, { kind: 'text' }>): void {
+function drawText(pdf: PdfWriter, cur: Cursor, m: Metrics, block: Extract<Block, { kind: 'text' }>): void {
   const size = block.size ?? 9.5;
   const font: FontName = block.bold ? 'HB' : 'H';
   const lineHeight = size * 1.45;
-  for (const line of wrapText(block.text, CONTENT_WIDTH, size, font)) {
+  for (const line of wrapText(block.text, m.contentWidth, size, font)) {
     cur.ensure(lineHeight);
-    pdf.text(cur.page, CONTENT_LEFT, cur.y, line, { size, font, color: block.color ?? INK });
+    pdf.text(cur.page, m.contentLeft, cur.y, line, { size, font, color: block.color ?? INK });
     cur.y += lineHeight;
   }
 }
 
-function drawKv(pdf: PdfWriter, cur: Cursor, block: Extract<Block, { kind: 'kv' }>): void {
+function drawKv(pdf: PdfWriter, cur: Cursor, m: Metrics, block: Extract<Block, { kind: 'kv' }>): void {
   const cols = block.columns ?? 2;
-  const colWidth = CONTENT_WIDTH / cols;
+  const colWidth = m.contentWidth / cols;
   const rowHeight = 26;
   for (let i = 0; i < block.rows.length; i += cols) {
     cur.ensure(rowHeight);
     for (let c = 0; c < cols; c++) {
       const pair = block.rows[i + c];
       if (!pair) continue;
-      const x = CONTENT_LEFT + c * colWidth;
+      const x = m.contentLeft + c * colWidth;
       const maxW = colWidth - 12;
       pdf.text(cur.page, x, cur.y, ellipsize(pair[0].toUpperCase(), maxW, 7.5, 'HB'), { size: 7.5, font: 'HB', color: INK_FAINT });
       pdf.text(cur.page, x, cur.y + 12, ellipsize(pair[1] || '—', maxW, 10), { size: 10, color: INK });
@@ -171,35 +204,38 @@ function drawKv(pdf: PdfWriter, cur: Cursor, block: Extract<Block, { kind: 'kv' 
   cur.y += 4;
 }
 
-function drawTableHeader(pdf: PdfWriter, cur: Cursor, columns: TableColumn[], fill = '#eef2f6', textColor = INK_SOFT): void {
-  const boxes = columnBoxes(columns);
-  pdf.rect(cur.page, CONTENT_LEFT, cur.y - 10, CONTENT_WIDTH, 18, { fill });
+function drawTableHeader(
+  pdf: PdfWriter, cur: Cursor, m: Metrics, columns: TableColumn[],
+  fill = '#eef2f6', textColor = INK_SOFT, headerSize = 7.5,
+): void {
+  const boxes = columnBoxes(columns, m);
+  pdf.rect(cur.page, m.contentLeft, cur.y - 10, m.contentWidth, 18, { fill });
   columns.forEach((col, i) => {
-    pdf.textAligned(cur.page, ellipsize(col.header.toUpperCase(), boxes[i].right - boxes[i].left, 7.5, 'HB'), cur.y + 2, boxes[i], col.align ?? 'left', { size: 7.5, font: 'HB', color: textColor });
+    pdf.textAligned(cur.page, ellipsize(col.header.toUpperCase(), boxes[i].right - boxes[i].left, headerSize, 'HB'), cur.y + 2, boxes[i], col.align ?? 'left', { size: headerSize, font: 'HB', color: textColor });
   });
   cur.y += 18;
 }
 
-function drawTable(pdf: PdfWriter, cur: Cursor, block: Extract<Block, { kind: 'table' }>): void {
-  const boxes = columnBoxes(block.columns);
+function drawTable(pdf: PdfWriter, cur: Cursor, m: Metrics, block: Extract<Block, { kind: 'table' }>): void {
+  const boxes = columnBoxes(block.columns, m);
   const rowHeight = 17;
   cur.ensure(18 + rowHeight * 2);
-  drawTableHeader(pdf, cur, block.columns);
+  drawTableHeader(pdf, cur, m, block.columns);
 
   block.rows.forEach((row, r) => {
-    if (cur.ensure(rowHeight)) drawTableHeader(pdf, cur, block.columns);
-    if (r % 2 === 1) pdf.rect(cur.page, CONTENT_LEFT, cur.y - 9, CONTENT_WIDTH, rowHeight, { fill: ZEBRA });
+    if (cur.ensure(rowHeight)) drawTableHeader(pdf, cur, m, block.columns);
+    if (r % 2 === 1) pdf.rect(cur.page, m.contentLeft, cur.y - 9, m.contentWidth, rowHeight, { fill: ZEBRA });
     block.columns.forEach((col, i) => {
       const cell = row[i] ?? '';
       pdf.textAligned(cur.page, ellipsize(cell, boxes[i].right - boxes[i].left, 9), cur.y + 2, boxes[i], col.align ?? 'left', { size: 9, color: INK });
     });
     cur.y += rowHeight;
-    pdf.line(cur.page, CONTENT_LEFT, cur.y - 8, CONTENT_RIGHT, cur.y - 8, { color: RULE, width: 0.4 });
+    pdf.line(cur.page, m.contentLeft, cur.y - 8, m.contentRight, cur.y - 8, { color: RULE, width: 0.4 });
   });
 
   if (block.footer) {
-    if (cur.ensure(rowHeight + 4)) drawTableHeader(pdf, cur, block.columns);
-    pdf.rect(cur.page, CONTENT_LEFT, cur.y - 9, CONTENT_WIDTH, rowHeight, { fill: '#eef2f6' });
+    if (cur.ensure(rowHeight + 4)) drawTableHeader(pdf, cur, m, block.columns);
+    pdf.rect(cur.page, m.contentLeft, cur.y - 9, m.contentWidth, rowHeight, { fill: '#eef2f6' });
     block.columns.forEach((col, i) => {
       const cell = block.footer?.[i] ?? '';
       pdf.textAligned(cur.page, ellipsize(cell, boxes[i].right - boxes[i].left, 9.5, 'HB'), cur.y + 2, boxes[i], col.align ?? 'left', { size: 9.5, font: 'HB', color: INK });
@@ -209,32 +245,34 @@ function drawTable(pdf: PdfWriter, cur: Cursor, block: Extract<Block, { kind: 't
   cur.y += 10;
 }
 
-function drawWrapTable(pdf: PdfWriter, cur: Cursor, block: Extract<Block, { kind: 'wrapTable' }>): void {
-  const boxes = columnBoxes(block.columns);
+function drawWrapTable(pdf: PdfWriter, cur: Cursor, m: Metrics, block: Extract<Block, { kind: 'wrapTable' }>): void {
+  const boxes = columnBoxes(block.columns, m);
   const wrapSet = new Set(block.wrapCols);
-  const lineHeight = 11;
-  const baseRowHeight = 17;
+  const cellSize = block.cellSize ?? 9;
+  const headerSize = block.headerSize ?? 7.5;
+  const lineHeight = cellSize + 2;
+  const baseRowHeight = Math.max(17, cellSize + 8);
   cur.ensure(18 + baseRowHeight * 2);
-  drawTableHeader(pdf, cur, block.columns, block.headerFill, block.headerTextColor);
+  drawTableHeader(pdf, cur, m, block.columns, block.headerFill, block.headerTextColor, headerSize);
 
   block.rows.forEach((row, r) => {
     const wrappedByCol = new Map<number, string[]>();
     let maxLines = 1;
     for (const i of wrapSet) {
       const w = boxes[i].right - boxes[i].left;
-      const lines = wrapText(row[i] ?? '', w, 9);
+      const lines = wrapText(row[i] ?? '', w, cellSize);
       wrappedByCol.set(i, lines);
       maxLines = Math.max(maxLines, lines.length);
     }
     const rowHeight = Math.max(baseRowHeight, maxLines * lineHeight + 6);
-    if (cur.ensure(rowHeight)) drawTableHeader(pdf, cur, block.columns, block.headerFill, block.headerTextColor);
-    if (r % 2 === 1) pdf.rect(cur.page, CONTENT_LEFT, cur.y - 9, CONTENT_WIDTH, rowHeight, { fill: ZEBRA });
+    if (cur.ensure(rowHeight)) drawTableHeader(pdf, cur, m, block.columns, block.headerFill, block.headerTextColor, headerSize);
+    if (r % 2 === 1) pdf.rect(cur.page, m.contentLeft, cur.y - 9, m.contentWidth, rowHeight, { fill: ZEBRA });
     block.columns.forEach((col, i) => {
       const lines = wrappedByCol.get(i);
       if (lines) {
         let ly = cur.y + 2;
         for (const line of lines) {
-          pdf.textAligned(cur.page, line, ly, boxes[i], col.align ?? 'left', { size: 9, color: INK });
+          pdf.textAligned(cur.page, line, ly, boxes[i], col.align ?? 'left', { size: cellSize, color: INK });
           ly += lineHeight;
         }
         return;
@@ -242,110 +280,111 @@ function drawWrapTable(pdf: PdfWriter, cur: Cursor, block: Extract<Block, { kind
       // Todo lo que no envuelve va anclado al TOPE del renglón — así nunca se
       // desaloja aunque las columnas de wrapCols crezcan a varias líneas.
       const cell = row[i] ?? '';
-      pdf.textAligned(cur.page, ellipsize(cell, boxes[i].right - boxes[i].left, 9), cur.y + 2, boxes[i], col.align ?? 'left', { size: 9, color: INK });
+      pdf.textAligned(cur.page, ellipsize(cell, boxes[i].right - boxes[i].left, cellSize), cur.y + 2, boxes[i], col.align ?? 'left', { size: cellSize, color: INK });
     });
     cur.y += rowHeight;
-    pdf.line(cur.page, CONTENT_LEFT, cur.y - 8, CONTENT_RIGHT, cur.y - 8, { color: RULE, width: 0.4 });
+    pdf.line(cur.page, m.contentLeft, cur.y - 8, m.contentRight, cur.y - 8, { color: RULE, width: 0.4 });
   });
 
   if (block.footer) {
-    if (cur.ensure(baseRowHeight + 4)) drawTableHeader(pdf, cur, block.columns);
-    pdf.rect(cur.page, CONTENT_LEFT, cur.y - 9, CONTENT_WIDTH, baseRowHeight, { fill: '#eef2f6' });
+    if (cur.ensure(baseRowHeight + 4)) drawTableHeader(pdf, cur, m, block.columns, block.headerFill, block.headerTextColor, headerSize);
+    pdf.rect(cur.page, m.contentLeft, cur.y - 9, m.contentWidth, baseRowHeight, { fill: '#eef2f6' });
     block.columns.forEach((col, i) => {
       const cell = block.footer?.[i] ?? '';
-      pdf.textAligned(cur.page, ellipsize(cell, boxes[i].right - boxes[i].left, 9.5, 'HB'), cur.y + 2, boxes[i], col.align ?? 'left', { size: 9.5, font: 'HB', color: INK });
+      pdf.textAligned(cur.page, ellipsize(cell, boxes[i].right - boxes[i].left, cellSize + 0.5, 'HB'), cur.y + 2, boxes[i], col.align ?? 'left', { size: cellSize + 0.5, font: 'HB', color: INK });
     });
     cur.y += baseRowHeight;
   }
   cur.y += 10;
 }
 
-function drawNote(pdf: PdfWriter, cur: Cursor, text: string): void {
-  const lines = wrapText(text, CONTENT_WIDTH - 20, 8);
+function drawNote(pdf: PdfWriter, cur: Cursor, m: Metrics, text: string): void {
+  const lines = wrapText(text, m.contentWidth - 20, 8);
   const height = lines.length * 11 + 14;
   // Aire antes de la caja: si el bloque anterior fue texto, su última línea
   // queda pegada al borde superior (visto en la remisión de muestra).
   if (!cur.ensure(height + 6)) cur.y += 6;
-  pdf.rect(cur.page, CONTENT_LEFT, cur.y - 10, CONTENT_WIDTH, height, { fill: '#f6f8fa', stroke: RULE });
+  pdf.rect(cur.page, m.contentLeft, cur.y - 10, m.contentWidth, height, { fill: '#f6f8fa', stroke: RULE });
   let y = cur.y + 2;
   for (const line of lines) {
-    pdf.text(cur.page, CONTENT_LEFT + 10, y, line, { size: 8, color: INK_SOFT });
+    pdf.text(cur.page, m.contentLeft + 10, y, line, { size: 8, color: INK_SOFT });
     y += 11;
   }
   cur.y += height + 6;
 }
 
 /** Caja de firma: trazo (JPEG) o, si no hay imagen, la línea de firma vacía. */
-function drawSignature(pdf: PdfWriter, cur: Cursor, block: Extract<Block, { kind: 'signature' }>): void {
+function drawSignature(pdf: PdfWriter, cur: Cursor, m: Metrics, block: Extract<Block, { kind: 'signature' }>): void {
   const height = 108;
   cur.ensure(height);
   const top = cur.y - 8;
-  pdf.rect(cur.page, CONTENT_LEFT, top, CONTENT_WIDTH, height, { stroke: RULE });
-  pdf.text(cur.page, CONTENT_LEFT + 12, top + 16, block.label.toUpperCase(), { size: 7.5, font: 'HB', color: INK_FAINT });
+  pdf.rect(cur.page, m.contentLeft, top, m.contentWidth, height, { stroke: RULE });
+  pdf.text(cur.page, m.contentLeft + 12, top + 16, block.label.toUpperCase(), { size: 7.5, font: 'HB', color: INK_FAINT });
 
   const strokeTop = top + 24;
-  const drawn = block.image ? pdf.image(cur.page, block.image, CONTENT_LEFT + 12, strokeTop, 190, 46) : false;
+  const drawn = block.image ? pdf.image(cur.page, block.image, m.contentLeft + 12, strokeTop, 190, 46) : false;
   if (!drawn) {
-    pdf.line(cur.page, CONTENT_LEFT + 12, strokeTop + 44, CONTENT_LEFT + 210, strokeTop + 44, { color: INK_FAINT, width: 0.8 });
+    pdf.line(cur.page, m.contentLeft + 12, strokeTop + 44, m.contentLeft + 210, strokeTop + 44, { color: INK_FAINT, width: 0.8 });
   }
-  pdf.text(cur.page, CONTENT_LEFT + 12, top + 86, block.name, { size: 10, font: 'HB', color: INK });
+  pdf.text(cur.page, m.contentLeft + 12, top + 86, block.name, { size: 10, font: 'HB', color: INK });
 
   let y = top + 20;
   for (const line of block.detail.slice(0, 6)) {
-    pdf.text(cur.page, CONTENT_LEFT + 236, y, ellipsize(line, CONTENT_WIDTH - 248, 8), { size: 8, color: INK_SOFT });
+    pdf.text(cur.page, m.contentLeft + 236, y, ellipsize(line, m.contentWidth - 248, 8), { size: 8, color: INK_SOFT });
     y += 11;
   }
   cur.y += height + 8;
 }
 
-function drawChrome(pdf: PdfWriter, meta: DocumentMeta): void {
+function drawChrome(pdf: PdfWriter, m: Metrics, meta: DocumentMeta): void {
   const total = pdf.pageCount;
   for (let page = 0; page < total; page++) {
     // Encabezado
-    if (meta.logo) pdf.image(page, meta.logo, CONTENT_LEFT, 14, 101, 40);
-    else pdf.text(page, CONTENT_LEFT, 44, 'MEXICANA DE PROTECCIÓN', { size: 11, font: 'HB', color: ACCENT });
-    pdf.textAligned(page, meta.title, 40, { left: CONTENT_LEFT + 200, right: CONTENT_RIGHT }, 'right', { size: 10, font: 'HB', color: INK });
+    if (meta.logo) pdf.image(page, meta.logo, m.contentLeft, 14, 101, 40);
+    else pdf.text(page, m.contentLeft, 44, 'MEXICANA DE PROTECCIÓN', { size: 11, font: 'HB', color: ACCENT });
+    pdf.textAligned(page, meta.title, 40, { left: m.contentLeft + 200, right: m.contentRight }, 'right', { size: 10, font: 'HB', color: INK });
     const sub = [meta.subtitle, meta.folio ? `Folio ${meta.folio}` : ''].filter(Boolean).join(' · ');
-    if (sub) pdf.textAligned(page, sub, 53, { left: CONTENT_LEFT + 200, right: CONTENT_RIGHT }, 'right', { size: 8.5, color: INK_SOFT });
-    pdf.line(page, CONTENT_LEFT, 62, CONTENT_RIGHT, 62, { color: RULE, width: 0.8 });
+    if (sub) pdf.textAligned(page, sub, 53, { left: m.contentLeft + 200, right: m.contentRight }, 'right', { size: 8.5, color: INK_SOFT });
+    pdf.line(page, m.contentLeft, 62, m.contentRight, 62, { color: RULE, width: 0.8 });
 
     // Pie
-    pdf.line(page, CONTENT_LEFT, FOOTER_TOP + 8, CONTENT_RIGHT, FOOTER_TOP + 8, { color: RULE, width: 0.6 });
+    pdf.line(page, m.contentLeft, m.footerTop + 8, m.contentRight, m.footerTop + 8, { color: RULE, width: 0.6 });
     if (!meta.hideGeneratedByLine) {
-      pdf.text(page, CONTENT_LEFT, FOOTER_TOP + 22, `Generado por el portal CMP · ${meta.generatedAt} · Doc ${meta.docId}`, { size: 7, color: INK_FAINT });
+      pdf.text(page, m.contentLeft, m.footerTop + 22, `Generado por el portal CMP · ${meta.generatedAt} · Doc ${meta.docId}`, { size: 7, color: INK_FAINT });
     }
     if (meta.footerNote) {
-      pdf.text(page, CONTENT_LEFT, FOOTER_TOP + 32, ellipsize(meta.footerNote, CONTENT_WIDTH - 60, 7), { size: 7, color: INK_FAINT });
+      pdf.text(page, m.contentLeft, m.footerTop + 32, ellipsize(meta.footerNote, m.contentWidth - 60, 7), { size: 7, color: INK_FAINT });
     }
-    pdf.textAligned(page, `Página ${page + 1} de ${total}`, FOOTER_TOP + 22, { left: CONTENT_RIGHT - 120, right: CONTENT_RIGHT }, 'right', { size: 7, color: INK_FAINT });
+    pdf.textAligned(page, `Página ${page + 1} de ${total}`, m.footerTop + 22, { left: m.contentRight - 120, right: m.contentRight }, 'right', { size: 7, color: INK_FAINT });
   }
 }
 
 /** Renderiza los bloques a un PDF completo (encabezado/pie incluidos). */
 export function renderDocument(meta: DocumentMeta, blocks: Block[]): Uint8Array {
-  const pdf = new PdfWriter();
-  const cur = new Cursor(pdf);
+  const m = metricsFor(!!meta.landscape);
+  const pdf = new PdfWriter({ width: m.pageWidth, height: m.pageHeight });
+  const cur = new Cursor(pdf, m);
 
   for (const block of blocks) {
     switch (block.kind) {
-      case 'heading': drawHeading(pdf, cur, block.text); break;
-      case 'text': drawText(pdf, cur, block); break;
-      case 'kv': drawKv(pdf, cur, block); break;
-      case 'table': drawTable(pdf, cur, block); break;
-      case 'wrapTable': drawWrapTable(pdf, cur, block); break;
+      case 'heading': drawHeading(pdf, cur, m, block.text); break;
+      case 'text': drawText(pdf, cur, m, block); break;
+      case 'kv': drawKv(pdf, cur, m, block); break;
+      case 'table': drawTable(pdf, cur, m, block); break;
+      case 'wrapTable': drawWrapTable(pdf, cur, m, block); break;
       case 'divider':
         cur.ensure(12);
-        pdf.line(cur.page, CONTENT_LEFT, cur.y, CONTENT_RIGHT, cur.y, { color: RULE });
+        pdf.line(cur.page, m.contentLeft, cur.y, m.contentRight, cur.y, { color: RULE });
         cur.y += 12;
         break;
       case 'spacer':
         if (!cur.ensure(block.height)) cur.y += block.height;
         break;
-      case 'note': drawNote(pdf, cur, block.text); break;
-      case 'signature': drawSignature(pdf, cur, block); break;
+      case 'note': drawNote(pdf, cur, m, block.text); break;
+      case 'signature': drawSignature(pdf, cur, m, block); break;
     }
   }
 
-  drawChrome(pdf, meta);
+  drawChrome(pdf, m, meta);
   return pdf.build();
 }

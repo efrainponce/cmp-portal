@@ -122,6 +122,7 @@ export function signatureLabels(templateId: DocTemplateId): string[] {
     case 'remision-inventario': return ['Entrega', 'Recibe'];
     case 'solicitud-costeo': return ['Solicitó'];
     case 'cotizacion': return ['Generó'];
+    case 'validacion-costeo': return ['Envió a validación'];
     case 'constancia-firma': return ['Firma electrónica', 'Segunda firma'];
   }
 }
@@ -170,6 +171,31 @@ const SUB_EMB_DESC = 'long_text_mm1bj4pt';
 const SUB_COMENTARIOS = 'long_text_mm1hyszv';
 const SUB_TIPO = 'lookup_mm07x7e7';       // "Embellecimiento" se salta (worker/lib/cotizacion.ts)
 const SUB_PRECIO = 'numeric_mkzneg3d';    // Precio de Venta C/U — solo LECTURA aquí
+
+// Columnas de Costeo (docs/monday-column-map.md, mismos ids que GRID_COLS_COSTEO
+// en src/boards/oportunidades/tabs/cotizacion/gridMeta.tsx) — usadas SOLO por
+// costeoValidacionData. Los formula_* ya vienen calculados por Monday en el
+// mirror; aquí se leen tal cual, no se recalculan.
+const SUB_ETAPA_COSTEO = 'color_mm084gvf';
+const SUB_MONEDA = 'color_mm5s709s';
+const SUB_MONEDA_MIRROR = 'lookup_mm11t8gj';
+const SUB_COSTO_DISTR = 'numeric_mm0bph99';
+const SUB_DESCUENTO_PCT = 'numeric_mkzn2q51';
+const SUB_COSTO_REAL = 'formula_mkzngnjm';
+const SUB_CONVERSION = 'numeric_mm0rvhgs';
+const SUB_GASTOS_PCT = 'numeric_mkzngs9x';
+const SUB_COSTO_EMBELL = 'numeric_mm0gxvpa';
+const SUB_COSTO_TOTAL = 'formula_mkznpfgg';
+const SUB_TECHO = 'numeric_mkznpn83';
+const SUB_PRECIO_SUGERIDO = 'numeric_mm2qzzbe';
+const SUB_IVA_PCT = 'numeric_mm0cg0bm';
+const SUB_SUBTOTAL = 'formula_mkznmjh6';
+const SUB_IVA = 'formula_mm0rtdqp';
+const SUB_TOTAL_CON_IVA = 'formula_mm00xy0n';
+const SUB_MARGEN_GOB_PCT = 'numeric_mkznnm5s';
+const SUB_MARGEN_GOB_TOTAL = 'formula_mkznsb7m';
+const SUB_UTILIDAD = 'formula_mkznry25';
+const SUB_UTILIDAD_PCT = 'formula_mkznpw5p';
 
 const num = (text?: string | null): number => Number((text ?? '').replace(/,/g, '')) || 0;
 
@@ -295,6 +321,70 @@ async function cotizacionData(env: Env, oppId: number, viewer: Identity, folio: 
   };
 }
 
+/** Hoja de costeo al mandar a Validación (2026-08-14): snapshot de TODAS las
+ * columnas de la grid de Costeo (mismo patrón D1 crudo + whitelist que
+ * cotizacionData). Se dispara sola desde POST .../enviar-validacion, con el
+ * viewer compras/admin que hizo el click — canRead ya les deja ver el grupo AC
+ * de columnas de costeo; la vista del DOCUMENTO en sí queda además restringida
+ * a compras/admin por `DOC_TEMPLATES['validacion-costeo'].view` (Efraín,
+ * 2026-08-14: "ESTO SOLO LO VEN compras y admin"). */
+async function costeoValidacionData(env: Env, oppId: number, viewer: Identity): Promise<DocData> {
+  const row = await getItem(env, 'oportunidades', oppId, viewer, 'own');
+  if (!row) throw new DocumentError(404, 'oportunidad no encontrada');
+
+  const cols = colMap(row.columns);
+  const text = (id: string): string | undefined =>
+    canRead('oportunidades', id, viewer.role) ? cols.get(id)?.text?.trim() || undefined : undefined;
+  const subText = (c: Map<string, RawCol>, id: string): string | undefined =>
+    canRead('oportunidades_sub', id, viewer.role) ? c.get(id)?.text?.trim() || undefined : undefined;
+  const subNum = (c: Map<string, RawCol>, id: string): number =>
+    canRead('oportunidades_sub', id, viewer.role) ? num(c.get(id)?.text) : 0;
+
+  const hijos = await childrenOf(env, 'oportunidades', oppId, viewer);
+  const lineas = hijos
+    .map(child => colMap(child.columns))
+    .filter(c => (c.get(SUB_TIPO)?.text ?? '').trim().toLowerCase() !== 'embellecimiento')
+    .map(c => ({
+      producto: (c.get(SUB_PRODUCTO_NOMBRE)?.text || c.get(SUB_PRODUCTO_TXT)?.text || '').trim(),
+      sku: subText(c, SUB_SKU) ?? subText(c, SUB_SKU_TXT),
+      color: subText(c, SUB_COLOR),
+      cantidad: subNum(c, SUB_CANTIDAD),
+      etapaCosteo: subText(c, SUB_ETAPA_COSTEO),
+      moneda: subText(c, SUB_MONEDA) ?? subText(c, SUB_MONEDA_MIRROR),
+      costoDistr: subNum(c, SUB_COSTO_DISTR),
+      descuentoPct: subNum(c, SUB_DESCUENTO_PCT),
+      costoReal: subNum(c, SUB_COSTO_REAL),
+      conversion: subNum(c, SUB_CONVERSION),
+      gastosPct: subNum(c, SUB_GASTOS_PCT),
+      costoEmbellecimiento: subNum(c, SUB_COSTO_EMBELL),
+      costoTotal: subNum(c, SUB_COSTO_TOTAL),
+      techo: subNum(c, SUB_TECHO),
+      precioSugerido: subNum(c, SUB_PRECIO_SUGERIDO),
+      precioVenta: subNum(c, SUB_PRECIO),
+      ivaPct: subNum(c, SUB_IVA_PCT),
+      subtotal: subNum(c, SUB_SUBTOTAL),
+      iva: subNum(c, SUB_IVA),
+      totalConIva: subNum(c, SUB_TOTAL_CON_IVA),
+      margenGobPct: subNum(c, SUB_MARGEN_GOB_PCT),
+      margenGobTotal: subNum(c, SUB_MARGEN_GOB_TOTAL),
+      utilidad: subNum(c, SUB_UTILIDAD),
+      utilidadPct: subNum(c, SUB_UTILIDAD_PCT),
+    }));
+
+  return {
+    kind: 'validacion-costeo',
+    nombre: row.name,
+    folio: text(OPP_FOLIO) ?? String(oppId),
+    institucion: text(OPP_INSTITUCION),
+    vendedor: text(OPP_VENDEDOR),
+    zona: text(OPP_ZONA),
+    lineas,
+    subtotal: round2(lineas.reduce((s, l) => s + l.subtotal, 0)),
+    iva: round2(lineas.reduce((s, l) => s + l.iva, 0)),
+    total: round2(lineas.reduce((s, l) => s + l.totalConIva, 0)),
+  };
+}
+
 interface MovementJoinRow {
   id: number; type: string; product_name: string; quantity: number;
   origen: string | null; destino: string | null;
@@ -382,6 +472,8 @@ export async function createDocument(env: Env, viewer: Identity, input: CreateIn
     if (template.id === 'cotizacion') {
       if (!input.folio) throw new DocumentError(400, 'falta folio');
       data = await cotizacionData(env, oppId, viewer, input.folio);
+    } else if (template.id === 'validacion-costeo') {
+      data = await costeoValidacionData(env, oppId, viewer);
     } else {
       data = await solicitudCosteoData(env, oppId, viewer);
     }
@@ -419,6 +511,7 @@ export async function createDocument(env: Env, viewer: Identity, input: CreateIn
 
   const folio = data.kind === 'solicitud-costeo' ? data.folio ?? null
     : data.kind === 'cotizacion' ? data.folio
+    : data.kind === 'validacion-costeo' ? data.folio ?? null
     : data.kind === 'remision-inventario' ? data.folio ?? `MOV-${data.movimientoId}`
     : null;
 
@@ -486,6 +579,15 @@ async function assertSourceVisible(env: Env, row: DocRow, viewer: Identity): Pro
   if (!opp) throw new DocumentError(404, 'not found');
 }
 
+/** Gate de `DocTemplate.view` (shared/documents.ts): algunas plantillas
+ * (validacion-costeo) solo las ve un subconjunto de roles aunque el viewer sí
+ * pueda ver la oportunidad fuente — 404, nunca 403, mismo criterio que
+ * assertSourceVisible (la existencia tampoco se filtra). */
+function assertTemplateViewable(templateId: string, viewer: Identity): void {
+  const template = DOC_TEMPLATES[templateId as DocTemplateId];
+  if (template?.view && !template.view.includes(viewer.role)) throw new DocumentError(404, 'not found');
+}
+
 async function signaturesOf(env: Env, docId: string): Promise<SigRow[]> {
   const res = await env.DB.prepare(
     'SELECT * FROM document_signatures WHERE document_id = ? ORDER BY id',
@@ -528,6 +630,7 @@ async function rowOf(env: Env, docId: string, viewer: Identity): Promise<DocRow>
   const row = await env.DB.prepare('SELECT * FROM documents WHERE id = ?').bind(docId).first<DocRow>();
   if (!row) throw new DocumentError(404, 'not found');
   await assertSourceVisible(env, row, viewer);
+  assertTemplateViewable(row.template_id, viewer);
   return row;
 }
 
@@ -565,7 +668,11 @@ export async function listDocuments(
   await assertSourceVisible(env, rows[0], viewer);
 
   const out: DocumentDTO[] = [];
-  for (const row of rows) out.push(toDTO(row, await signaturesOf(env, row.id)));
+  for (const row of rows) {
+    const template = DOC_TEMPLATES[row.template_id as DocTemplateId];
+    if (template?.view && !template.view.includes(viewer.role)) continue;
+    out.push(toDTO(row, await signaturesOf(env, row.id)));
+  }
   return out;
 }
 

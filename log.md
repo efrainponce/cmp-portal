@@ -269,6 +269,39 @@
     D1 (`activity_log`) y en el navegador — el feed de Actividad de una
     oportunidad real mostró correctamente quién cambió qué columna y cuándo.
 
+- Feature: PDF automático "Costeo — Validación" al mandar a Validación de
+  costeo (Efraín: "ESTO SOLO LO VEN compras y admin... es automático").
+  - `worker/lib/pdf/layout.ts`: soporte de página apaisada (`DocumentMeta.landscape`)
+    y tamaño de fuente configurable en `wrapTable` — antes todo el motor asumía
+    carta vertical vía constantes de módulo; ahora las mide una vez por
+    documento (`metricsFor`) y las pasa a cada `draw*`. Sin cambio de
+    comportamiento para las plantillas existentes (verificado con render de
+    muestra: solicitud de costeo y OC a Proveedor salen idénticas).
+  - Nueva plantilla `validacion-costeo` (`shared/documents.ts`): `create` y,
+    algo nuevo, `view` restringidos a `['compras','admin']` — las demás
+    plantillas dejan ver el documento a quien vea la oportunidad fuente, pero
+    esta trae costos/utilidad que el vendedor nunca ve. El gate se aplica en
+    `worker/lib/documents.ts` (`assertTemplateViewable`, en `rowOf` y
+    `listDocuments`) — 404, nunca 403, mismo criterio que el resto de scoping.
+  - `costeoValidacionData` (worker/lib/documents.ts) captura TODAS las
+    columnas de Costeo en el snapshot JSON (`documents.data`), pero el PDF
+    (`costeoValidacionBlocks`, pdf/templates.ts) solo IMPRIME las de decisión
+    (costo real/total, precio, subtotal/IVA/total, márgenes) en horizontal —
+    se probó primero con las ~24 columnas completas y los importes salían
+    cortados con elipsis, inservible para validar. Apaisado + fuente 8pt
+    alcanza para las 14 columnas que sí se imprimen.
+  - Se dispara solo (best-effort, como la solicitud de costeo) al final de
+    `POST /api/oportunidades/:id/enviar-validacion`, con acuse automático
+    (sin ceremonia de firma) — mismo patrón que `solicitud-costeo`.
+  - Frontend: nuevo cuadro "Validación" en la barra de archivos de cotización
+    (`CotizacionPdfRow.tsx`), montado solo para compras/admin; busca el
+    documento por metadata (`GET /api/documents`, no los bytes del PDF) igual
+    que el resto de la fila.
+  - De paso: la barra de archivos de cotización no tenía `flexWrap` — con 5-6
+    cuadros de 108px se desbordaba en mobile (390px) en vez de bajar de línea,
+    mismo bug que Efraín reportó ("en mobil la barra de archivos esta un poco
+    rota"). Se agregó `flexWrap: 'wrap'`, mismo criterio que el resto del board.
+
 ## 2026-08-13
 
 - Fix + perf: en producción, un fallo de API mostraba oportunidades INVENTADAS

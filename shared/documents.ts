@@ -15,7 +15,7 @@
 // aparte que referencia el hash del archivo original.
 import type { Role } from './types';
 
-export type DocTemplateId = 'solicitud-costeo' | 'cotizacion' | 'remision-inventario' | 'constancia-firma';
+export type DocTemplateId = 'solicitud-costeo' | 'cotizacion' | 'validacion-costeo' | 'remision-inventario' | 'constancia-firma';
 
 /** De dónde salen los datos del documento. `archivo` = PDF que ya existe en
  * Monday/R2 y que el portal solo sella + certifica (no lo genera). */
@@ -28,6 +28,14 @@ export interface DocTemplate {
   source: DocSourceKind;
   /** Roles que pueden generar el documento. */
   create: Role[];
+  /** Roles que pueden VER el documento (listarlo/descargarlo) — además de
+   * poder ver la fuente (assertSourceVisible en worker/lib/documents.ts). Sin
+   * esto, todo el que puede ver la oportunidad puede ver cualquiera de sus
+   * documentos, que es lo correcto para la mayoría (solicitud de costeo,
+   * cotización). `validacion-costeo` trae costos/utilidad y es la excepción:
+   * "ESTO SOLO LO VEN compras y admin" (Efraín, 2026-08-14). Sin este campo =
+   * sin restricción extra (default: todos los que ven la fuente). */
+  view?: Role[];
   /** Roles que pueden firmarlo. Lista vacía = documento no firmable. */
   sign: Role[];
   /** Cuántas firmas admite antes de considerarse completo. */
@@ -64,6 +72,24 @@ export const DOC_TEMPLATES: Record<DocTemplateId, DocTemplate> = {
     description: 'Cotización con precios para el cliente, generada nativamente en el portal.',
     source: 'oportunidad',
     create: ALL,
+    sign: [],
+    maxSignatures: 1,
+    autoAcuse: true,
+  },
+  // Hoja de costeo al mandar a validación (2026-08-14): snapshot en horizontal
+  // de TODAS las columnas de la grid de Costeo (producto, costos, precio,
+  // márgenes) tal como quedaron al pasar la etapa "En costeo" → "Costeo en
+  // validación". Sale sola al dar "Mandar a Validación de costeo"
+  // (worker/routes/oportunidades.ts) — nadie la genera a mano. Solo
+  // compras/admin la ven: trae costos y utilidad, que el vendedor nunca ve
+  // (Efraín, 2026-08-14: "ESTO SOLO LO VEN compras y admin").
+  'validacion-costeo': {
+    id: 'validacion-costeo',
+    label: 'Costeo — Validación',
+    description: 'Todas las columnas de la cotización costeada (costos, precio, márgenes), en horizontal. Sale sola al mandar a validación de costeo.',
+    source: 'oportunidad',
+    create: ['compras', 'admin'],
+    view: ['compras', 'admin'],
     sign: [],
     maxSignatures: 1,
     autoAcuse: true,

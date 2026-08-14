@@ -76,6 +76,52 @@ export interface CotizacionData {
   totalPalabras: string;
 }
 
+/** Línea de la hoja de costeo — mismos campos que GRID_COLS_COSTEO
+ * (src/boards/oportunidades/tabs/cotizacion/gridMeta.tsx), en el mismo orden,
+ * para que lo impreso coincida exactamente con lo que compras ya ve en
+ * pantalla al validar. Los `formula_*` de Monday (costoReal, costoTotalUnit,
+ * subtotal, iva, totalConIva, margenGobTotal, utilidad, utilidadPct) llegan
+ * YA CALCULADOS por Monday — aquí solo se leen e imprimen, no se recalculan. */
+export interface CosteoValidacionLine {
+  producto: string;
+  sku?: string;
+  color?: string;
+  cantidad: number;
+  etapaCosteo?: string;
+  moneda?: string;
+  costoDistr: number;
+  descuentoPct: number;
+  costoReal: number;
+  conversion: number;
+  gastosPct: number;
+  costoEmbellecimiento: number;
+  costoTotal: number;
+  techo: number;
+  precioSugerido: number;
+  precioVenta: number;
+  ivaPct: number;
+  subtotal: number;
+  iva: number;
+  totalConIva: number;
+  margenGobPct: number;
+  margenGobTotal: number;
+  utilidad: number;
+  utilidadPct: number;
+}
+
+export interface CosteoValidacionData {
+  kind: 'validacion-costeo';
+  nombre: string;
+  folio?: string;
+  institucion?: string;
+  vendedor?: string;
+  zona?: string;
+  lineas: CosteoValidacionLine[];
+  subtotal: number;
+  iva: number;
+  total: number;
+}
+
 export interface RemisionInventarioData {
   kind: 'remision-inventario';
   movimientoId: number;
@@ -100,7 +146,7 @@ export interface ConstanciaFirmaData {
   contexto?: string;
 }
 
-export type DocData = SolicitudCosteoData | CotizacionData | RemisionInventarioData | ConstanciaFirmaData;
+export type DocData = SolicitudCosteoData | CotizacionData | CosteoValidacionData | RemisionInventarioData | ConstanciaFirmaData;
 
 /** Firma ya asentada, tal como la pinta el PDF regenerado. */
 export interface RenderedSignature {
@@ -317,6 +363,87 @@ function cotizacionBlocks(d: CotizacionData): Block[] {
   return blocks;
 }
 
+const money = (n: number): string => `$${NUM(n)}`;
+const pct = (n: number): string => `${NUM(n)}%`;
+
+/** Hoja de costeo en horizontal (2026-08-14), "solo lo ven compras y admin"
+ * (worker/lib/documents.ts assertTemplateViewable). Sale sola al mandar a
+ * validación, sin ceremonia de firma.
+ *
+ * Imprime las columnas de decisión (costo real/total, precio, subtotal/IVA/
+ * total, márgenes) — NO las 24 de la grid completa: a ese detalle (etapa
+ * costeo, conversión, gastos %, desc. %, costo embell., techo, sugerido, IVA%
+ * por línea, margen gob total) se le probó primero con TODAS las columnas y el
+ * texto salía cortado con elipsis, empezando por los importes — inservible
+ * para validar un costeo. costeoValidacionData sí captura todo ese detalle en
+ * el snapshot JSON (documents.data) por si hace falta auditarlo; el PDF solo
+ * imprime lo que cabe legible. */
+function costeoValidacionBlocks(d: CosteoValidacionData): Block[] {
+  const blocks: Block[] = [
+    { kind: 'heading', text: 'Datos de la oportunidad' },
+    {
+      kind: 'kv',
+      columns: 1,
+      rows: [
+        ['Oportunidad', d.nombre],
+        ['Institución', d.institucion ?? ''],
+        ['Vendedor', d.vendedor ?? ''],
+        ['Zona', d.zona ?? ''],
+      ],
+    },
+    { kind: 'heading', text: 'Costeo por partida' },
+  ];
+
+  if (d.lineas.length === 0) {
+    blocks.push({ kind: 'text', text: 'La oportunidad no tiene líneas de producto capturadas.', color: '#5b6472' });
+    return blocks;
+  }
+
+  blocks.push({
+    kind: 'wrapTable',
+    wrapCols: [0],
+    cellSize: 8,
+    headerSize: 7,
+    columns: [
+      { header: 'Producto', width: 0.145 },
+      { header: 'SKU', width: 0.07 },
+      { header: 'Color', width: 0.08 },
+      { header: 'Cant.', width: 0.03, align: 'right' },
+      { header: 'Moneda', width: 0.05 },
+      { header: 'Costo real C/U', width: 0.075, align: 'right' },
+      { header: 'Costo total C/U', width: 0.08, align: 'right' },
+      { header: 'P. venta', width: 0.075, align: 'right' },
+      { header: 'Subtotal', width: 0.09, align: 'right' },
+      { header: 'IVA', width: 0.08, align: 'right' },
+      { header: 'Total c/IVA', width: 0.1, align: 'right' },
+      { header: 'Margen Gob %', width: 0.06, align: 'right' },
+      { header: 'Utilidad', width: 0.08, align: 'right' },
+      { header: 'Utilidad %', width: 0.06, align: 'right' },
+    ],
+    rows: d.lineas.map(l => [
+      l.producto,
+      l.sku ?? '',
+      l.color ?? '',
+      NUM(l.cantidad),
+      l.moneda ?? '',
+      money(l.costoReal),
+      money(l.costoTotal),
+      money(l.precioVenta),
+      money(l.subtotal),
+      money(l.iva),
+      money(l.totalConIva),
+      pct(l.margenGobPct),
+      money(l.utilidad),
+      pct(l.utilidadPct),
+    ]),
+    footer: ['', '', '', '', '', '', '', '', money(d.subtotal), money(d.iva), money(d.total), '', '', ''],
+    headerFill: CMP_ORANGE,
+    headerTextColor: '#ffffff',
+  });
+
+  return blocks;
+}
+
 function remisionBlocks(d: RemisionInventarioData): Block[] {
   const blocks: Block[] = [
     { kind: 'heading', text: 'Movimiento' },
@@ -430,6 +557,7 @@ export function titleOf(data: DocData): string {
   switch (data.kind) {
     case 'solicitud-costeo': return `Solicitud de costeo`;
     case 'cotizacion': return `Cotización`;
+    case 'validacion-costeo': return `Costeo — Validación`;
     case 'remision-inventario': return `Remisión de inventario`;
     case 'constancia-firma': return `Constancia de firma electrónica`;
   }
@@ -439,6 +567,7 @@ function subtitleOf(data: DocData): string | undefined {
   switch (data.kind) {
     case 'solicitud-costeo': return data.nombre;
     case 'cotizacion': return data.institucion ?? data.cliente;
+    case 'validacion-costeo': return data.nombre;
     case 'remision-inventario': return `${data.tipo} · ${data.producto}`;
     case 'constancia-firma': return data.archivo;
   }
@@ -448,6 +577,7 @@ function folioOf(data: DocData): string | undefined {
   switch (data.kind) {
     case 'solicitud-costeo': return data.folio;
     case 'cotizacion': return data.folio;
+    case 'validacion-costeo': return data.folio;
     case 'remision-inventario': return data.folio ?? `MOV-${data.movimientoId}`;
     case 'constancia-firma': return undefined;
   }
@@ -456,6 +586,7 @@ function folioOf(data: DocData): string | undefined {
 export function buildBlocks(input: RenderInput): Block[] {
   const body = input.data.kind === 'solicitud-costeo' ? solicitudBlocks(input.data)
     : input.data.kind === 'cotizacion' ? cotizacionBlocks(input.data)
+    : input.data.kind === 'validacion-costeo' ? costeoValidacionBlocks(input.data)
     : input.data.kind === 'remision-inventario' ? remisionBlocks(input.data)
     : constanciaBlocks(input.data, input.baseSha256);
   return [...body, { kind: 'spacer', height: 10 }, ...signatureBlocks(input)];
@@ -475,6 +606,10 @@ export function metaOf(input: RenderInput): DocumentMeta {
     // Mismo membrete que la OC a Proveedor (worker/lib/pdf/ordenCompraProveedor.ts)
     // — antes caía al texto "MEXICANA DE PROTECCIÓN" del fallback de layout.ts.
     logo: base64ToBytes(LOGO_JPG_BASE64),
+    // Horizontal: la hoja de costeo trae ~24 columnas (todas las de la grid de
+    // Costeo) — en carta vertical no caben ni con fuente chica (Efraín,
+    // 2026-08-14: "en horizontal para que quepan todas las columnas").
+    landscape: input.data.kind === 'validacion-costeo',
   };
 }
 
