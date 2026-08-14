@@ -3,6 +3,7 @@
 // (createSubitem, sin pasar por cmp-tallas). El Sheet + "Importar tallas"
 // (worker/lib/automations.ts) siguen intactos como flujo paralelo — esto no los
 // reemplaza, solo da una alta rápida alternativa.
+import type { ExecutionContext } from 'hono';
 import type { Env } from '../env';
 import type { Identity, MirrorItem } from '../../shared/types';
 import type { TallaBoxInput, CapturarTallasResponse } from '../../shared/dto';
@@ -15,12 +16,17 @@ import {
 import { emitNotification } from './notify';
 import { upsertItem, refetchItem } from '../sync';
 import { BOARDS } from '../../shared/boards';
+import { isNativeId } from '../../shared/nativeId';
 import { PROYECTO_DOCUMENTO_COL } from './portalFiles';
 import { renderDocument, type Block } from './pdf/layout';
 import { fechaLarga } from './pdf/templates';
 import { createDocuSealSubmission } from './docuseal';
 import { getOrCreateDriveFolderForOportunidad, uploadPdfToDrive } from './drive';
 import { fmtNumMx as NUM } from './importeEnLetras';
+import { reserveNativeId } from './nativeSeq';
+import { rawHash, type RawColumn } from './canon';
+import { submitWrite } from './outbox';
+import { oportunidadFileKey, putFile } from './r2';
 
 export type { TallaBoxInput };
 
@@ -257,6 +263,28 @@ export function needsUpdate(cols: Map<string, RawCol>, desired: Record<string, u
  * verdad no cambió nada. No borra: a diferencia de import_tallas.py esto es
  * siempre aditivo/correctivo, nunca una fuente de verdad que reemplaza al
  * Proyecto completo. */
+// Tipo Monday de cada columna que buildTallaColumns puede llenar — necesario
+// para convertir su forma de ESCRITURA ({item_ids:[...]} etc.) al RawColumn
+// que necesita un subitem nativo (shared/nativeId.ts), que nunca pasa por un
+// echo real de Monday que lo resuelva por su cuenta.
+const TALLA_COL_TYPES: Record<string, string> = {
+  [SUB_PRODUCTO]: 'text', [SUB_SKU]: 'text', [SUB_COLOR]: 'text', [SUB_TALLA]: 'text',
+  [SUB_CANTIDAD]: 'numeric', [SUB_COSTO]: 'numeric', [SUB_MONEDA]: 'text',
+  [SUB_DESCUENTO]: 'numeric', [SUB_UNIDAD]: 'text', [SUB_PROVEEDOR]: 'board_relation',
+};
+
+function nativeTallaColumns(desired: Record<string, unknown>): RawColumn[] {
+  return Object.entries(desired).map(([id, raw]) => {
+    const type = TALLA_COL_TYPES[id] ?? 'text';
+    if (type === 'board_relation') {
+      const ids = (raw as { item_ids?: number[] }).item_ids ?? [];
+      return { id, type, text: ids.join(','), value: JSON.stringify({ linked_item_ids: ids }) };
+    }
+    const text = String(raw);
+    return { id, type, text, value: JSON.stringify(text) };
+  });
+}
+
 export async function capturarTallas(
   env: Env, viewer: Identity, proyectoId: number, rows: TallaBoxInput[],
 ): Promise<CapturarTallasResponse> {
@@ -281,6 +309,7 @@ export async function capturarTallas(
     if (!byKey.has(key)) byKey.set(key, row);
   }
 
+  const native = isNativeId(proyectoId);
   let created = 0;
   let updated = 0;
   let omitted = 0;
@@ -293,18 +322,41 @@ export async function capturarTallas(
     const desired = buildTallaColumns(r, enrichment.get(r.subitemId));
     const match = byKey.get(key);
     if (!match) {
-      const subitem = await createSubitem(env, proyectoId, r.producto.trim(), desired);
-      await upsertItem(env, 'proyectos_sub', subitem);
+      if (native) {
+        const subId = await reserveNativeId(env);
+        const columns = nativeTallaColumns(desired);
+        const now = new Date().toISOString();
+        await env.DB
+          .prepare(
+            `INSERT INTO items (board_id, item_id, parent_item_id, name, group_id, vendedor_ids, monday_updated_at, synced_at, content_hash, columns)
+             VALUES (?, ?, ?, ?, NULL, '[]', ?, ?, ?, ?)`,
+          )
+          .bind(BOARDS.proyectos_sub.id, subId, proyectoId, r.producto.trim(), now, now, rawHash(columns), JSON.stringify(columns))
+          .run();
+      } else {
+        const subitem = await createSubitem(env, proyectoId, r.producto.trim(), desired);
+        await upsertItem(env, 'proyectos_sub', subitem);
+      }
       created++;
       continue;
     }
     if (!needsUpdate(colsOf(match), desired)) { omitted++; continue; }
-    await gql(
-      env,
-      `mutation($b:ID!,$i:ID!,$cv:JSON!){ change_multiple_column_values(board_id:$b,item_id:$i,column_values:$cv){ id } }`,
-      { b: String(BOARDS.proyectos_sub.id), i: String(match.item_id), cv: JSON.stringify(desired) },
-    );
-    await refetchItem(env, BOARDS.proyectos_sub.id, match.item_id);
+    if (native) {
+      const columns = nativeTallaColumns(desired);
+      const byId = new Map(colsOf(match).entries());
+      for (const c of columns) byId.set(c.id, c);
+      await env.DB
+        .prepare(`UPDATE items SET columns = ?, synced_at = ? WHERE board_id = ? AND item_id = ?`)
+        .bind(JSON.stringify([...byId.values()]), new Date().toISOString(), BOARDS.proyectos_sub.id, match.item_id)
+        .run();
+    } else {
+      await gql(
+        env,
+        `mutation($b:ID!,$i:ID!,$cv:JSON!){ change_multiple_column_values(board_id:$b,item_id:$i,column_values:$cv){ id } }`,
+        { b: String(BOARDS.proyectos_sub.id), i: String(match.item_id), cv: JSON.stringify(desired) },
+      );
+      await refetchItem(env, BOARDS.proyectos_sub.id, match.item_id);
+    }
     updated++;
   }
 
@@ -516,6 +568,67 @@ export interface ConfirmTallasResult {
   errors?: string[];
   pdfUrl?: string;
   docusealId?: string;
+}
+
+/** "Validar tallas" para un Proyecto nativo (Zona Efrain, "salir de Monday").
+ * Mismo gate que el flujo real (`checkTodoCuadra`, ya 100% D1) y el mismo PDF
+ * (`relacionTallasBlocks`, función pura reusada tal cual) — pero el PDF va a
+ * R2 en vez de subirse a una columna de Monday, y el rechazo mueve el status
+ * con el `submitWrite` nativo en vez de un `gql` directo. Sin DocuSeal ni
+ * Drive (ninguno aplica a un Proyecto que no existe en Monday). */
+export async function confirmTallasNativeD1(
+  env: Env, ctx: ExecutionContext, viewer: Identity, proyectoId: number,
+): Promise<ConfirmTallasResult> {
+  if (!(await ownsItem(env, 'proyectos', proyectoId, viewer))) return { ok: false, errors: ['not found'] };
+
+  const gate = await checkTodoCuadra(env, viewer, proyectoId);
+  if (!gate.ok) {
+    await submitWrite(env, ctx, 'proyectos', proyectoId, { [PROYECTO_STATUS]: PROYECTO_STATUS_REVERT }, viewer, { trusted: true });
+    const detalle = gate.mismatches.map(m => `${m.producto}${m.color ? ` (${m.color})` : ''}: cotizado ${m.cotizado}, asignado ${m.asignado}`);
+    return { ok: false, errors: gate.reason ? [gate.reason] : detalle };
+  }
+
+  const proyecto = await getItem(env, 'proyectos', proyectoId, viewer, 'own');
+  if (!proyecto) return { ok: false, errors: ['not found'] };
+  const pCols = colsOf(proyecto);
+
+  const lineas = (await childrenOf(env, 'proyectos', proyectoId, viewer))
+    .map(s => {
+      const c = colsOf(s);
+      return {
+        producto: c.get(SUB_PRODUCTO)?.text || '',
+        sku: c.get(SUB_SKU)?.text || '',
+        color: c.get(SUB_COLOR)?.text || '',
+        talla: c.get(SUB_TALLA)?.text || '',
+        cantidad: Number((c.get(SUB_CANTIDAD)?.text ?? '').replace(/,/g, '')) || 0,
+      };
+    })
+    .filter(l => l.cantidad > 0);
+
+  const seq = await nextTallasSeq(env, proyectoId);
+  const folioProyecto = pCols.get(PROYECTO_FOLIO)?.text || String(proyectoId);
+  const filename = `tallas_${folioProyecto}_${seq}.pdf`;
+
+  const pdfBytes = renderDocument(
+    { title: 'Relación de tallas', subtitle: proyecto.name, folio: folioProyecto, docId: `tallas-${proyectoId}-${seq}`, generatedAt: fechaLarga(new Date().toISOString()) },
+    relacionTallasBlocks({
+      proyectoNombre: proyecto.name,
+      folioOpp: pCols.get(PROYECTO_FOLIO_OPP)?.text || '',
+      cargo: pCols.get(PROYECTO_CARGO)?.text || '',
+      cliente: pCols.get(PROYECTO_CLIENTE)?.text || '',
+      institucion: pCols.get(PROYECTO_INSTITUCION)?.text || '',
+    }, lineas),
+  );
+
+  let pdfUrl = '';
+  const oppId = linkedItemId(proyecto, PROYECTO_OPP_REL);
+  if (oppId != null) {
+    const key = oportunidadFileKey(oppId, 'tallas', filename);
+    await putFile(env, key, new Blob([pdfBytes], { type: 'application/pdf' }));
+    pdfUrl = `/api/files/${key}`;
+  }
+
+  return { ok: true, pdfUrl };
 }
 
 /** "Validar tallas" del vendedor — flujo completo nativo. `ownsItem`: muta el

@@ -443,6 +443,39 @@
     `scripts/perf-bench.mjs` + `scripts/perf-results/`) — se dejaron sin
     commitear, solo se stageó el archivo propio de este fix.
 
+- Feat: "salir de Monday" — Paso 7, tallas nativas (captura + confirmación,
+  100% en el portal) (`worker/lib/proyectoTallas.ts`,
+  `worker/routes/oportunidades.ts`)
+  - Confirmado por Efraín: en el portal las tallas se capturan directo (por
+    boxes), sin archivo ni Google Sheet — que es justo lo que `capturarTallas`
+    ya hacía para items reales (el Sheet/"Importar tallas" es un camino
+    PARALELO de Compras, no lo que se está reemplazando aquí).
+  - `capturarTallas` gana rama nativa: crear = fila nueva en `items` (mismo
+    espacio de ids sintéticos); actualizar = merge directo del `columns` JSON
+    en vez de `change_multiple_column_values`. El enriquecimiento de costeo
+    (`fetchCosteoEnrichment`, cruza contra el snapshot que congeló "Mandar a
+    costeo") y el cruce contra lo cotizado (`checkTodoCuadra`) ya eran 100%
+    D1 — funcionaron sin tocarlos.
+  - `confirmTallasNativeD1`: mismo gate (`checkTodoCuadra`) y mismo PDF
+    (`relacionTallasBlocks`, función pura reusada tal cual) que el flujo
+    real, pero el PDF va a R2 (mismo patrón `oportunidadFileKey` que ya usa
+    la subida de documento) en vez de a una columna de Monday; el rechazo
+    mueve el status con `submitWrite` nativo en vez de `gql` directo. Sin
+    DocuSeal ni Drive.
+  - Gap encontrado de paso: `POST /api/proyectos/:id/documento` (sube la OC/
+    cotización firmada del cliente, gate previo obligatorio de
+    `checkOcCliente`) llamaba `addFileToColumn` (Monday) sin condición —
+    hubiera fallado duro contra un Proyecto nativo. Ahora, para un id nativo,
+    el archivo va solo a R2 y se estampa un marcador de texto en
+    `items.columns` (`stampNativeFileMarker`) para que `checkOcCliente` lo
+    encuentre, igual que encontraría el mirror de una columna file real.
+  - Probado en local end-to-end sobre el Proyecto del Paso 6: capturar talla
+    (creó el subitem con costo/moneda/descuento correctos, cruzados desde el
+    snapshot de costeo real) → subir documento (marcador nativo) → confirmar
+    tallas (cotizado 5 = asignado 5, aceptó) → PDF real verificado
+    VISUALMENTE (Read del PDF: tabla producto/SKU/color/talla/cantidad
+    correcta). Outbox en cero en todo momento.
+
 - Feat: "salir de Monday" — Paso 6, "Ganar" → Proyecto nativo
   (`worker/lib/ganarOportunidad.ts`, `worker/lib/outbox.ts`)
   - `ganarOportunidadNativeD1`: crea el Proyecto como fila de `items` (mismo

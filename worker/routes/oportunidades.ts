@@ -21,7 +21,7 @@ import { generarCotizacionNative, generarCotizacionNativeD1, CotizacionError } f
 import { listVersions, duplicateVersion, restoreVersion, esDraftVigente, recordFirstVersion, QuoteVersionError } from '../lib/quoteVersions';
 import { ajustarLinea, AjusteLineaError } from '../lib/lineaAjustes';
 import { listCotizacionVirtual, ajustarLineaVirtual, ProyectoCotizacionError } from '../lib/proyectoCotizacionVirtual';
-import { capturarTallas, reportarTallasIncorrectas, checkOcCliente, confirmTallasNative } from '../lib/proyectoTallas';
+import { capturarTallas, reportarTallasIncorrectas, checkOcCliente, confirmTallasNative, confirmTallasNativeD1 } from '../lib/proyectoTallas';
 import { generarOcNative } from '../lib/oc';
 import { listEstadoHistorial } from '../lib/estadoProducto';
 import { listProductoResumen, upsertProductoResumen } from '../lib/productoResumen';
@@ -107,6 +107,26 @@ async function notifyCosteoIncompleto(env: Env, viewer: Identity, itemId: number
       dedupeKey: `costeo:${itemId}:${md5(errors.join('|'))}`,
     });
   } catch { /* best-effort — no bloquea la respuesta 422 */ }
+}
+
+/** Estampa un marcador de archivo en una columna tipo file de un Proyecto
+ * nativo (Zona Efrain, "salir de Monday") — el archivo real vive en R2
+ * (oportunidadFileKey), esto solo deja `text` no vacío para que checks como
+ * checkOcCliente (worker/lib/proyectoTallas.ts) lo encuentren, igual que lo
+ * haría el mirror de un file column real de Monday. */
+async function stampNativeFileMarker(env: Env, itemId: number, colId: string, filename: string): Promise<void> {
+  const row = await env.DB
+    .prepare(`SELECT columns FROM items WHERE board_id = ? AND item_id = ?`)
+    .bind(BOARDS.proyectos.id, itemId)
+    .first<{ columns: string }>();
+  const existing: { id: string; type: string; text: string | null; value: string | null }[] =
+    row ? JSON.parse(row.columns || '[]') : [];
+  const filtered = existing.filter(c => c.id !== colId);
+  filtered.push({ id: colId, type: 'file', text: filename, value: JSON.stringify({ files: [{ name: filename }] }) });
+  await env.DB
+    .prepare(`UPDATE items SET columns = ?, synced_at = ? WHERE board_id = ? AND item_id = ?`)
+    .bind(JSON.stringify(filtered), new Date().toISOString(), BOARDS.proyectos.id, itemId)
+    .run();
 }
 
 // "Solicitud Costeo" (docs/monday-column-map.md) — antes la llenaba el PDF de Eledo
@@ -1033,6 +1053,18 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     const file = form.get('file');
     if (!(file instanceof File)) return c.json({ error: 'file is required' }, 400);
 
+    // Proyecto nativo (Zona Efrain, "salir de Monday"): no existe columna de
+    // Monday a la que subir — el archivo vive SOLO en R2, y se estampa un
+    // marcador en `items.columns` para que checkOcCliente (worker/lib/
+    // proyectoTallas.ts) encuentre texto no vacío en PROYECTO_DOCUMENTO_COL.
+    if (isNativeId(itemId)) {
+      const oppId = linkedItemId(row, PROYECTO_OPP_REL);
+      const key = oppId != null ? oportunidadFileKey(oppId, 'documento', file.name) : null;
+      if (key) await putFile(c.env, key, file);
+      await stampNativeFileMarker(c.env, itemId, PROYECTO_DOCUMENTO_COL, file.name);
+      return c.json({ ok: true, id: `native-${Date.now()}`, name: file.name, url: key ? `/api/files/${key}` : '' });
+    }
+
     const asset = await addFileToColumn(c.env, itemId, PROYECTO_DOCUMENTO_COL, file, file.name);
     c.executionCtx.waitUntil(refetchItem(c.env, BOARDS.proyectos.id, itemId));
 
@@ -1082,7 +1114,9 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       // corre en paralelo contra Proyectos reales antes de cortar el cable.
       // "tallas-regenerar"/"tallas-importar" siguen en cmp-tallas (dependen del
       // Sheet, que esta fase retiró — Efraín, 2026-08-12).
-      const result = actionKey === 'tallas-confirmar' && c.env.TALLAS_NATIVE === '1'
+      const result = actionKey === 'tallas-confirmar' && isNativeId(itemId)
+        ? await confirmTallasNativeD1(c.env, c.executionCtx, viewer, itemId)
+        : actionKey === 'tallas-confirmar' && c.env.TALLAS_NATIVE === '1'
         ? await confirmTallasNative(c.env, viewer, itemId)
         : actionKey === 'generar-oc' && c.env.OC_NATIVE === '1'
         ? await generarOcNative(c.env, viewer, itemId, opts)
