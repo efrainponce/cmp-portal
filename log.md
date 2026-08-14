@@ -2,6 +2,26 @@
 
 ## 2026-08-14
 
+- Fix: "+ Nueva versión"/"Restaurar versión" no aparecían al abrir una
+  oportunidad ya costeada desde el board Costeo. Reportado por Efraín con
+  captura (OPP-0907, V1 vigente con PDFs ya generados, stage "En costeo"):
+  "ya tiene cotización y no puedo crear una V2 es absurdo".
+  - Causa: `OpportunityDrawer.tsx` gateaba ambos chips con `noLineEdits`
+    (`readOnlyCosteo || isValidacion || ajena`) — la misma bandera que
+    bloquea la edición INLINE de producto/color/cantidad desde Costeo
+    (trabajo de Ventas, intencional). Pero versionar es una acción de
+    archivo aparte: `worker/lib/quoteVersions.ts` (`duplicateVersion`/
+    `restoreVersion`) no tiene ni ha tenido candado de `boardKey`, solo
+    bloquea Ganada/Perdida — el chip desaparecía sin respaldo del server,
+    dejando una vigente ya costeada sin ninguna vía de cambio si el item se
+    abría desde Costeo en vez de Oportunidades.
+  - Fix: nueva condición `canVersion` (stage no Ganada/Perdida, no
+    Validación, no ajena) separada de `noLineEdits` — Validación se queda
+    bloqueada (ahí lo único editable es Precio de Venta), Costeo ya no.
+    `noLineEdits` se queda igual para todo lo demás (edición inline, tab
+    Nuevos productos).
+  - `npm run typecheck`, `npm run lint` y `npm test` (268 tests) limpios.
+
 - Fix: el delta sync (cron cada 15 min, `worker/sync/delta.ts`) llevaba 3 días
   mudo — 0 filas en `sync_log` desde 2026-08-11 21:31, ni éxito ni fallo.
   Reportado por Elizabeth: OPP-0904 "CHAMARRAS LA PAZ" creada directo en
