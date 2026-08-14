@@ -15,7 +15,7 @@
 // the mirror catches up on refetch.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ColMeta, ColVal, ItemDetailDTO, ItemDTO, QuoteVersionDTO } from '../../../lib/api';
-import { patchItem, apiFetch, listItems, getProductoGenero, patchProductoGenero } from '../../../lib/apiClient';
+import { patchItem, apiFetch, getCatalogoProductos, getProductoGenero, patchProductoGenero } from '../../../lib/apiClient';
 import { Button } from '../../../components/core/Button';
 import { previewRow, COL } from '../../../lib/costeoCalc';
 import { useIsMobile } from '../../../lib/useIsMobile';
@@ -185,7 +185,7 @@ export function CotizacionTab({
   const [generoMF, setGeneroMFMap] = useState<Record<string, boolean>>({});
   useEffect(() => {
     if (canAddLines || variant === 'costeo' || canAjustar) {
-      listItems('productos')
+      getCatalogoProductos()
         .then((c) => { setCatalog(c); setCatalogLoading(false); })
         .catch(() => setCatalogLoading(false));
       // Checkbox "Género M/F" (worker/lib/productoGenero.ts) — nativo en D1, no

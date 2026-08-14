@@ -13,6 +13,7 @@ import type {
 import type { AddProposedProductResponse, ProposedProductDTO, ProposedProductsResponse } from '../../shared/productosPropuestos';
 import { mockBoardMeta, mockItemDetail, mockPatch } from './mockFallback';
 import { getImpersonateTarget } from './impersonation';
+import { tomarPrecarga } from './apiPreload';
 import { markSessionExpired } from './sessionState';
 
 export type {
@@ -75,7 +76,15 @@ export async function apiFetch(path: string, init?: RequestInit): Promise<Respon
   const target = getImpersonateTarget();
   const headers = new Headers(init?.headers);
   if (target) headers.set('X-Impersonate-Email', target);
-  const res = await fetch('/api' + path, { credentials: 'same-origin', ...init, headers });
+  const url = '/api' + path;
+  // ¿Ya lo pidió el script inline de index.html antes de que existiera el
+  // bundle? Solo aplica si es idéntico y sin suplantación (la precarga no
+  // manda X-Impersonate-Email, así que traería datos del admin). Si algo no
+  // cuadra, cae al fetch normal.
+  const precargada = target ? null : tomarPrecarga(url, init);
+  const res = precargada
+    ? await precargada.catch(() => fetch(url, { credentials: 'same-origin', ...init, headers }))
+    : await fetch(url, { credentials: 'same-origin', ...init, headers });
   if (res.status === 401) {
     if (recoverFromAccessSession()) return new Promise<Response>(() => {});
     markSessionExpired();
@@ -119,6 +128,34 @@ export async function getBoards(): Promise<BoardMeta[]> {
   const res = await apiFetch('/boards');
   if (!res.ok) throw new Error('GET /boards failed: ' + res.status);
   return res.json();
+}
+
+// Catálogo de Productos cacheado por sesión.
+//
+// La pestaña Cotización lo pide con `listItems('productos')` cada vez que monta
+// (y hasta DOS veces por montaje: las deps del efecto cambian cuando termina de
+// cargar el item). Son 1247 productos con sus 19 columnas: 1.86 MB crudos,
+// 260 KB comprimidos — POR APERTURA de oportunidad, en los boards donde la
+// grid es editable o es Costeo. Cachear la promesa a nivel módulo deja una sola
+// descarga por sesión.
+//
+// Se invalida en cuanto alguien escribe un producto (ver patchItem): la grid ya
+// hace update optimista de su copia local, pero el caché tiene que soltar la
+// versión vieja para que la siguiente apertura no la reviva.
+let catalogoProductos: Promise<ItemDTO[]> | null = null;
+
+export function getCatalogoProductos(): Promise<ItemDTO[]> {
+  if (!catalogoProductos) {
+    catalogoProductos = listItems('productos').catch((e) => {
+      catalogoProductos = null; // no cachear fallas — el siguiente intento reintenta
+      throw e;
+    });
+  }
+  return catalogoProductos;
+}
+
+export function invalidarCatalogoProductos(): void {
+  catalogoProductos = null;
 }
 
 /** Catálogo genérico de un board (usado para el picker de producto al agregar una
@@ -181,6 +218,8 @@ export async function getItem(slug: BoardSlug, id: string, opts?: { fresh?: bool
 }
 
 export async function patchItem(slug: BoardSlug, id: string, cols: Record<string, string>): Promise<WriteResponse> {
+  // Escribir un producto deja obsoleto el catálogo cacheado (getCatalogoProductos).
+  if (slug === 'productos') invalidarCatalogoProductos();
   try {
     const res = await apiFetch(`/boards/${slug}/items/${id}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cols }),

@@ -2,6 +2,76 @@
 
 ## 2026-08-13
 
+- Perf (3a ronda): precarga de datos desde el HTML, drawers diferidos y
+  catálogo de Productos cacheado
+  - Efraín pidió "sé un loco de la optimización sin perder usabilidad". Se midió
+    primero la CASCADA de requests (no los bytes) contra producción con caché
+    fría, red 1.5 Mbps y CPU 4x — de ahí salieron los tres cambios.
+  - Cascada de partida (prod, fría, 3.6 s hasta ver datos): HTML 0.75 s →
+    `index.js` hasta 1.51 → tanda de chunks+fuente hasta 2.60 → **`/items` recién
+    arrancaba a los 2.50**. O sea: el request que de verdad importa esperaba a
+    que bajara y se ejecutara todo el bundle.
+  - **Precarga desde index.html** (`index.html`, `src/lib/apiPreload.ts`,
+    `apiClient.ts`): un `<script>` inline (no `type=module`, que se difiere)
+    dispara `/api/me`, `/api/boards` y la lista/detalle que corresponda a la
+    ruta, ANTES de que exista el bundle. `apiFetch` las recoge. Medido local:
+    `/items` pasa de arrancar en 2.13 s a 0.33 s.
+    - Sólo se usa una precarga si coincide el path exacto, es GET, no lleva
+      headers que cambien la respuesta (If-None-Match sobre todo) y **no hay
+      suplantación activa** — la precarga no puede mandar `X-Impersonate-Email`,
+      así que bajo "ver como" devolvería la data del admin. Si algo no cuadra,
+      `apiFetch` hace el request normal.
+    - En un deep link (`/oportunidades/123`) la lista NI se monta, así que se
+      precarga el detalle, no la lista.
+    - **Bug propio, atrapado midiendo**: `URLSearchParams` escapa las comas a
+      `%2C`, así que la URL de la app no coincidía con la precargada y la lista
+      se bajaba DOS veces — la "optimización" salía peor que no hacer nada
+      (3.10 s vs 2.77 s). Se cambió por `queryLista()` y hay test que compara la
+      URL completa carácter por carácter, no sólo el set de columnas.
+    - `src/lib/apiPreload.test.ts` ancla que las columnas del HTML y las de
+      `LIST_COLS` no se separen: si se separan, la precarga nunca coincide y la
+      optimización se apaga en silencio (nada falla, sólo vuelve a estar lento).
+      Verificado que el test falla si se desvía una columna.
+  - **Drawers diferidos con precarga en idle** (`src/lib/lazyPrefetch.ts` +
+    los 3 wrappers de board): `OpportunityDrawer`/`ProyectoDrawer` se importaban
+    estáticos, así que sus ~50 KB bajaban antes de ver la lista, para UI que
+    quizá nunca se abre. Ahora son `lazy()` y se precargan cuando el navegador
+    está ocioso, así el clic sigue siendo instantáneo.
+    - Detalle que costó una medición: `requestIdleCallback` mide el HILO
+      PRINCIPAL, no la red. Mientras se espera `/items` el hilo está libre, así
+      que la precarga disparaba a los 1.8 s, justo encima del request que se
+      quería proteger. Se gatea con `onReady` de la lista (dispara cuando ya
+      hay datos pintados).
+  - **Catálogo de Productos cacheado por sesión** (`apiClient.ts`,
+    `CotizacionTab.tsx`): la pestaña Cotización pedía `listItems('productos')`
+    —1247 productos con 19 columnas, **259 KB gz**— en cada montaje y DOS veces
+    por montaje (las deps del efecto cambian al cargar el item). Abrir 3
+    oportunidades en Costeo eran ~1,554 KB de puro catálogo. Ahora es una sola
+    descarga por sesión (verificado: 3 aperturas → 259 KB una vez), y se
+    invalida en cualquier `patchItem('productos', …)` para no revivir datos
+    viejos tras editar.
+  - **Medido (red lenta, CPU 4x), contra la ronda anterior**:
+    | | antes | después |
+    |---|---|---|
+    | Bytes de carga inicial | 269.0 KB | 163.1 KB (-39%) |
+    | Contenido en pantalla (LCP) | 2060 ms | 1532 ms (-26%) |
+    | Datos en pantalla | 3015 ms | 2452 ms (-19%) |
+    | 2a visita (caché tibia) | 1595 ms | 1277 ms (-20%) |
+    | Catálogo por apertura en Costeo | 518 KB | 0 KB (tras la 1a) |
+    - El FCP sube de 1180 a 1532 ms y es real, no ruido: antes se pintaba un
+      cascarón vacío a los 1180 y la lista hasta los 2060; ahora, con los datos
+      ya disponibles cuando React monta, el PRIMER pintado ya trae la lista
+      (por eso FCP y LCP coinciden). Se cambió un parpadeo intermedio por
+      contenido real medio segundo antes.
+  - **Dos cosas que se probaron y se DESCARTARON por no comprarse con datos**:
+    - `priority: 'low'` en los fetch de precarga (para que el bundle ganara el
+      ancho de banda): FCP 1532 → 1560 ms, ruido. Revertido.
+    - Fusionar los ~11 chunks de ~1 KB (`codeSplitting.minSize` de Rolldown):
+      los ~350 ms que costaban se midieron contra `wrangler dev`, que habla
+      HTTP/1.1. Producción va por HTTP/3 multiplexado y ahí esos requests no
+      eran el cuello. Queda anotado en `vite.config.ts` para que no se reintente
+      sin medir contra prod.
+
 - Tooling: verificación contra PRODUCCIÓN (`scripts/prod-login.mjs`,
   `scripts/prod-smoke.mjs`)
   - Efraín preguntó si había forma de que yo pudiera entrar a producción para

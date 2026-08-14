@@ -1,12 +1,18 @@
 import { lazy, Suspense, useState } from 'react';
 import { StageBoardList } from './StageBoardList';
-import { OpportunityDrawer } from './OpportunityDrawer';
+import { usePrefetchOnIdle } from '../../lib/lazyPrefetch';
 import { STAGE_BOARDS, type StageBoardKey } from '../../lib/dealStages';
 import { Button } from '../../components/core/Button';
 import { IconPlus } from '../../components/icons';
 
 // El modal solo pesa cuando alguien lo abre.
 const CreateOportunidadModal = lazy(() => import('./CreateOportunidadModal'));
+
+// El drawer no se necesita para VER la lista: se precarga en cuanto el hilo
+// principal se desocupa, así no le pelea ancho de banda a /items (ver
+// lazyPrefetch) y el clic en un renglón sigue siendo instantáneo.
+const cargarDrawer = () => import('./OpportunityDrawer').then((m) => ({ default: m.OpportunityDrawer }));
+const OpportunityDrawer = lazy(cargarDrawer);
 
 interface Props {
   boardKey: StageBoardKey;
@@ -31,14 +37,20 @@ interface Props {
 export function StageBoard({ boardKey, openId, onOpenChange, onDuplicated }: Props) {
   const config = STAGE_BOARDS[boardKey];
   const [q, setQ] = useState('');
+  // El drawer se precarga SOLO cuando la lista ya pintó: si no, el idle
+  // callback dispara mientras se espera /items (el hilo está libre esperando
+  // la red) y le roba ancho de banda justo al request que importa.
+  const [listaLista, setListaLista] = useState(false);
   const [creating, setCreating] = useState(false);
   const canCreate = boardKey === 'costeo' || boardKey === 'zona_efrain';
+  usePrefetchOnIdle(cargarDrawer, listaLista);
 
   return (
     <div style={{ position: 'relative', height: '100%', width: '100%' }}>
       {!openId && (
         <StageBoardList
           config={config}
+          onReady={() => setListaLista(true)}
           q={q}
           onSearch={setQ}
           onOpen={onOpenChange}
@@ -50,6 +62,7 @@ export function StageBoard({ boardKey, openId, onOpenChange, onDuplicated }: Pro
         />
       )}
       {openId && (
+        <Suspense fallback={<div style={{ padding: 32 }}>Cargando…</div>}>
         <OpportunityDrawer
           id={openId}
           backLabel={`Volver a ${config.title}`}
@@ -58,6 +71,7 @@ export function StageBoard({ boardKey, openId, onOpenChange, onDuplicated }: Pro
           boardKey={config.key}
           onDuplicated={onDuplicated}
         />
+        </Suspense>
       )}
       {canCreate && creating && (
         <Suspense fallback={null}>

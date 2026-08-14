@@ -16,6 +16,69 @@
          inmediato con la fuente de sistema y cambia cuando llega el woff2, así
          que el preload no compraba nada visible. -->
 
+    <!-- Precarga de datos: dispara los GET que la app va a pedir de todas
+         formas, SIN esperar a que baje y ejecute el bundle. Medido en
+         producción con red lenta y caché fría, /items no arrancaba hasta el
+         segundo 2.5 de una carga de 3.6 s, porque antes tenía que llegar el
+         HTML → bajar 76 KB de JS → parsearlo → montar React. Aquí sale a los
+         ~0.05 s. src/lib/apiPreload.ts las recoge; si algo falla, apiFetch
+         simplemente hace el request normal.
+
+         Va INLINE y sin `type=module` a propósito: un módulo se difiere hasta
+         después del parseo del documento, que es justo lo que se quiere
+         evitar. -->
+    <script>
+      (function () {
+        try {
+          // Con "ver como" activo, la respuesta depende del header
+          // X-Impersonate-Email que esta precarga no puede mandar — se
+          // devolvería la data del admin, no la del suplantado. Mejor no
+          // precargar nada (localStorage: ver src/lib/impersonation.ts).
+          if (localStorage.getItem('cmp:impersonateEmail')) return;
+        } catch (e) { return; }
+
+        var P = Object.create(null);
+        function pedir(url) {
+          // Se probó `priority: 'low'` aquí para que el bundle ganara la carrera
+          // de ancho de banda: no movió la aguja (FCP 1532 → 1560 ms, ruido),
+          // así que no se deja complejidad sin ganancia medida.
+          try { P[url] = fetch(url, { credentials: 'same-origin' }); } catch (e) { /* que siga */ }
+        }
+
+        // Columnas que pinta la lista de Oportunidades. DEBE coincidir con
+        // LIST_COLS en src/boards/oportunidades/StageBoardList.tsx — hay un
+        // test que lo verifica (worker/lib/serialize.test.ts no; ver
+        // src/lib/apiPreload.test.ts) para que no se separen en silencio.
+        var COLS = 'pulse_id_mm0qcq0m,lookup_mm1bs976,lookup_mm087at6,deal_owner,'
+                 + 'multiple_person_mm03qyw9,multiple_person_mm0wt53c,deal_contact,deal_stage';
+
+        pedir('/api/me');
+        pedir('/api/boards');
+
+        var seg = location.pathname.split('/');
+        var board = seg[1] || '';
+        var itemId = seg[2] || '';
+        // Los 5 boards de etapa leen el MISMO slug (oportunidades), solo
+        // cambia el filtro de etapa, que es client-side.
+        var esOportunidad = /^(oportunidades|oportunidades_web|costeo|validacion|zona_efrain)$/.test(board);
+        var esProyecto = /^(doctallas|ordenescompra|ejecucion|logistica)$/.test(board);
+
+        if (itemId) {
+          // Deep link a un item: la lista NI SE PINTA (el wrapper muestra solo
+          // el drawer), así que precargar la lista sería tirar bytes. Se
+          // precarga el detalle, que es lo que se va a ver.
+          if (esOportunidad) pedir('/api/boards/oportunidades/items/' + encodeURIComponent(itemId));
+          else if (esProyecto) pedir('/api/boards/proyectos/items/' + encodeURIComponent(itemId));
+        } else if (esOportunidad) {
+          pedir('/api/boards/oportunidades/items?cols=' + COLS);
+        } else if (esProyecto) {
+          pedir('/api/boards/proyectos/items');
+        }
+
+        window.__cmpPrecarga = P;
+      })();
+    </script>
+
     <link rel="icon" type="image/webp" href="/src/assets/logo.webp" />
     <link rel="apple-touch-icon" href="/src/assets/logo.webp" />
     <link rel="manifest" href="/manifest.json" />

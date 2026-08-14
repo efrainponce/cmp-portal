@@ -2,7 +2,7 @@
 // (Oportunidades, Costeo, Validación Costeo, Documentación y Tallas, Órdenes
 // de Compra, Logística) — same row template as Board Costeo/Validacion in the
 // design, just a different deal_stage filter + grouping column per board.
-import { memo, useMemo } from 'react';
+import { memo, useEffect, useMemo, useRef } from 'react';
 import { useBoards, usePoll, colForBoard, type ItemDTO } from '../../lib/api';
 import { useMe } from '../../lib/useMe';
 import { groupByColumn } from '../../lib/groupBy';
@@ -119,11 +119,14 @@ interface Props {
   q: string;
   onSearch: (q: string) => void;
   onOpen: (id: string) => void;
+  /** Se llama UNA vez, cuando la lista ya pintó datos. Lo usan los wrappers
+   * para precargar el drawer sin estorbarle a la carga inicial. */
+  onReady?: () => void;
   /** Botón/acción a la derecha del buscador (p.ej. "Nueva oportunidad"). */
   headerAction?: React.ReactNode;
 }
 
-export function StageBoardList({ config, groupColId = 'deal_stage', q, onSearch, onOpen, headerAction }: Props) {
+export function StageBoardList({ config, groupColId = 'deal_stage', q, onSearch, onOpen, onReady, headerAction }: Props) {
   const isMobile = useIsMobile();
   const viewerNombre = useMe()?.nombre;
   const { boards } = useBoards();
@@ -138,6 +141,15 @@ export function StageBoardList({ config, groupColId = 'deal_stage', q, onSearch,
     [groupColId],
   );
   const { status, data } = usePoll('oportunidades', q, pollCols);
+
+  // Avisa UNA vez que ya hay datos en pantalla. El wrapper lo usa para
+  // precargar el drawer: antes de esto la lista no compite con nada.
+  const avisado = useRef(false);
+  useEffect(() => {
+    if (avisado.current || status !== 'ready') return;
+    avisado.current = true;
+    onReady?.();
+  }, [status, onReady]);
   // Memoizado sobre data.items: el poll de 5 s re-renderiza este componente y
   // antes esta cadena de filtros corría de nuevo sobre los 628 items en CADA
   // render, devolviendo siempre un array nuevo. Eso además rompía los useMemo

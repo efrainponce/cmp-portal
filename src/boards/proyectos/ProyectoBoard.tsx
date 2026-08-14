@@ -1,7 +1,12 @@
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { ProyectoBoardList } from './ProyectoBoardList';
-import { ProyectoDrawer } from './ProyectoDrawer';
+import { usePrefetchOnIdle } from '../../lib/lazyPrefetch';
 import { PROJECT_BOARDS, type ProjectBoardKey } from '../../lib/projectStages';
+
+// Mismo criterio que en los boards de Oportunidades: el drawer se precarga
+// cuando el navegador está ocioso, no compitiendo con la carga de la lista.
+const cargarDrawer = () => import('./ProyectoDrawer').then((m) => ({ default: m.ProyectoDrawer }));
+const ProyectoDrawer = lazy(cargarDrawer);
 
 interface Props {
   boardKey: ProjectBoardKey;
@@ -19,11 +24,17 @@ interface Props {
 export function ProyectoBoard({ boardKey, openId, onOpenChange, onOpenOportunidad }: Props) {
   const config = PROJECT_BOARDS[boardKey];
   const [q, setQ] = useState('');
+  // El drawer se precarga SOLO cuando la lista ya pintó: si no, el idle
+  // callback dispara mientras se espera /items (el hilo está libre esperando
+  // la red) y le roba ancho de banda justo al request que importa.
+  const [listaLista, setListaLista] = useState(false);
+  usePrefetchOnIdle(cargarDrawer, listaLista);
 
   return (
     <div style={{ position: 'relative', height: '100%', width: '100%' }}>
-      {!openId && <ProyectoBoardList config={config} q={q} onSearch={setQ} onOpen={onOpenChange} />}
+      {!openId && <ProyectoBoardList config={config} q={q} onSearch={setQ} onOpen={onOpenChange} onReady={() => setListaLista(true)} />}
       {openId && (
+        <Suspense fallback={<div style={{ padding: 32 }}>Cargando…</div>}>
         <ProyectoDrawer
           id={openId}
           boardKey={boardKey}
@@ -32,6 +43,7 @@ export function ProyectoBoard({ boardKey, openId, onOpenChange, onOpenOportunida
           onBack={() => onOpenChange(null)}
           onOpenOportunidad={onOpenOportunidad}
         />
+        </Suspense>
       )}
     </div>
   );

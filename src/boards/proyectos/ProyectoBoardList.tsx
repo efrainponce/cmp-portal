@@ -2,6 +2,7 @@
 // y Tallas / Órdenes de Compra / Logística) — agrupada por project_status,
 // filtrada por config.statuses. Fuente: board Proyectos directo, nunca vía el
 // board_relation hacia la Oportunidad (Efraín, 2026-07-17 — ver dal.ts).
+import { useEffect, useRef } from 'react';
 import { useBoards, usePoll, colForBoard, type ItemDTO } from '../../lib/api';
 import { groupByColumn } from '../../lib/groupBy';
 import { GroupCard } from '../../components/layout/GroupCard';
@@ -57,15 +58,27 @@ interface Props {
   q: string;
   onSearch: (q: string) => void;
   onOpen: (id: string) => void;
+  /** Se llama UNA vez, cuando la lista ya pintó datos. Lo usan los wrappers
+   * para precargar el drawer sin estorbarle a la carga inicial. */
+  onReady?: () => void;
 }
 
-export function ProyectoBoardList({ config, q, onSearch, onOpen }: Props) {
+export function ProyectoBoardList({ config, q, onSearch, onOpen, onReady }: Props) {
   const isMobile = useIsMobile();
   const { boards } = useBoards();
   const cols = colForBoard(boards, 'proyectos');
   const statusCol = cols.find((c) => c.id === STATUS_COL);
   const estadoProductosCol = cols.find((c) => c.id === ESTADO_PRODUCTOS_COL);
   const { status, data } = usePoll('proyectos', q);
+
+  // Igual que StageBoardList: avisa una sola vez que ya hay datos pintados,
+  // para que el wrapper precargue el drawer sin estorbarle a esta carga.
+  const avisado = useRef(false);
+  useEffect(() => {
+    if (avisado.current || status !== 'ready') return;
+    avisado.current = true;
+    onReady?.();
+  }, [status, onReady]);
   const allItems = data?.items ?? [];
   const statusItems = allItems.filter((it) => config.statuses.includes(statusIndex(it.cols[STATUS_COL])));
   const sync = lastMondayUpdateFromItems(statusItems);

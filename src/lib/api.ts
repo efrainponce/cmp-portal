@@ -12,6 +12,21 @@ export * from './apiClient';
 
 export type PollStatus = 'loading' | 'ready' | 'denied' | 'offline';
 
+/** Query string de la lista de items. Existe como función aparte (y con test)
+ * porque la precarga de index.html tiene que armar EXACTAMENTE la misma URL
+ * para que coincidan.
+ *
+ * Ojo con las comas: `URLSearchParams` las escapa a `%2C`, y con eso la URL de
+ * la app dejaba de coincidir con la precargada — la lista se bajaba DOS veces
+ * y la optimización salía contraproducente (medido). Los ids de columna de
+ * Monday son [a-z0-9_], así que van crudos sin ambigüedad. */
+export function queryLista(q: string, colsParam: string | null): string {
+  const partes: string[] = [];
+  if (q) partes.push('q=' + encodeURIComponent(q));
+  if (colsParam !== null) partes.push('cols=' + colsParam);
+  return partes.length ? '?' + partes.join('&') : '';
+}
+
 /** Proyección para los selectores de catálogo (`usePoll(slug, q, SOLO_NOMBRE)`):
  * NINGUNA columna, solo los campos propios del item (`id`, `name`).
  *
@@ -59,10 +74,7 @@ export function usePoll(slug: BoardSlug, q = '', cols?: readonly string[]): Poll
     // visibilitychange de abajo recarga de inmediato.
     if (document.hidden) return;
     try {
-      const qs = new URLSearchParams();
-      if (q) qs.set('q', q);
-      if (colsParam !== null) qs.set('cols', colsParam);
-      const params = qs.size ? `?${qs}` : '';
+      const params = queryLista(q, colsParam);
       const headers: Record<string, string> = {};
       if (etagRef.current) headers['If-None-Match'] = etagRef.current;
       const res = await apiFetch(`/boards/${slug}/items${params}`, { headers });
