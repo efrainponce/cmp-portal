@@ -8,7 +8,8 @@
 import type { ExecutionContext } from 'hono';
 import type { Env } from '../env';
 import type { Identity, MirrorItem } from '../../shared/types';
-import { getItem, childrenOf, linkedItemId, ownsItem, hydrateFichaComercial, fichasDeProductos } from './dal';
+import { getItem, childrenOf, linkedItemId, ownsItem } from './dal';
+import { hydrateFichaLineas } from './ficha';
 import { validarCosteo } from './automations';
 import { submitWrite } from './outbox';
 import { gql, moveItemToGroup, createUpdate, fetchItemWithSubitems, cvText, cvNum, type MondayCol } from './monday';
@@ -191,10 +192,6 @@ export async function checkCosteo(env: Env, itemId: number, viewer: Identity): P
   if (STAGE_BLOCKED[stageIndex]) return { ok: false, errors: [STAGE_BLOCKED[stageIndex]] };
 
   const lineas = await childrenOf(env, 'oportunidades', itemId, viewer);
-  // Mismo relleno que ve el drawer: la ficha comercial vale si el PRODUCTO la
-  // trae, aunque el mirror de la línea no la haya recalculado todavía. Sin esto
-  // el pre-chequeo rechaza líneas que la UI ya muestra completas.
-  await hydrateFichaComercial(env, lineas);
 
   // Después de "Nueva oportunidad", el botón vive siempre visible pero solo se
   // reactiva cuando el vendedor duplicó una nueva versión (Efraín, 2026-07-17):
@@ -358,36 +355,6 @@ async function nextCosteoSeq(env: Env, itemId: number): Promise<number> {
   return row?.seq ?? 1;
 }
 
-/** Gemela de dal.hydrateFichaComercial para líneas leídas frescas de Monday
- * (forma MondayCol, no MirrorItem): rellena en memoria la ficha comercial que el
- * mirror aún no recalculó, desde el producto de catálogo ligado. */
-async function hydrateFichaSubitems(
-  env: Env, subitems: { column_values: MondayCol[] }[],
-): Promise<void> {
-  const faltantes = subitems.filter(s => !cvText(s.column_values, SUB_FICHA));
-  if (faltantes.length === 0) return;
-  const idDe = (s: { column_values: MondayCol[] }): number | null => {
-    const col = s.column_values.find(c => c.id === SUB_PRODUCTO_REL);
-    if (!col?.value) return null;
-    try {
-      const ids: unknown[] = (JSON.parse(col.value) as { linked_item_ids?: unknown[] }).linked_item_ids ?? [];
-      return ids.map(Number).find(Number.isFinite) ?? null;
-    } catch {
-      return null;
-    }
-  };
-  const fichas = await fichasDeProductos(env, faltantes.map(idDe).filter((id): id is number => id !== null));
-  if (fichas.size === 0) return;
-  for (const sub of faltantes) {
-    const productoId = idDe(sub);
-    const ficha = productoId !== null ? fichas.get(productoId) : undefined;
-    if (!ficha) continue;
-    const i = sub.column_values.findIndex(c => c.id === SUB_FICHA);
-    if (i >= 0) sub.column_values[i] = { ...sub.column_values[i], text: ficha };
-    else sub.column_values.push({ id: SUB_FICHA, type: 'mirror', text: ficha, value: null });
-  }
-}
-
 async function runCosteoNative(env: Env, itemId: number): Promise<EnviarCosteoResult> {
   const fetched = await fetchItemWithSubitems(env, itemId);
   if (!fetched) throw new CosteoError(404, 'not found');
@@ -411,11 +378,11 @@ async function runCosteoNative(env: Env, itemId: number): Promise<EnviarCosteoRe
     }
   }
 
-  // 1.5) Misma red de seguridad que checkCosteo, pero sobre la lectura FRESCA de
-  // Monday: si el mirror de la ficha comercial todavía no se recalculó, se toma
-  // del producto ligado. Sin esto el envío se rechaza (y revierte la etapa) por
-  // una columna que Monday no había calculado aún (Efraín, 2026-08-14).
-  await hydrateFichaSubitems(env, subitems);
+  // 1.5) Este flujo valida contra la lectura FRESCA de Monday, no contra el
+  // mirror: si la ficha comercial no se ha recalculado allá, se resuelve igual
+  // desde el catálogo (worker/lib/ficha.ts). Sin esto el envío se rechaza —y
+  // revierte la etapa— por una columna que Monday no había calculado todavía.
+  await hydrateFichaLineas(env, subitems);
 
   // 2) Validar cada línea (con auto-reparación de embellecimiento detectada, no
   // escrita todavía — se escribe en el paso 3, en paralelo).

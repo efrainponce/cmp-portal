@@ -12,7 +12,7 @@ import type {
 } from '../../shared/dto';
 import {
   listItems, getItem, childrenOf, childSlugOf, etagFor, pendingItemIds, listVendedores,
-  ownsItem, leadsOthers, hasPendingWrites, upsertIdentity, hydrateFichaComercial,
+  ownsItem, leadsOthers, hasPendingWrites, upsertIdentity,
 } from '../lib/dal';
 import { toItemDTO, toColMeta, itemDetailEtag } from '../lib/serialize';
 import { canReadBoard } from '../../shared/visibility';
@@ -247,10 +247,6 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
 
     const dto: ItemDetailDTO = toItemDTO(row, slug, viewer.role, pending.has(row.item_id));
     if (childSlug) {
-      // La ficha comercial que el mirror de Monday todavía no recalculó sale del
-      // producto ligado (ver dal.hydrateFichaComercial) — si no, la línea recién
-      // creada se ve con "Falta descripción" teniendo el catálogo la descripción.
-      if (slug === 'oportunidades') await hydrateFichaComercial(c.env, children);
       dto.children = children.map(r => toItemDTO(r, childSlug, viewer.role, childPending.has(r.item_id)));
     }
     // ¿La ve por ser suya, o porque lidera la zona de su dueño? Reusa el MISMO

@@ -4,6 +4,7 @@ import { fetchItems, fetchBoardsUpdatedAt, type MondayItem } from '../lib/monday
 import { rawHash } from '../lib/canon';
 import { BOARDS, type BoardSlug } from '../../shared/boards';
 import { isNativeId } from '../../shared/nativeId';
+import { hydrateFichaLineas } from '../lib/ficha';
 import { extractVendedorIds, toRawColumns, emitItemSideEffects, NEEDS_PREV_COLUMNS } from './upsert';
 import { logSync } from './log';
 
@@ -45,6 +46,9 @@ export async function reconcileBoard(env: Env, slug: BoardSlug): Promise<{ upser
 
   do {
     const page = await fetchItems(env, def.id, cursor);
+    // Una sola consulta por página para la ficha comercial que el mirror de
+    // Monday no trae (worker/lib/ficha.ts) — antes del hash, como en upsertItem.
+    if (slug === 'oportunidades_sub') await hydrateFichaLineas(env, page.items);
     for (const item of page.items) {
       const itemId = Number(item.id);
       seen.add(itemId);

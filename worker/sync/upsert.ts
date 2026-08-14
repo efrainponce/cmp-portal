@@ -3,6 +3,7 @@ import type { Env } from '../env';
 import type { MondayItem } from '../lib/monday';
 import { rawHash, type RawColumn } from '../lib/canon';
 import { BOARDS, type BoardSlug } from '../../shared/boards';
+import { hydrateFichaLineas } from '../lib/ficha';
 import { maybeEmitStageChange, maybeEmitProjectStatusChange } from '../lib/notify';
 import { maybeLogProductoStatus } from '../lib/estadoProducto';
 
@@ -65,6 +66,10 @@ export async function upsertItem(
   opts: UpsertOpts = {},
 ): Promise<UpsertResult> {
   const def = BOARDS[slug];
+  // La ficha comercial se resuelve ANTES del hash: lo que se guarda (y lo que se
+  // compara para decidir si hay cambio) ya trae la descripción del catálogo, aunque
+  // el mirror de Monday siga vacío — ver worker/lib/ficha.ts.
+  if (slug === 'oportunidades_sub') await hydrateFichaLineas(env, [item]);
   const columns = toRawColumns(item);
   const contentHash = rawHash(columns);
   const itemId = Number(item.id);

@@ -52,19 +52,31 @@
     creada se queda con el mirror vacío. El panel de detalle no se veía afectado
     porque ya tenía su propio fallback al catálogo (`getItem('productos', id)`)
     — por eso la descripción se veía y el aviso decía lo contrario.
-  - Fix: `dal.hydrateFichaComercial` rellena **en memoria** (nunca en D1) la
-    ficha de las líneas cuyo mirror viene vacío, leyéndola del producto ligado
-    en el mirror de Productos (`long_text_mm0xse7v`, la fuente real). Una sola
-    consulta a D1 y solo cuando alguna línea la necesita.
-  - Aplicado en los tres puntos donde la ausencia dolía: el detalle del drawer
-    (`GET /api/boards/:slug/items/:id`), el pre-chequeo `checkCosteo` (que si no
-    rechazaba el envío) y `runCosteoNative`, que revalida contra la lectura
-    fresca de Monday y hubiera rechazado + revertido la etapa por lo mismo.
+  - Fix (`worker/lib/ficha.ts`, nuevo): la ficha se resuelve desde la tabla de
+    Productos en D1 (`long_text_mm0xse7v`) y **se guarda ya resuelta en la línea
+    del mirror**, en el camino de ESCRITURA — no en cada lectura. Efraín pidió
+    exactamente eso: "quiero que sea D1, necesito rapidez; el dato derivado es
+    normal, eso lo traemos de Monday igual". Así ningún consumidor —drawer,
+    `checkCosteo`, PDFs de solicitud de costeo y cotización, documentos, bot—
+    paga una consulta extra ni tiene que acordarse de rellenarla.
+  - Enganchado en los tres caminos por los que una línea entra a D1:
+    `upsertItem` (webhook / echo del outbox / creación y duplicado de líneas),
+    `reconcileBoard` (una consulta por página) y `refetchItemTree` (todas las
+    líneas de la oportunidad de un jalón, al abrir el drawer con `?fresh=1`).
+  - Clave: el relleno corre **antes** de calcular `content_hash`. Con eso una
+    línea vieja guardada sin ficha se repara sola en su próximo sync (si el hash
+    se calculara del crudo, se saltaría por "igual a lo que hay"), y cuando el
+    mirror de Monday por fin trae el mismo texto no se reescribe nada — que es
+    lo que mantiene válidos los ETags de las listas (ver 2026-08-13).
+  - `runCosteoNative` lo llama aparte: valida contra la lectura FRESCA de Monday
+    (no pasa por el mirror) y hubiera rechazado + revertido la etapa por la
+    misma columna.
   - Si el producto de catálogo de verdad no trae descripción, el aviso sigue
     saliendo: es un aviso real (Compras no ha subido la ficha).
-  - `worker/lib/dal.test.ts`: 5 casos nuevos (rellena, no pisa el mirror bueno,
-    sin producto ligado no inventa, producto sin ficha sigue faltando, un solo
-    query para líneas del mismo producto). typecheck + 250 tests en verde.
+  - `worker/lib/ficha.test.ts`: 6 casos (toma la ficha del producto, agrega la
+    columna si falta, no pisa el mirror bueno, sin producto no inventa, producto
+    sin ficha sigue faltando, un solo query para líneas del mismo producto).
+    typecheck + 251 tests en verde.
 
 - Reporte de Proyectos: la etapa del proyecto ahora se ve en cada renglón
   - Efraín: "la etapa de proyecto terminado DEBE ESTAR en el reporte de

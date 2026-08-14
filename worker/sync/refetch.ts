@@ -3,6 +3,7 @@ import type { Env } from '../env';
 import { fetchItem, fetchItemWithSubitems } from '../lib/monday';
 import { boardById, BOARDS, type BoardSlug } from '../../shared/boards';
 import { upsertItem, toRawColumns } from './upsert';
+import { hydrateFichaLineas } from '../lib/ficha';
 import { rawHash } from '../lib/canon';
 import { isNativeId } from '../../shared/nativeId';
 import { confirmOutboxEcho } from './echo';
@@ -76,6 +77,12 @@ export async function refetchItemTree(env: Env, boardId: number, itemId: number)
     // oportunidad de 31 líneas eso es 31 viajes para, casi siempre, no escribir
     // nada. Reconcile ya resuelve esto igual (una lectura de hashes + escribir
     // solo lo que cambió).
+    // La ficha comercial se resuelve para TODAS las líneas de un jalón (una
+    // consulta) y ANTES de comparar hashes: así una línea guardada sin ficha se
+    // repara en esta misma relectura en vez de saltarse por "igual a lo que hay"
+    // (worker/lib/ficha.ts).
+    if (childSlug === 'oportunidades_sub') await hydrateFichaLineas(env, tree.subitems);
+
     const subIds = tree.subitems.map(s => Number(s.id));
     const hashActual = new Map<number, string>();
     if (subIds.length) {
