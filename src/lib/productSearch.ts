@@ -18,6 +18,42 @@ export const PRODUCTO_SKU_COL = 'product_and_service_sku';
 export const PRODUCTO_NOMBRE_COL = 'text_mm0wvga2';   // "Nombre Producto" (sin el SKU al frente)
 export const PRODUCTO_MARCA_COL = 'product_and_service_description';
 
+/** Las ÚNICAS columnas del board Productos que viajan en el catálogo que carga
+ * la pestaña Cotización (`getCatalogoProductos`). El board trae 19; con estas 7
+ * el catálogo pasa de 260 KB a 72 KB, y como es de lo primero que carga una
+ * oportunidad editable o de Costeo, se nota.
+ *
+ * La lista NO está hecha a ojo: sale de recorrer el cierre de imports desde la
+ * grid de cotización y el picker (44 archivos) y quedarse con toda cadena que
+ * sea llave del board `productos` en shared/column-meta.gen.ts.
+ * `catalogoCols.test.ts` rehace ese recorrido y falla si aparece una columna
+ * que no esté declarada — sin eso, leer un campo que no se pidió se ve como un
+ * valor VACÍO en la UI (checkbox desmarcado, "Sin proveedor" donde sí hay),
+ * sin ningún error de por medio.
+ *
+ * `name` no va: es campo propio del item (item.name), no una columna. */
+export const CATALOGO_COLS = [
+  PRODUCTO_SKU_COL,
+  PRODUCTO_NOMBRE_COL,
+  PRODUCTO_MARCA_COL,
+  'dropdown_mkztty4b',            // Color (opciones del selector de la línea)
+  'text_mm5v6jhj',                // Tallas (gate de "Mandar a validación")
+  'boolean_mm5cqtjs',             // Descripción y tallas confirmadas (checkbox de Compras)
+  'board_relation_mm1cwqky',      // Proveedor (gate de "Mandar a validación")
+] as const;
+
+/** Columnas del board Productos que el código SÍ lee, pero que a propósito NO
+ * viajan en el catálogo masivo: se piden del producto puntual cuando hacen
+ * falta. Existe para que el test pueda distinguir "falta una columna" (bug
+ * silencioso) de "esta se trae aparte a propósito". */
+export const COLS_BAJO_DEMANDA = [
+  // Descripción cotización (largo): pesaba 115 KB de los 188 KB del catálogo
+  // —el 61%— y sólo se usa como fallback en el panel de detalle de UNA línea,
+  // y sólo mientras el mirror del subitem no se pobló. LineDetailPanel la pide
+  // con getItem('productos', id) en ese caso: 1.7 KB en vez de 115.
+  'long_text_mm0xse7v',
+] as const;
+
 const DIACRITICS = /[̀-ͯ]/g;
 const NON_ALNUM = /[^a-z0-9]+/g;
 

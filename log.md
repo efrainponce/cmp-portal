@@ -2,6 +2,48 @@
 
 ## 2026-08-13
 
+- Perf: el catálogo de Productos viaja proyectado — 260 → 72 KB (-72%)
+  - Quedaba pendiente de la ronda anterior: el catálogo se cacheaba por sesión
+    pero seguía trayendo las 19 columnas del board. Efraín pidió hacerlo, y con
+    auditoría: si falta una columna que el código sí lee, NADA truena — el campo
+    llega vacío y se ve como dato malo en Monday (checkbox desmarcado, "Sin
+    proveedor" donde sí hay, selector de Color sin opciones).
+  - **Auditoría programática, no a ojo**: se recorre el cierre de imports desde
+    la grid de cotización y el picker (44 archivos) y se cruza toda cadena
+    literal contra las llaves del board `productos` en `column-meta.gen.ts`.
+    - Dos iteraciones antes de confiar en el resultado: (1) la primera pasada
+      sólo miró una lista de archivos escrita a mano y se perdió
+      `src/lib/productSearch.ts`, que lee SKU/marca/nombre corto; (2) la segunda
+      usó un regex con la "forma" de los ids y se comió
+      `product_and_service_sku`, porque termina en un segmento corto — sin eso
+      se habría roto la búsqueda por SKU del picker. La versión final no supone
+      ninguna forma: compara contra las llaves reales.
+    - Resultado: 7 columnas de 19. `name` no cuenta (campo propio del item).
+  - **`long_text_mm0xse7v` (Descripción cotización) sale del catálogo**: medida
+    columna por columna, pesaba 115 KB de los 188 — el 61%. Y se usa en UN solo
+    lugar (`LineDetailPanel`), como fallback, sólo para la línea que alguien
+    expande y sólo mientras el mirror del subitem no se pobló. Ahora se pide del
+    producto puntual con `getItem('productos', id)`: **1.7 KB en vez de 115**.
+    El caso común (mirror poblado) no cambia en nada.
+  - `catalogoCols.test.ts` rehace la auditoría en cada corrida y falla si
+    aparece una columna que no esté en `CATALOGO_COLS` ni en
+    `COLS_BAJO_DEMANDA` (la lista de "esta se trae aparte a propósito"), para
+    poder distinguir un olvido de una decisión. Verificado que el test falla —
+    con el nombre de la columna y el archivo — al quitar una a mano.
+  - Verificado en navegador sobre una oportunidad real de Costeo con 31 líneas:
+    grid completa, panel de detalle con Descripción, Tallas, **Proveedor
+    ("5.11 Tactical", que viene del catálogo)** e Historial de precios, sin
+    errores de JS y sin ningún "Sin proveedor asignado" espurio.
+  - Medido: abrir 3 oportunidades en Costeo pasa de 259 KB de catálogo (ya
+    cacheado) a **72 KB una sola vez por sesión**. Contra el estado ANTES de
+    todo este trabajo (2 descargas por apertura, sin caché ni proyección), esas
+    3 aperturas eran ~1,554 KB.
+  - **Error propio, corregido**: al crear el test nuevo sobrescribí
+    `src/lib/productSearch.test.ts`, que ya existía con 11 tests de búsqueda
+    (searchProductos/exactProducto/normalización). Se detectó porque el total
+    de tests bajó de 238 a 230 con el mismo número de archivos. Se restauró
+    desde git intacto y los tests nuevos viven en `catalogoCols.test.ts`.
+
 - Perf (3a ronda): precarga de datos desde el HTML, drawers diferidos y
   catálogo de Productos cacheado
   - Efraín pidió "sé un loco de la optimización sin perder usabilidad". Se midió

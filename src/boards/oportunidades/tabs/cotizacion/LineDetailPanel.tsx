@@ -14,7 +14,7 @@
 // viviendo en EmbellecimientosTab.
 import { useEffect, useState } from 'react';
 import type { ItemDTO } from '../../../../lib/api';
-import { getZoneImages, usePoll, SOLO_NOMBRE } from '../../../../lib/api';
+import { getZoneImages, getItem, usePoll, SOLO_NOMBRE } from '../../../../lib/api';
 import { StatusBadge } from '../../../../components/core/Badges';
 import { SearchInput } from '../../../../components/forms/SearchInput';
 import { EMB_STATUS_COL, EMB_LABEL_CON, explodeEmbellecimiento } from '../../../../lib/embellecimiento';
@@ -163,7 +163,25 @@ export function LineDetailPanel({
 }) {
   const productoId = linkedProductoId(product);
   const catalogItem = productoId != null ? catalogIndex(catalog).byId.get(productoId) : undefined;
-  const descripcion = product.cols[DESCRIPCION_COL]?.text || catalogItem?.cols[CATALOGO_DESCRIPCION_COL]?.text || '';
+
+  // La descripción sale del mirror de la línea. Si todavía no se pobló (Monday
+  // lo recalcula asíncrono tras ligar el producto) se cae al catálogo — pero esa
+  // columna YA NO viaja en el catálogo: es un long_text que pesaba 115 KB de los
+  // 188 del catálogo entero, o sea el 61%, y sólo servía para este panel, sólo
+  // para la línea que alguien expande, y sólo mientras el mirror está vacío.
+  // Traerla para los 1247 productos en cada apertura era desproporcionado, así
+  // que se pide la de ESE producto, sólo cuando de verdad hace falta.
+  const descripcionMirror = product.cols[DESCRIPCION_COL]?.text || '';
+  const [descripcionCatalogo, setDescripcionCatalogo] = useState('');
+  useEffect(() => {
+    if (descripcionMirror || productoId == null) return;
+    let cancelado = false;
+    getItem('productos', String(productoId))
+      .then((p) => { if (!cancelado) setDescripcionCatalogo(p.cols[CATALOGO_DESCRIPCION_COL]?.text ?? ''); })
+      .catch(() => { /* sin descripción es el mismo estado que antes de que llegue el mirror */ });
+    return () => { cancelado = true; };
+  }, [descripcionMirror, productoId]);
+  const descripcion = descripcionMirror || descripcionCatalogo;
   const tallas = product.cols[TALLAS_COL]?.text || catalogItem?.cols[CATALOGO_TALLAS_COL]?.text || '';
   const confirmed = !!catalogItem?.cols[PRODUCTO_CONFIRM_COL]?.text;
   // Tallas se edita sobre el catálogo (mismo lugar que se guarda), no sobre el

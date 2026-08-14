@@ -15,6 +15,7 @@ import { mockBoardMeta, mockItemDetail, mockPatch } from './mockFallback';
 import { getImpersonateTarget } from './impersonation';
 import { tomarPrecarga } from './apiPreload';
 import { markSessionExpired } from './sessionState';
+import { CATALOGO_COLS } from './productSearch';
 
 export type {
   AjusteDTO, BoardAccessDTO, BoardSlug, ColMeta, ColVal, CostoDivergenciaDTO, CotizacionVirtualDTO, IdentityDTO, ItemDTO, ItemDetailDTO, ListResponse, MeDTO, MentionUserDTO,
@@ -146,7 +147,7 @@ let catalogoProductos: Promise<ItemDTO[]> | null = null;
 
 export function getCatalogoProductos(): Promise<ItemDTO[]> {
   if (!catalogoProductos) {
-    catalogoProductos = listItems('productos').catch((e) => {
+    catalogoProductos = listItems('productos', undefined, CATALOGO_COLS).catch((e) => {
       catalogoProductos = null; // no cachear fallas — el siguiente intento reintenta
       throw e;
     });
@@ -160,8 +161,13 @@ export function invalidarCatalogoProductos(): void {
 
 /** Catálogo genérico de un board (usado para el picker de producto al agregar una
  * línea nueva en "Nueva versión"). */
-export async function listItems(slug: BoardSlug, q?: string): Promise<ItemDTO[]> {
-  const res = await apiFetch(`/boards/${slug}/items${q ? `?q=${encodeURIComponent(q)}` : ''}`);
+export async function listItems(slug: BoardSlug, q?: string, cols?: readonly string[]): Promise<ItemDTO[]> {
+  const qs: string[] = [];
+  if (q) qs.push(`q=${encodeURIComponent(q)}`);
+  // Comas crudas: los ids de columna de Monday son [a-z0-9_] y así la URL
+  // coincide con la que arma usePoll (ver queryLista en api.ts).
+  if (cols) qs.push(`cols=${cols.join(',')}`);
+  const res = await apiFetch(`/boards/${slug}/items${qs.length ? `?${qs.join('&')}` : ''}`);
   if (!res.ok) throw new Error('GET items failed: ' + res.status);
   const body: ListResponse = await res.json();
   return body.items;
