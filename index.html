@@ -79,7 +79,10 @@
       })();
     </script>
 
-    <link rel="icon" type="image/webp" href="/src/assets/logo.webp" />
+    <!-- favicon de 64px (2.9 KB): el de 256 pesaba 15.8 KB y el navegador lo pide
+         en CADA carga, dentro de la ventana crítica. El apple-touch-icon sí se
+         queda en 256: sólo se descarga al agregar a la pantalla de inicio. -->
+    <link rel="icon" type="image/webp" href="/src/assets/logo-64.webp" />
     <link rel="apple-touch-icon" href="/src/assets/logo.webp" />
     <link rel="manifest" href="/manifest.json" />
   </head>

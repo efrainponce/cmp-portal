@@ -2,6 +2,36 @@
 
 ## 2026-08-13
 
+- Perf: Costeo abre sin esperar el catálogo, y el logo deja de pesar 15.8 KB
+  - Efraín señaló que **Costeo y Proyectos son lo más importante**, así que se
+    midieron esos dos flujos completos en producción (red 1.5 Mbps, CPU 4x,
+    caché fría) en vez de seguir con la carga genérica:
+    | | lista usable | abrir registro |
+    |---|---|---|
+    | Costeo | 2314 ms / 199 KB | 1271 ms / 213 KB |
+    | Proyectos (Doc y Tallas) | 1769 ms / 140 KB | 77 ms / 118 KB |
+    - Proyectos ya abría prácticamente instantáneo (77 ms). El costo estaba en
+      Costeo.
+  - **El catálogo se precarga mientras se ve la lista** (`StageBoard.tsx`): en
+    Costeo/Validación el drawer SIEMPRE carga el catálogo de Productos, y
+    medido, ese request no arrancaba hasta 0.5 s DESPUÉS del clic — antes tiene
+    que montar el drawer. Son 89 KB en el camino de abrir cada oportunidad.
+    Ahora se pide en idle, cuando la lista ya pintó (mismo gate que el chunk del
+    drawer). Verificado: se pide a los 2.66 s y termina a los 3.67 s, o sea
+    mucho antes de cualquier clic.
+    - Sólo en esos dos boards: son los únicos donde el catálogo se carga sí o
+      sí. En el resto sería bajar 89 KB que quizá nadie use.
+  - **Logo**: era de 256×256 (15.8 KB) y se pinta a 28 px. Se agregó
+    `src/assets/logo-64.webp` (2.9 KB) para el sidebar Y para el favicon —que
+    el navegador pide en CADA carga, dentro de la ventana crítica—. El de 256
+    se queda sólo para `apple-touch-icon`, que sólo se descarga al agregar a la
+    pantalla de inicio. Verificado en navegador: se ve nítido a 28 px y se pide
+    un solo archivo de 2892 B.
+  - Nota sobre las fuentes: aparecen en la ventana de "abrir registro" de los
+    dos flujos (69.6 KB entre Inter y JetBrains Mono), pero es sólo porque cada
+    medición limpia la caché — están con `max-age` de un año, así que es costo
+    de primera visita, no de cada apertura. No se tocaron.
+
 - Perf: el catálogo de Productos viaja proyectado — 260 → 72 KB (-72%)
   - Quedaba pendiente de la ronda anterior: el catálogo se cacheaba por sesión
     pero seguía trayendo las 19 columnas del board. Efraín pidió hacerlo, y con

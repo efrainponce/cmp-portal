@@ -2,7 +2,11 @@ import { NavItem } from '../components/navigation/NavItem';
 import { NotificationBell } from '../components/notifications/NotificationBell';
 import { UserChip } from './UserChip';
 import { useMe } from '../lib/useMe';
-import logo from '../assets/logo.webp';
+// 64x64, no el de 256: se pinta a 28 px y el grande eran 15.8 KB en la ventana
+// crítica de carga. Al pesar <4 KB, Vite lo mete inline como data URI y
+// además desaparece el request. El de 256 se queda para favicon/apple-touch
+// (index.html), donde sí se necesita grande.
+import logo from '../assets/logo-64.webp';
 import {
   IconHome, IconOportunidades, IconGlobe, IconCosteo, IconValidacion, IconDocTallas, IconOrdenesCompra, IconEjecucion, IconLogistica,
   IconProductos, IconCuentas, IconClientes, IconInventario, IconChevronLeft, IconChevronRight, IconSettings, IconLock,

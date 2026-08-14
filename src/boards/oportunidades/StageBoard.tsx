@@ -1,6 +1,7 @@
 import { lazy, Suspense, useState } from 'react';
 import { StageBoardList } from './StageBoardList';
 import { usePrefetchOnIdle } from '../../lib/lazyPrefetch';
+import { getCatalogoProductos } from '../../lib/apiClient';
 import { STAGE_BOARDS, type StageBoardKey } from '../../lib/dealStages';
 import { Button } from '../../components/core/Button';
 import { IconPlus } from '../../components/icons';
@@ -44,6 +45,19 @@ export function StageBoard({ boardKey, openId, onOpenChange, onDuplicated }: Pro
   const [creating, setCreating] = useState(false);
   const canCreate = boardKey === 'costeo' || boardKey === 'zona_efrain';
   usePrefetchOnIdle(cargarDrawer, listaLista);
+
+  // En Costeo y Validación el drawer SIEMPRE carga el catálogo de Productos
+  // (CotizacionTab con variant='costeo'), y medido en producción ese request no
+  // arranca hasta 0.5 s DESPUÉS del clic, porque antes tiene que montar el
+  // drawer: son 89 KB en el camino de abrir cada oportunidad. Aquí se pide
+  // mientras la persona todavía está viendo la lista, así el primer clic ya lo
+  // encuentra en memoria (getCatalogoProductos cachea por sesión).
+  //
+  // Sólo en estos dos boards: son donde el catálogo se carga sí o sí y donde se
+  // abren oportunidades todo el día. En el resto se seguiría bajando 89 KB que
+  // quizá nadie use.
+  const usaCatalogo = boardKey === 'costeo' || boardKey === 'validacion';
+  usePrefetchOnIdle(getCatalogoProductos, listaLista && usaCatalogo);
 
   return (
     <div style={{ position: 'relative', height: '100%', width: '100%' }}>
