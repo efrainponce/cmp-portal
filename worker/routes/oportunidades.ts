@@ -431,9 +431,13 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
         if (stageIndex === '1' || stageIndex === '2') {
           return c.json({ error: 'La oportunidad ya está Ganada o Perdida — no se pueden agregar líneas.' }, 400);
         }
+        // Agregar una línea sobre una vigente ya costeada versiona en automático
+        // (mismo mecanismo que "+ Nueva versión") en vez de bloquear — las
+        // versiones son un registro "detrás", nunca un candado para seguir
+        // trabajando la cotización (Efraín, 2026-08-14).
         const lineas = await childrenOf(c.env, 'oportunidades', itemId, viewer);
-        if (!esDraftVigente(lineas)) {
-          return c.json({ error: 'Solo se pueden crear líneas en Nueva oportunidad o en una versión nueva sin costear.' }, 400);
+        if (lineas.length > 0 && !esDraftVigente(lineas)) {
+          await duplicateVersion(c.env, c.executionCtx, itemId, viewer);
         }
       }
 

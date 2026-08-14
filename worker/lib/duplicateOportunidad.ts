@@ -1,11 +1,16 @@
 // worker/lib/duplicateOportunidad.ts — "Duplicar" en el drawer: clona una
 // Oportunidad a una nueva en etapa "Nueva oportunidad" (4), con cabecera
 // (Cliente/Vendedor/Comprador) + SOLO las líneas vigentes (el mirror actual,
-// igual criterio que quoteVersions.ts) + su embellecimiento (estatus,
-// descripción de zonas, precio de venta e imágenes de referencia). Nunca
-// arrastra versiones anteriores (cotizacion_versions en D1), PDFs de
-// cotización ni ningún otro documento — la nueva opp empieza limpia y pasa
-// por costeo/cotización como cualquier oportunidad nueva (Efraín, 2026-07-17).
+// igual criterio que quoteVersions.ts), copiadas campo por campo tal cual
+// (producto/color/cantidad/comentarios/embellecimiento + TODO su costeo:
+// costos, Etapa Costeo, moneda, IVA%, Margen Gob%, precio de venta — Efraín,
+// 2026-08-14: "duplicado es duplicado, todo debe estar igual", no una
+// oportunidad que arranca en blanco). La ETAPA de la oportunidad SÍ se
+// resetea a "Nueva oportunidad" (nunca se forja deal_stage a otro valor —
+// ver CLAUDE.md: el portal nunca cambia de etapa por su cuenta, eso dispara
+// automations de Monday/cmp-tallas fuera de su control). Nunca arrastra
+// versiones anteriores (cotizacion_versions en D1), PDFs de cotización ni
+// ningún otro documento.
 // Column ids de docs/monday-column-map.md / column-meta.gen.ts — nunca fabricar.
 import type { ExecutionContext } from 'hono';
 import type { Env } from '../env';
@@ -40,6 +45,21 @@ const SUB_EMB_STATUS = 'color_mm1b34bg';
 const SUB_EMB_DESC = 'long_text_mm1bj4pt';
 const SUB_PRECIO = 'numeric_mkzneg3d';
 const SUB_FILE = 'file_mm5akjy5';
+
+// Costeo del renglón (ids de gridMeta.tsx/quoteVersions.ts — GRID_COLS_COSTEO):
+// copiados tal cual para que el clon nazca ya costeado, no en blanco. Las
+// columnas `formula_*` (Costo real/total C/U) NO se copian — Monday las
+// recalcula solo a partir de estos mismos inputs.
+const SUB_ETAPA_COSTEO = 'color_mm084gvf';
+const SUB_MONEDA = 'color_mm5s709s';
+const SUB_COSTO_DISTR = 'numeric_mm0bph99';
+const SUB_DESCUENTO_PCT = 'numeric_mkzn2q51';
+const SUB_CONVERSION = 'numeric_mm0rvhgs';
+const SUB_GASTOS_PCT = 'numeric_mkzngs9x';
+const SUB_COSTO_EMBELL = 'numeric_mm0gxvpa';
+const SUB_TECHO = 'numeric_mkznpn83';
+const SUB_IVA_PCT = 'numeric_mm0cg0bm';
+const SUB_MARGEN_GOB_PCT = 'numeric_mkznnm5s';
 
 const DUPLICATE_ROLES: Identity['role'][] = ['vendedor', 'compras', 'admin'];
 
@@ -161,6 +181,23 @@ export async function duplicateOportunidad(
     if (embDesc) subCols[SUB_EMB_DESC] = embDesc;
     const precio = lc.get(SUB_PRECIO)?.text;
     if (precio) subCols[SUB_PRECIO] = precio.replace(/,/g, '');
+
+    const etapaCosteo = lc.get(SUB_ETAPA_COSTEO)?.text;
+    if (etapaCosteo) subCols[SUB_ETAPA_COSTEO] = { label: etapaCosteo };
+    const moneda = lc.get(SUB_MONEDA)?.text;
+    if (moneda) subCols[SUB_MONEDA] = { label: moneda };
+    for (const [colId, raw] of [
+      [SUB_COSTO_DISTR, lc.get(SUB_COSTO_DISTR)?.text],
+      [SUB_DESCUENTO_PCT, lc.get(SUB_DESCUENTO_PCT)?.text],
+      [SUB_CONVERSION, lc.get(SUB_CONVERSION)?.text],
+      [SUB_GASTOS_PCT, lc.get(SUB_GASTOS_PCT)?.text],
+      [SUB_COSTO_EMBELL, lc.get(SUB_COSTO_EMBELL)?.text],
+      [SUB_TECHO, lc.get(SUB_TECHO)?.text],
+      [SUB_IVA_PCT, lc.get(SUB_IVA_PCT)?.text],
+      [SUB_MARGEN_GOB_PCT, lc.get(SUB_MARGEN_GOB_PCT)?.text],
+    ] as const) {
+      if (raw) subCols[colId] = raw.replace(/,/g, '');
+    }
 
     const productoIds = linkedIds(lc.get(SUB_PRODUCTO_REL));
     if (productoIds.length) {

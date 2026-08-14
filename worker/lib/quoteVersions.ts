@@ -44,6 +44,16 @@ const EMB_LABEL_CON = 'Con Embellecimiento';
 const EMB_LABEL_SIN = 'Sin Embellecimiento';
 const ETAPA_NO_INICIADO = 'No iniciado';
 
+/** Columnas de línea que definen QUÉ se cotiza (a diferencia de costos/Etapa
+ * Costeo, que son trabajo de Compras). Editarlas sobre una vigente ya costeada
+ * dispara un versionado automático (worker/routes/boards.ts, oportunidades.ts)
+ * — mismo criterio que "+ Nueva versión", pero sin que el vendedor tenga que
+ * pedirlo aparte: las versiones son un registro "detrás", nunca un candado
+ * para seguir editando (Efraín, 2026-08-14). */
+export const LINE_DEFINING_COLS: ReadonlySet<string> = new Set([
+  SUB_PRODUCTO_REL, SUB_PRODUCTO_TXT, SUB_COLOR, SUB_CANTIDAD, SUB_EMB_STATUS, SUB_EMB_DESC,
+]);
+
 function colsOf(row: MirrorItem): Map<string, RawCol> {
   try {
     const raw: RawCol[] = JSON.parse(row.columns || '[]');

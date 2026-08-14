@@ -2,6 +2,34 @@
 
 ## 2026-08-14
 
+- Fix: cotización congelada tras duplicar/versionar — Elizabeth (WhatsApp):
+  "el clon que hice, se borraron todos los datos" y "no me deja modificar la
+  cant, se quedo congelado". Efraín aclaró el modelo correcto: "TODO es
+  modificable... el objetivo de las versiones es que sean 'detrás' no que
+  impidas modificar algo" y "duplicado es duplicado todo debe estar igual".
+  - `worker/lib/duplicateOportunidad.ts` ("Duplicar"): copiaba solo un
+    subconjunto de columnas por línea (producto/color/cantidad/comentarios/
+    embellecimiento/precio) — el clon nacía sin costeo, con costos y P. venta
+    en blanco. Ahora copia también Etapa Costeo, moneda, IVA%, Margen Gob% y
+    todos los costos base (Costo distr., Desc.%, Conversión, Gastos%, Costo
+    embell., Techo) — Monday recalcula solas las columnas `formula_*` a partir
+    de esos mismos inputs. La etapa de la oportunidad sigue reseteando a
+    "Nueva oportunidad" (nunca se forja `deal_stage` a otro valor — dispara
+    automations de Monday/cmp-tallas fuera de control del portal).
+  - `CotizacionTab.tsx`: `lineEdits` (producto/color/cantidad/embellecimiento
+    editables inline) dependía de estar en "Nueva oportunidad" o en un
+    borrador sin costear — por eso una línea ya costeada, vista fuera de esos
+    dos casos, se pintaba de solo lectura ("congelada"). Ya no depende de eso:
+    solo de que el board/rol lo permitan.
+  - Como contraparte, el server ahora versiona en automático al primer edit
+    de línea (producto/color/cantidad/embellecimiento, `LINE_DEFINING_COLS` en
+    `quoteVersions.ts`) sobre una vigente ya costeada: archiva la vigente en
+    D1 y resetea Etapa Costeo a "No iniciado" (mismo mecanismo que
+    "+ Nueva versión", `duplicateVersion`), sin que el vendedor tenga que
+    pedirlo — PATCH/DELETE de línea en `worker/routes/boards.ts`
+    (`autoVersionLineaCosteada`) y "Agregar línea" en
+    `worker/routes/oportunidades.ts`.
+
 - Fix: "Ganar" mandaba el Proyecto a la zona equivocada; y faltaba el botón en
   Costeo Confirmado
   - Efraín: "la parte de pasar a ganada una oportunidad no sirve, necesito que

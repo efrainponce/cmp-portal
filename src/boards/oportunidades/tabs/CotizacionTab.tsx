@@ -117,10 +117,14 @@ export function CotizacionTab({
     () => new Set(subCols.filter((c) => c.w).map((c) => c.id)),
     [subCols],
   );
-  // Crear/editar líneas inline: Nueva oportunidad o un borrador de versión
-  // (vigente sin costear), y nunca desde los boards de Costeo/Validación
-  // (eso es trabajo de Ventas en Oportunidades).
-  const lineEdits = (stage === '4' || draft) && !readOnly && !precioOnly;
+  // Crear/editar líneas inline: siempre que el board/rol lo permita (nunca
+  // desde los boards de Costeo/Validación — eso es trabajo de Ventas en
+  // Oportunidades). Ya NO depende de estar en Nueva oportunidad o en un
+  // borrador sin costear: editar una vigente ya costeada versiona en
+  // automático del lado del server (worker/routes/boards.ts,
+  // autoVersionIfCosted) — las versiones son un registro "detrás", nunca un
+  // candado que bloquee seguir editando (Efraín, 2026-08-14).
+  const lineEdits = !readOnly && !precioOnly;
   const editableCols = useMemo(
     () => (precioOnly ? new Set<string>([COL.precio]) : inlineEditableCols(lineEdits)),
     [precioOnly, lineEdits],

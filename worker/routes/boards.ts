@@ -1,8 +1,9 @@
 // Rutas genéricas de boards espejados de Monday (list/detail/patch/create/
 // refresh/updates) + identidad del viewer y rosters. Movido tal cual desde
 // worker/index.ts (2026-07-16) — sin cambios de comportamiento.
-import type { Context, Hono } from 'hono';
+import type { Context, ExecutionContext, Hono } from 'hono';
 import type { Env } from '../env';
+import type { Identity } from '../../shared/types';
 import { BOARDS } from '../../shared/boards';
 import type { BoardSlug } from '../../shared/boards';
 import { isNativeId } from '../../shared/nativeId';
@@ -18,6 +19,7 @@ import { toItemDTO, toColMeta, itemDetailEtag } from '../lib/serialize';
 import { canReadBoard } from '../../shared/visibility';
 import { submitWrite, OutboxError } from '../lib/outbox';
 import { submitCreate, submitCreateNative, CreateError } from '../lib/createRecord';
+import { duplicateVersion, esDraftVigente, QuoteVersionError, LINE_DEFINING_COLS } from '../lib/quoteVersions';
 import { fetchUpdates, createUpdate, addFileToUpdate, fetchAssetPublicUrls, deleteItem, type MentionInput } from '../lib/monday';
 import { cachedFetchUsers } from '../lib/rosterCache';
 import { getBoardAccess } from '../lib/boardAccess';
@@ -45,6 +47,30 @@ function boardFor(c: Context<{ Bindings: Env }>): BoardSlug | null {
   const slug = c.req.param('slug');
   if (!isBoardSlug(slug)) return null;
   return canReadBoard(slug, c.get('viewer').role) ? slug : null;
+}
+
+/** Editar/borrar una línea de cotización (producto/color/cantidad/
+ * embellecimiento) sobre una vigente ya costeada versiona en automático —
+ * mismo mecanismo que "+ Nueva versión" (duplicateVersion), pero disparado
+ * por el write mismo en vez de requerir que el vendedor lo pida aparte: las
+ * versiones son un registro "detrás", nunca un candado para seguir editando
+ * (Efraín, 2026-08-14). No-op si la vigente ya es borrador (nada que
+ * archivar) — mismo guard que duplicateVersion, evitado aquí de antemano
+ * para no pagar su excepción en el camino feliz. Devuelve el error si la
+ * oportunidad está Ganada/Perdida (duplicateVersion no versiona ahí); el
+ * caller decide qué hacer con eso. */
+async function autoVersionLineaCosteada(
+  env: Env, ctx: ExecutionContext, parentItemId: number, viewer: Identity,
+): Promise<QuoteVersionError | null> {
+  const lineas = await childrenOf(env, 'oportunidades', parentItemId, viewer);
+  if (lineas.length === 0 || esDraftVigente(lineas)) return null;
+  try {
+    await duplicateVersion(env, ctx, parentItemId, viewer);
+    return null;
+  } catch (err) {
+    if (err instanceof QuoteVersionError) return err;
+    throw err;
+  }
 }
 
 // Ventana en la que un refetch recién hecho se considera "ya fresco" — evita
@@ -292,6 +318,16 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
     const viewer = c.get('viewer');
     const body = await c.req.json<WriteRequest>();
 
+    if (slug === 'oportunidades_sub' && Object.keys(body.cols).some(id => LINE_DEFINING_COLS.has(id))) {
+      const linea = await getItem(c.env, 'oportunidades_sub', itemId, viewer, 'own');
+      if (linea?.parent_item_id != null && !isNativeId(linea.parent_item_id)) {
+        const versionError = await autoVersionLineaCosteada(c.env, c.executionCtx, linea.parent_item_id, viewer);
+        if (versionError) {
+          return jsonStatus({ ok: false, pending: false, error: versionError.message } satisfies WriteResponse, versionError.status);
+        }
+      }
+    }
+
     try {
       const result = await submitWrite(c.env, c.executionCtx, slug, itemId, body.cols, viewer);
       return c.json(result);
@@ -316,6 +352,11 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
     const viewer = c.get('viewer');
     const row = await getItem(c.env, slug, itemId, viewer, 'own');
     if (!row) return c.json({ error: 'not found' }, 404);
+
+    if (slug === 'oportunidades_sub' && row.parent_item_id != null && !isNativeId(row.parent_item_id)) {
+      const versionError = await autoVersionLineaCosteada(c.env, c.executionCtx, row.parent_item_id, viewer);
+      if (versionError) return jsonStatus({ ok: false, error: versionError.message }, versionError.status);
+    }
 
     // Item nativo (Zona Efrain, "salir de Monday"): no existe del lado de
     // Monday — nada que borrar ahí, se salta directo al DELETE de D1 de abajo.
