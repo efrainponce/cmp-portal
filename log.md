@@ -2,6 +2,21 @@
 
 ## 2026-08-14
 
+- Fix (misma sesión de mantenimiento): adjuntar archivo a un update no
+  verificaba que el `updateId` perteneciera al item validado. El endpoint
+  `POST /api/boards/:slug/items/:id/updates/:updateId/attachment`
+  (`worker/routes/boards.ts`) validaba el ITEM con `getItem(viewer)` pero
+  luego pasaba el `updateId` del cliente directo a `addFileToUpdate` — con un
+  id numérico de update de CUALQUIER item de todo Monday (visible para el
+  usuario o no), el archivo se adjuntaba ahí. Encontrado en auditoría de la
+  regla "todo endpoint que muta pide scope 'own'" (subagente revisó los 7
+  routes + helpers; el resto de los endpoints que mutan sí cumplen). Fix:
+  `fetchUpdates(itemId)` (la misma call que ya usa el GET del feed) y 404 si
+  el update no está entre los del item (incluye replies). Nota para Efraín,
+  sin cambiar: `POST .../updates` (comentar) usa scope de LECTURA a
+  propósito del composer — un líder de zona puede comentar en items de su
+  equipo aunque "nunca edita"; si eso no se quiere, es cambio de una línea.
+
 - Fix (sesión de mantenimiento "revisar que todo esté bien"): las alertas de
   error por WhatsApp llevaban MUDAS desde el 2026-08-05 — 879 fallos en
   `sync_log`, uno cada 15 min, y ni una alerta real entregada en 10 días.

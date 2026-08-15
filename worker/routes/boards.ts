@@ -534,6 +534,16 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
     const row = await getItem(c.env, slug, itemId, viewer);
     if (!row) return c.json({ error: 'not found' }, 404);
 
+    // El updateId lo manda el cliente: hay que confirmar que pertenece al item
+    // recién validado por getItem — sin este check, cualquier id numérico de
+    // update de TODO Monday recibía el archivo (el gate de renglón protegía el
+    // objeto equivocado). El composer adjunta justo después de crear el update,
+    // así que siempre está entre los 50 más recientes que trae fetchUpdates.
+    const itemUpdates = await fetchUpdates(c.env, itemId);
+    const belongs = itemUpdates.some(u =>
+      u.id === updateId || (u.replies ?? []).some(r => r.id === updateId));
+    if (!belongs) return c.json({ error: 'not found' }, 404);
+
     const form = await c.req.formData();
     const file = form.get('file');
     if (!(file instanceof File)) return c.json({ error: 'file is required' }, 400);
