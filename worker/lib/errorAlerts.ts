@@ -16,9 +16,15 @@ interface KindCount {
 }
 
 export async function checkErrorsAndAlert(env: Env): Promise<void> {
+  // Las filas 'error-alert:' (el fallo del PROPIO envío de la alerta, logueado
+  // abajo en sendAlert) se excluyen del conteo: contarlas convierte un envío
+  // fallido en un loop infinito — el fallo de hoy dispara la alerta de mañana,
+  // que falla igual y se re-loguea (pasó del 2026-08-05 al 08-14: 879 filas,
+  // una cada 15 min, y ninguna alerta real entregada en 10 días).
   const { results } = await env.DB.prepare(
     `SELECT kind, COUNT(*) as n FROM sync_log
      WHERE ok = 0 AND at > datetime('now', ?)
+       AND detail NOT LIKE 'error-alert:%'
      GROUP BY kind`,
   ).bind(`-${WINDOW_MINUTES} minutes`).all<KindCount>();
 
@@ -39,7 +45,12 @@ async function sendAlert(env: Env, total: number, rows: KindCount[]): Promise<vo
   const bodyText = `⚠️ CMP Portal: ${total} error(es) en los últimos ${WINDOW_MINUTES} min (${breakdown})`;
 
   try {
-    await sendTemplate(env, env.ADMIN_ALERT_PHONE, { bodyText, urlSuffix: '' });
+    // El botón URL del template exige su parámetro NO vacío — Meta rechaza ''
+    // con #100 "Parameter 'text' is mandatory ... cannot be empty" (la causa
+    // original del loop de arriba). La alerta no apunta a un item concreto,
+    // así que el link cae en la lista de Oportunidades (ruta válida del
+    // portal, src/lib/routing.ts).
+    await sendTemplate(env, env.ADMIN_ALERT_PHONE, { bodyText, urlSuffix: 'oportunidades' });
   } catch (err) {
     await logSync(env, 'manual', null, null, false, 'error-alert: ' + err);
   }

@@ -2,6 +2,39 @@
 
 ## 2026-08-14
 
+- Fix (sesión de mantenimiento "revisar que todo esté bien"): las alertas de
+  error por WhatsApp llevaban MUDAS desde el 2026-08-05 — 879 fallos en
+  `sync_log`, uno cada 15 min, y ni una alerta real entregada en 10 días.
+  Dos causas encadenadas en `worker/lib/errorAlerts.ts`:
+  - El template `portal_notificacion` tiene botón URL con parámetro dinámico y
+    Meta rechaza el parámetro vacío (#100 "Parameter 'text' is mandatory ...
+    cannot be empty") — `sendAlert` mandaba `urlSuffix: ''`. Ahora manda
+    `'oportunidades'` (link a la lista, ruta válida del portal).
+  - Loop autoperpetuante: el fallo del propio envío se loggea como `ok=0`, el
+    siguiente cron lo contaba como "error nuevo" y reintentaba → fallaba →
+    re-loggeaba, para siempre. El conteo ahora excluye `detail LIKE
+    'error-alert:%'` — un envío fallido ya no se realimenta.
+
+- Fix: el refetch del delta sync no tenía tope — una ráfaga grande de eventos
+  (el backlog de 3 días tras el fix de ayer, cmp-tallas reescribiendo
+  subitems) agotaba el presupuesto de subrequests de la invocación y tronaba
+  TODOS los refetches restantes con "Too many subrequests" (270 fallos el
+  08-14 ~17h, 28 más el 08-15 ~00h; los items quedaban stale hasta el
+  reconcile de 12h). `worker/sync/delta.ts`:
+  - Tope de 50 refetches por corrida, procesados en orden cronológico del
+    primer evento que tocó cada item.
+  - Checkpoint parcial: si quedaron pendientes (por tope o por presupuesto
+    agotado), `delta_last_polled_at` avanza solo hasta 1ms antes del primer
+    evento no procesado — la siguiente corrida (15 min) continúa desde ahí,
+    sin perder nada (refetch y activity_log son idempotentes). Antes el
+    checkpoint saltaba a `to` aunque la mitad hubiera tronado.
+  - Si un refetch truena con "Too many subrequests" se corta el loop ahí
+    mismo (los intentos restantes fallarían igual y cada log de fallo también
+    gasta presupuesto); esos items quedan cubiertos por el checkpoint parcial.
+  - `npm run typecheck`, `npm run lint` y `npm test` (268) limpios. Verificado
+    contra prod (D1 remoto) antes y después: sync_log, outbox, board_state y
+    monday_api_usage sanos por lo demás.
+
 - Feat: versionar cotización ahora funciona en Ganada/Perdida + notifica a la
   otra parte. Efraín, sobre el fix anterior de "+ Nueva versión": confirmó que
   Ganada/Perdida SÍ deben poder modificarse (hay casos reales de cambios tras
