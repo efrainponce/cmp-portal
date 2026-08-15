@@ -31,7 +31,9 @@ export async function checkErrorsAndAlert(env: Env): Promise<void> {
   const rows = results ?? [];
   const total = rows.reduce((sum, r) => sum + r.n, 0);
 
-  if (total > 0) await sendAlert(env, total, rows);
+  // Alertas por WhatsApp pausadas a pedido de Efraín (2026-08-15) — reactivar
+  // quitando este `false &&` cuando se confirme que ya no es ruido.
+  if (false && total > 0) await sendAlert(env, total, rows);
 
   await env.DB.prepare(
     `DELETE FROM sync_log WHERE at < datetime('now', ?)`,

@@ -1,5 +1,14 @@
 # Log de commits
 
+## 2026-08-15
+
+- Pausa temporal de las alertas WA de errores (`worker/lib/errorAlerts.ts`):
+  Efraín pidió parar el envío por WhatsApp cada 15 min mientras el canal
+  siga siendo ruido. El cron `*/15 * * * *` sigue corriendo igual (también
+  dispara `deltaSync`) y el conteo + limpieza de `sync_log` (retención 90
+  días) se sigue ejecutando; solo se deshabilitó el `sendTemplate` con un
+  `if (false && ...)` comentado para reactivarlo fácil cuando se decida.
+
 ## 2026-08-14
 
 - Fix (misma sesión de mantenimiento): el backup semanal D1→R2 tronaba en su
