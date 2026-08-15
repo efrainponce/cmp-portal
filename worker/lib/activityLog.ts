@@ -204,23 +204,37 @@ export async function recordDirectChanges(env: Env, boardSlug: BoardSlug, change
 }
 
 export interface ActivityLogRow {
-  item_id: number; event: string; column_title: string | null;
+  board_id: number; item_id: number; event: string;
+  column_id: string | null; column_title: string | null;
   previous_text: string | null; new_text: string | null; user_id: number | null; created_at: string;
 }
 
+// D1 rechaza queries con más de ~100 parámetros ligados; a 2 binds por target,
+// una oportunidad con 50+ líneas tiraba el tab Actividad completo. Lotes de 45
+// (90 binds) y el orden/cap se resuelven al final sobre el total.
+const TARGETS_PER_QUERY = 45;
+
 /** Actividad para uno o más (board, item) — Oportunidades trae también sus
  * líneas (oportunidades_sub), el caller arma la lista. Cap de 200: es un tab
- * de drawer, no un reporte. */
+ * de drawer, no un reporte. Trae board_id/column_id para que el caller pueda
+ * aplicar visibilidad por rol (shared/visibility.ts) — la WHITELIST de arriba
+ * es de ruido, no de permisos. */
 export async function listActivity(
   env: Env, targets: { boardId: number; itemId: number }[],
 ): Promise<ActivityLogRow[]> {
   if (targets.length === 0) return [];
   await ensureTable(env);
-  const clauses = targets.map(() => '(board_id = ? AND item_id = ?)').join(' OR ');
-  const binds = targets.flatMap(t => [t.boardId, t.itemId]);
-  const { results } = await env.DB.prepare(
-    `SELECT item_id, event, column_title, previous_text, new_text, user_id, created_at
-     FROM activity_log WHERE ${clauses} ORDER BY created_at DESC LIMIT 200`,
-  ).bind(...binds).all<ActivityLogRow>();
-  return results ?? [];
+  const all: ActivityLogRow[] = [];
+  for (let i = 0; i < targets.length; i += TARGETS_PER_QUERY) {
+    const chunk = targets.slice(i, i + TARGETS_PER_QUERY);
+    const clauses = chunk.map(() => '(board_id = ? AND item_id = ?)').join(' OR ');
+    const binds = chunk.flatMap(t => [t.boardId, t.itemId]);
+    const { results } = await env.DB.prepare(
+      `SELECT board_id, item_id, event, column_id, column_title, previous_text, new_text, user_id, created_at
+       FROM activity_log WHERE ${clauses} ORDER BY created_at DESC LIMIT 200`,
+    ).bind(...binds).all<ActivityLogRow>();
+    all.push(...(results ?? []));
+  }
+  all.sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+  return all.slice(0, 200);
 }

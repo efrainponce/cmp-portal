@@ -39,16 +39,23 @@ export async function seenByFor(env: Env, updateIds: string[]): Promise<Map<stri
   const map = new Map<string, string[]>();
   if (updateIds.length === 0) return map;
   await ensureUpdateSeenTable(env);
-  const placeholders = updateIds.map(() => '?').join(',');
-  const rows = await env.DB.prepare(
-    `SELECT us.update_id AS update_id, COALESCE(i.nombre, us.viewer_email) AS nombre
-     FROM update_seen us LEFT JOIN identity i ON i.email = us.viewer_email
-     WHERE us.update_id IN (${placeholders})`,
-  ).bind(...updateIds).all<{ update_id: string; nombre: string }>();
-  for (const row of rows.results ?? []) {
-    const list = map.get(row.update_id) ?? [];
-    list.push(row.nombre);
-    map.set(row.update_id, list);
+  // D1 rechaza más de ~100 parámetros ligados por query — el feed puede traer
+  // 50 updates MÁS todas sus replies, así que va en lotes; sin esto, un item
+  // muy comentado respondía 500 en TODO su feed (seenByFor no es best-effort
+  // para el GET de updates).
+  for (let i = 0; i < updateIds.length; i += 90) {
+    const chunk = updateIds.slice(i, i + 90);
+    const placeholders = chunk.map(() => '?').join(',');
+    const rows = await env.DB.prepare(
+      `SELECT us.update_id AS update_id, COALESCE(i.nombre, us.viewer_email) AS nombre
+       FROM update_seen us LEFT JOIN identity i ON i.email = us.viewer_email
+       WHERE us.update_id IN (${placeholders})`,
+    ).bind(...chunk).all<{ update_id: string; nombre: string }>();
+    for (const row of rows.results ?? []) {
+      const list = map.get(row.update_id) ?? [];
+      list.push(row.nombre);
+      map.set(row.update_id, list);
+    }
   }
   return map;
 }

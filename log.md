@@ -2,6 +2,41 @@
 
 ## 2026-08-14
 
+- Fix (misma sesión de mantenimiento, hallazgos de un subagente revisando los
+  12 commits recientes — 4 bugs, todos verificados contra el código):
+  - **El log de actividad fugaba costos a vendedor/almacén.** La WHITELIST de
+    `worker/lib/activityLog.ts` es "de ruido, no de permisos" (así está
+    documentada), pero el GET `.../activity` serializaba las filas SIN pasar
+    por `shared/visibility.ts`: un vendedor abría el tab Actividad (o el
+    drawer de Productos, también almacén) y leía "X cambió Costo Distribuidor
+    de 50 a 60" en columnas `vis: AC` (Costo Distr., Techo, Margen Gob,
+    Historial precios…) — contra la regla dura "Ventas: cero costos y cero
+    proveedores" (2026-07-30). Ahora el endpoint filtra con el mismo `canRead`
+    que ya filtra los DTOs de items (`listActivity` regresa board_id/column_id
+    para poder hacerlo); create_pulse/update_name pasan siempre.
+  - **Auto-versionado antes de validar el write.** Un PATCH de línea con
+    columna no escribible por el rol moría en 403 dentro de `submitWrite`…
+    pero `autoVersionLineaCosteada` ya había corrido: versión archivada, Etapa
+    Costeo reseteada en TODAS las líneas y notificación "creó V_n" enviada,
+    sin ningún cambio aplicado. El PATCH ahora corre la MISMA validación
+    `canWrite` por columna antes de auto-versionar. (El caso análogo en
+    DELETE — deleteItem a Monday truena DESPUÉS de versionar — queda anotado,
+    no arreglado: reordenarlo cambia semántica de qué snapshot se archiva y el
+    fallo es transitorio.)
+  - **Tope de ~100 parámetros ligados de D1.** `seenByFor` (un bind por update
+    del feed — que trae 50 updates MÁS replies) y `listActivity` (2 binds por
+    línea — una oportunidad de 50+ líneas) explotaban la query y tiraban el
+    feed/tab completo con 500. Ambos van ahora en lotes de ≤90 binds.
+  - **`notifyNuevaVersion` era el único eslabón no best-effort** del camino de
+    versionado: un throw ahí (vendedor_ids no parseable) respondía 500 con la
+    versión ya archivada. Envuelto en try/catch como sus vecinos.
+  - Hallazgos que son DECISIÓN DE EFRAÍN, no se tocaron: (1) compras
+    capturando embellecimiento desde Costeo sobre una vigente a media costear
+    dispara auto-versión y le resetea su propio avance de Etapa Costeo
+    (`LINE_DEFINING_COLS` incluye las columnas de embellecimiento); (2) un
+    líder de zona puede COMENTAR (updates) en items de su equipo aunque nunca
+    los edita — el composer usa scope de lectura a propósito.
+
 - Fix (misma sesión de mantenimiento): adjuntar archivo a un update no
   verificaba que el `updateId` perteneciera al item validado. El endpoint
   `POST /api/boards/:slug/items/:id/updates/:updateId/attachment`

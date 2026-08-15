@@ -4,7 +4,7 @@
 import type { Context, ExecutionContext, Hono } from 'hono';
 import type { Env } from '../env';
 import type { Identity } from '../../shared/types';
-import { BOARDS } from '../../shared/boards';
+import { BOARDS, boardById } from '../../shared/boards';
 import type { BoardSlug } from '../../shared/boards';
 import { isNativeId } from '../../shared/nativeId';
 import type {
@@ -16,7 +16,7 @@ import {
   ownsItem, leadsOthers, hasPendingWrites, upsertIdentity,
 } from '../lib/dal';
 import { toItemDTO, toColMeta, itemDetailEtag } from '../lib/serialize';
-import { canReadBoard } from '../../shared/visibility';
+import { canRead, canReadBoard, canWrite } from '../../shared/visibility';
 import { submitWrite, OutboxError } from '../lib/outbox';
 import { submitCreate, submitCreateNative, CreateError } from '../lib/createRecord';
 import { duplicateVersion, esDraftVigente, QuoteVersionError, LINE_DEFINING_COLS } from '../lib/quoteVersions';
@@ -321,6 +321,14 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
     const body = await c.req.json<WriteRequest>();
 
     if (slug === 'oportunidades_sub' && Object.keys(body.cols).some(id => LINE_DEFINING_COLS.has(id))) {
+      // La misma validación por columna que submitWrite hará abajo, pero ANTES
+      // de auto-versionar: sin esto, un PATCH que iba a morir en 403 dejaba
+      // efectos irreversibles (versión archivada + Etapa Costeo reseteada en
+      // todas las líneas + notificación enviada) sin aplicar ningún cambio.
+      const rechazada = Object.keys(body.cols).find(id => !canWrite(slug, id, viewer.role));
+      if (rechazada) {
+        return jsonStatus({ ok: false, pending: false, error: `cannot write ${rechazada}` } satisfies WriteResponse, 403);
+      }
       const linea = await getItem(c.env, 'oportunidades_sub', itemId, viewer, 'own');
       if (linea?.parent_item_id != null && !isNativeId(linea.parent_item_id)) {
         const versionError = await autoVersionLineaCosteada(c.env, c.executionCtx, linea.parent_item_id, viewer);
@@ -623,7 +631,19 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
       for (const child of children) targets.push({ boardId: BOARDS[childSlug].id, itemId: child.item_id });
     }
 
-    const rows = await listActivity(c.env, targets);
+    const allRows = await listActivity(c.env, targets);
+    // Visibilidad por rol ANTES de serializar: la WHITELIST de activityLog.ts
+    // es de ruido, no de permisos, y aquí salían columnas `vis: AC` (Costo
+    // Distr., Techo, Margen Gob…) con valor previo y nuevo para vendedor y
+    // almacén — violando "Ventas: cero costos y cero proveedores" (Efraín,
+    // 2026-07-30). Mismo canRead de shared/visibility.ts que ya filtra los
+    // DTOs de items; create_pulse/update_name (column_id null o 'name') pasan
+    // siempre — el nombre del item ya viaja en todo DTO.
+    const rows = allRows.filter(r => {
+      if (r.column_id == null || r.column_id === 'name') return true;
+      const rowSlug = boardById(r.board_id)?.slug;
+      return rowSlug != null && canRead(rowSlug, r.column_id, viewer.role);
+    });
     // Roster cacheado (mismo TTL que /api/users) — solo para mostrar nombre en
     // vez de un monday_user_id crudo. Un usuario NATIVO del portal (alta sin
     // Monday, worker/lib/dal.ts upsertIdentity: monday_user_id sintético

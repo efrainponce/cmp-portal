@@ -240,7 +240,12 @@ export async function duplicateVersion(
   // enseguida — sin este await el refetch pisaría el mirror con datos viejos.
   await flushOutbox(env);
 
-  await notifyNuevaVersion(env, opp, itemId, version, viewer);
+  // Best-effort de verdad: la versión ya quedó archivada y el reset aplicado —
+  // un fallo aquí (p.ej. vendedor_ids no parseable) no debe convertir el write
+  // que la disparó en un 500 a medias.
+  try {
+    await notifyNuevaVersion(env, opp, itemId, version, viewer);
+  } catch { /* la notificación nunca bloquea el versionado */ }
 }
 
 /** Avisa a la OTRA parte cuando se crea una versión — vendedor avisa a Compras,
