@@ -2,6 +2,20 @@
 
 ## 2026-08-14
 
+- Fix (misma sesión de mantenimiento): el backup semanal D1→R2 tronaba en su
+  primera corrida real — y de paso se descubrió que corre en SÁBADO, no
+  domingo. A las 03:00 UTC del sábado 2026-08-15 el cron "0 3 * * 7" disparó
+  (la numeración de Cloudflare es 1=domingo…7=sábado, no la de Unix — el
+  commit 8a3b141 asumió 7=domingo) y `buildDump` falló completo con "access
+  to _cf_KV.key is prohibited: SQLITE_AUTH": `sqlite_master` lista la tabla
+  interna `_cf_KV` de D1, y leerla está prohibido. Fix: excluir `_cf_%` del
+  dump (con ESCAPE — `_` es comodín de LIKE; query verificada contra D1
+  remoto: salen las 29 tablas reales). Se deja en sábado a propósito: lo que
+  importa es que sea semanal. La alerta WA de las 03:15 sobre `backup: 1` es
+  este fallo — ya arreglado. Detalle afortunado: el canal de alertas se
+  revivió HOY mismo (ver abajo); una semana antes este fallo habría sido
+  invisible, igual que todo lo demás desde el 08-05.
+
 - Fix (misma sesión de mantenimiento, hallazgos de un subagente revisando los
   12 commits recientes — 4 bugs, todos verificados contra el código):
   - **El log de actividad fugaba costos a vendedor/almacén.** La WHITELIST de

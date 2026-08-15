@@ -1,5 +1,5 @@
-// worker/lib/backup.ts — export semanal del mirror D1 a R2 (cron domingo, ver
-// worker/index.ts). Esto NO es la red de seguridad para "borré algo por error hoy" —
+// worker/lib/backup.ts — export semanal del mirror D1 a R2 (cron sábado 3am
+// UTC — ver worker/index.ts: en Cloudflare "7" es sábado, no domingo). Esto NO es la red de seguridad para "borré algo por error hoy" —
 // eso ya lo cubre D1 Time Travel (restore a cualquier minuto de los últimos 30 días,
 // gratis, sin este archivo). Este dump es para retención más allá de esos 30 días:
 // el día que Monday deje de ser la fuente de verdad, o si D1 mismo se pierde.
@@ -30,9 +30,14 @@ export async function backupD1ToR2(env: Env): Promise<void> {
 }
 
 async function buildDump(env: Env): Promise<string> {
+  // `_cf_KV` (interna de D1) aparece en sqlite_master pero leerla lanza
+  // "access to _cf_KV.key is prohibited: SQLITE_AUTH" y tumbaba el dump
+  // completo — visto en vivo en la PRIMERA corrida real del cron
+  // (2026-08-15T03:00 UTC). El ESCAPE es porque `_` es comodín en LIKE.
   const { results } = await env.DB.prepare(
     `SELECT type, name, sql FROM sqlite_master
      WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%'
+       AND name NOT LIKE '\\_cf\\_%' ESCAPE '\\'
      ORDER BY (type = 'table') DESC, name`,
   ).all<SqliteObject>();
   const objects = results ?? [];

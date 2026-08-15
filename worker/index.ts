@@ -68,14 +68,15 @@ app.onError(async (err, c) => {
 // la única fuente de verdad; corre la mitad de veces = la mitad de calls a Monday.
 // El tercer cron (cada 15 min) hace dos cosas SIN ser un board group: revisa
 // sync_log y avisa por WhatsApp (worker/lib/errorAlerts.ts), y corre el delta sync
-// (worker/sync/delta.ts). El cuarto (domingo 3am UTC) exporta el mirror D1 completo
+// (worker/sync/delta.ts). El cuarto (semanal, 3am UTC) exporta el mirror D1 completo
 // a R2 (worker/lib/backup.ts) — retención larga más allá de los 30 días de D1 Time
 // Travel, no recovery del día a día. wrangler.jsonc debe declarar exactamente estos
-// cuatro strings de cron. Domingo es "7", NUNCA "0": la API de Workers rechaza
-// "0" en el campo día-de-semana (a diferencia del cron estándar de Unix) — con
-// "0" el deploy sube el Worker pero el PUT de schedules falla en silencio (el
-// Action queda rojo) y este cron nunca llega a registrarse (2026-08-12/13, el
-// backup semanal nunca corrió por esto).
+// cuatro strings de cron. OJO con el día-de-semana de Cloudflare: rechaza "0"
+// (con "0" el deploy sube el Worker pero el PUT de schedules falla en silencio,
+// el Action queda rojo y el cron no se registra — 2026-08-12/13) y su numeración
+// es 1=domingo…7=SÁBADO, no la de Unix: "0 3 * * 7" disparó en sábado
+// 2026-08-15T03:00 UTC (verificado en vivo). El backup corre sábados — da igual
+// el día mientras sea semanal.
 const ALERT_CRON = '*/15 * * * *';
 const BACKUP_CRON = '0 3 * * 7';
 const CRON_GROUPS: Record<string, BoardSlug[]> = {
