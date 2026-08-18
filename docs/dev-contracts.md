@@ -75,7 +75,7 @@ ACCESS_TEAM_DOMAIN/ACCESS_AUD when ENVIRONMENT==='prod'; DEV_EMAIL — plus opti
 | POST /api/oportunidades/:id/enviar-costeo | (2026-07-15) valida líneas en D1 (≥1 línea; producto asignado; cantidad>0; color no vacío y ∈ "Colores disponibles" `lookup_mkznm0h3` cuando hay lista) → 422 `{ok:false,errors[]}`; si pasa, deal_stage→"En costeo" vía outbox (trusted write, salta canWrite SOLO para esta columna fija) |
 | POST /api/boards/oportunidades/items | (2026-07-15) creación desde el portal — CREATE_FIELDS.oportunidades (8 campos); CREATE_DEFAULTS stampa deal_stage="Nueva oportunidad" server-side (el cliente no puede mandarla) |
 | GET /api/vendedores?role=compras | (2026-07-15) filtro por rol (vendedor default) — alimenta el select de Compras del form |
-| GET/POST /api/boards/:slug/items/:id/updates | Monday item updates (comments) — live, never mirrored; scoped by the same getItem ownership check; POST backs Actualizaciones + payment-request buttons (2026-07-14) |
+| GET/POST /api/boards/:slug/items/:id/updates | Monday item updates (comments) — live, never mirrored; scoped by the same getItem ownership check; POST backs Actualizaciones + payment-request buttons (2026-07-14). Desde 2026-08-18 el POST notifica vía worker/lib/updateNotify.ts (mencionados + vendedor + comprador), y el webhook `create_update` hace lo mismo con los comentarios escritos dentro de monday.com |
 | GET /api/admin/identities, PUT /api/admin/identities/:email | admin-only roster CRUD (phone/role/active); 403 for non-admin (2026-07-14) |
 | GET /api/admin/monday-users | admin-only Monday user directory (name/email/phone/teams) for Settings import (2026-07-14) |
 

@@ -26,6 +26,11 @@ export interface NotifyInput {
   itemId?: number | null;
   actor?: string | null;
   dedupeKey: string;
+  /** Solo para severidad 'importante': `false` la deja en la bandeja Importantes
+   * pero SIN WhatsApp. Lo usan los comentarios (worker/lib/updateNotify.ts) —
+   * Efraín 2026-08-18: el comentario pide atención, pero el WhatsApp se reserva
+   * para menciones @ directas. Default (undefined) = se manda, como siempre. */
+  wa?: boolean;
 }
 
 /** INSERT OR IGNORE (idempotente por dedupe_key UNIQUE). Best-effort: cualquier
@@ -50,8 +55,9 @@ export async function emitNotification(env: Env, n: NotifyInput): Promise<void> 
       new Date().toISOString(),
     ).run();
 
-    // Fila nueva (no un replay del mismo dedupe_key) + severidad importante → WhatsApp.
-    if (result.meta.changes > 0 && n.severity === 'importante') {
+    // Fila nueva (no un replay del mismo dedupe_key) + severidad importante → WhatsApp,
+    // salvo que el emisor lo apague explícitamente con `wa: false`.
+    if (result.meta.changes > 0 && n.severity === 'importante' && n.wa !== false) {
       await notifyPortalWa(env, n);
     }
   } catch (err) {

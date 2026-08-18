@@ -6,11 +6,18 @@
 // account. Run by hand, once, when BASE_URL (the deployed Worker) is known.
 //
 // Usage: node --env-file=.env scripts/create-webhooks.mjs <BASE_URL> <WEBHOOK_TOKEN>
+//        [--events=create_update] [--boards=oportunidades,proyectos]
+//
+// Sin flags registra TODOS los eventos en TODOS los boards de primer nivel — eso
+// DUPLICA los que ya existen (Monday no de-duplica). Para agregar un evento nuevo
+// a una cuenta que ya tiene webhooks, usa --events/--boards y registra solo eso.
 import { BOARDS } from '../shared/boards.ts';
 import { gql } from '../worker/lib/monday.ts';
 
 const MONDAY_API_KEY = process.env.MONDAY_API_KEY;
-const [, , BASE_URL, WEBHOOK_TOKEN] = process.argv;
+const argv = process.argv.slice(2);
+const flags = Object.fromEntries(argv.filter(a => a.startsWith('--')).map(a => a.replace(/^--/, '').split('=')));
+const [BASE_URL, WEBHOOK_TOKEN] = argv.filter(a => !a.startsWith('--'));
 if (!MONDAY_API_KEY || !BASE_URL || !WEBHOOK_TOKEN) {
   console.error('Usage: node --env-file=.env scripts/create-webhooks.mjs <BASE_URL> <WEBHOOK_TOKEN>');
   process.exit(1);
@@ -25,7 +32,10 @@ const TOP_LEVEL = ['oportunidades', 'proyectos', 'productos', 'instituciones', '
 // portal ya se refetchea sola vía refetchItem/refetchItemTree). Sin ellos, el
 // mirror depende de `?fresh=1` al abrir el drawer + reconcileAll (cron 6h)
 // para detectar ediciones hechas directo en Monday.
-const BASE_EVENTS = ['create_item', 'change_name', 'item_deleted'];
+// create_update (2026-08-18): comentarios escritos DENTRO de monday.com — sin este
+// evento el portal nunca se enteraba de ellos y su centro de notificaciones solo
+// mostraba cambios de etapa (worker/lib/updateNotify.ts).
+const BASE_EVENTS = ['create_item', 'change_name', 'item_deleted', 'create_update'];
 const SUBITEM_EVENTS = ['create_subitem', 'subitem_deleted'];
 const hasSubitems = (slug) => Object.values(BOARDS).some(d => d.parent === slug);
 
@@ -33,11 +43,16 @@ const MUTATION = `mutation($board:ID!,$url:String!,$event:WebhookEventType!){
   create_webhook(board_id:$board, url:$url, event:$event){ id board_id }
 }`;
 
+const onlyEvents = flags.events ? flags.events.split(',') : null;
+const onlyBoards = flags.boards ? flags.boards.split(',') : null;
+
 async function main() {
   console.log(`Callback URL: ${callbackUrl}\n`);
   for (const slug of TOP_LEVEL) {
+    if (onlyBoards && !onlyBoards.includes(slug)) continue;
     const def = BOARDS[slug];
-    const events = hasSubitems(slug) ? [...BASE_EVENTS, ...SUBITEM_EVENTS] : BASE_EVENTS;
+    const all = hasSubitems(slug) ? [...BASE_EVENTS, ...SUBITEM_EVENTS] : BASE_EVENTS;
+    const events = onlyEvents ? all.filter(e => onlyEvents.includes(e)) : all;
     for (const event of events) {
       try {
         const data = await gql(env, MUTATION, { board: String(def.id), url: callbackUrl, event });

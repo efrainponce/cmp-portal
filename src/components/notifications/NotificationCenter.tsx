@@ -37,6 +37,8 @@ function fmtWhen(iso: string): string {
 function KindBadge({ kind }: { kind: string }) {
   const cfg: Record<string, { letter: string; color: string }> = {
     mention: { letter: '@', color: 'var(--accent-blue)' },
+    // Comentario de un compañero (dentro del portal o de monday.com), 2026-08-18.
+    update_comment: { letter: '”', color: 'var(--accent)' },
     costeo_incompleto: { letter: '!', color: 'var(--status-esperando)' },
     stage_change: { letter: '→', color: 'var(--status-confirmado)' },
     project_status_change: { letter: '→', color: 'var(--status-confirmado)' },

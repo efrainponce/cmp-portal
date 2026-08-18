@@ -2,6 +2,60 @@
 
 ## 2026-08-18
 
+- Los comentarios sí llegan al portal (notificación por cada update). Efraín:
+  "los comentarios que ponen los vendedores no llegan al nuevo portal, ahorita
+  entré y no hay ninguno; solo llegan las notificaciones cuando validan, paso a
+  costeo y así. Esto es vital".
+  - **Causa (verificada, no inferida).** Dos huecos encadenados: (1) Monday
+    nunca avisaba — los webhooks registrados eran solo `create_item`,
+    `change_name`, `item_deleted` (+ subitems); `create_update` NO existía en
+    ninguno de los 5 boards (consultado en vivo con la query `webhooks`), así
+    que un comentario escrito dentro de monday.com era invisible para el Worker.
+    (2) El único emisor de notificaciones por comentario vivía inline en
+    `POST /api/boards/:slug/items/:id/updates` y solo cubría menciones @ hechas
+    DESDE el portal. Resultado en producción: 540 + 201 filas `stage_change` y
+    apenas 14 `mention` en toda la vida de la tabla, cero por comentario. El
+    feed del drawer sí los mostraba (lectura viva de Monday) — lo que faltaba
+    era el aviso, y ahí es donde se perdían: comentarios reales del equipo
+    ("Me piden modificar la cantidad de 53 a 52", "@Livia aquí les dejo el
+    archivo", "BUENAS TARDES") sin que nadie se enterara.
+  - **Ruteo (decisión de Efraín, 2026-08-18):** vendedor dueño + comprador(es)
+    asignado(s) al item + los mencionados; nunca el autor. Bandeja
+    **Importantes** (un comentario pide respuesta; en Actualizaciones se perdería
+    entre los cientos de cambios de etapa) y **sin WhatsApp**, salvo mención @
+    directa, que sí lo dispara como siempre.
+  - `worker/lib/updateNotify.ts` (nuevo) — emisor compartido por los dos
+    caminos, para que un comentario rutee igual venga del portal o de
+    monday.com. Filtra los updates de MÁQUINA por contenido, no por autor (los
+    reportes de cmp-tallas salen con creator = dueño del token, así que filtrar
+    por creator no servía): encabezados `**…`/`⚠️`/`✅` y los avisos de flujo
+    ("ha solicitado el costeo", "…la validación del costeo", "…confirmación de
+    tallas", "El costeo fué validado", "Se intentó generar…"). Sin ese filtro
+    cada "Cotización generada" duplicaría el aviso de etapa. Lee además las
+    menciones NATIVAS de Monday del HTML del update
+    (`data-mention-type="User" data-mention-id="…"`), que hasta hoy el portal
+    ignoraba por completo.
+  - `worker/sync/webhook.ts` — rama `create_update`: notifica y sale sin tocar
+    el mirror (un comentario no cambia columnas, no hay nada que refetchear).
+    Se salta lo que ya notificó el portal por la firma "vía Portal CMP", y
+    deja rastro en `sync_log` cuando se salta algo por no reconocer al autor o
+    por no tener el item en el mirror.
+  - `worker/routes/boards.ts` — el POST de updates ya no emite menciones inline:
+    delega en `notifyItemComment`, así el comentario del portal también avisa al
+    vendedor y al comprador (antes solo a los mencionados). Misma `dedupe_key`
+    `mention:<updateId>:<email>` de siempre, así que si el mismo comentario
+    llega por los dos caminos el `INSERT OR IGNORE` deja una sola fila.
+  - `worker/lib/notify.ts` — `wa?: boolean` en `NotifyInput`: permite
+    'importante' SIN WhatsApp (default sin cambios, se sigue mandando).
+  - `scripts/create-webhooks.mjs` — `create_update` en `BASE_EVENTS` + flags
+    `--events=` / `--boards=` para registrar solo lo nuevo (Monday no de-duplica
+    webhooks; re-correr el script completo habría duplicado los 13 ya existentes).
+  - `src/components/notifications/NotificationCenter.tsx` — badge del kind
+    `update_comment`.
+  - Pruebas: `worker/lib/updateNotify.test.ts` (9) con los textos reales del feed
+    de Oportunidades/Proyectos — si cmp-tallas cambia sus mensajes, ese archivo
+    es el que hay que mover.
+
 - Los espejos de Monday, resueltos localmente para items nativos
   (`worker/lib/nativeMirrors.ts`, nuevo). Salió de correr el END-TO-END REAL EN
   PRODUCCIÓN que pidió Efraín: copiar una oportunidad compleja (OPP-0870, 42

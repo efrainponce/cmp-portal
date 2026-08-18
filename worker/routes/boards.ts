@@ -32,7 +32,7 @@ import { getBoardAccess } from '../lib/boardAccess';
 import { isZonaPrivadaAdminPermitido } from '../lib/zonas';
 import { refetchItem, refetchItemTree } from '../sync';
 import { jsonStatus } from '../lib/http';
-import { emitNotification } from '../lib/notify';
+import { notifyItemComment } from '../lib/updateNotify';
 import { markUpdatesSeen, seenByFor } from '../lib/updateSeen';
 
 // `s` acepta undefined porque c.req.param() lo devuelve así cuando la ruta no
@@ -111,10 +111,14 @@ async function pullFromMonday(env: Env, slug: BoardSlug, itemId: number, syncedA
 
 // Deep-link boardKey (src/lib/routing.ts) para la notificación de mención —
 // 'proyectos' vive bajo la ruta 'doctallas' en el front; el resto coincide con el slug.
-function mentionBoardKey(slug: string): string {
-  if (slug === 'oportunidades') return 'oportunidades';
-  if (slug === 'proyectos') return 'doctallas';
-  return slug;
+/** vendedor_ids del mirror (JSON int array) — tolerante a filas viejas/vacías. */
+function parseVendedorIds(raw: string | null): number[] {
+  try {
+    const ids = JSON.parse(raw || '[]') as unknown;
+    return Array.isArray(ids) ? ids.map(Number).filter(n => Number.isFinite(n)) : [];
+  } catch {
+    return [];
+  }
 }
 
 export function boardRoutes(app: Hono<{ Bindings: Env }>) {
@@ -505,30 +509,17 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
       email: viewer.email, nombre: viewer.nombre ?? undefined,
     });
 
-    // Notifica a cada compañero mencionado (nunca al propio autor). Best-effort:
-    // emitNotification ya se traga sus propios errores; aquí solo protegemos el
-    // lookup de identity para que un fallo de D1 no rompa la respuesta del update.
-    for (const mention of mentions) {
-      if (mention.id === viewer.monday_user_id) continue;
-      try {
-        const identityRow = await c.env.DB.prepare(
-          `SELECT email FROM identity WHERE monday_user_id = ? AND active = 1`,
-        ).bind(mention.id).first<{ email: string }>();
-        if (!identityRow) continue;
-        await emitNotification(c.env, {
-          recipientEmail: identityRow.email,
-          severity: 'importante',
-          kind: 'mention',
-          title: `Te mencionaron en ${row.name}`,
-          body: text.slice(0, 140),
-          boardKey: mentionBoardKey(slug),
-          boardId: BOARDS[slug].id,
-          itemId,
-          actor: viewer.nombre ?? viewer.email,
-          dedupeKey: `mention:${u.id}:${identityRow.email}`,
-        });
-      } catch { /* best-effort — no bloquea la respuesta del update */ }
-    }
+    // Notifica el comentario: mencionados (Importantes + WhatsApp) + vendedor
+    // dueño y comprador(es) asignado(s) (Importantes, sin WhatsApp) — mismo emisor
+    // que usa el webhook `create_update` para los comentarios escritos dentro de
+    // monday.com, así los dos caminos rutean igual (worker/lib/updateNotify.ts).
+    // El webhook se salta lo que sale de aquí por la firma "vía Portal CMP".
+    await notifyItemComment(c.env, {
+      slug, itemId, itemName: row.name, updateId: String(u.id), text,
+      columnsJson: row.columns, vendedorIds: parseVendedorIds(row.vendedor_ids),
+      actorEmail: viewer.email, actorName: viewer.nombre,
+      mentionIds: mentions.map(m => m.id),
+    });
 
     const dto: UpdateDTO = {
       id: u.id, body: u.text_body ?? signed, author: u.creator?.name ?? (viewer.nombre ?? viewer.email), createdAt: u.created_at,

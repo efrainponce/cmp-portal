@@ -4,6 +4,7 @@ import type { Env } from '../env';
 import { refetchItem } from './refetch';
 import { logSync } from './log';
 import { createOportunidadFolderOnCreate } from '../lib/drive';
+import { notifyUpdateFromWebhook } from '../lib/updateNotify';
 import { BOARDS } from '../../shared/boards';
 
 const DEBOUNCE_MS = 10_000;
@@ -14,6 +15,11 @@ interface WebhookEvent {
   pulseId?: number | string;
   itemId?: number | string;
   parentItemId?: number | string;
+  // create_update: el payload trae el comentario completo, no hace falta releerlo.
+  updateId?: number | string;
+  body?: string;        // HTML (con las menciones)
+  textBody?: string;    // texto plano
+  userId?: number | string;
 }
 
 export function syncRoutes(app: Hono<{ Bindings: Env }>): void {
@@ -32,6 +38,21 @@ export function syncRoutes(app: Hono<{ Bindings: Env }>): void {
     const type = String(event.type ?? '');
 
     if (!boardId || !itemId) return c.json({ ok: true, skipped: true, reason: 'missing boardId/itemId' });
+
+    // Comentario escrito DENTRO de monday.com → notificación en el portal
+    // (Efraín 2026-08-18: "los comentarios que ponen los vendedores no llegan").
+    // No toca el mirror — un update no cambia columnas — así que sale por aquí sin
+    // pasar por el debounce/refetch de abajo.
+    if (type === 'create_update') {
+      await notifyUpdateFromWebhook(c.env, {
+        boardId, itemId,
+        updateId: event.updateId,
+        body: event.body,
+        textBody: event.textBody,
+        userId: event.userId,
+      });
+      return c.json({ ok: true });
+    }
 
     if (type === 'item_deleted' || type === 'subitem_deleted') {
       await c.env.DB.prepare(`DELETE FROM items WHERE board_id = ? AND item_id = ?`)
