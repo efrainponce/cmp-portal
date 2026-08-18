@@ -2,6 +2,24 @@
 
 ## 2026-08-17
 
+- Tab "Logística" del Proyecto (`LogisticaSection.tsx`, nuevo): Compras
+  mandó capturas de su vista de recolección en Monday y agregó columnas
+  nuevas a `proyectos_sub` (re-introspección con
+  `scripts/introspect-boards.mjs`, `shared/column-meta.gen.ts` actualizado).
+  El pill "Logística" ya existía en el drawer (`BoardTabsBar.tsx`) pero
+  renderizaba un "próximamente" — ahora muestra tarjetas por producto+color
+  (mismo agrupado que Ejecución/Tallas): fila compacta con Talla/Cantidad/
+  Estado/Producción/Unidad visible a todos, y para Compras/Admin un detalle
+  expandible con Encargado, # de recolección, guías, comentarios,
+  confirmación de tallas y fecha — `shared/visibility.ts` les agregó `w: AC`
+  (antes eran de solo lectura incluso para Compras). "# Guía - empresa" y
+  "Evidencia recolección" (columnas file) tienen subida real nueva:
+  `POST /api/proyectos_sub/:id/logistica/:field` (mismo dual-write a R2 que
+  `/proyectos/:id/documento`, con rama nueva en `portalFiles.ts` para
+  resolverlos de vuelta). Verificado en vivo con Playwright (dev servers):
+  edición de texto persiste (outbox + reload), upload sube y se descarga de
+  vuelta por `/api/files/...`, layout responsive a 390px.
+
 - Ícono 📋 "Ver actividad" por renglón de cotización (`QuoteRow.tsx`,
   `MobileQuoteRow.tsx`): Efraín pidió separar la actividad de producto de la
   de la oportunidad — la pestaña "Actividad" del drawer ya mezcla item padre +

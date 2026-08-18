@@ -67,6 +67,7 @@ y `src/lib/estadoProductoBuckets.ts`.
 - [worker/lib/errorAlerts.ts](worker/lib/errorAlerts.ts) — Cron cada 15 min que revisa `sync_log` por errores recientes y avisa por WhatsApp. Exports: checkErrorsAndAlert.
 - [worker/lib/ganarOportunidad.ts](worker/lib/ganarOportunidad.ts) — "Ganar" desde el portal: replica la automatización nativa de Monday que crea el Proyecto ligado al ganar una Oportunidad. Exports: GanarOportunidadError, ganarOportunidad.
 - [worker/lib/googleAuth.ts](worker/lib/googleAuth.ts) — OAuth2 de cuenta de servicio de Google: firma un JWT RS256 con Web Crypto y lo cambia por un access token (usado por drive.ts). Exports: GoogleAuthError, getGoogleAccessToken.
+- [worker/lib/anuncios.ts](worker/lib/anuncios.ts) — Anuncios del portal: comunicados que publica el admin, nativos en D1 (sin board de Monday). Audiencia = roles Y zonas, lista vacía = todos. Exports: AnuncioError, AnuncioInput, ensureAnuncioTables, anuncioAlcanzaA, listAnuncios, createAnuncio, updateAnuncio, setArchivado, deleteAnuncio, marcarVisto, registrarWaEnviados, destinatariosWa.
 - [worker/lib/home.ts](worker/lib/home.ts) — Pantalla "Inicio": arma pendientes accionables por rol (compras/vendedor) reutilizando los mismos checks que bloquean botones del flujo. Exports: comprasPendientes, vendedorPendientes, buildHomeResponse, insertSeguimiento.
 - [worker/lib/http.ts](worker/lib/http.ts) — Helper mínimo compartido por rutas (statusCode responses). Exports: jsonStatus.
 - [worker/lib/importeEnLetras.ts](worker/lib/importeEnLetras.ts) — Convierte un monto a su representación en letras para el PDF de cotización/OC, puerto exacto de la función equivalente de cmp-tallas. Exports: importeEnLetras.
@@ -105,6 +106,7 @@ y `src/lib/estadoProductoBuckets.ts`.
 
 - [worker/routes/admin.ts](worker/routes/admin.ts) — Admin-only: gestionar roster y pullear users de Monday. Exports: adminRoutes.
 - [worker/routes/boards.ts](worker/routes/boards.ts) — Rutas genéricas de boards espejados (list/detail/patch/create/updates/activity). Exports: boardRoutes.
+- [worker/routes/anuncios.ts](worker/routes/anuncios.ts) — API de Anuncios: leer cualquiera (ya filtrado por rol+zona), escribir SOLO admin. El WhatsApp del anuncio sale en waitUntil y solo con la casilla explícita. Exports: anuncioRoutes.
 - [worker/routes/home.ts](worker/routes/home.ts) — Ruta GET /api/home de la pantalla "Inicio", con ETag propio sobre el fingerprint de items pendientes. Exports: homeRoutes.
 - [worker/routes/inventario.ts](worker/routes/inventario.ts) — Inventario D1 nativo (no espejado de Monday). Exports: inventarioRoutes.
 - [worker/routes/documents.ts](worker/routes/documents.ts) — API /api/documents*: generar, listar, PDF (base/firmado), firmar, trazo. Exports: documentRoutes.
@@ -146,6 +148,7 @@ y `src/lib/estadoProductoBuckets.ts`.
 ### src/app/
 
 - [src/app/ChunkReloadBoundary.tsx](src/app/ChunkReloadBoundary.tsx) — Error boundary que recarga una sola vez cuando un chunk lazy falla por deploy nuevo (Cloudflare Workers Assets). Exports: reloadOnceForNewDeploy, ChunkReloadBoundary.
+- [src/app/AnunciosView.tsx](src/app/AnunciosView.tsx) — Pantalla "Anuncios": tarjetas de comunicados + composer admin (prioridad, audiencia por rol/zona, casilla de WhatsApp). El "visto" se asienta con IntersectionObserver, no al abrir la vista. Exports: AnunciosView.
 - [src/app/HomeView.tsx](src/app/HomeView.tsx) — Pantalla "Inicio": saludo + pendientes en tarjetas por rol, con seguimiento inline. Exports: HomeView.
 - [src/app/ImpersonationBanner.tsx](src/app/ImpersonationBanner.tsx) — Strip fijo: aviso cuando admin suplanta otro usuario. Exports: ImpersonationBanner.
 - [src/app/MobileTopBar.tsx](src/app/MobileTopBar.tsx) — Barra superior móvil: hamburguesa + nombre board activo. Exports: MobileTopBar.
@@ -164,6 +167,7 @@ y `src/lib/estadoProductoBuckets.ts`.
 - [src/lib/embellecimiento.ts](src/lib/embellecimiento.ts) — Re-export de shared/embellecimiento (parse/serialize por zona). Exports: (re-exports).
 - [src/lib/format.ts](src/lib/format.ts) — Helpers de formato compartidos por renderers y indicators. Exports: isMoneyTitle, fmtMoney, fmtSyncAgo.
 - [src/lib/groupBy.ts](src/lib/groupBy.ts) — Agrupa items por valor de columna status/dropdown (con labels). Exports: ColumnGroup, groupByColumn.
+- [src/lib/anunciosApi.ts](src/lib/anunciosApi.ts) — Cliente + hook de Anuncios: store a nivel módulo (un solo poll ETag de 60s para pantalla y badge del sidebar). Exports: crearAnuncio, editarAnuncio, archivarAnuncio, borrarAnuncio, marcarAnuncioVisto, UseAnunciosResult, useAnuncios.
 - [src/lib/homeApi.ts](src/lib/homeApi.ts) — Cliente + hook de la pantalla "Inicio": polling ETag cada 30s sobre GET /home y envío de seguimiento. Exports: HomeResponse (re-export), HomePendienteDTO (re-export), HomeSectionDTO (re-export), enviarSeguimiento, UseHomeResult, useHome.
 - [src/lib/estadoProductoBuckets.ts](src/lib/estadoProductoBuckets.ts) — Agrupa los 11 labels de "Estado del producto" en buckets de avance para la batería del tab Ejecución (lógica pura, testeada). Exports: batteryFromSubitems, batteryFromMirrorText, ESTADO_PRODUCTO_ORDER.
 - [src/lib/impersonation.ts](src/lib/impersonation.ts) — Admin "ver como": target email persiste en localStorage. Exports: getImpersonateTarget, startImpersonation, stopImpersonation.
@@ -253,12 +257,13 @@ y `src/lib/estadoProductoBuckets.ts`.
 
 ### src/boards/oportunidades/proyecto/
 
-Antes un solo archivo (`ProyectoSection.tsx`, 1196 líneas) — dividido 2026-08-13 por tab para que cada uno se lea sin cargar los otros dos. `ProyectoSection.tsx` (arriba) queda como barrel.
+Antes un solo archivo (`ProyectoSection.tsx`, 1196 líneas) — dividido 2026-08-13 por tab para que cada uno se lea sin cargar los otros dos (LogisticaSection se agregó después, 2026-08-17, mismo criterio). `ProyectoSection.tsx` (arriba) queda como barrel.
 
-- [src/boards/oportunidades/proyecto/shared.tsx](src/boards/oportunidades/proyecto/shared.tsx) — Consts de columna (Proyectos + Subelementos), `ProyectoState`/`useProyecto`, `ProyectoActionBar`/`ProyectoLinks`/`FileList`/`Shell` compartidos por las 3 secciones. Exports: P_SHEET_LINK, P_DRIVE_LINK, P_TALLAS_PDF, P_OC_PDF, P_OC_CLIENTE, P_METODO_PAGO, P_COND_PAGO, S_PRODUCTO, S_SKU, S_COLOR, S_TALLA, S_CANTIDAD, S_PROVEEDOR, S_PROVEEDOR_RAZON, S_PROVEEDOR_CORREO, S_ESTADO, S_COSTO, S_DESCUENTO, S_MONEDA, S_ENTREGA_PROV, ESTADO_PRODUCTO_COLORS, ProyectoState, useProyecto, linkUrl, parseFiles, toR2Files, ActionOutcome, describeResult, OUTCOME_COLOR, ProyectoActionBar, ProyectoLinks, FileList, Shell.
-- [src/boards/oportunidades/proyecto/TallasSection.tsx](src/boards/oportunidades/proyecto/TallasSection.tsx) — Tab Tallas: tarjetas editables por producto+color con "Cotizado" vs. asignado; `groupByProductoColor`/`TallaGroup` también los reusa EjecucionSection. Exports: TallaGroup, sortByTalla, groupByProductoColor, ProyectoTallasSection.
+- [src/boards/oportunidades/proyecto/shared.tsx](src/boards/oportunidades/proyecto/shared.tsx) — Consts de columna (Proyectos + Subelementos), `ProyectoState`/`useProyecto`, `ProyectoActionBar`/`ProyectoLinks`/`FileList`/`Shell` compartidos por las 4 secciones. Exports: P_SHEET_LINK, P_DRIVE_LINK, P_TALLAS_PDF, P_OC_PDF, P_OC_CLIENTE, P_METODO_PAGO, P_COND_PAGO, S_PRODUCTO, S_SKU, S_COLOR, S_TALLA, S_CANTIDAD, S_PROVEEDOR, S_PROVEEDOR_RAZON, S_PROVEEDOR_CORREO, S_ESTADO, S_COSTO, S_DESCUENTO, S_MONEDA, S_ENTREGA_PROV, ESTADO_PRODUCTO_COLORS, ProyectoState, useProyecto, linkUrl, parseFiles, toR2Files, ActionOutcome, describeResult, OUTCOME_COLOR, ProyectoActionBar, ProyectoLinks, FileList, Shell.
+- [src/boards/oportunidades/proyecto/TallasSection.tsx](src/boards/oportunidades/proyecto/TallasSection.tsx) — Tab Tallas: tarjetas editables por producto+color con "Cotizado" vs. asignado; `groupByProductoColor`/`TallaGroup` también los reusa EjecucionSection/LogisticaSection. Exports: TallaGroup, sortByTalla, groupByProductoColor, ProyectoTallasSection.
 - [src/boards/oportunidades/proyecto/OrdenesSection.tsx](src/boards/oportunidades/proyecto/OrdenesSection.tsx) — Tab Órdenes de compra: líneas agrupadas por proveedor + botón "Generar OC" acotado a cada uno. Exports: ProyectoOrdenesSection.
 - [src/boards/oportunidades/proyecto/EjecucionSection.tsx](src/boards/oportunidades/proyecto/EjecucionSection.tsx) — Tab Ejecución: batería agregada + tarjetas por producto+color con resumen global y chips de estado por talla. Exports: EjecucionSection.
+- [src/boards/oportunidades/proyecto/LogisticaSection.tsx](src/boards/oportunidades/proyecto/LogisticaSection.tsx) — Tab Logística: tarjetas por producto+color, fila compacta por línea (Estado/Producción/Unidad, visible a todos) + detalle expandible solo Compras/Admin (encargado, # de recolección, guías, evidencia, confirmación de tallas y fecha — subida real de archivos vía `/api/proyectos_sub/:id/logistica/:field`). Exports: LogisticaSection.
 
 ### src/boards/oportunidades/tabs/
 

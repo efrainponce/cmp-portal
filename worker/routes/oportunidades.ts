@@ -1109,6 +1109,47 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     return c.json({ ok: true, id: asset.id, name: asset.name, url: asset.publicUrl });
   });
 
+  // Sube "# Guia - empresa" / "Evidencia recolección" (columnas file de
+  // proyectos_sub) desde el tab Logística — mismo patrón dual-write que
+  // /proyectos/:id/documento arriba, pero por subitem: el key de R2 lleva
+  // subitemId+field para no chocar entre líneas (worker/lib/portalFiles.ts
+  // resolveMondayAsset tiene la rama 'logistica' que sabe leerlo de vuelta).
+  const LOGISTICA_FILE_COLS: Record<string, string> = {
+    'guia-empresa': 'file_mm4pz90b',
+    'evidencia-recoleccion': 'file_mm4pc4tj',
+  };
+  app.post('/api/proyectos_sub/:id/logistica/:field', async c => {
+    const itemId = Number(c.req.param('id'));
+    if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
+    const field = c.req.param('field');
+    const colId = LOGISTICA_FILE_COLS[field];
+    if (!colId) return c.json({ error: 'not found' }, 404);
+    const viewer = c.get('viewer');
+    if (!canWrite('proyectos_sub', colId, viewer.role)) return c.json({ error: 'forbidden' }, 403);
+
+    const row = await getItem(c.env, 'proyectos_sub', itemId, viewer, 'own');
+    if (!row) return c.json({ error: 'not found' }, 404);
+
+    const form = await c.req.formData();
+    const file = form.get('file');
+    if (!(file instanceof File)) return c.json({ error: 'file is required' }, 400);
+
+    const asset = await addFileToColumn(c.env, itemId, colId, file, file.name);
+    c.executionCtx.waitUntil(refetchItem(c.env, BOARDS.proyectos_sub.id, itemId));
+
+    // Resolver el oppId: proyectos_sub no tiene el board_relation a la
+    // Oportunidad directo — se sube por el padre (parent_item_id = Proyecto).
+    const proyectoId = row.parent_item_id;
+    const proyectoRow = proyectoId != null ? await getItem(c.env, 'proyectos', proyectoId, viewer, 'own') : null;
+    const oppId = proyectoRow ? linkedItemId(proyectoRow, PROYECTO_OPP_REL) : null;
+    if (oppId != null) {
+      const key = oportunidadFileKey(oppId, `logistica/${itemId}/${field}`, file.name);
+      await putFile(c.env, key, file);
+      return c.json({ ok: true, id: asset.id, name: asset.name, url: `/api/files/${key}` });
+    }
+    return c.json({ ok: true, id: asset.id, name: asset.name, url: asset.publicUrl });
+  });
+
   app.post('/api/proyectos/:id/:action', async c => {
     const itemId = Number(c.req.param('id'));
     if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);

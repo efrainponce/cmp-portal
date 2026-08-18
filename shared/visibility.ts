@@ -182,10 +182,21 @@ export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
     color_mm0hqf79: { vis: V, w: AC },
     text_mm20gzsb: { vis: V, w: AC },
     ...vis(['numeric_mm1dj4fp', 'numeric_mm1dmsaz', 'text_mm1gdsvg',
-      'board_relation_mm1cfgv5', 'lookup_mm1d2y9b', 'lookup_mm2145g',
-      'multiple_person_mm4pc2ns', 'text_mm4ph3a9', 'text_mm4pywyx',
-      'file_mm4pz90b', 'file_mm4pc4tj', 'file_mm4pfh5q', 'boolean_mm4p7eqb',
-      'date_mm4p59q2'], AC),
+      'board_relation_mm1cfgv5', 'lookup_mm1d2y9b', 'lookup_mm2145g'], AC),
+    // Tab Logística del Proyecto (2026-08-17): Compras/Admin capturan la
+    // recolección — encargado, folio/guías, evidencia, confirmación de
+    // tallas completas y fecha. Vendedor sigue sin ver estas columnas (ya
+    // eran AC antes de este tab, se les agrega `w`). `text_mm6aapc8`
+    // ("Comentarios") es columna nueva del board, agregada por Compras junto
+    // con el resto del grupo de recolección.
+    multiple_person_mm4pc2ns: { vis: AC, w: AC },
+    text_mm4ph3a9: { vis: AC, w: AC },
+    text_mm6aapc8: { vis: AC, w: AC },
+    text_mm4pywyx: { vis: AC, w: AC },
+    file_mm4pz90b: { vis: AC, w: AC },
+    file_mm4pc4tj: { vis: AC, w: AC },
+    boolean_mm4p7eqb: { vis: AC, w: AC },
+    date_mm4p59q2: { vis: AC, w: AC },
   },
 
   productos: {

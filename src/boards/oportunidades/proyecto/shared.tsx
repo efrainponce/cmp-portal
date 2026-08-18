@@ -51,6 +51,9 @@ export const ESTADO_PRODUCTO_COLORS: Record<string, string> = {
   'Incidencia/Retraso': '#df2f4a',
   'OC Proveedor enviada': '#a9bee8',
   'Pendiente OC al Prov': '#e484bd',
+  'En tránsito': '#fdab3d',
+  'ALMACEN CDMX': '#bb3354',
+  'ALMACEN MERIDA': '#ff007f',
 };
 
 export interface ProyectoState {

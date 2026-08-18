@@ -29,8 +29,7 @@ import { ActividadTab } from './tabs/ActividadTab';
 import { NuevosProductosTab } from './tabs/NuevosProductosTab';
 import { DocumentacionTab } from './tabs/DocumentacionTab';
 import { TallasTab } from './tabs/TallasTab';
-import { EmptyDocTab } from './tabs/EmptyDocTab';
-import { useProyecto, ProyectoOrdenesSection, EjecucionSection } from './ProyectoSection';
+import { useProyecto, ProyectoOrdenesSection, EjecucionSection, LogisticaSection } from './ProyectoSection';
 import { PaymentRequestButton } from '../../components/board/PaymentRequestButton';
 import { EditableItemName } from '../../components/board/EditableItemName';
 import { EditClienteModal } from './EditClienteModal';
@@ -836,11 +835,9 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
         </div>
       )}
       {activeTab === 'logistica' && (
-        <EmptyDocTab
-          title="Documentos de logística"
-          subtitle="Guías de embarque, comprobantes de entrega y documentación de envío."
-          uploadLabel="Subir documento de logística"
-        />
+        <div style={{ padding: '24px 32px 40px', maxWidth: 920, width: '100%', boxSizing: 'border-box' }}>
+          <LogisticaSection state={proyecto} oppId={id} />
+        </div>
       )}
 
       {showNuevaVersion && (

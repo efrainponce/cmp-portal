@@ -28,9 +28,17 @@ export const PROYECTO_FILE_COLS: Record<string, string> = {
   'oc': 'file_mm0hj9pn',
 };
 
+// Tab Logística del Proyecto (2026-08-17): archivos por SUBITEM de
+// proyectos_sub, no por Proyecto — el key lleva subitemId+field
+// (worker/routes/oportunidades.ts POST /api/proyectos_sub/:id/logistica/:field).
+export const LOGISTICA_FILE_COLS: Record<string, string> = {
+  'guia-empresa': 'file_mm4pz90b',
+  'evidencia-recoleccion': 'file_mm4pc4tj',
+};
+
 /** Categorías válidas de un key `oportunidades/{oppId}/{categoria}/…`. */
 export function isKnownFileCategory(categoria: string): boolean {
-  return categoria === 'documento' || categoria === 'embellecimiento'
+  return categoria === 'documento' || categoria === 'embellecimiento' || categoria === 'logistica'
     || categoria in OPP_FILE_COLS || categoria in PROYECTO_FILE_COLS;
 }
 
@@ -79,6 +87,17 @@ export async function resolveMondayAsset(env: Env, key: string, viewer: Identity
     return parseFiles(row.columns)
       .map(f => ({ ...f, split: splitZone(f.name) }))
       .find(f => f.split?.zone === zone && matchesName(f.split.original, filename))?.assetId ?? null;
+  }
+
+  if (categoria === 'logistica') {
+    const subitemId = Number(parts[3]);
+    const field = parts[4];
+    const filename = parts.slice(5).join('/');
+    const colId = field ? LOGISTICA_FILE_COLS[field] : undefined;
+    if (!Number.isFinite(subitemId) || !colId) return null;
+    const row = await getItem(env, 'proyectos_sub', subitemId, viewer);
+    if (!row) return null;
+    return parseFiles(row.columns, colId).find(f => matchesName(f.name, filename))?.assetId ?? null;
   }
 
   if (categoria in OPP_FILE_COLS) {

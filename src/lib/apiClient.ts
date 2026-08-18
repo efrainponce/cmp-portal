@@ -513,6 +513,19 @@ export async function uploadProyectoDocumento(
   return body;
 }
 
+/** Sube "# Guia - empresa" / "Evidencia recolección" (tab Logística) a un
+ * subitem de proyectos_sub. */
+export async function uploadLogisticaArchivo(
+  subitemId: string, field: 'guia-empresa' | 'evidencia-recoleccion', file: File,
+): Promise<{ ok: boolean; name?: string; url?: string; error?: string }> {
+  const form = new FormData();
+  form.append('file', file);
+  const res = await apiFetch(`/proyectos_sub/${subitemId}/logistica/${field}`, { method: 'POST', body: form });
+  const body = await res.json();
+  if (!res.ok) return { ok: false, error: body.error ?? 'No se pudo subir el archivo.' };
+  return body;
+}
+
 export interface ProyectoLineaInput {
   producto: string;
   proveedorId?: string;
