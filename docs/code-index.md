@@ -16,6 +16,7 @@ y `src/lib/estadoProductoBuckets.ts`.
 
 ## shared/
 
+- [shared/analytics.ts](shared/analytics.ts) — Contrato Y cálculo del tablero de Análisis (embudo, tiempo de costeo, conversión, montos, huecos de datos). Puro y testeado: el worker solo le pasa las filas de D1. Exports: ANALYTICS_OPP_COLS, ANALYTICS_LINE_COLS, OppRow, GroupBy, FUNNEL_STEPS, FunnelBucket, TiempoCosteo, Conversion, GrupoMetrics, Hueco, AnalyticsResponse, alcanzo, horasEntre, calcTiempoCosteo, calcEmbudo, calcConversion, agrupar, calcHuecos, buildAnalytics, etapaLabel, SIN_DATO.
 - [shared/boardAccess.ts](shared/boardAccess.ts) — Per-equipo (Role) whitelist de boards del sidebar. Exports: BOARD_KEYS, ConfigurableBoardKey, isConfigurableBoardKey, TEAM_ROLES, DEFAULT_BOARD_ACCESS.
 - [shared/boards.ts](shared/boards.ts) — Registro de boards con IDs introspectionados (API 2024-10). Never fabricate. Exports: BoardSlug, BoardDef, BOARDS, boardById.
 - [shared/column-meta.gen.ts](shared/column-meta.gen.ts) — GENERADO por scripts/introspect-boards.mjs; no leer completo, grepear el id. Exports: COLUMN_META.
@@ -43,6 +44,7 @@ y `src/lib/estadoProductoBuckets.ts`.
 
 - [worker/lib/agentLoop.ts](worker/lib/agentLoop.ts) — Loop del agente Claude compartido por WhatsApp y portal. Exports: RESET_WORDS, RESET_REPLY, finalText, runAgentLoop.
 - [worker/lib/airtable.ts](worker/lib/airtable.ts) — Cliente delgado de Airtable (Fase 0) que resuelve la imagen de producto para la cotización, con degradación silenciosa si falla. Exports: fetchAirtableImageUrl.
+- [worker/lib/analytics.ts](worker/lib/analytics.ts) — I/O del tablero de Análisis: una consulta a D1 (hitos con fecha de la Oportunidad + montos sumados de las líneas) scopeada por viewer; los números los saca shared/analytics.ts. Cero llamadas a Monday. Exports: AnalyticsQuery, buildAnalyticsResponse.
 - [worker/lib/activityLog.ts](worker/lib/activityLog.ts) — Log de actividad por item (Oportunidades+líneas, Productos): whitelist propia de columnas (ruido, no permisos) sobre los activity_logs de Monday que ya jala el delta sync, persistidos en D1. Exports: ticksToIso, parseEntry, persistActivityEntries, listActivity.
 - [worker/lib/telemetry.ts](worker/lib/telemetry.ts) — Ingesta y poda de `ux_event` (capa de interacción, medición de fricción). `user_id` SIEMPRE del identity del servidor; INSERT troceado a 7 filas (84 binds) en un solo batch; retención 90 días, salvo los `edit` (400 días: son el rastro de atribución y activity_log no se poda). Exports: toRow, ingestUxEvents, purgeUxEvents.
 - [worker/lib/uxMetrics.ts](worker/lib/uxMetrics.ts) — Las 5 métricas de fricción comparables contra la línea base de Monday, con el corte PORTAL-vs-MONDAY: `activity_log` no distingue quién originó una edición (el portal escribe a Monday), así que se atribuye cruzando contra `outbox`. La atribución usa CUATRO rastros (dedupe_key 'native:', item nativo, `ux_event` edit, `outbox`) y EXCLUYE los user_id negativos, que son automatizaciones de Monday, no personas. Exports: ReEdicionStats, UxReport, Q_ATRIBUCION, Q_ATRIBUCION_DETALLE, Q_AUTOMATIZACIONES, Q_AMBIGUOS, Q_CLIC_SIN_ACUSE, Q_REEDICION, Q_TIEMPO_TAREA, Q_ADOPCION, Q_LATENCIA, buildUxReport.
@@ -107,7 +109,7 @@ y `src/lib/estadoProductoBuckets.ts`.
 
 ### worker/routes/
 
-- [worker/routes/admin.ts](worker/routes/admin.ts) — Admin-only: gestionar roster y pullear users de Monday. Exports: adminRoutes.
+- [worker/routes/admin.ts](worker/routes/admin.ts) — Admin-only: gestionar roster, pullear users de Monday y servir el tablero de Análisis (GET /api/admin/analytics). Exports: adminRoutes.
 - [worker/routes/boards.ts](worker/routes/boards.ts) — Rutas genéricas de boards espejados (list/detail/patch/create/updates/activity). Exports: boardRoutes.
 - [worker/routes/anuncios.ts](worker/routes/anuncios.ts) — API de Anuncios: leer cualquiera (ya filtrado por rol+zona), escribir SOLO admin. El WhatsApp del anuncio sale en waitUntil y solo con la casilla explícita. Exports: anuncioRoutes.
 - [worker/routes/telemetry.ts](worker/routes/telemetry.ts) — `POST /api/telemetry` (204 antes de tocar D1, insert en waitUntil, descarta lotes bajo suplantación) + `GET /api/telemetry/report` agregado, solo admin. Exports: telemetryRoutes.
@@ -152,6 +154,7 @@ y `src/lib/estadoProductoBuckets.ts`.
 ### src/app/
 
 - [src/app/ChunkReloadBoundary.tsx](src/app/ChunkReloadBoundary.tsx) — Error boundary que recarga una sola vez cuando un chunk lazy falla por deploy nuevo (Cloudflare Workers Assets). Exports: reloadOnceForNewDeploy, ChunkReloadBoundary.
+- [src/app/AnalisisPage.tsx](src/app/AnalisisPage.tsx) — Pantalla "Análisis" (admin): tiles, embudo de conversión, tabla por zona/vendedor y panel "Datos por resolver" con deep link al drawer. Exports: AnalisisPage.
 - [src/app/AnunciosView.tsx](src/app/AnunciosView.tsx) — Pantalla "Anuncios": tarjetas de comunicados + composer admin (prioridad, audiencia por rol/zona, casilla de WhatsApp). El "visto" se asienta con IntersectionObserver, no al abrir la vista. Exports: AnunciosView.
 - [src/app/HomeView.tsx](src/app/HomeView.tsx) — Pantalla "Inicio": saludo + pendientes en tarjetas por rol, con seguimiento inline. Exports: HomeView.
 - [src/app/ImpersonationBanner.tsx](src/app/ImpersonationBanner.tsx) — Strip fijo: aviso cuando admin suplanta otro usuario. Exports: ImpersonationBanner.
@@ -172,6 +175,7 @@ y `src/lib/estadoProductoBuckets.ts`.
 - [src/lib/embellecimiento.ts](src/lib/embellecimiento.ts) — Re-export de shared/embellecimiento (parse/serialize por zona). Exports: (re-exports).
 - [src/lib/format.ts](src/lib/format.ts) — Helpers de formato compartidos por renderers y indicators. Exports: isMoneyTitle, fmtMoney, fmtSyncAgo.
 - [src/lib/groupBy.ts](src/lib/groupBy.ts) — Agrupa items por valor de columna status/dropdown (con labels). Exports: ColumnGroup, groupByColumn.
+- [src/lib/analyticsApi.ts](src/lib/analyticsApi.ts) — Cliente + hook del tablero de Análisis. Sin polling a propósito (la consulta barre todo el mirror): refresco manual. Exports: PeriodoDias, PERIODOS, getAnalytics, UseAnalyticsResult, useAnalytics.
 - [src/lib/anunciosApi.ts](src/lib/anunciosApi.ts) — Cliente + hook de Anuncios: store a nivel módulo (un solo poll ETag de 60s para pantalla y badge del sidebar). Exports: crearAnuncio, editarAnuncio, archivarAnuncio, borrarAnuncio, marcarAnuncioVisto, UseAnunciosResult, useAnuncios.
 - [src/lib/homeApi.ts](src/lib/homeApi.ts) — Cliente + hook de la pantalla "Inicio": polling ETag cada 30s sobre GET /home y envío de seguimiento. Exports: HomeResponse (re-export), HomePendienteDTO (re-export), HomeSectionDTO (re-export), enviarSeguimiento, UseHomeResult, useHome.
 - [src/lib/estadoProductoBuckets.ts](src/lib/estadoProductoBuckets.ts) — Agrupa los 11 labels de "Estado del producto" en buckets de avance para la batería del tab Ejecución (lógica pura, testeada). Exports: batteryFromSubitems, batteryFromMirrorText, ESTADO_PRODUCTO_ORDER.

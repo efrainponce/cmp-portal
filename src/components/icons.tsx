@@ -136,6 +136,12 @@ export const IconPlus = (p: IconProps) => (
   </svg>
 );
 
+export const IconAnalisis = (p: IconProps) => (
+  <svg {...base} {...p}>
+    <path d="M4 20V10" /><path d="M10 20V4" /><path d="M16 20v-7" /><path d="M22 20H2" />
+  </svg>
+);
+
 export const IconSettings = (p: IconProps) => (
   <svg {...base} {...p}>
     <circle cx="12" cy="12" r="3" />

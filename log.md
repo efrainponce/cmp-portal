@@ -2,6 +2,52 @@
 
 ## 2026-08-17
 
+- Tablero "Análisis" (admin): embudo de conversión, tiempo de costeo y montos,
+  cortados por Zona o Vendedor. Pedido de Efraín — "empieza por algo super
+  básico", y todo D1 driven ("si faltan datos hay que resolverlo").
+  - **No hizo falta instrumentar nada ni esperar a juntar historia.** El board
+    de Oportunidades ya estampa los hitos con fecha y el mirror los tiene:
+    `pulse_log_mkzm4v99` (creación), `date_mm094kzf` (solicitud de costeo),
+    `date_mm0mc3dj` (validación), `date_mm09mv5b` (cotización). O sea que el
+    tablero nace con toda la historia, no desde el día que se prende.
+  - El tiempo de costeo sale del `changed_at` que traen esas columnas dentro de
+    `value`, no del `date`: con el día pelón, "mismo día" salía cero. Hoy la
+    mediana real es 21 h con p90 de 6 d — el promedio (2.6 d) lo mueven unos
+    pocos costeos olvidados, por eso mandan la mediana y el p90.
+  - Los montos NO pueden salir del padre: los mirrors de dinero de la
+    Oportunidad (`lookup_mm00p07m` y compañía) llegan VACÍOS en las 630 filas.
+    Se suman de las líneas, donde las fórmulas sí traen texto (2,964 de 2,964):
+    `formula_mkznmjh6` (Subtotal) y `formula_mkznry25` (Utilidad Total).
+  - Zona = el dropdown `dropdown_mm03g067` de la propia oportunidad, NO las
+    `zonas` de ventas del portal (esas son equipos para permisos).
+  - La consulta pasa por `scopeFor()` de dal.ts: un admin fuera de la whitelist
+    de la Zona privada "Efrain" tampoco la ve aquí, ni sumada dentro de un
+    total. Un agregado también filtra.
+  - Embudo MONOTÓNICO por construcción (un hito posterior prueba el anterior;
+    la etapa actual prueba lo que quedó atrás, salvo Perdida/Cancelada, que se
+    pueden dar en cualquier punto). Sin esa regla el embudo se ensanchaba a la
+    mitad con los datos sucios que sí existen — Sureste tenía 86 costeos
+    validados contra 80 solicitudes.
+  - **"Datos por resolver"**, que es la otra mitad de la feature: lo que se
+    rellena por inferencia no se esconde, se lista con link al drawer. Hoy son
+    ~98 renglones: 48 sin zona, 21 con etapa avanzada sin fecha, 12 con fechas
+    invertidas, 11 validados sin solicitud, 7 cotizados sin monto, 4 cotizados
+    sin validación, 1 sin vendedor.
+  - Lo que destapó ese panel: **43 oportunidades son registros de prueba**
+    (TEST/SMOKE/DEBUG/"borrar"), 7% del board, contando como ventas reales —
+    inflan "creadas" y bajan la tasa de cierre. Se reportan aparte pero SIGUEN
+    contando: decidir que un renglón no es una venta es decisión de Efraín, no
+    de un regex, y una exclusión silenciosa sería un número que nadie puede
+    auditar después.
+  - UI: tiles arriba, embudo en medio, huecos abajo. Los números del embudo van
+    FUERA de la barra — dentro caían unas veces sobre el relleno y otras sobre
+    el riel según el largo del escalón, y en móvil el monto quedaba ilegible
+    (visto en pantalla con Playwright, no supuesto). La tasa de cierre lleva su
+    denominador: "100% (1/1)" no es lo mismo que "100%".
+  - Sin polling a propósito: la consulta barre las 630 oportunidades con sus
+    2,964 líneas (317 ms end-to-end); repetirla cada 30 s sería quemar CPU del
+    Worker para redibujar el mismo número.
+
 - Corrección de la atribución portal-vs-Monday tras verificar en PRODUCCIÓN (el
   commit anterior salió con el mecanismo incompleto). Verificado con Chromium
   contra prod + consultas a la D1 real; la receta quedó en memoria.

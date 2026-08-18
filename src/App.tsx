@@ -24,6 +24,7 @@ const InventarioBoard = lazy(() => import('./boards/inventario/InventarioBoard')
 const SettingsPage = lazy(() => import('./app/SettingsPage').then((m) => ({ default: m.SettingsPage })));
 const HomeView = lazy(() => import('./app/HomeView').then((m) => ({ default: m.HomeView })));
 const AnunciosView = lazy(() => import('./app/AnunciosView').then((m) => ({ default: m.AnunciosView })));
+const AnalisisPage = lazy(() => import('./app/AnalisisPage').then((m) => ({ default: m.AnalisisPage })));
 
 function App() {
   const sessionExpired = useSessionExpired();
@@ -84,6 +85,7 @@ function App() {
       {activeBoard === 'settings' && <SettingsPage />}
       {activeBoard === 'home' && <HomeView onOpenPendiente={onOpenNotification} />}
       {activeBoard === 'anuncios' && <AnunciosView />}
+      {activeBoard === 'analisis' && <AnalisisPage onOpenOportunidad={(id) => navigate('oportunidades', id)} />}
     </Suspense>
   );
 

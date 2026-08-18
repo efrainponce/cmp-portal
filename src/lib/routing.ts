@@ -10,6 +10,7 @@ const VALID_BOARDS = new Set<BoardKey>([
   'home', 'anuncios',
   'oportunidades', 'oportunidades_web', 'costeo', 'validacion', 'doctallas', 'ordenescompra', 'ejecucion', 'logistica',
   'productos', 'instituciones', 'contactos', 'proveedores', 'inventario', 'settings', 'zona_efrain',
+  'analisis',
 ]);
 
 interface Route {

@@ -11,13 +11,13 @@ import logo from '../assets/logo-64.webp';
 import {
   IconHome, IconOportunidades, IconGlobe, IconCosteo, IconValidacion, IconDocTallas, IconOrdenesCompra, IconEjecucion, IconLogistica,
   IconProductos, IconCuentas, IconClientes, IconInventario, IconChevronLeft, IconChevronRight, IconSettings, IconLock,
-  IconAnuncios,
+  IconAnuncios, IconAnalisis,
 } from '../components/icons';
 
 export type BoardKey =
   | 'home' | 'anuncios'
   | 'oportunidades' | 'oportunidades_web' | 'costeo' | 'validacion' | 'doctallas' | 'ordenescompra' | 'ejecucion' | 'logistica'
-  | 'productos' | 'instituciones' | 'contactos' | 'proveedores' | 'inventario' | 'settings'
+  | 'productos' | 'instituciones' | 'contactos' | 'proveedores' | 'inventario' | 'settings' | 'analisis'
   | 'zona_efrain';
 
 type NavIcon = (p: { style?: React.CSSProperties }) => React.ReactElement;
@@ -65,6 +65,7 @@ export const BOARD_LABELS: Record<BoardKey, string> = {
   home: 'Inicio',
   anuncios: 'Anuncios',
   settings: 'Configuración',
+  analisis: 'Análisis',
 } as Record<BoardKey, string>;
 
 interface SidebarProps {
@@ -234,6 +235,15 @@ export function Sidebar({ activeBoard, onSelectBoard, collapsed, onToggleCollaps
         )}
 
         <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {me?.role === 'admin' && (
+            <NavItem
+              icon={<IconAnalisis />}
+              label="Análisis"
+              active={activeBoard === 'analisis'}
+              collapsed={collapsed}
+              onClick={() => onSelectBoard('analisis')}
+            />
+          )}
           {me?.role === 'admin' && (
             <NavItem
               icon={<IconSettings />}

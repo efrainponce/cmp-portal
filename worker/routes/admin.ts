@@ -12,6 +12,8 @@ import { cachedFetchUsers } from '../lib/rosterCache';
 import { listAllBoardAccess, setBoardAccess, BoardAccessError } from '../lib/boardAccess';
 import { listZonas, createZona, updateZona, deleteZona, ZonaError } from '../lib/zonas';
 import { reconcileBoard } from '../sync/reconcile';
+import { buildAnalyticsResponse } from '../lib/analytics';
+import type { GroupBy } from '../../shared/analytics';
 
 export function adminRoutes(app: Hono<{ Bindings: Env }>) {
   app.get('/api/admin/identities', async c => {
@@ -201,5 +203,32 @@ export function adminRoutes(app: Hono<{ Bindings: Env }>) {
       const detail = err instanceof Error ? err.message : String(err);
       return c.json({ error: `sync failed: ${detail}` }, 502);
     }
+  });
+
+  // Tablero de Análisis (Efraín, 2026-08-17): embudo de conversión, tiempo de
+  // costeo y montos, cortados por Zona o Vendedor. Todo se calcula sobre D1 —
+  // ni una llamada a Monday, ver worker/lib/analytics.ts.
+  //
+  // El gate de admin es el de siempre, pero además la consulta pasa por
+  // scopeFor(): un admin fuera de la whitelist de la Zona privada "Efrain"
+  // tampoco la ve aquí, ni sumada dentro de un total.
+  app.get('/api/admin/analytics', async c => {
+    const viewer = c.get('viewer');
+    if (viewer.role !== 'admin') return c.json({ error: 'forbidden' }, 403);
+
+    const por = c.req.query('por') === 'vendedor' ? 'vendedor' : 'zona';
+    // `dias` es la forma cómoda (el selector de la UI manda 30/90/180); `desde`
+    // y `hasta` explícitos ganan si vienen, para poder pedir un mes cerrado.
+    const dias = Number(c.req.query('dias'));
+    let desde = c.req.query('desde') ?? null;
+    if (!desde && Number.isFinite(dias) && dias > 0) {
+      desde = new Date(Date.now() - dias * 86_400_000).toISOString();
+    }
+    const hasta = c.req.query('hasta') ?? null;
+
+    const response = await buildAnalyticsResponse(c.env, viewer, {
+      por: por as GroupBy, desde, hasta,
+    });
+    return c.json(response);
   });
 }
