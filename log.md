@@ -2,6 +2,27 @@
 
 ## 2026-08-18
 
+- **"Mandar a costeo" se esconde por etapa** (Efraín, probando Zona Efrain:
+  "tienes que ir escondiendo dinámicamente los botones dependiendo de la
+  etapa… mandar a costeo siempre se queda, los otros sí se mueven bien"). El
+  botón vivía SIEMPRE visible por decisión de 2026-07-17 y en media docena de
+  etapas lo único que hacía era pintarse muerto con un banner rojo listando un
+  "pendiente" imposible de resolver: *"Falta esto para Mandar a costeo: la
+  oportunidad ya está en costeo"*.
+  - `COSTEO_STAGE_BLOCKED` se muda de worker/lib/costeo.ts a
+    **shared/dealStages.ts**: la UI esconde con la MISMA lista con la que el
+    server rechaza, así no pueden desincronizarse. Con ella, `puedeMandarACosteo
+    (stage, borradorPendiente)` — las dos condiciones de `checkCosteo`: la
+    etapa no lo bloquea (en costeo, en validación, Ganada/Perdida/Cancelada) y
+    hay algo sin costear (Nueva oportunidad o un borrador de versión).
+  - El camino para regresar a costeo desde una etapa avanzada no cambia: es
+    "+ Nueva versión", y en cuanto la vigente queda en borrador el botón
+    reaparece solo. El banner rojo de pendientes ahora se muestra únicamente
+    cuando el botón existe (en Nueva oportunidad sigue diciendo qué falta).
+  - De paso, el poll de respaldo de `checkCosteo` (cada 8s) dejó de correr de
+    por vida en oportunidades ya costeadas, donde nadie lo iba a leer.
+  - Anclado en `shared/dealStages.test.ts`.
+
 - **Zona Efrain = Costeo + Validación en una sola pantalla** (Efraín: "ZONA
   efrain debe ser igual que COSTEO y VALIDACION COSTEO, aquí no puedo cambiar
   nada ni costos ni precio ni nada, es una combinación de los dos"). El board

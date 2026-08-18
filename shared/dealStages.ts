@@ -25,6 +25,38 @@ export const DEAL_STAGE_ORDER = ['4', '15', '7', '9', '6', '0', '3', '8', '1', '
 // Terminal stages: Ganada, Perdida, Cancelada. "Abiertas" = everything else.
 export const CLOSED_STAGES = new Set(['1', '2', '5']);
 
+/**
+ * Etapas en las que "Mandar a costeo" NO tiene sentido, con el motivo tal cual
+ * lo devuelve el pre-chequeo. El server lo usa para rechazar (checkCosteo /
+ * enviarCosteo en worker/lib/costeo.ts) y la UI para ESCONDER el botón: vivía
+ * aquí como una lista privada del worker, así que el drawer solo se enteraba
+ * del rechazo después de pedirlo y lo pintaba como un botón muerto + un banner
+ * rojo "Falta esto para Mandar a costeo: la oportunidad ya está en costeo" —
+ * un pendiente que nadie puede resolver (Efraín, 2026-08-18: "tienes que ir
+ * escondiendo dinámicamente los botones dependiendo de la etapa… mandar a
+ * costeo siempre se queda, los otros sí se mueven bien"). Compartida para que
+ * esconder y rechazar no puedan desincronizarse.
+ */
+export const COSTEO_STAGE_BLOCKED: Record<string, string> = {
+  '15': 'La oportunidad ya está en costeo.',
+  '7': 'La oportunidad ya está en validación de costeo.',
+  '1': 'La oportunidad ya está Ganada.',
+  '2': 'La oportunidad ya está Perdida.',
+  '5': 'La oportunidad está Cancelada.',
+};
+
+/**
+ * ¿Se pinta el botón "Mandar a costeo"? Las dos mismas condiciones que el
+ * server exige para aceptarlo (checkCosteo): que la etapa no lo bloquee y que
+ * haya algo sin costear — Nueva oportunidad, o un borrador de versión (todas
+ * las líneas con Etapa Costeo vacía / "No iniciado"). Fuera de eso el camino
+ * es "+ Nueva versión", que deja la vigente en borrador y lo hace reaparecer.
+ */
+export function puedeMandarACosteo(stage: string | undefined, borradorPendiente: boolean): boolean {
+  if (COSTEO_STAGE_BLOCKED[stage ?? '']) return false;
+  return stage === '4' || borradorPendiente;
+}
+
 // Etapas ofrecibles como punto de partida de un duplicado ("Duplicar" en el
 // drawer, worker/lib/duplicateOportunidad.ts + DuplicarOportunidadModal —
 // Efraín, 2026-08-14: "duplicar pregunta a que estado se manda"): el pipeline

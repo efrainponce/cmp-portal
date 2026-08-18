@@ -8,6 +8,7 @@
 import type { ExecutionContext } from 'hono';
 import type { Env } from '../env';
 import type { Identity, MirrorItem } from '../../shared/types';
+import { COSTEO_STAGE_BLOCKED } from '../../shared/dealStages';
 import { postUpdate } from './nativeUpdates';
 import { emitStageNotification } from './notify';
 import { getItem, childrenOf, linkedItemId, ownsItem } from './dal';
@@ -79,13 +80,10 @@ const PRODUCTO_PROVEEDOR_COL = 'board_relation_mm1cwqky';
 
 const ETAPA_NO_INICIADO = 'No iniciado';
 
-const STAGE_BLOCKED: Record<string, string> = {
-  '15': 'La oportunidad ya está en costeo.',
-  '7': 'La oportunidad ya está en validación de costeo.',
-  '1': 'La oportunidad ya está Ganada.',
-  '2': 'La oportunidad ya está Perdida.',
-  '5': 'La oportunidad está Cancelada.',
-};
+// Ver COSTEO_STAGE_BLOCKED en shared/dealStages.ts — la MISMA lista que el
+// drawer usa para esconder el botón (antes vivía solo aquí y la UI lo pintaba
+// muerto en vez de quitarlo).
+const STAGE_BLOCKED = COSTEO_STAGE_BLOCKED;
 
 // Costeo (15) → Costeo en validación (7): sin endpoint de cmp-tallas para este
 // paso (docs/cmp-tallas-endpoint-map.md — "sin endpoint, cambio de stage

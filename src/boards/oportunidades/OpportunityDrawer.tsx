@@ -18,6 +18,7 @@ import {
 } from '../../lib/api';
 import { statusIndex } from '../../lib/statusValue';
 import { DEAL_STAGE_LABELS, stageAtOrAfter, type StageBoardKey } from '../../lib/dealStages';
+import { COSTEO_STAGE_BLOCKED, puedeMandarACosteo } from '../../../shared/dealStages';
 import { useIsMobile } from '../../lib/useIsMobile';
 import { uxAction, uxNav } from '../../lib/telemetry';
 import { BoardTabsBar, type DrawerTabKey } from './BoardTabsBar';
@@ -244,7 +245,15 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
   // (Efraín, stress test 2026-07-21: nunca se reactivaba con 25 líneas hasta
   // recargar la página entera).
   useEffect(() => {
-    if (!item || boardKey === 'validacion' || (boardKey === 'costeo' && stage !== '4')) { setCosteoReady(null); return; }
+    // Mismo criterio que `puedeMandarCosteo` (ver abajo): sin botón no hay a
+    // quién informarle, y el poll de respaldo cada 8s se quedaba corriendo de
+    // por vida en una oportunidad ya costeada.
+    const hayPendiente = (item?.children ?? []).some((l) => {
+      const etapa = (l.cols[ETAPA_COSTEO_COL]?.text ?? '').trim();
+      return !etapa || etapa === 'No iniciado';
+    });
+    if (!item || boardKey === 'validacion' || (boardKey === 'costeo' && stage !== '4')
+      || COSTEO_STAGE_BLOCKED[stage ?? ''] || (stage !== '4' && !hayPendiente)) { setCosteoReady(null); return; }
     let cancelled = false;
     let ready = false;
     const check = () => checkCosteo(id)
@@ -595,6 +604,19 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
     const etapa = (p.cols[ETAPA_COSTEO_COL]?.text ?? '').trim();
     return !etapa || etapa === 'No iniciado';
   });
+  // "Mandar a costeo" ya no vive siempre visible (Efraín, 2026-08-18: "tienes
+  // que ir escondiendo dinámicamente los botones dependiendo de la etapa…
+  // mandar a costeo siempre se queda, los otros sí se mueven bien"). Se pinta
+  // solo cuando de verdad hay algo que mandar, con las MISMAS dos condiciones
+  // que el server aplica para aceptarlo (worker/lib/costeo.ts checkCosteo):
+  //   · la etapa no lo bloquea (COSTEO_STAGE_BLOCKED — en costeo, en
+  //     validación, Ganada/Perdida/Cancelada), y
+  //   · hay algo sin costear: Nueva oportunidad, o un borrador de versión.
+  // Antes se quedaba ahí muerto con un banner rojo listando un "pendiente"
+  // que nadie puede resolver ("La oportunidad ya está en costeo"). El camino
+  // para regresar a costeo desde una etapa avanzada sigue siendo "+ Nueva
+  // versión": en cuanto la vigente queda en borrador, el botón reaparece.
+  const puedeMandarCosteo = puedeMandarACosteo(stage, draftVigente);
   const vigenteLabel = versions.find((v) => v.status === 'vigente')?.label;
 
   // Generar cotización (etapa 7): cmp-tallas la omite si ningún producto tiene
@@ -677,11 +699,11 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
           </div>
         </div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          {/* Siempre visible (salvo boards de Compras): las cotizaciones cambian
-              mucho — en cualquier etapa el vendedor puede crear una nueva versión
-              y regresarla a costeo con este botón. Deshabilitado cuando la vigente
-              ya se costeó o la etapa lo bloquea (Efraín, 2026-07-17). */}
-          {!readOnlyCosteo && !isValidacion && !ajena && (
+          {/* Ver `puedeMandarCosteo`: aparece en Nueva oportunidad y sobre un
+              borrador de versión — las cotizaciones cambian mucho y desde
+              cualquier etapa se puede duplicar y regresar a costeo, pero el
+              botón ya no se queda de adorno donde el server lo rechazaría. */}
+          {!readOnlyCosteo && !isValidacion && !ajena && puedeMandarCosteo && (
             <ConfirmButton
               label="Mandar a costeo"
               confirmLabel="¿Enviar solicitud de costeo?"
@@ -798,7 +820,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
       {/* El botón deshabilitado por sí solo no dice por qué — sobre todo cuando
           el motivo es de la oportunidad (falta institución/cliente) y no hay
           ninguna línea con aviso ⚠ que lo delate (Efraín, 2026-08-10). */}
-      {!readOnlyCosteo && !isValidacion && !ajena && costeoItemErrors.length > 0 && (
+      {!readOnlyCosteo && !isValidacion && !ajena && puedeMandarCosteo && costeoItemErrors.length > 0 && (
         <div style={{
           margin: isMobile ? '12px 14px 0' : '14px 32px 0', padding: '12px 16px',
           border: '1px solid var(--status-perdida)', borderRadius: 'var(--radius-lg)', background: 'var(--bg-raised)',
