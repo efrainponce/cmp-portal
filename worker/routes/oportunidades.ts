@@ -562,7 +562,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
           await recordDirectChanges(c.env, 'oportunidades_sub', [{
             boardId: BOARDS.oportunidades_sub.id, itemId: lineId, event: 'create_pulse',
             columnId: null, columnTitle: null, previousText: null, newText: subitemName,
-            userId: viewer.monday_user_id,
+            userId: viewer.monday_user_id, userEmail: viewer.email,
           }]);
         } catch { /* best-effort */ }
         return c.json({ ok: true, id: String(lineId) });
@@ -1139,7 +1139,8 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
         await recordDirectChanges(c.env, 'proyectos_sub', [{
           boardId: BOARDS.proyectos_sub.id, itemId: id, event: 'create_pulse',
           columnId: null, columnTitle: null,
-          previousText: null, newText: producto, userId: viewer.monday_user_id,
+          previousText: null, newText: producto,
+          userId: viewer.monday_user_id, userEmail: viewer.email,
         }]);
         return c.json({ ok: true, id: String(id) });
       }
@@ -1188,7 +1189,8 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     await recordDirectChanges(c.env, 'proyectos', [{
       boardId: BOARDS.proyectos.id, itemId, event: 'delete_pulse',
       columnId: null, columnTitle: null,
-      previousText: linea.name, newText: null, userId: viewer.monday_user_id,
+      previousText: linea.name, newText: null,
+      userId: viewer.monday_user_id, userEmail: viewer.email,
     }]);
     return c.json({ ok: true });
   });

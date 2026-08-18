@@ -68,9 +68,11 @@ function seed(): SqliteDb {
   [0, 120].forEach((s, k) => log.all(OPP, 777, 'deal_owner', 102, at(s), `m${k}`));
 
   // Fila escrita POR EL PORTAL vía recordDirectChanges: se reconoce por el
-  // dedupe_key 'native:<uuid>' (el delta sync usa board:item:evento:col:tick).
+  // dedupe_key 'direct:<uuid>' (el delta sync usa board:item:evento:col:tick).
+  // El fixture decía 'native:' — el prefijo que nunca escribió nadie, así que
+  // este rastro estaba muerto en producción y el test lo daba por bueno.
   // Item con id REAL de Monday a propósito: el marcador tiene que bastar solo.
-  log.all(OPP, 666, 'deal_stage', 101, at(150), 'native:9f8b7a6c-1234-4def-8888-aabbccddeeff');
+  log.all(OPP, 666, 'deal_stage', 101, at(150), 'direct:9f8b7a6c-1234-4def-8888-aabbccddeeff');
 
   // Automatización de Monday: user_id NEGATIVO. No es una persona — no debe
   // contar como fricción humana ni aparecer en adopción.
@@ -111,7 +113,7 @@ describe.skipIf(!DatabaseSync)('uxMetrics — SQL contra sqlite real', () => {
   it('atribuye por los TRES rastros: nativo, ux_event y outbox', () => {
     // El punto entero de la feature: en activity_log las 6 ediciones son
     // idénticas; los rastros son lo único que separa las 4 del portal.
-    //   portal = 2 (outbox) + 1 (dedupe_key native:) + 1 (item nativo) + 1 (ux_event)
+    //   portal = 2 (outbox) + 1 (dedupe_key direct:) + 1 (item nativo) + 1 (ux_event)
     //   monday = 2 (las de Luis, sin ningún rastro)
     // Las 2 del bot NO entran: user_id negativo queda fuera del CTE.
     expect(run(seed(), Q_ATRIBUCION)[0]).toMatchObject({ ediciones: 7, portal: 5, monday: 2 });
@@ -129,7 +131,7 @@ describe.skipIf(!DatabaseSync)('uxMetrics — SQL contra sqlite real', () => {
     expect(filas.find(f => f.item_id === 888)?.origen).toBe('portal');
   });
 
-  it('el marcador dedupe_key "native:" basta por sí solo, sin outbox ni ux_event', () => {
+  it('el marcador dedupe_key "direct:" basta por sí solo, sin outbox ni ux_event', () => {
     const filas = run(seed(), Q_ATRIBUCION_DETALLE) as { item_id: number; origen: string }[];
     expect(filas.find(f => f.item_id === 666)?.origen).toBe('portal');
   });

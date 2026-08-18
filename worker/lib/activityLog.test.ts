@@ -5,7 +5,7 @@
 // get_board_activity) para no reintroducir el bug de Number() perdiendo
 // precisión pasado 2^53.
 import { describe, it, expect } from 'vitest';
-import { ticksToIso, parseEntry, isPortalWriteColumn } from './activityLog';
+import { ticksToIso, parseEntry, isPortalWriteColumn, actorNameResolver } from './activityLog';
 import type { ActivityLogEntry } from './monday';
 
 const OPORTUNIDADES_BOARD_ID = 18395657596;
@@ -142,5 +142,46 @@ describe('PORTAL_WRITE_COLUMNS — actor real en el costeo de la OC', () => {
     expect(isPortalWriteColumn('oportunidades', 'deal_stage')).toBe(false);
     expect(isPortalWriteColumn('oportunidades_sub', 'numeric_mkzneg3d')).toBe(false);
     expect(isPortalWriteColumn('productos', 'numeric_mkzpx7eb')).toBe(false);
+  });
+});
+
+// Regresión 2026-08-18: un vendedor dado de alta con "Actuar en Monday como"
+// comparte monday_user_id con la persona prestada, y el tab Actividad firmaba
+// TODAS las ediciones de ese id con el nombre del último identity que lo tuviera
+// — el vendedor apareció cambiando el Precio de Venta (columna que su rol no
+// puede escribir, shared/visibility.ts) de una oportunidad nativa.
+describe('actorNameResolver — quién firma la actividad', () => {
+  const ROSTER = [{ id: 98389537, name: 'Efrain Ponce Salinas' }];
+  const IDENTITIES = [
+    { email: 'jefe@cmp.com', monday_user_id: 98389537, nombre: 'Efrain Ponce Salinas' },
+    { email: 'jefe.personal@gmail.com', monday_user_id: 98389537, nombre: 'Efrain Ponce Salinas' },
+    { email: 'vendedor@cmp.com', monday_user_id: 98389537, nombre: 'Rodrigo' },   // id prestado
+    { email: 'nativo@cmp.com', monday_user_id: -3, nombre: 'Usuario Nativo' },
+  ];
+
+  it('el correo del actor manda sobre el id compartido', () => {
+    const name = actorNameResolver(ROSTER, IDENTITIES);
+    expect(name({ actor_email: 'jefe@cmp.com', user_id: 98389537 })).toBe('Efrain Ponce Salinas');
+    expect(name({ actor_email: 'vendedor@cmp.com', user_id: 98389537 })).toBe('Rodrigo');
+  });
+
+  it('sin correo (filas viejas) usa el roster de Monday, no el identity prestado', () => {
+    const name = actorNameResolver(ROSTER, IDENTITIES);
+    expect(name({ actor_email: null, user_id: 98389537 })).toBe('Efrain Ponce Salinas');
+  });
+
+  it('un id que comparten dos personas y no está en el roster se queda sin nombre', () => {
+    const name = actorNameResolver([], IDENTITIES);
+    expect(name({ actor_email: null, user_id: 98389537 })).toBeNull();
+  });
+
+  it('usuario nativo del portal (id sintético, único) sí se resuelve por identity', () => {
+    const name = actorNameResolver(ROSTER, IDENTITIES);
+    expect(name({ actor_email: null, user_id: -3 })).toBe('Usuario Nativo');
+  });
+
+  it('correo sin fila de identity se muestra tal cual, nunca el nombre de otro', () => {
+    const name = actorNameResolver(ROSTER, IDENTITIES);
+    expect(name({ actor_email: 'borrado@cmp.com', user_id: 98389537 })).toBe('borrado@cmp.com');
   });
 });

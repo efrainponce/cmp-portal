@@ -10,7 +10,10 @@ import { BOARDS, type BoardSlug } from '../../shared/boards';
 import { listIdentities, getIdentityByEmail, upsertIdentity, createNativeIdentity, mondayUserIdExists } from '../lib/dal';
 import { cachedFetchUsers } from '../lib/rosterCache';
 import { listAllBoardAccess, setBoardAccess, BoardAccessError } from '../lib/boardAccess';
-import { listZonas, createZona, updateZona, deleteZona, ZonaError } from '../lib/zonas';
+import {
+  listZonas, createZona, updateZona, deleteZona, ZonaError,
+  zonaPrivadaMemberIds, isZonaPrivadaAdminPermitido,
+} from '../lib/zonas';
 import { reconcileBoard } from '../sync/reconcile';
 import { buildAnalyticsResponse } from '../lib/analytics';
 import type { GroupBy } from '../../shared/analytics';
@@ -47,6 +50,8 @@ export function adminRoutes(app: Hono<{ Bindings: Env }>) {
     if (body.mondayUserId !== undefined) {
       if (!Number.isFinite(body.mondayUserId) || body.mondayUserId <= 0) return c.json({ error: 'mondayUserId inválido' }, 400);
       if (!(await mondayUserIdExists(c.env, body.mondayUserId))) return c.json({ error: 'ese mondayUserId no existe en el roster' }, 400);
+      const prestado = await idPrestadoBloqueado(c.env, body.mondayUserId);
+      if (prestado) return c.json({ error: prestado }, 400);
     }
 
     const row = await createNativeIdentity(c.env, {
@@ -79,6 +84,10 @@ export function adminRoutes(app: Hono<{ Bindings: Env }>) {
     if (!validRoles.includes(role)) return c.json({ error: 'invalid role' }, 400);
     const mondayUserId = body.mondayUserId ?? existing?.monday_user_id;
     if (!Number.isFinite(mondayUserId)) return c.json({ error: 'mondayUserId is required' }, 400);
+    if (body.mondayUserId !== undefined && body.mondayUserId !== existing?.monday_user_id) {
+      const prestado = await idPrestadoBloqueado(c.env, body.mondayUserId);
+      if (prestado) return c.json({ error: prestado }, 400);
+    }
 
     await upsertIdentity(c.env, {
       email,
@@ -231,4 +240,29 @@ export function adminRoutes(app: Hono<{ Bindings: Env }>) {
     });
     return c.json(response);
   });
+}
+
+/** "Actuar en Monday como" presta un monday_user_id, y TODO el scoping de
+ * renglón va por ese id (worker/lib/dal.ts): quien lo recibe ve y edita las
+ * oportunidades de esa persona como si fueran suyas. Si la persona prestada
+ * está en la zona privada 'Efrain' (worker/lib/zonas.ts), eso le abre la zona
+ * completa sin dejar rastro visible en ninguna pantalla — que es justo lo que
+ * pasó con un vendedor dado de alta con el id del CEO (2026-08-18). Se bloquea
+ * el préstamo; el resto de los ids sigue igual. Devuelve el mensaje de error o
+ * null si el préstamo es legítimo. */
+async function idPrestadoBloqueado(env: Env, mondayUserId: number): Promise<string | null> {
+  const privados = await zonaPrivadaMemberIds(env);
+  if (privados.includes(mondayUserId)) {
+    return 'ese usuario de Monday es de la zona privada: prestar su id le daría acceso a sus oportunidades';
+  }
+  // La whitelist de la zona privada va por correo (worker/lib/zonas.ts), pero
+  // el scoping de renglón va por id: prestar el id de un permitido igual deja
+  // ver todo lo suyo, aunque ya no herede el tab ni el alta.
+  const { results } = await env.DB
+    .prepare('SELECT email FROM identity WHERE monday_user_id = ?')
+    .bind(mondayUserId).all<{ email: string }>();
+  if ((results ?? []).some(r => isZonaPrivadaAdminPermitido(r.email))) {
+    return 'ese usuario ve la zona privada: prestar su id le daría acceso a sus oportunidades';
+  }
+  return null;
 }

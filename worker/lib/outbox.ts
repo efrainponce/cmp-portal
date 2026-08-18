@@ -241,7 +241,7 @@ export async function submitWrite(
           columnId: colId, columnTitle: boardMeta[colId]?.title ?? colId,
           previousText: rawCols.find(c => c.id === colId)?.text ?? null,
           newText: canonValue(types[colId], cols[colId]),
-          userId: viewer.monday_user_id,
+          userId: viewer.monday_user_id, userEmail: viewer.email,
         })));
       } catch { /* best-effort */ }
     }
@@ -266,14 +266,15 @@ export async function submitWrite(
         ? {
             boardId: board.id, itemId, event: 'update_name' as const,
             columnId: 'name', columnTitle: 'Nombre',
-            previousText: row.name, newText: cols.name, userId: viewer.monday_user_id,
+            previousText: row.name, newText: cols.name,
+            userId: viewer.monday_user_id, userEmail: viewer.email,
           }
         : {
             boardId: board.id, itemId, event: 'update_column_value' as const,
             columnId: colId, columnTitle: boardMeta[colId]?.title ?? colId,
             previousText: rawCols.find(c => c.id === colId)?.text ?? null,
             newText: canonValue(types[colId], cols[colId]),
-            userId: viewer.monday_user_id,
+            userId: viewer.monday_user_id, userEmail: viewer.email,
           });
       await recordDirectChanges(env, slug, changes);
     } catch { /* best-effort */ }

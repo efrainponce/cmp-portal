@@ -21,17 +21,28 @@ import type { BoardSlug } from '../../shared/boards';
 // "admin: everything, always" (worker/lib/dal.ts) no tenía excepciones — esta
 // es la única, y solo alcanza a Oportunidades/Proyectos.
 const ZONA_PRIVADA_NOMBRE = 'Efrain';
-// efrainponce@mexicanadeproteccion.com / efrain.ponce@mexicanadeproteccion.com
-// (CEO, mismo monday_user_id — dos filas de identity) + Elisa Vallado
-// (administracion@mexicanadeproteccion.com) + Efrain Ponce Salinas
-// (efrain.ponces@gmail.com, hijo del CEO, mantiene el portal — pidió verla él
-// mismo por si hay errores, 2026-08-12). Únicos admins que ven la zona.
-const ZONA_PRIVADA_ADMINS_PERMITIDOS = new Set<number>([98635534, 98389580, 98389537]);
+// Las MISMAS tres personas de siempre (Efraín, 2026-08-12), ahora por CORREO y
+// no por monday_user_id: el CEO (sus dos correos, un solo id de Monday) + Elisa
+// Vallado + Efrain Ponce Salinas (hijo del CEO, mantiene el portal — pidió
+// verla él mismo por si hay errores; también sus dos correos).
+//
+// Por qué el correo y no el id (2026-08-18): "Actuar en Monday como"
+// (worker/routes/admin.ts) presta un monday_user_id a un usuario nuevo, y con
+// eso un vendedor dado de alta con el id de un permitido HEREDABA la zona
+// entera — tab de Zona Efrain, alta de registros ahí dentro y las
+// notificaciones reservadas a la whitelist. El correo sí es la persona.
+const ZONA_PRIVADA_ADMINS_PERMITIDOS = new Set<string>([
+  'efrainponce@mexicanadeproteccion.com',
+  'efrain.ponce@mexicanadeproteccion.com',
+  'administracion@mexicanadeproteccion.com',
+  'salinasefrain@mexicanadeproteccion.com',
+  'efrain.ponces@gmail.com',
+]);
 export const ZONA_PRIVADA_BOARDS: ReadonlySet<BoardSlug> =
   new Set<BoardSlug>(['oportunidades', 'oportunidades_sub', 'proyectos', 'proyectos_sub']);
 
-export function isZonaPrivadaAdminPermitido(mondayUserId: number): boolean {
-  return ZONA_PRIVADA_ADMINS_PERMITIDOS.has(mondayUserId);
+export function isZonaPrivadaAdminPermitido(email: string | null | undefined): boolean {
+  return !!email && ZONA_PRIVADA_ADMINS_PERMITIDOS.has(email.trim().toLowerCase());
 }
 
 export interface Zona {
@@ -122,7 +133,7 @@ export async function zonaPrivadaMemberIds(env: Env): Promise<number[]> {
  * permitidos — la mayoría de los requests, así que no le pega a D1 sin
  * necesidad. */
 export async function hiddenOwnerIdsFor(env: Env, viewer: Identity): Promise<number[]> {
-  if (viewer.role !== 'admin' || isZonaPrivadaAdminPermitido(viewer.monday_user_id)) return [];
+  if (viewer.role !== 'admin' || isZonaPrivadaAdminPermitido(viewer.email)) return [];
   return zonaPrivadaMemberIds(env);
 }
 

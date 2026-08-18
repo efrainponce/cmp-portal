@@ -48,7 +48,7 @@ export async function submitCreate(
   // Vendedor); lo único que cambia es que no existen del lado de Monday.
   // Oportunidades NO entra aquí: ahí la decisión es explícita del tab de la
   // zona (`native: true`, ver la ruta de creación).
-  if ((slug === 'contactos' || slug === 'instituciones') && isZonaPrivadaAdminPermitido(viewer.monday_user_id)) {
+  if ((slug === 'contactos' || slug === 'instituciones') && isZonaPrivadaAdminPermitido(viewer.email)) {
     return submitCreateNative(env, slug, name, cols, viewer);
   }
   if (!CREATOR_ROLES.includes(viewer.role)) throw new CreateError(403, 'cannot create');
@@ -139,7 +139,7 @@ export async function submitCreateNative(
   cols: Record<string, string>,
   viewer: Identity,
 ): Promise<CreateResponse> {
-  if (!isZonaPrivadaAdminPermitido(viewer.monday_user_id)) {
+  if (!isZonaPrivadaAdminPermitido(viewer.email)) {
     throw new CreateError(403, 'no autorizado para crear en Zona Efrain');
   }
   if (!name?.trim()) throw new CreateError(400, 'name is required');
@@ -233,7 +233,7 @@ export async function submitCreateNative(
     await recordDirectChanges(env, slug, [{
       boardId: board.id, itemId, event: 'create_pulse',
       columnId: null, columnTitle: null, previousText: null, newText: name.trim(),
-      userId: viewer.monday_user_id,
+      userId: viewer.monday_user_id, userEmail: viewer.email,
     }]);
   } catch { /* best-effort */ }
 

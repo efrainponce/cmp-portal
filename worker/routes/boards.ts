@@ -26,7 +26,7 @@ import { addFileToUpdate, fetchAssetPublicUrls, deleteItem, type MentionInput } 
 import {
   listUpdates, postUpdate, attachToNativeUpdate, nativeUpdateAsset,
 } from '../lib/nativeUpdates';
-import { listActivity } from '../lib/activityLog';
+import { listActivity, actorNameResolver } from '../lib/activityLog';
 import { cachedFetchUsers } from '../lib/rosterCache';
 import { getBoardAccess } from '../lib/boardAccess';
 import { isZonaPrivadaAdminPermitido } from '../lib/zonas';
@@ -131,7 +131,7 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
       phone: viewer.phone ?? null,
       impersonatedBy: admin ? { email: admin.email, nombre: admin.nombre ?? admin.email } : null,
       boardAccess: await getBoardAccess(c.env, viewer.role),
-      zonaEfrainAccess: isZonaPrivadaAdminPermitido(viewer.monday_user_id),
+      zonaEfrainAccess: isZonaPrivadaAdminPermitido(viewer.email),
     };
     return c.json(dto);
   });
@@ -684,17 +684,30 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
     // NEGATIVO) nunca aparece en el roster de Monday — sus ediciones a un item
     // nativo (worker/lib/activityLog.ts recordDirectChanges) se resuelven aparte
     // por `identity`, la única fuente que sí lo conoce.
+    //
+    // El actor se resuelve por CORREO cuando la fila lo trae (`actor_email`,
+    // desde 2026-08-18). El monday_user_id NO identifica a la persona: varias
+    // filas de identity pueden compartirlo a propósito ("Actuar en Monday
+    // como", worker/routes/admin.ts) y el mapa por id le ponía a cada edición
+    // el nombre de la ÚLTIMA fila con ese id — así una edición de admin salió
+    // firmada por un vendedor que ni siquiera puede escribir esa columna
+    // (encontrado en vivo, precio de venta de una oportunidad nativa).
+    // Filas viejas sin correo se quedan con el nombre del roster de Monday (la
+    // persona bajo la que se actuó): es lo único que de verdad se sabe de ellas.
     const userIds = [...new Set(rows.map(r => r.user_id).filter((id): id is number => id != null))];
+    const actorEmails = [...new Set(rows.map(r => r.actor_email).filter((e): e is string => !!e))];
     const [users, identityRows] = await Promise.all([
       cachedFetchUsers(c.env, 6 * 3600_000).catch(() => []),
-      userIds.length > 0
+      userIds.length > 0 || actorEmails.length > 0
         ? c.env.DB.prepare(
-            `SELECT monday_user_id, nombre FROM identity WHERE monday_user_id IN (${userIds.map(() => '?').join(',')})`,
-          ).bind(...userIds).all<{ monday_user_id: number; nombre: string | null }>().then(r => r.results ?? [])
+            `SELECT email, monday_user_id, nombre FROM identity
+              WHERE monday_user_id IN (${userIds.map(() => '?').join(',') || 'NULL'})
+                 OR email IN (${actorEmails.map(() => '?').join(',') || 'NULL'})`,
+          ).bind(...userIds, ...actorEmails)
+            .all<{ email: string; monday_user_id: number; nombre: string | null }>().then(r => r.results ?? [])
         : Promise.resolve([]),
     ]);
-    const nameById = new Map(users.map(u => [Number(u.id), u.name]));
-    for (const r of identityRows) if (r.nombre) nameById.set(r.monday_user_id, r.nombre);
+    const actorName = actorNameResolver(users, identityRows);
 
     const dto: ActivityResponse = {
       entries: rows.map(r => ({
@@ -703,7 +716,7 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
         columnTitle: r.column_title,
         previousText: r.previous_text,
         text: r.new_text,
-        actorName: r.user_id != null ? (nameById.get(r.user_id) ?? null) : null,
+        actorName: actorName(r),
         at: r.created_at,
       })),
     };

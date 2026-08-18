@@ -413,7 +413,8 @@ CREATE TABLE IF NOT EXISTS activity_log (
   column_title  TEXT,
   previous_text TEXT,
   new_text      TEXT,
-  user_id       INTEGER,
+  user_id       INTEGER,                     -- monday_user_id con el que se ACTÚA (puede ser prestado)
+  actor_email   TEXT,                        -- quién editó de verdad (2026-08-18, ver activityLog.ts)
   created_at    TEXT NOT NULL,
   dedupe_key    TEXT NOT NULL UNIQUE
 );

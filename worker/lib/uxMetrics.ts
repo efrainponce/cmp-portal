@@ -58,7 +58,7 @@ const ISO = `'%Y-%m-%dT%H:%M:%fZ'`;
  * `outbox`; contra datos reales de producción resultó insuficiente y hubo que
  * corregirlo (ver la nota de cabecera):
  *
- *  1. `dedupe_key` que empieza con 'native:' — marca EXACTA, sin ventanas ni
+ *  1. `dedupe_key` que empieza con 'direct:' — marca EXACTA, sin ventanas ni
  *     joins: esas filas las escribió `recordDirectChanges`, y a esa función
  *     solo la llaman caminos del portal (outbox.ts rama nativa, createRecord.ts,
  *     routes/oportunidades.ts). Las filas que vienen del delta sync usan la otra
@@ -85,7 +85,7 @@ const EDICIONES_CTE = `
   ediciones AS (
     SELECT a.item_id, a.column_id, a.user_id, a.created_at,
       CASE
-        WHEN a.dedupe_key LIKE 'native:%' THEN 'portal'
+        WHEN a.dedupe_key LIKE 'direct:%' THEN 'portal'
         WHEN a.item_id >= ${NATIVE_ID_FLOOR} THEN 'portal'
         WHEN EXISTS (
           SELECT 1 FROM ux_event u

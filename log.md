@@ -2,6 +2,36 @@
 
 ## 2026-08-18
 
+- **Un vendedor nuevo aparecía cambiando el Precio de Venta** (Efraín: "¿cómo
+  pudo Rodrigo cambiar el precio?"). No lo cambió: la actividad de los items
+  nativos guardaba solo el `monday_user_id`, y "Actuar en Monday como"
+  (alta de usuarios, 2026-08-06) hace que varias filas de `identity` compartan
+  ese id a propósito. El tab Actividad armaba el mapa de nombres por id, así
+  que la ÚLTIMA fila con ese id le ponía su nombre a todas las ediciones — las
+  del admin incluidas. La whitelist nunca se rompió: `numeric_mkzneg3d` es
+  `w: ['admin']` y outbox rechaza el write antes de tocar nada.
+  - `activity_log` estrena `actor_email`: quién editó de verdad. Lo llenan los
+    seis caminos que asientan actividad directo (outbox nativo y portal,
+    createRecord, alta/baja de líneas). Las filas viejas no lo traen.
+  - `actorNameResolver` (puro, con test): manda el correo; sin correo se usa el
+    roster de Monday —la persona bajo la que se actuó, lo único que de verdad
+    se sabe de esas filas— y `identity` solo rellena ids que el roster no
+    conoce (usuarios nativos) y que no comparta nadie.
+- **La zona privada 'Efrain' se autoriza por CORREO, no por monday_user_id.**
+  Mismo origen: el id prestado hacía que un vendedor heredara la zona entera
+  —tab de Zona Efrain, alta de registros dentro y las notificaciones
+  reservadas a la whitelist— sin que apareciera en ninguna pantalla. Son las
+  mismas tres personas de siempre, ahora listadas por sus correos; anclado en
+  `worker/lib/zonas.test.ts`.
+  - Además, el alta de usuarios rechaza prestar el id de alguien de la zona
+    privada o de la whitelist: el scoping de renglón va por id y eso deja ver
+    sus oportunidades aunque ya no herede lo demás.
+- **Fricción portal vs Monday: un rastro estaba muerto.** `uxMetrics` buscaba
+  `dedupe_key LIKE 'native:%'` y `recordDirectChanges` escribe `direct:%`, así
+  que ese rastro nunca clasificó nada (el fixture del test repetía el prefijo
+  equivocado). Los otros tres cubrían casi todo; ahora también cuenta el
+  costeo de la OC en items reales.
+
 - **La cotización nativa se construye con Eledo, igual que la real** (Efraín:
   "replicar la construcción de una cotización con Eledo y DocuSeal nativo").
   Desde el 2026-08-13 la Zona Efrain generaba su propio PDF con el motor del

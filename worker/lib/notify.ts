@@ -87,7 +87,7 @@ async function emailsByRole(env: Env, role: Role, vendedorIds: number[] = []): P
   const zonaPrivadaMembers = await zonaPrivadaMemberIds(env);
   const esZonaPrivada = vendedorIds.some(id => zonaPrivadaMembers.includes(id));
   if (!esZonaPrivada) return rows.map(r => r.email);
-  return rows.filter(r => isZonaPrivadaAdminPermitido(r.monday_user_id)).map(r => r.email);
+  return rows.filter(r => isZonaPrivadaAdminPermitido(r.email)).map(r => r.email);
 }
 
 export interface ResolveContext {

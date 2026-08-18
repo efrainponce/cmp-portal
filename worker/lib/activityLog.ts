@@ -154,10 +154,20 @@ async function ensureTable(env: Env): Promise<void> {
     previous_text TEXT,
     new_text      TEXT,
     user_id       INTEGER,
+    actor_email   TEXT,
     created_at    TEXT NOT NULL,
     dedupe_key    TEXT NOT NULL UNIQUE
   )`).run();
   await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_activity_log_item ON activity_log(board_id, item_id)').run();
+  // `actor_email` (2026-08-18): el `user_id` solo NO identifica a la persona —
+  // varias filas de `identity` pueden compartir monday_user_id a propósito
+  // ("Actuar en Monday como", worker/routes/admin.ts), y con eso la actividad
+  // de un admin salía firmada con el nombre de otro usuario. Tablas creadas
+  // antes de esta versión se migran con el ALTER; si la columna ya existe D1
+  // tira error y se ignora (SQLite no tiene ADD COLUMN IF NOT EXISTS).
+  try {
+    await env.DB.prepare('ALTER TABLE activity_log ADD COLUMN actor_email TEXT').run();
+  } catch { /* ya existe */ }
   tableReady = true;
 }
 
@@ -233,7 +243,9 @@ export interface DirectChange {
   boardId: number; itemId: number; event: 'create_pulse' | 'update_name' | 'update_column_value' | 'delete_pulse';
   columnId: string | null; columnTitle: string | null;
   previousText: string | null; newText: string | null;
-  userId: number;
+  // userId es el monday_user_id con el que ACTÚA el viewer (puede ser prestado);
+  // userEmail es quién es de verdad — ver la nota de `actor_email` en ensureTable.
+  userId: number; userEmail: string | null;
 }
 
 /** Escritura directa, sin pasar por el activity_log de Monday. Dos llamadores:
@@ -256,20 +268,52 @@ export async function recordDirectChanges(env: Env, boardSlug: BoardSlug, change
     try {
       await env.DB.prepare(
         `INSERT OR IGNORE INTO activity_log
-          (board_id, item_id, event, column_id, column_title, previous_text, new_text, user_id, created_at, dedupe_key)
-         VALUES (?,?,?,?,?,?,?,?,?,?)`,
+          (board_id, item_id, event, column_id, column_title, previous_text, new_text, user_id, actor_email, created_at, dedupe_key)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
       ).bind(
         c.boardId, c.itemId, c.event, c.columnId, c.columnTitle,
-        c.previousText, c.newText, c.userId, now, `direct:${crypto.randomUUID()}`,
+        c.previousText, c.newText, c.userId, c.userEmail ?? null, now, `direct:${crypto.randomUUID()}`,
       ).run();
     } catch { /* best-effort — nunca debe tumbar el write real */ }
   }
 }
 
+/** Nombre a mostrar para el actor de una fila de actividad.
+ *
+ * El `user_id` (monday_user_id) NO identifica a la persona: varias filas de
+ * `identity` pueden compartirlo a propósito ("Actuar en Monday como",
+ * worker/routes/admin.ts). Antes el mapa de nombres se armaba solo por id y la
+ * ÚLTIMA fila de identity con ese id le ponía su nombre a TODAS las ediciones
+ * —así una edición de admin apareció firmada por un vendedor que ni siquiera
+ * puede escribir esa columna (precio de venta, encontrado en vivo 2026-08-18)—.
+ *
+ * Orden: correo del actor (exacto, desde 2026-08-18) > roster de Monday (la
+ * persona bajo la que se actuó) > identity, pero SOLO para ids que el roster no
+ * conoce (usuarios nativos del portal, id sintético negativo) y que no comparta
+ * nadie: si dos personas comparten el id, ninguno de los dos nombres es "el"
+ * actor y se prefiere quedarse sin nombre antes que firmar con el equivocado. */
+export function actorNameResolver(
+  roster: { id: number | string; name: string }[],
+  identityRows: { email: string; monday_user_id: number; nombre: string | null }[],
+): (row: { actor_email: string | null; user_id: number | null }) => string | null {
+  const byEmail = new Map(identityRows.filter(r => r.nombre).map(r => [r.email, r.nombre!]));
+  const byId = new Map(roster.map(u => [Number(u.id), u.name]));
+  const idCount = new Map<number, number>();
+  for (const r of identityRows) idCount.set(r.monday_user_id, (idCount.get(r.monday_user_id) ?? 0) + 1);
+  for (const r of identityRows) {
+    if (r.nombre && !byId.has(r.monday_user_id) && idCount.get(r.monday_user_id) === 1) {
+      byId.set(r.monday_user_id, r.nombre);
+    }
+  }
+  return row => (row.actor_email ? byEmail.get(row.actor_email) ?? row.actor_email : null)
+    ?? (row.user_id != null ? byId.get(row.user_id) ?? null : null);
+}
+
 export interface ActivityLogRow {
   board_id: number; item_id: number; event: string;
   column_id: string | null; column_title: string | null;
-  previous_text: string | null; new_text: string | null; user_id: number | null; created_at: string;
+  previous_text: string | null; new_text: string | null; user_id: number | null;
+  actor_email: string | null; created_at: string;
 }
 
 // D1 rechaza queries con más de ~100 parámetros ligados; a 2 binds por target,
@@ -293,7 +337,7 @@ export async function listActivity(
     const clauses = chunk.map(() => '(board_id = ? AND item_id = ?)').join(' OR ');
     const binds = chunk.flatMap(t => [t.boardId, t.itemId]);
     const { results } = await env.DB.prepare(
-      `SELECT board_id, item_id, event, column_id, column_title, previous_text, new_text, user_id, created_at
+      `SELECT board_id, item_id, event, column_id, column_title, previous_text, new_text, user_id, actor_email, created_at
        FROM activity_log WHERE ${clauses} ORDER BY created_at DESC LIMIT 200`,
     ).bind(...binds).all<ActivityLogRow>();
     all.push(...(results ?? []));
