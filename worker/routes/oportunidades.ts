@@ -11,7 +11,7 @@ import type { AjustarLineaRequest, AjustarLineaResponse, CotizacionVirtualDTO, D
 import type { ProposedProductsResponse, AddProposedProductResponse } from '../../shared/productosPropuestos';
 import { getItem, childrenOf, pendingItemIds, proyectoForOportunidad, linkedItemId, PROYECTO_OPP_REL } from '../lib/dal';
 import { toItemDTO } from '../lib/serialize';
-import { OutboxError } from '../lib/outbox';
+import { OutboxError, submitWrite } from '../lib/outbox';
 import {
   generateCotizacion, generateSheet, confirmTallas, importTallas, generateOC,
   AutomationError,
@@ -32,6 +32,7 @@ import { duplicateOportunidad, DuplicateOportunidadError } from '../lib/duplicat
 import { ganarOportunidad, GanarOportunidadError } from '../lib/ganarOportunidad';
 import { createSubitem, addFileToColumn, fetchAssetPublicUrls, gql, deleteItem } from '../lib/monday';
 import { postUpdate } from '../lib/nativeUpdates';
+import { stampInstitucionEnOpsDeContacto } from '../lib/nativeMirrors';
 import { toNativeColumns, insertNativeSubitem, stampNativeFileMarker } from '../lib/nativeItems';
 import { insertSeguimiento } from '../lib/home';
 import { listZoneImages, uploadZoneImage, EmbellImageError } from '../lib/embellecimientoImagenes';
@@ -297,6 +298,57 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       itemId, mondayUpdateId: Number(update.id), autorEmail: viewer.email, mensaje,
     });
     return c.json({ ok: true, updateId: update.id });
+  });
+
+  // Institución de la oportunidad (Efraín, 2026-08-18: "que se pueda elegir una
+  // institución a la oportunidad y que se ligue al contacto automáticamente").
+  // La oportunidad NO tiene columna propia de Institución: `lookup_mm1bs976` es
+  // un espejo del Contacto ligado, así que elegirla aquí escribe la relación EN
+  // EL CONTACTO (`contact_account`) — el mismo dato que edita
+  // EditContactoModal, solo que llegando desde la oportunidad. Sin Cliente no
+  // hay dónde guardarla: se rechaza con el motivo en claro.
+  app.post('/api/oportunidades/:id/institucion', async c => {
+    const itemId = Number(c.req.param('id'));
+    if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
+    const viewer = c.get('viewer');
+    const body = await c.req.json<{ institucionId?: string }>().catch(() => ({}) as { institucionId?: string });
+    const institucionId = Number(body.institucionId);
+    if (!Number.isFinite(institucionId) || institucionId === 0) {
+      return jsonStatus({ ok: false, error: 'Falta elegir la institución' }, 422);
+    }
+
+    // scope 'own' en la oportunidad (un líder de zona la VE pero no la escribe)
+    // y, abajo, el scope propio del CONTACTO dentro de submitWrite: el permiso
+    // de columna (`contact_account`, vendedor+admin) sale de la misma whitelist
+    // que el resto de writes.
+    const opp = await getItem(c.env, 'oportunidades', itemId, viewer, 'own');
+    if (!opp) return c.json({ error: 'not found' }, 404);
+    const contactoId = linkedItemId(opp, 'deal_contact');
+    if (!contactoId) {
+      return jsonStatus({
+        ok: false,
+        error: 'Esta oportunidad no tiene Cliente todavía. Asigna primero el contacto y vuelve a elegir la institución.',
+      }, 422);
+    }
+    if (!(await getItem(c.env, 'instituciones', institucionId, viewer))) {
+      return jsonStatus({ ok: false, error: 'Institución no encontrada' }, 404);
+    }
+
+    try {
+      await submitWrite(c.env, c.executionCtx, 'contactos', contactoId, { contact_account: String(institucionId) }, viewer);
+    } catch (err) {
+      if (err instanceof OutboxError) {
+        // 404 de submitWrite = el contacto no es del viewer (dal scope 'own').
+        const error = err.status === 404
+          ? 'El contacto de esta oportunidad es de otro vendedor — pídele a esa persona o a un admin que cambie la institución.'
+          : err.message;
+        return jsonStatus({ ok: false, error }, err.status === 404 ? 403 : err.status);
+      }
+      return jsonStatus({ ok: false, error: 'internal error' }, 500);
+    }
+
+    const institucion = await stampInstitucionEnOpsDeContacto(c.env, contactoId, institucionId);
+    return c.json({ ok: true, institucion });
   });
 
   // "Ganar" (Efraín, 2026-08-05): además de la Etapa, crea el Proyecto ligado

@@ -143,6 +143,39 @@ export async function stampInstitucionDeContacto(env: Env, oppId: number, contac
   await merge(env, 'oportunidades', oppId, cols);
 }
 
+/** Elegir Institución DESDE la oportunidad (Efraín, 2026-08-18). La columna de
+ * la oportunidad es un ESPEJO del Contacto, así que el dato se guarda en el
+ * contacto (`contact_account`, ya escrito por el llamador) y de ahí baja a
+ * TODAS sus oportunidades. Monday recalcula ese espejo de forma diferida y sin
+ * webhook (ver worker/lib/outbox.ts): sin adelantarlo aquí, el header seguiría
+ * diciendo "Institución: —" hasta el reconcile de 6h — y en una oportunidad
+ * NATIVA, para siempre. El reconcile posterior escribe exactamente lo mismo.
+ *
+ * El nombre se resuelve del board Instituciones por id y no del contacto: el
+ * merge optimista de un board_relation deja el ID en `text` hasta que llega el
+ * echo de Monday. Devuelve el nombre (vacío si el id no existe en el mirror). */
+export async function stampInstitucionEnOpsDeContacto(
+  env: Env, contactoId: number, institucionId: number,
+): Promise<string> {
+  const institucion = (await rowOf(env, 'instituciones', institucionId))?.name?.trim() ?? '';
+  if (!institucion) return '';
+  const cols: RawColumn[] = [mirror(OPP_INSTITUCION, institucion)];
+  const puesto = (await rowOf(env, 'contactos', contactoId))?.cols.get(CONTACTO_PUESTO)?.text?.trim();
+  if (puesto) cols.push(mirror(OPP_PUESTO, puesto));
+
+  // El LIKE solo acota el escaneo (el id suelto puede aparecer en cualquier
+  // otra columna); quién está de verdad ligado lo decide `linkedId` en JS.
+  const res = await env.DB
+    .prepare(`SELECT item_id, columns FROM items WHERE board_id = ? AND columns LIKE ? LIMIT 300`)
+    .bind(BOARDS.oportunidades.id, `%${contactoId}%`)
+    .all<{ item_id: number; columns: string }>();
+  for (const row of res.results ?? []) {
+    if (linkedId(colsOf(row.columns).get(OPP_CONTACTO_REL)) !== contactoId) continue;
+    await merge(env, 'oportunidades', row.item_id, cols);
+  }
+  return institucion;
+}
+
 /** Todo lo que la línea hereda del Producto: los espejos del catálogo, las dos
  * columnas de texto que el flujo real llena por automatización, y el NOMBRE de
  * la línea (en Monday lo renombra una automatización al elegir el producto —

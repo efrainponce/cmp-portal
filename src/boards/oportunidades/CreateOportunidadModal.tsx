@@ -10,7 +10,7 @@ import { SearchableSelect, type SearchableOption } from '../../components/forms/
 import { ChipSelect } from '../../components/forms/ChipSelect';
 import { useMe } from '../../lib/useMe';
 import {
-  apiFetch, useBoards, colForBoard, createItem, getVendedores, vendedorKey, vendedorIdFromKey,
+  apiFetch, useBoards, colForBoard, createItem, getVendedores, patchItem, vendedorKey, vendedorIdFromKey,
   type ColMeta, type ItemDTO, type ListResponse, type VendedorDTO,
 } from '../../lib/api';
 
@@ -37,6 +37,17 @@ function labelOptions(cols: ColMeta[], id: string): { value: string; label: stri
 // Contactos board's "Vendedor" people column — no está en shared/column-meta ids
 // de oportunidades, es propia del board Contactos (docs/monday-column-map.md).
 const COL_CONTACTO_VENDEDOR = 'multiple_person_mm03vqwx';
+// Institución del CONTACTO (board Contactos). La oportunidad no tiene columna
+// propia: la suya es un espejo de esta (docs/monday-column-map.md), así que
+// elegirla en este form escribe el contacto — ver onSubmit.
+const COL_CONTACTO_INSTITUCION = 'contact_account';
+
+/** Primer id ligado de un board_relation ya serializado en el DTO. */
+function linkedId(item: ItemDTO | undefined, colId: string): string {
+  const value = item?.cols[colId]?.value as { linked_item_ids?: unknown[] } | undefined;
+  const id = value?.linked_item_ids?.[0];
+  return id == null ? '' : String(id);
+}
 
 function personIds(item: ItemDTO, colId: string): number[] {
   const value = item.cols[colId]?.value as { personsAndTeams?: { id: number }[] } | undefined;
@@ -73,6 +84,11 @@ export default function CreateOportunidadModal({
   const [vendedores, setVendedores] = useState<VendedorDTO[]>([]);
   const [compras, setCompras] = useState<VendedorDTO[]>([]);
   const [contactos, setContactos] = useState<ItemDTO[]>([]);
+  const [instituciones, setInstituciones] = useState<ItemDTO[]>([]);
+  // Fuera de `cols`: no es una columna de la oportunidad (se escribe en el
+  // contacto) y el create fail-closed rechazaría cualquier id que no esté en
+  // shared/createFields.ts.
+  const [institucionId, setInstitucionId] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fechaLimiteRef = useRef<HTMLInputElement>(null);
@@ -84,6 +100,12 @@ export default function CreateOportunidadModal({
       .then((r) => (r.ok ? (r.json() as Promise<ListResponse>) : Promise.reject()))
       .then((json) => setContactos(json.items))
       .catch(() => setContactos([]));
+    // Solo nombre (?cols=): el picker no pinta nada más y el board completo
+    // pesa de más — misma proyección que usePoll(SOLO_NOMBRE).
+    apiFetch('/boards/instituciones/items?cols=')
+      .then((r) => (r.ok ? (r.json() as Promise<ListResponse>) : Promise.reject()))
+      .then((json) => setInstituciones(json.items))
+      .catch(() => setInstituciones([]));
   }, []);
 
   // El vendedor que crea es el dueño por default (igual que el bot de WhatsApp).
@@ -118,6 +140,14 @@ export default function CreateOportunidadModal({
     }
   }, [contactOptions]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // La Institución arranca en la que ya trae el contacto (lo normal: no se
+  // toca). Cambiarla aquí RELIGA al contacto — el aviso de abajo lo dice.
+  const contactoSeleccionado = contactos.find((c) => c.id === cols[COL_CONTACTO]);
+  const institucionDelContacto = linkedId(contactoSeleccionado, COL_CONTACTO_INSTITUCION);
+  useEffect(() => {
+    setInstitucionId(institucionDelContacto);
+  }, [institucionDelContacto]);
+
   const set = (id: string) => (value: string) => setCols((c) => ({ ...c, [id]: value }));
 
   const onSubmit = async () => {
@@ -131,6 +161,15 @@ export default function CreateOportunidadModal({
       // (ver vendedorKey) — Monday solo entiende el id numérico.
       if (nonEmpty[COL_VENDEDOR]) nonEmpty[COL_VENDEDOR] = vendedorIdFromKey(nonEmpty[COL_VENDEDOR]);
       if (nonEmpty[COL_VENDEDOR_SECUNDARIO]) nonEmpty[COL_VENDEDOR_SECUNDARIO] = vendedorIdFromKey(nonEmpty[COL_VENDEDOR_SECUNDARIO]);
+      // Primero el contacto, después la oportunidad: la Institución de la
+      // oportunidad es un espejo del contacto y en una oportunidad NATIVA se
+      // copia en el momento de crearla (worker/lib/createRecord.ts) — al revés
+      // nacería con la institución vieja.
+      const contactoId = nonEmpty[COL_CONTACTO];
+      if (contactoId && institucionId && institucionId !== institucionDelContacto) {
+        const res = await patchItem('contactos', contactoId, { [COL_CONTACTO_INSTITUCION]: institucionId });
+        if (!res.ok) throw new Error(res.error ?? 'No se pudo ligar la institución al contacto.');
+      }
       const result = await createItem('oportunidades', name.trim(), nonEmpty, { native });
       if (!result.ok || !result.id) throw new Error('No se asignó ID a la oportunidad.');
 
@@ -186,6 +225,20 @@ export default function CreateOportunidadModal({
             disabledMessage="Elige primero un vendedor…"
             emptyMessage="Este vendedor no tiene contactos asignados."
           />
+        </Field>
+        <Field label="Institución">
+          <SearchableSelect
+            value={institucionId} onChange={setInstitucionId}
+            options={instituciones.map((i) => ({ value: i.id, label: i.name }))}
+            placeholder="Buscar institución…"
+            disabled={!cols[COL_CONTACTO]}
+            disabledMessage="Elige primero un contacto…"
+          />
+          <div style={{ font: 'var(--text-caption)', color: 'var(--ink-quiet)', marginTop: 4 }}>
+            {institucionId && institucionDelContacto && institucionId !== institucionDelContacto
+              ? '⚠ También cambia la institución del contacto (de ahí la toma la oportunidad).'
+              : 'Se guarda en el contacto: la oportunidad la hereda de él.'}
+          </div>
         </Field>
         <Field label="Zona">
           <SearchableSelect value={cols[COL_ZONA] ?? ''} onChange={set(COL_ZONA)} options={labelOptions(oppCols, COL_ZONA)} placeholder="Buscar zona…" />

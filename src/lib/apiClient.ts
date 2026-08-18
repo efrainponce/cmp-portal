@@ -6,7 +6,7 @@ import type {
   AssistantChatRequest, AssistantChatResponse, AssistantHistoryResponse, AssistantMessage,
   BoardAccessDTO, ColMeta, ColVal, CostoDivergenciaDTO, CotizacionVirtualDTO, CreateResponse, DuplicarOportunidadRequest, DuplicarOportunidadResponse, DuplicarVersionResponse, EnviarCosteoResponse, IdentityDTO, ItemDTO, ItemDetailDTO,
   ListResponse, MeDTO, MentionUserDTO, MondayUserDTO, ProyectoActionResponse, ProyectoResponse,
-  QuoteLineSnapshot, QuoteVersionDTO, QuoteVersionsResponse,
+  QuoteLineSnapshot, QuoteVersionDTO, QuoteVersionsResponse, SetInstitucionRequest, SetInstitucionResponse,
   TallaBoxInput, CapturarTallasResponse, EstadoHistorialEntryDTO, EstadoHistorialResponse,
   ProductoResumenDTO, ProductoResumenResponse, ProductoGeneroResponse,
   UpdateAttachmentDTO, UpdateDTO, VendedorDTO, WriteResponse, ZonaDTO,
@@ -344,6 +344,20 @@ export async function validarCosteo(id: string): Promise<EnviarCosteoResponse> {
  * oportunidad nueva; `etapa` (clave de DEAL_STAGE_LABELS, default "4" Nueva
  * oportunidad si se omite) la elige quien duplica (DuplicarOportunidadModal).
  * Nunca versiones de cotización ni otros documentos. */
+/** Institución elegida desde la oportunidad. El worker la escribe en el
+ * CONTACTO ligado (la columna de la oportunidad es un espejo suyo) y devuelve
+ * el nombre ya resuelto para pintarlo de inmediato. */
+export async function setInstitucionOportunidad(id: string, institucionId: string): Promise<SetInstitucionResponse> {
+  const res = await apiFetch(`/oportunidades/${id}/institucion`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ institucionId } satisfies SetInstitucionRequest),
+  });
+  const body: SetInstitucionResponse = await res.json().catch(() => ({ ok: false }));
+  if (!res.ok && !body.error) throw new Error('institucion failed: ' + res.status);
+  return body;
+}
+
 export async function duplicarOportunidad(id: string, etapa?: string): Promise<DuplicarOportunidadResponse> {
   const res = await apiFetch(`/oportunidades/${id}/duplicar`, {
     method: 'POST',

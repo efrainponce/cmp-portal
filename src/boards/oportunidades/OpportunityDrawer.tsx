@@ -34,6 +34,7 @@ import { useProyecto, ProyectoOrdenesSection, EjecucionSection, LogisticaSection
 import { PaymentRequestButton } from '../../components/board/PaymentRequestButton';
 import { EditableItemName } from '../../components/board/EditableItemName';
 import { EditClienteModal } from './EditClienteModal';
+import { EditInstitucionModal } from './EditInstitucionModal';
 import { EditPersonaModal } from './EditPersonaModal';
 import { DuplicarOportunidadModal } from './DuplicarOportunidadModal';
 
@@ -50,7 +51,7 @@ interface Props {
 
 const COSTEO_VARIANT_BOARDS: StageBoardKey[] = ['costeo', 'validacion'];
 const PRECIO_COL = 'numeric_mkzneg3d';   // Precio de Venta C/U (subitems)
-const INSTITUCION_COL = 'lookup_mm1bs976'; // mirror desde Contacto — nunca editable aquí
+const INSTITUCION_COL = 'lookup_mm1bs976'; // mirror desde Contacto (se edita en el contacto, ver EditInstitucionModal)
 const CONTACTO_COL = 'deal_contact';       // board_relation → Contactos ("Cliente")
 const VENDEDOR_COL = 'deal_owner';         // people
 const COMPRAS_COL = 'multiple_person_mm03qyw9'; // people ("Comprador")
@@ -112,6 +113,10 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
   const subCols = colForBoard(boards, 'oportunidades_sub');
   const oppCols = colForBoard(boards, 'oportunidades');
   const canEditCliente = !!oppCols.find((c) => c.id === CONTACTO_COL)?.w;
+  // Institución: no vive en la oportunidad (es espejo del Contacto), así que el
+  // permiso es el de `contact_account` en Contactos — el mismo que ya usa
+  // EditContactoModal (vendedor + admin).
+  const canEditInstitucion = !!colForBoard(boards, 'contactos').find((c) => c.id === 'contact_account')?.w;
   const canEditVendedor = !!oppCols.find((c) => c.id === VENDEDOR_COL)?.w;
   const canEditComprador = !!oppCols.find((c) => c.id === COMPRAS_COL)?.w;
   // Nombre de la oportunidad: editable en los 6 boards de etapa, incluidos los
@@ -139,6 +144,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
   const [duplicatingVersion, setDuplicatingVersion] = useState(false);
   const [restoreTarget, setRestoreTarget] = useState<QuoteVersionDTO | null>(null);
   const [restoringVersion, setRestoringVersion] = useState(false);
+  const [showEditInstitucion, setShowEditInstitucion] = useState(false);
   const [showEditCliente, setShowEditCliente] = useState(false);
   const [showEditVendedor, setShowEditVendedor] = useState(false);
   const [showEditComprador, setShowEditComprador] = useState(false);
@@ -633,6 +639,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
           </div>
           <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginTop: 4, font: 'var(--text-label)', color: 'var(--ink-tertiary)' }}>
             <span>Institución: <span style={{ color: 'var(--ink-secondary)' }}>{item.cols[INSTITUCION_COL]?.text || '—'}</span></span>
+            {canEditInstitucion && !ajena && <ChangeIconButton label="Cambiar institución" onClick={() => setShowEditInstitucion(true)} />}
             <span>·</span>
             <span>
               Cliente: <span style={{ color: 'var(--ink-secondary)' }}>{item.cols[CONTACTO_COL]?.text || '—'}</span>
@@ -944,6 +951,28 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
             </div>
           </div>
         </Modal>
+      )}
+
+      {showEditInstitucion && (
+        <EditInstitucionModal
+          oppId={id}
+          oppName={item.name}
+          currentInstitucion={item.cols[INSTITUCION_COL]?.text || ''}
+          currentCliente={item.cols[CONTACTO_COL]?.text || ''}
+          onClose={() => setShowEditInstitucion(false)}
+          // El espejo de Monday se recalcula diferido y sin webhook (el worker
+          // ya lo adelantó en D1); el nombre que regresa el POST se pinta aquí
+          // mismo para que el header no quede en el valor viejo.
+          onSaved={(institucion) => {
+            setItem((cur) => {
+              if (!cur) return cur;
+              const next = { ...cur, cols: { ...cur.cols, [INSTITUCION_COL]: { ...cur.cols[INSTITUCION_COL], type: cur.cols[INSTITUCION_COL]?.type ?? 'mirror', text: institucion } } };
+              cacheSet(detailCache, id, next);
+              return next;
+            });
+            load();
+          }}
+        />
       )}
 
       {showEditCliente && (

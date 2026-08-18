@@ -2,6 +2,39 @@
 
 ## 2026-08-18
 
+- **Elegir la Institución desde la oportunidad, y que se ligue sola al contacto**
+  (Efraín: "necesito que se pueda elegir una institución a la oportunidad y
+  cuando lo haces lo ligas al contacto automáticamente… al crear una
+  oportunidad o al modificarla en la vista de oportunidad"). Hasta hoy la
+  Institución solo se podía corregir dando la vuelta por el board Contactos.
+  - La oportunidad NO tiene columna propia de Institución: `lookup_mm1bs976` es
+    un **espejo** del Contacto ligado. Elegirla escribe `contact_account` **en
+    el contacto** — el mismo dato que ya editaba `EditContactoModal`, ahora
+    alcanzable desde donde se trabaja. Eso también quiere decir que queda
+    ligada al contacto y aparece en todas sus oportunidades; los dos lugares
+    nuevos lo dicen en pantalla.
+  - `POST /api/oportunidades/:id/institucion` (worker/routes/oportunidades.ts):
+    scope `'own'` sobre la oportunidad, y el contacto pasa por `submitWrite`
+    (whitelist de columna vendedor+admin + su propio scope `'own'`). Sin
+    Cliente ligado se rechaza con el motivo en claro en vez de guardar en el
+    aire; un contacto de otro vendedor devuelve 403 diciendo a quién pedirle.
+  - `stampInstitucionEnOpsDeContacto` (worker/lib/nativeMirrors.ts): Monday
+    recalcula ese espejo **diferido y sin webhook** (ya documentado en
+    outbox.ts), así que el valor se adelanta en el mirror de TODAS las
+    oportunidades del contacto — si no, el header seguiría en "Institución: —"
+    hasta el reconcile de 6h, y en una oportunidad **nativa** para siempre
+    (ahí nadie más calcula el espejo y `checkCosteo` la exige).
+  - UI: lápiz "Cambiar institución" en el header del drawer
+    (`EditInstitucionModal`, mismo patrón que "Cambiar cliente") y campo
+    Institución en "Nueva oportunidad", precargado con la que ya trae el
+    contacto y avisando cuando cambiarla reasigna al contacto. En el form la
+    liga se escribe ANTES de crear: una oportunidad nativa copia el espejo al
+    nacer (createRecord.ts) y al revés nacería con la institución vieja.
+  - Verificado local: los cuatro rechazos del endpoint (sin institución, id
+    inexistente, oportunidad sin cliente, oportunidad ajena) y las dos
+    pantallas nuevas. El write feliz NO se probó en vivo — escribe en Monday
+    real; queda para la prueba de Efraín.
+
 - **Las imágenes de embellecimiento ahora se ven, ya no se descargan** (Efraín:
   "can you create an opener for images as PDFs, embellecimientos images have to
   be downloaded"). Los PDFs de cotización ya se abrían dentro del portal

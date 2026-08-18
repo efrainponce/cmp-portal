@@ -76,6 +76,13 @@ export interface CreateResponse { ok: boolean; id?: string; error?: string }
 export interface DuplicarOportunidadRequest { etapa?: string }
 export interface DuplicarOportunidadResponse { ok: boolean; id?: string; error?: string }
 
+// Institución elegida DESDE la oportunidad: se guarda en el Contacto ligado
+// (`contact_account`) porque la columna de la oportunidad es un espejo suyo
+// — ver POST /api/oportunidades/:id/institucion. `institucion` regresa el
+// nombre ya resuelto para pintarlo sin esperar al espejo de Monday.
+export interface SetInstitucionRequest { institucionId: string }
+export interface SetInstitucionResponse { ok: boolean; institucion?: string; error?: string }
+
 // `email` distingue dos entradas que comparten `id` (mismo monday_user_id) pero
 // son personas distintas — "Actuar en Monday como" (worker/lib/dal.ts
 // createNativeIdentity) deja a alguien sin asiento propio escribiendo bajo la
