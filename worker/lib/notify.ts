@@ -7,6 +7,7 @@ import type { Role } from '../../shared/types';
 import type { RecipientSelector, StageNotifyEntry } from '../../shared/notifications';
 import { STAGE_NOTIFY, PROJECT_STATUS_NOTIFY, PROJECT_STATUS_LABELS, PROJECT_STATUS_BOARD_KEY } from '../../shared/notifications';
 import { DEAL_STAGE_LABELS } from '../../shared/dealStages';
+import { BOARDS } from '../../shared/boards';
 import { logSync } from '../sync/log';
 import { notifyPortalWa } from '../wa/notify';
 import type { RawCol } from './serialize';
@@ -218,6 +219,50 @@ async function maybeEmitStatusChange(env: Env, args: {
     }
   } catch (err) {
     await logSync(env, 'manual', args.boardId ?? null, args.itemId ?? null, false, 'notify: maybeEmitStatusChange ' + err);
+  }
+}
+
+/** Notificación de etapa para un cambio hecho DESDE el portal (submitWrite),
+ * no detectado por el diff de sync: el merge optimista de outbox.ts ya dejó la
+ * etapa nueva en `items.columns`, así que cuando llega el echo de Monday
+ * maybeEmitStageChange ve viejo == nuevo y calla. El caller la dispara a mano
+ * con el label que acaba de escribir; misma whitelist (STAGE_NOTIFY, decisión
+ * de Efraín) y mismo dedupe_key que el camino automático, así que si alguna vez
+ * los dos coinciden el INSERT OR IGNORE deja una sola. Best-effort.
+ * Hoy la usa "Validar costeo" (7→9, worker/lib/costeo.ts). */
+export async function emitStageNotification(env: Env, args: {
+  itemId: number;
+  itemName: string;
+  stageIndex: string;          // índice canon de DEAL_STAGE_LABELS ('9' = Costeo Confirmado)
+  columnsJson: string;         // `columns` del mirror — de ahí sale el comprador asignado
+  vendedorIds: number[];
+  actorEmail?: string;         // quien disparó: resolveRecipients nunca se auto-notifica
+}): Promise<void> {
+  try {
+    const label = DEAL_STAGE_LABELS[args.stageIndex];
+    if (!label) return;
+    const entry = STAGE_NOTIFY[label];
+    if (!entry || entry.selectors.length === 0) return;
+
+    const compradorIds = personIdsFromColumns(args.columnsJson, 'multiple_person_mm03qyw9');
+    const recipients = await resolveRecipients(env, entry.selectors, {
+      vendedorIds: args.vendedorIds, compradorIds, actorEmail: args.actorEmail,
+    });
+    for (const recipientEmail of recipients) {
+      await emitNotification(env, {
+        recipientEmail,
+        severity: entry.severity ?? 'actualizacion',
+        kind: 'stage_change',
+        title: `${args.itemName} pasó a ${label}`,
+        boardKey: 'oportunidades',
+        boardId: BOARDS.oportunidades.id,
+        itemId: args.itemId,
+        actor: args.actorEmail ?? null,
+        dedupeKey: `stage:${args.itemId}:${args.stageIndex}:${recipientEmail}`,
+      });
+    }
+  } catch (err) {
+    await logSync(env, 'manual', BOARDS.oportunidades.id, args.itemId, false, 'notify: emitStageNotification ' + err);
   }
 }
 

@@ -330,6 +330,16 @@ export async function enviarValidacion(id: string): Promise<EnviarCosteoResponse
   return body;
 }
 
+/** Validar costeo — dirección aprueba el precio de venta (etapa 7 → 9 "Costeo
+ * Confirmado"), paso previo a generar la cotización. Solo admin (403 para el
+ * resto); 422 con los renglones sin Precio de Venta. */
+export async function validarCosteo(id: string): Promise<EnviarCosteoResponse> {
+  const res = await apiFetch(`/oportunidades/${id}/validar-costeo`, { method: 'POST' });
+  const body: EnviarCosteoResponse = await res.json();
+  if (!res.ok && !body.errors) throw new Error('validar costeo failed: ' + res.status);
+  return body;
+}
+
 /** Duplicar — clona cabecera + líneas vigentes + embellecimiento a una
  * oportunidad nueva; `etapa` (clave de DEAL_STAGE_LABELS, default "4" Nueva
  * oportunidad si se omite) la elige quien duplica (DuplicarOportunidadModal).

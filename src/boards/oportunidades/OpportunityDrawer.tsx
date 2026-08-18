@@ -13,7 +13,7 @@ import { StatusBadge } from '../../components/core/Badges';
 import { chipFor } from '../../components/board/cellHelpers';
 import { useMe } from '../../lib/useMe';
 import {
-  useBoards, colForBoard, checkCosteo, checkValidacion, duplicarOportunidad, duplicarVersion, enviarCosteo, enviarValidacion, ganarOportunidad, generarCotizacion, getItemDetail, getVersiones,
+  useBoards, colForBoard, checkCosteo, checkValidacion, validarCosteo, duplicarOportunidad, duplicarVersion, enviarCosteo, enviarValidacion, ganarOportunidad, generarCotizacion, getItemDetail, getVersiones,
   refreshItem, restaurarVersion, patchItem, type ItemDetailDTO, type QuoteVersionDTO,
 } from '../../lib/api';
 import { statusIndex } from '../../lib/statusValue';
@@ -396,6 +396,24 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
     }
   };
 
+  // Validar costeo (7 → 9 "Costeo Confirmado"): la aprobación de dirección al
+  // Precio de Venta, paso previo a generar la cotización (Efraín, 2026-08-18).
+  const onValidarCosteo = () => uxAction('drawer:validar-costeo', { boardSlug: 'oportunidades', itemId: Number(id) || undefined }, async () => {
+    setNotice(null);
+    try {
+      const res = await validarCosteo(id);
+      if (res.ok) {
+        applyStageOptimistic('9');
+        setNotice({ kind: 'ok', title: 'Costeo validado', lines: ['La etapa pasó a "Costeo Confirmado" y se avisó a Compras. Ya puedes generar la cotización.'] });
+        load();
+      } else {
+        setNotice({ kind: 'error', title: 'No se pudo validar el costeo:', lines: res.errors ?? ['Verifica tu conexión.'] });
+      }
+    } catch {
+      setNotice({ kind: 'error', title: 'No se pudo validar el costeo:', lines: ['Verifica tu conexión.'] });
+    }
+  });
+
   const onGenerarCotizacion = async () => {
     setNotice(null);
     try {
@@ -668,7 +686,23 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
               onConfirm={onEnviarValidacion}
             />
           )}
-          {stage === '7' && !ajena && (
+          {/* Validar costeo (etapa 7): la cotización ya NO sale de aquí — primero
+              dirección aprueba el precio (7→9) y hasta entonces aparece
+              "Generar cotización" (Efraín, 2026-08-18: "el botón de generar
+              cotización no debe aparecer ahí, solo validar costeo; ya después
+              se genera la cotización"). Solo admin: es la aprobación del
+              Precio de Venta, la única columna que solo admin escribe. */}
+          {stage === '7' && me?.role === 'admin' && !ajena && (
+            <ConfirmButton
+              label="Validar costeo"
+              confirmLabel="¿Validar el costeo y confirmar el precio?"
+              busyLabel="Validando…"
+              disabled={!hasPrecio}
+              title={hasPrecio ? 'Pasa a "Costeo Confirmado" y avisa a Compras — después se genera la cotización' : 'Ningún producto tiene Precio de Venta — captúralo antes de validar'}
+              onConfirm={onValidarCosteo}
+            />
+          )}
+          {stage === '9' && !ajena && (
             <ConfirmButton
               label="Generar cotización"
               confirmLabel="¿Generar y mandar a firma?"

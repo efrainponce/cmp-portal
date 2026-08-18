@@ -16,7 +16,7 @@ import {
   generateCotizacion, generateSheet, confirmTallas, importTallas, generateOC,
   AutomationError,
 } from '../lib/automations';
-import { enviarACosteo, enviarAValidacion, checkCosteo, checkValidacion, CosteoError } from '../lib/costeo';
+import { enviarACosteo, enviarAValidacion, confirmarCosteo, checkCosteo, checkValidacion, CosteoError } from '../lib/costeo';
 import { generarCotizacionNative, generarCotizacionNativeD1, CotizacionError } from '../lib/cotizacion';
 import { listVersions, duplicateVersion, restoreVersion, esDraftVigente, recordFirstVersion, QuoteVersionError } from '../lib/quoteVersions';
 import { ajustarLinea, AjusteLineaError } from '../lib/lineaAjustes';
@@ -236,6 +236,29 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     try {
       const result = await enviarAValidacion(c.env, c.executionCtx, itemId, viewer);
       if (result.ok) await generarHojaValidacion(c, itemId, viewer);
+      return result.ok ? c.json(result) : jsonStatus(result, 422);
+    } catch (err) {
+      if (err instanceof CosteoError) return jsonStatus({ ok: false, errors: [err.message] }, err.status);
+      if (err instanceof OutboxError) return jsonStatus({ ok: false, errors: [err.message] }, err.status);
+      return jsonStatus({ ok: false, errors: ['internal error'] }, 500);
+    }
+  });
+
+  // "Validar costeo" — dirección aprueba el precio de venta (etapa 7→9 "Costeo
+  // Confirmado"). Igual que enviar-validacion: no hay endpoint de cmp-tallas
+  // para este paso, el portal escribe el stage. SOLO admin: es exactamente la
+  // aprobación de Precio de Venta C/U, la única columna con `w: ['admin']`
+  // (shared/visibility.ts). Hasta 2026-08-18 el drawer saltaba de aquí directo
+  // a "Generar cotización" — no había dónde validar (Efraín).
+  app.post('/api/oportunidades/:id/validar-costeo', async c => {
+    const itemId = Number(c.req.param('id'));
+    if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
+    const viewer = c.get('viewer');
+    if (viewer.role !== 'admin') return c.json({ error: 'forbidden' }, 403);
+
+    try {
+      const result = await confirmarCosteo(c.env, c.executionCtx, itemId, viewer);
+      if (result.ok) await refetchItem(c.env, BOARDS.oportunidades.id, itemId);
       return result.ok ? c.json(result) : jsonStatus(result, 422);
     } catch (err) {
       if (err instanceof CosteoError) return jsonStatus({ ok: false, errors: [err.message] }, err.status);

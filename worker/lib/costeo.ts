@@ -9,6 +9,7 @@ import type { ExecutionContext } from 'hono';
 import type { Env } from '../env';
 import type { Identity, MirrorItem } from '../../shared/types';
 import { postUpdate } from './nativeUpdates';
+import { emitStageNotification } from './notify';
 import { getItem, childrenOf, linkedItemId, ownsItem } from './dal';
 import { hydrateFichaLineas } from './ficha';
 import { validarCosteo } from './automations';
@@ -31,6 +32,7 @@ const SUB_PRODUCTO_TXT = 'text_mm0bkm1j';
 const SUB_FICHA = 'lookup_mm0xw8p7';              // ficha comercial (validar_costeo la exige)
 const SUB_ETAPA_COSTEO = 'color_mm084gvf';        // Etapa Costeo por línea
 const SUB_EMB_DESC = 'long_text_mm1bj4pt';        // descripción de posiciones de embellecimiento
+const SUB_PRECIO_VENTA = 'numeric_mkzneg3d';       // Precio de Venta C/U (lo que valida dirección)
 
 // Oportunidad
 const OPP_INSTITUCION = 'lookup_mm1bs976';        // validar_costeo rechaza sin institución
@@ -91,6 +93,11 @@ const STAGE_BLOCKED: Record<string, string> = {
 // canWrite (Efraín 2026-07-16: avance manual de Compras, sin validación extra).
 const STAGE_EN_COSTEO = '15';
 const DEAL_STAGE_VALIDACION_LABEL = 'Costeo en validación';
+// Costeo en validación (7) → Costeo Confirmado (9): mismo caso, tampoco hay
+// endpoint de cmp-tallas — ver confirmarCosteo al final del archivo.
+const STAGE_EN_VALIDACION = '7';
+const STAGE_COSTEO_CONFIRMADO = '9';
+const DEAL_STAGE_CONFIRMADO_LABEL = 'Costeo Confirmado';
 
 export class CosteoError extends Error {
   status: number;
@@ -106,6 +113,28 @@ function colsOf(row: MirrorItem): Map<string, RawCol> {
     return new Map(raw.map(c => [c.id, c]));
   } catch {
     return new Map();
+  }
+}
+
+/** `vendedor_ids` del mirror (JSON de ints, escrito por worker/sync/upsert.ts a
+ * partir de las authzCols del board) — [] si viene vacío o ilegible. */
+function vendedorIdsOf(row: MirrorItem): number[] {
+  try {
+    const ids: unknown = JSON.parse(row.vendedor_ids || '[]');
+    return Array.isArray(ids) ? ids.map(Number).filter(n => Number.isFinite(n)) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Índice de `deal_stage` tal como lo guarda el mirror ({label,index}); '' si
+ * el value viene vacío u optimista — quien decide etapa lee SIEMPRE el index,
+ * nunca el label (shared/dealStages.ts). */
+function stageIndexOf(row: MirrorItem): string {
+  try {
+    return String((JSON.parse(colsOf(row).get('deal_stage')?.value ?? 'null') as { index?: unknown })?.index ?? '');
+  } catch {
+    return '';
   }
 }
 
@@ -599,13 +628,7 @@ export async function enviarAValidacion(
   const item = await getItem(env, 'oportunidades', itemId, viewer, 'own');
   if (!item) throw new CosteoError(404, 'not found');
 
-  const cols = colsOf(item);
-  const stageCol = cols.get('deal_stage');
-  let stageIndex = '';
-  try {
-    stageIndex = String((JSON.parse(stageCol?.value ?? 'null') as { index?: unknown })?.index ?? '');
-  } catch { /* value optimista o vacío — no bloquea */ }
-  if (stageIndex !== STAGE_EN_COSTEO) {
+  if (stageIndexOf(item) !== STAGE_EN_COSTEO) {
     return { ok: false, errors: ['La oportunidad no está en "En costeo".'] };
   }
 
@@ -613,5 +636,60 @@ export async function enviarAValidacion(
   if (!confirm.ok) return confirm;
 
   await submitWrite(env, ctx, 'oportunidades', itemId, { deal_stage: DEAL_STAGE_VALIDACION_LABEL }, viewer, { trusted: true });
+  return { ok: true };
+}
+
+/** "Validar costeo" — botón de dirección en el board Validación Costeo (etapa 7
+ * → 9 "Costeo Confirmado"). Igual que 15→7: no hay endpoint de cmp-tallas para
+ * este paso, el portal escribe deal_stage directo. Solo admin: lo que se valida
+ * aquí es el Precio de Venta C/U, la única columna con `w: ['admin']`
+ * (shared/visibility.ts) — el rol lo checa la ruta. Exige precio en TODAS las
+ * líneas: validar un costeo con una línea en $0 es siempre un error de captura,
+ * y la cotización saldría con ese renglón mal (Efraín, 2026-08-18: "poder
+ * validar el costeo antes de mandar la cotización"). */
+export async function confirmarCosteo(
+  env: Env,
+  ctx: ExecutionContext,
+  itemId: number,
+  viewer: Identity,
+): Promise<EnviarCosteoResult> {
+  // scope 'own': muta el stage (ver worker/lib/zonas.ts).
+  const item = await getItem(env, 'oportunidades', itemId, viewer, 'own');
+  if (!item) throw new CosteoError(404, 'not found');
+
+  if (stageIndexOf(item) !== STAGE_EN_VALIDACION) {
+    return { ok: false, errors: ['La oportunidad no está en "Costeo en validación".'] };
+  }
+
+  const lineas = await childrenOf(env, 'oportunidades', itemId, viewer);
+  if (lineas.length === 0) {
+    return { ok: false, errors: ['La oportunidad no tiene líneas de producto.'] };
+  }
+  const errors = lineas.flatMap((linea, i) => {
+    const precio = Number((colsOf(linea).get(SUB_PRECIO_VENTA)?.text ?? '').replace(/,/g, ''));
+    return precio > 0 ? [] : [`#${i + 1} "${linea.name}": sin Precio de Venta C/U.`];
+  });
+  if (errors.length > 0) return { ok: false, errors };
+
+  await submitWrite(env, ctx, 'oportunidades', itemId, { deal_stage: DEAL_STAGE_CONFIRMADO_LABEL }, viewer, { trusted: true });
+  // Aviso a Compras (comprador asignado) + vendedor, severidad 'importante' →
+  // también sale WhatsApp de inmediato (Efraín, 2026-08-18: "manda una
+  // notificación al de compras, es importante"). A mano y no por el diff de
+  // sync: el merge optimista de outbox ya dejó la etapa nueva en el mirror, así
+  // que el echo de Monday no ve cambio — ver emitStageNotification.
+  await emitStageNotification(env, {
+    itemId,
+    itemName: item.name,
+    stageIndex: STAGE_COSTEO_CONFIRMADO,
+    columnsJson: item.columns,
+    vendedorIds: vendedorIdsOf(item),
+    actorEmail: viewer.email,
+  });
+  // Rastro de quién validó, visible también para quien abra el item en Monday
+  // (mismo patrón que el rechazo de costeo). Best-effort: no tumba la validación.
+  try {
+    await postUpdate(env, BOARDS.oportunidades.id, itemId,
+      `✅ Costeo validado por ${viewer.nombre ?? viewer.email} — precio de venta confirmado.`);
+  } catch { /* el stage ya quedó; el update es bitácora */ }
   return { ok: true };
 }

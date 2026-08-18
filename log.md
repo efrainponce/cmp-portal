@@ -1,5 +1,42 @@
 # Log de commits
 
+## 2026-08-18
+
+- **Botón "Validar costeo" en Validación Costeo (etapa 7 → 9 "Costeo
+  Confirmado")** — pedido de Efraín por WhatsApp mientras revisaba OPP-0913:
+  "agrega botón de VALIDAR costeo, no generar cotización YA; es súper
+  importante poder validar el costeo antes de mandar la cotización". El drawer
+  saltaba de "Costeo en validación" directo a "Generar cotización": no existía
+  el paso donde dirección aprueba el precio, y la etapa 9 nunca se usaba desde
+  el portal (la cotización manda el stage a 6 por su cuenta).
+  - `confirmarCosteo` (`worker/lib/costeo.ts`) + `POST
+    /api/oportunidades/:id/validar-costeo`: exige etapa 7 y **Precio de Venta
+    C/U > 0 en TODAS las líneas** (422 nombrando los renglones que faltan —
+    validar un costeo con una línea en $0 siempre es error de captura y la
+    cotización saldría mal). Escribe `deal_stage` directo, igual que 15→7: no
+    hay endpoint de cmp-tallas para este paso. **Solo admin** (403 al resto):
+    lo que se aprueba aquí es Precio de Venta, la única columna con
+    `w: ['admin']` (`shared/visibility.ts`). Deja rastro como Update de Monday
+    ("Costeo validado por X"), best-effort.
+  - **Notificación a Compras, severidad `importante`** (Efraín: "cuando eso
+    pase manda una notificación al de compras, es una notificación
+    importante"). Hallazgo al cablearla: `STAGE_NOTIFY['Costeo Confirmado']`
+    ya existía con `['owner','comprador']`, pero **un cambio de etapa hecho
+    desde el portal no lo dispara** — el merge optimista de `outbox.ts` deja la
+    etapa nueva en el mirror, así que cuando llega el echo de Monday
+    `maybeEmitStageChange` compara viejo == nuevo y calla. Nuevo
+    `emitStageNotification` (`worker/lib/notify.ts`) la emite a mano con el
+    MISMO `dedupe_key` que el camino automático (si algún día los dos
+    coinciden, el `INSERT OR IGNORE` deja una sola). `importante` ⇒ además sale
+    WhatsApp de inmediato.
+  - **UI** (`OpportunityDrawer.tsx`): en etapa 7 ya NO aparece "Generar
+    cotización" — solo "Validar costeo" (Efraín: "el botón de generar
+    cotización no debe aparecer ahí; ya después se genera la cotización"), y
+    "Generar cotización" se movió a la etapa 9, que el board Validación ya
+    mostraba. Etapa optimista + `uxAction('drawer:validar-costeo')` para que la
+    fricción del paso quede medida como el resto.
+
+
 ## 2026-08-17
 
 - Zona Efrain también del lado de PROYECTOS (pedido de Efraín: "necesito ZONA
