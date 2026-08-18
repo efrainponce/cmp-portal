@@ -3,13 +3,14 @@
 import type { Env } from '../env';
 import type { Identity } from '../../shared/types';
 import type { CreateResponse } from '../../shared/dto';
-import { BOARDS } from '../../shared/boards';
+import { BOARDS, type BoardSlug } from '../../shared/boards';
 import { CREATE_DEFAULTS, CREATE_FIELDS, isCreatable } from '../../shared/createFields';
 import { COLUMN_META } from '../../shared/column-meta.gen';
 import { encodeColumnValue } from './columnEncode';
 import { createItem } from './monday';
 import { upsertItem } from '../sync';
 import { reserveNativeId } from './nativeSeq';
+import { assertNoNativeLink, NativeLinkError } from './nativeItems';
 import { rawHash, type RawColumn } from './canon';
 import { cachedFetchUsers } from './rosterCache';
 import { isZonaPrivadaAdminPermitido } from './zonas';
@@ -27,6 +28,7 @@ export class CreateError extends Error {
 }
 
 const CREATOR_ROLES: Identity['role'][] = ['vendedor', 'compras', 'admin'];
+
 const CONTACTO_VENDEDOR = 'multiple_person_mm03vqwx';   // Contactos → Vendedor
 
 export async function submitCreate(
@@ -37,6 +39,18 @@ export async function submitCreate(
   viewer: Identity,
 ): Promise<CreateResponse> {
   if (!isCreatable(slug)) throw new CreateError(404, 'not found');
+  // Zona Efrain (Efraín, 2026-08-18): los contactos e instituciones que dan de
+  // alta las 3 personas de la whitelist nacen NATIVOS, sin casilla ni forma
+  // aparte — "que sea algo normal". Es lo que cierra la fuga: la oportunidad ya
+  // era invisible en Monday, pero su Contacto (nombre, correo, teléfono) vivía
+  // allá a la vista de cualquiera con acceso al board. Dentro del portal se
+  // comportan como cualquier otro registro (Contactos sigue scopeado por
+  // Vendedor); lo único que cambia es que no existen del lado de Monday.
+  // Oportunidades NO entra aquí: ahí la decisión es explícita del tab de la
+  // zona (`native: true`, ver la ruta de creación).
+  if ((slug === 'contactos' || slug === 'instituciones') && isZonaPrivadaAdminPermitido(viewer.monday_user_id)) {
+    return submitCreateNative(env, slug, name, cols, viewer);
+  }
   if (!CREATOR_ROLES.includes(viewer.role)) throw new CreateError(403, 'cannot create');
   // Usuario dado de alta desde el portal (sin persona real en Monday, ver
   // dal.createNativeIdentity): el auto-estampado de Vendedor en Contactos
@@ -61,6 +75,15 @@ export async function submitCreate(
   for (const id of colIds) {
     if (id === 'name') continue; // item_name is a separate mutation argument
     const type = boardMeta[id]?.type ?? 'text';
+    // Un registro NATIVO no existe del lado de Monday: ligarlo desde un item
+    // REAL mandaría un id inventado en la mutación (Zona Efrain, 2026-08-18).
+    // Mejor un error claro que un enlace roto en silencio.
+    try {
+      assertNoNativeLink(type, id, cols[id], boardMeta[id]?.title);
+    } catch (err) {
+      if (err instanceof NativeLinkError) throw new CreateError(400, err.message);
+      throw err;
+    }
     const encoded = encodeColumnValue(type, cols[id]);
     if (encoded !== '') columnValues[id] = encoded;
   }
@@ -95,18 +118,27 @@ export async function submitCreate(
   return { ok: true, id: item.id };
 }
 
-/** "Salir de Monday" (Zona Efrain, test): crea una oportunidad que nace y vive
- * 100% en D1 — mismo shape de fila que un item de Monday (`items`, mismas
- * columnas por id), pero con un item_id sintético (shared/nativeId.ts) que
- * nunca se manda a Monday. Solo oportunidades por ahora; solo la whitelist de
- * Zona Efrain (worker/lib/zonas.ts) puede crearlas. */
+/** Boards que pueden nacer 100% en D1. Contactos e Instituciones se sumaron el
+ * 2026-08-18 (Efraín: "eso es vital también"): la oportunidad nativa ya era
+ * invisible en Monday, pero su Contacto apuntaba a un item REAL — o sea que el
+ * negocio se ocultaba y *con quién* se negocia, no. */
+export type NativeCreatableSlug = 'oportunidades' | 'contactos' | 'instituciones';
+
+export function isNativeCreatable(slug: string): slug is NativeCreatableSlug {
+  return slug === 'oportunidades' || slug === 'contactos' || slug === 'instituciones';
+}
+
+/** "Salir de Monday" (Zona Efrain): crea un registro que nace y vive 100% en
+ * D1 — mismo shape de fila que un item de Monday (`items`, mismas columnas por
+ * id), pero con un item_id sintético (shared/nativeId.ts) que nunca se manda a
+ * Monday. Solo la whitelist de Zona Efrain (worker/lib/zonas.ts) puede crearlos. */
 export async function submitCreateNative(
   env: Env,
+  slug: NativeCreatableSlug,
   name: string,
   cols: Record<string, string>,
   viewer: Identity,
 ): Promise<CreateResponse> {
-  const slug = 'oportunidades' as const;
   if (!isZonaPrivadaAdminPermitido(viewer.monday_user_id)) {
     throw new CreateError(403, 'no autorizado para crear en Zona Efrain');
   }
@@ -163,6 +195,16 @@ export async function submitCreateNative(
     const n = Number(allValues[colId]);
     if (Number.isFinite(n)) vendedorIds.add(n);
   }
+  // Mismo criterio que el camino real (arriba): un contacto sin Vendedor sería
+  // invisible hasta para quien lo acaba de crear — se estampa al creador.
+  if (slug === 'contactos' && vendedorIds.size === 0 && viewer.monday_user_id > 0) {
+    vendedorIds.add(viewer.monday_user_id);
+    rawColumns.push({
+      id: CONTACTO_VENDEDOR, type: 'people',
+      text: viewer.nombre ?? viewer.email,
+      value: JSON.stringify({ personsAndTeams: [{ id: viewer.monday_user_id, kind: 'person' }] }),
+    });
+  }
 
   const itemId = await reserveNativeId(env);
   const now = new Date().toISOString();
@@ -180,7 +222,7 @@ export async function submitCreateNative(
   // La Institución de la Oportunidad es un ESPEJO del Contacto ligado: en un
   // item nativo nadie la calcula, y checkCosteo la exige (worker/lib/
   // nativeMirrors.ts). Se resuelve aquí mismo, al nacer con contacto.
-  const contactoId = Number(cols?.[OPP_CONTACTO_REL]);
+  const contactoId = slug === 'oportunidades' ? Number(cols?.[OPP_CONTACTO_REL]) : NaN;
   if (Number.isFinite(contactoId) && contactoId > 0) {
     try { await stampInstitucionDeContacto(env, itemId, contactoId); } catch { /* best-effort */ }
   }
@@ -208,12 +250,20 @@ async function nativeDisplayText(env: Env, type: string, colId: string, raw: str
     const users = await cachedFetchUsers(env, 6 * 3600_000);
     return users.find(u => Number(u.id) === id)?.name ?? raw;
   }
-  if (colId === 'deal_contact') {
-    const contactId = Number(raw);
-    if (!Number.isFinite(contactId)) return raw;
+  // board_relations que el portal sabe resolver contra su propio mirror:
+  // Oportunidad → Contacto, y Contacto → Institución (la que alimenta el
+  // espejo "Institución" de la oportunidad, ver worker/lib/nativeMirrors.ts).
+  const RELACION_A_BOARD: Record<string, BoardSlug> = {
+    deal_contact: 'contactos',
+    contact_account: 'instituciones',
+  };
+  const relBoard = RELACION_A_BOARD[colId];
+  if (relBoard) {
+    const relId = Number(raw);
+    if (!Number.isFinite(relId)) return raw;
     const row = await env.DB
       .prepare(`SELECT name FROM items WHERE board_id = ? AND item_id = ?`)
-      .bind(BOARDS.contactos.id, contactId)
+      .bind(BOARDS[relBoard].id, relId)
       .first<{ name: string }>();
     return row?.name ?? raw;
   }

@@ -2,6 +2,37 @@
 
 ## 2026-08-18
 
+- Contactos e Instituciones también pueden vivir sin Monday (Efraín: "eso es
+  vital también"). Era la fuga que quedaba abierta en Zona Efrain: la
+  oportunidad ya nacía invisible del lado de Monday, pero su **Contacto**
+  apuntaba a un item REAL — o sea que el negocio se ocultaba y *con quién* se
+  está negociando (nombre, correo, teléfono, institución), no.
+  - `submitCreateNative` deja de estar clavado a oportunidades: ahora recibe el
+    slug (`NativeCreatableSlug` = oportunidades | contactos | instituciones).
+    Todo lo demás ya era genérico por id nativo — scoping, edición, borrado,
+    los guards de reconcile/refetch y los espejos de `nativeMirrors.ts`.
+  - **Sin casilla ni forma aparte** (decisión de Efraín): lo que dan de alta las
+    3 personas de la whitelist en esos dos catálogos nace nativo y punto —
+    `submitCreate` lo deriva solo. Dentro del portal se comportan como cualquier
+    otro registro (Contactos sigue scopeado por Vendedor, así que ningún
+    vendedor ajeno los ve; un admin sí). Lo único que cambia es que no existen
+    del lado de Monday. Oportunidades sigue pidiendo `native` explícito: ahí la
+    decisión la toma el tab de la zona, no quién eres.
+  - El contacto nativo también auto-estampa su Vendedor si el form no lo manda,
+    igual que el camino real — sin eso quedaría invisible hasta para quien lo
+    acaba de crear.
+  - `nativeDisplayText` ahora resuelve las dos relaciones que el portal sabe
+    seguir en su propio mirror (Oportunidad→Contacto y Contacto→Institución),
+    en vez de solo la primera. Es la que alimenta el espejo "Institución" que
+    `checkCosteo` exige.
+  - **Guard nuevo, encontrado al diseñar esto**: un board_relation que apunta a
+    un registro nativo no puede vivir en un item REAL — Monday recibiría un id
+    que allá no existe y el enlace quedaría roto en silencio. `assertNoNativeLink`
+    (worker/lib/nativeItems.ts) lo ataja con un mensaje legible en los dos
+    caminos, creación y escritura. Anclado en test.
+
+## 2026-08-18
+
 - Los comentarios sí llegan al portal (notificación por cada update). Efraín:
   "los comentarios que ponen los vendedores no llegan al nuevo portal, ahorita
   entré y no hay ninguno; solo llegan las notificaciones cuando validan, paso a

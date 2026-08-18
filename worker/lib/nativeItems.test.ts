@@ -4,7 +4,7 @@
 // número en vez de string, 2026-08-13 — el PDF de la OC comparaba con === y
 // nunca hacía match). Por eso va anclado en test.
 import { describe, it, expect } from 'vitest';
-import { toNativeColumns, nativeStatusValue } from './nativeItems';
+import { toNativeColumns, nativeStatusValue, assertNoNativeLink } from './nativeItems';
 
 describe('toNativeColumns', () => {
   it('board_relation guarda linked_item_ids como STRING, igual que Monday', () => {
@@ -59,5 +59,32 @@ describe('nativeStatusValue', () => {
   it('Etapa Costeo de una línea también resuelve su índice', () => {
     const v = nativeStatusValue('oportunidades_sub', 'color_mm084gvf', 'Listo') as { index: number };
     expect(typeof v.index).toBe('number');
+  });
+});
+
+// El guard vive en createRecord.ts pero se prueba junto a lo demás nativo: es
+// la regla que impide que un item REAL de Monday quede ligado a un registro que
+// solo existe en el portal (Zona Efrain, 2026-08-18).
+describe('assertNoNativeLink', () => {
+  const NATIVO = '900000000001';
+  const REAL = '12017028945';
+
+  it('deja pasar un board_relation hacia un item real de Monday', () => {
+    expect(() => assertNoNativeLink('board_relation', 'deal_contact', REAL)).not.toThrow();
+  });
+
+  it('rechaza ligar un registro nativo desde un item real', () => {
+    expect(() => assertNoNativeLink('board_relation', 'deal_contact', NATIVO, 'Contacto'))
+      .toThrow(/solo existe en el portal/);
+  });
+
+  it('también lo detecta en una lista con varios ids', () => {
+    expect(() => assertNoNativeLink('board_relation', 'deal_contact', `${REAL},${NATIVO}`)).toThrow();
+  });
+
+  it('no aplica a columnas que no son board_relation ni a valores vacíos', () => {
+    expect(() => assertNoNativeLink('text', 'text_x', NATIVO)).not.toThrow();
+    expect(() => assertNoNativeLink('board_relation', 'deal_contact', '')).not.toThrow();
+    expect(() => assertNoNativeLink('board_relation', 'deal_contact', undefined)).not.toThrow();
   });
 });

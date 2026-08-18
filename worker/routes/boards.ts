@@ -18,7 +18,7 @@ import {
 import { toItemDTO, toColMeta, itemDetailEtag } from '../lib/serialize';
 import { canRead, canReadBoard, canWrite } from '../../shared/visibility';
 import { submitWrite, OutboxError } from '../lib/outbox';
-import { submitCreate, submitCreateNative, CreateError } from '../lib/createRecord';
+import { submitCreate, submitCreateNative, isNativeCreatable, CreateError } from '../lib/createRecord';
 import { duplicateVersion, esDraftVigente, QuoteVersionError, LINE_DEFINING_COLS } from '../lib/quoteVersions';
 import { addFileToUpdate, fetchAssetPublicUrls, deleteItem, type MentionInput } from '../lib/monday';
 // Los updates de un item nativo (Zona Efrain) viven en D1, no en Monday — estas
@@ -197,12 +197,14 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
     const body = await c.req.json<CreateRequest>();
 
     try {
-      // "Salir de Monday" (Zona Efrain, test): solo honrado para oportunidades —
-      // submitCreateNative valida por su cuenta que el viewer esté en la
-      // whitelist, así que un `native:true` fuera de lugar simplemente 403ea en
-      // vez de crear silenciosamente en Monday.
-      const result = body.native && slug === 'oportunidades'
-        ? await submitCreateNative(c.env, body.name, body.cols, viewer)
+      // "Salir de Monday" (Zona Efrain): oportunidades pide `native` explícito
+      // (lo manda el tab de la zona); contactos e instituciones ya no pasan por
+      // aquí para decidirlo — submitCreate los deriva solo cuando el creador
+      // está en la whitelist (Efraín, 2026-08-18: "que sea algo normal").
+      // submitCreateNative revalida la whitelist por su cuenta, así que un
+      // `native:true` fuera de lugar 403ea en vez de crear en Monday a escondidas.
+      const result = body.native && isNativeCreatable(slug)
+        ? await submitCreateNative(c.env, slug, body.name, body.cols, viewer)
         : await submitCreate(c.env, slug, body.name, body.cols, viewer);
       return c.json(result);
     } catch (err) {

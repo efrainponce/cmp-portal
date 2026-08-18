@@ -10,6 +10,7 @@ import { BOARDS, type BoardSlug } from '../../shared/boards';
 import { COLUMN_META } from '../../shared/column-meta.gen';
 import { rawHash, type RawColumn } from './canon';
 import { reserveNativeId } from './nativeSeq';
+import { isNativeId } from '../../shared/nativeId';
 
 /** Convierte la forma de ESCRITURA de Monday ({item_ids:[...]}, números,
  * strings) al `RawColumn` que guarda el mirror — el trabajo que del lado real
@@ -121,4 +122,21 @@ export function nativeStatusValue(slug: BoardSlug, colId: string, label: string)
     }
   }
   return label;
+}
+
+/** Un board_relation que apunta a un registro NATIVO solo puede vivir en otro
+ * registro nativo — del lado de Monday ese id no existe, y mandarlo en una
+ * mutación deja un enlace roto en silencio. Lo usan el camino de creación
+ * (createRecord.ts) y el de escritura (outbox.ts), cada uno envolviéndolo en su
+ * propio tipo de error. */
+export class NativeLinkError extends Error {}
+
+export function assertNoNativeLink(type: string, colId: string, raw: string | undefined, titulo?: string): void {
+  if (type !== 'board_relation' || !raw?.trim()) return;
+  const ids = raw.split(',').map(s => Number(s.trim())).filter(Number.isFinite);
+  if (!ids.some(isNativeId)) return;
+  throw new NativeLinkError(
+    `"${titulo ?? colId}" apunta a un registro que solo existe en el portal (Zona Efrain). `
+    + 'Solo se puede ligar desde otro registro de la zona.',
+  );
 }
