@@ -1,4 +1,5 @@
 // Tab "Tallas" de la sección Proyecto — desglose de tallas importado del
+import { isNativeId } from '../../../../shared/nativeId';
 // archivo (Google Sheet) a Monday, mostrado como tarjetas editables por
 // producto+color. `groupByProductoColor`/`TallaGroup`/`sortByTalla` también
 // los usa EjecucionSection.tsx (mismo agrupado, distinto contenido de tarjeta).
@@ -247,14 +248,16 @@ function TallaBoxCard({ group, cotizado, canEditCantidad, canReport, proyectoId,
  * producto+color con una cajita editable por talla — mismo estilo que la
  * captura de tallas del vendedor (TallasTab.tsx), en vez de la lista de pills
  * anidados de antes. */
-function TallasGrid({ lineas, cotizadoMaps, canEditCantidad, canReport, proyectoId, reload }: {
+function TallasGrid({ lineas, cotizadoMaps, canEditCantidad, canReport, proyectoId, reload, native }: {
   lineas: ItemDTO[]; cotizadoMaps: CotizadoMaps; canEditCantidad: boolean; canReport: boolean;
-  proyectoId: string; reload: () => void;
+  proyectoId: string; reload: () => void; native?: boolean;
 }) {
   if (lineas.length === 0) {
     return (
       <div style={{ marginTop: 14, font: 'var(--text-label)', color: 'var(--ink-quiet)' }}>
-        Aún no hay tallas importadas en Monday — captura el desglose en el archivo de tallas y pide a Compras importarlo.
+        {native
+          ? 'Aún no hay tallas capturadas — captúralas por tallas en la pestaña "Tallas" de la Oportunidad.'
+          : 'Aún no hay tallas importadas en Monday — captura el desglose en el archivo de tallas y pide a Compras importarlo.'}
       </div>
     );
   }
@@ -304,8 +307,18 @@ export function ProyectoTallasSection({ state, oppId }: { state: ProyectoState; 
   return (
     <div style={{ marginTop: 20 }}>
       <ProyectoLinks proyecto={p} />
-      <ProyectoActionBar proyecto={p} reload={state.reload} actions={['tallas-regenerar', 'tallas-confirmar', 'tallas-importar']} />
+      {/* Proyecto NATIVO (Zona Efrain): las dos acciones del Google Sheet
+          ("Crear archivo de tallas" / "Importar tallas a Monday") no aplican —
+          ese proyecto no existe en Monday y el desglose se captura por boxes
+          desde la Oportunidad. Se esconden para no mandar a nadie a un camino
+          muerto (Efraín, 2026-08-18, hallazgo de la prueba de UI). */}
+      <ProyectoActionBar
+        proyecto={p}
+        reload={state.reload}
+        actions={isNativeId(Number(p.id)) ? ['tallas-confirmar'] : ['tallas-regenerar', 'tallas-confirmar', 'tallas-importar']}
+      />
       <TallasGrid
+        native={isNativeId(Number(p.id))}
         lineas={p.children ?? []}
         cotizadoMaps={cotizadoMaps}
         canEditCantidad={canEditCantidad}

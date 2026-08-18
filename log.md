@@ -212,6 +212,14 @@
     nace con folio propio (su id sintético, el mismo fallback que ya usaba
     `oc.ts`). Método y condiciones de pago llegaban por request pero el PDF los
     lee de las columnas del Proyecto — se estampan antes de generar.
+  - **Cuarta pasada (UI):** el tab Tallas del PROYECTO ofrecía solo el flujo del
+    Google Sheet ("Crear archivo de tallas" / "Importar tallas a Monday", con el
+    texto "Aún no hay tallas importadas en Monday"), que en un proyecto nativo no
+    aplica — ese proyecto no existe en Monday y el desglose se captura por boxes
+    desde la Oportunidad. Efraín: "escóndelo para que no confunda". Ahora en
+    proyectos nativos solo queda "Validar tallas", que además deja de exigir el
+    archivo del Sheet (nunca va a existir ahí), y el mensaje vacío manda a la
+    pestaña correcta.
   - **Tercera pasada, encontrada CLICANDO la app en producción** (Efraín pidió la
     prueba de UI completa antes de mandar): subir la imagen de referencia de una
     posición de embellecimiento tronaba en una línea nativa — la UI mostraba

@@ -3,6 +3,7 @@
 // ligado a la oportunidad (Proyectos board_relation_mm0hf0y3), no en la
 // Oportunidad. Botones espejo de los de Monday, gated por rol; las tallas
 // importadas se muestran desde el mirror (proyectos_sub) — el objetivo es que
+import { isNativeId } from '../../../../shared/nativeId';
 // dejen de vivir solo en el Excel.
 //
 // Separado de las 3 secciones (TallasSection.tsx, OrdenesSection.tsx,
@@ -157,6 +158,12 @@ export function ProyectoActionBar({ proyecto, reload, actions }: {
 
   const sheetUrl = linkUrl(proyecto, P_SHEET_LINK);
   const ocCliente = !!proyecto.cols[P_OC_CLIENTE]?.text;
+  // Proyecto NATIVO (Zona Efrain): no existe en Monday, así que tampoco existe
+  // el archivo de tallas de cmp-tallas — el desglose se captura por boxes desde
+  // la Oportunidad. "Validar tallas" sí aplica (worker: confirmTallasNativeD1),
+  // así que solo deja de exigir un Sheet que nunca va a haber (Efraín,
+  // 2026-08-18: "escóndelo para que no confunda").
+  const native = isNativeId(Number(proyecto.id));
   const canVendedor = role === 'vendedor' || role === 'admin';
   const canCompras = role === 'compras' || role === 'admin';
 
@@ -177,8 +184,8 @@ export function ProyectoActionBar({ proyecto, reload, actions }: {
             label="Validar tallas (vendedor)"
             confirmLabel="¿Validar y mandar a firma?"
             busyLabel="Validando… puede tardar unos minutos, no cierres esta pantalla"
-            disabled={!canVendedor || !sheetUrl || !ocCliente}
-            title={!canVendedor ? 'Solo el vendedor valida las tallas' : !ocCliente ? 'Falta subir la orden de compra / cotización firmada / contrato del cliente (pestaña Documentación)' : !sheetUrl ? 'Primero crea el archivo de tallas' : 'Valida el desglose y genera el PDF a firma'}
+            disabled={!canVendedor || !ocCliente || (!native && !sheetUrl)}
+            title={!canVendedor ? 'Solo el vendedor valida las tallas' : !ocCliente ? 'Falta subir la orden de compra / cotización firmada / contrato del cliente (pestaña Documentación)' : (!native && !sheetUrl) ? 'Primero crea el archivo de tallas' : 'Valida el desglose y genera el PDF a firma'}
             onConfirm={run('tallas-confirmar')}
           />
         )}
