@@ -32,6 +32,7 @@ import { getBoardAccess } from '../lib/boardAccess';
 import { isZonaPrivadaAdminPermitido } from '../lib/zonas';
 import { refetchItem, refetchItemTree } from '../sync';
 import { jsonStatus } from '../lib/http';
+import { contentTypeFor } from '../lib/mime';
 import { notifyItemComment } from '../lib/updateNotify';
 import { markUpdatesSeen, seenByFor } from '../lib/updateSeen';
 
@@ -608,8 +609,9 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
 
     const name = c.req.query('name') ?? 'archivo';
     const download = c.req.query('download') === '1';
-    const ext = (name.split('.').pop() ?? '').toLowerCase();
-    const contentType = ext === 'pdf' ? 'application/pdf' : 'application/octet-stream';
+    // Tipo por extensión (worker/lib/mime.ts): con octet-stream fijo, abrir
+    // una imagen adjunta la descargaba en vez de mostrarla.
+    const contentType = contentTypeFor(name);
 
     let bytes: ArrayBuffer;
     if (nativo) {

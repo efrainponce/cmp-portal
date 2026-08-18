@@ -2,6 +2,32 @@
 
 ## 2026-08-18
 
+- **Las imágenes de embellecimiento ahora se ven, ya no se descargan** (Efraín:
+  "can you create an opener for images as PDFs, embellecimientos images have to
+  be downloaded"). Los PDFs de cotización ya se abrían dentro del portal
+  (`PdfCanvasPreview` en un `Modal`); las imágenes no tenían visor: el link
+  "Ver archivo" mandaba a `/api/files/…` en otra pestaña y el navegador
+  **descargaba** el archivo en vez de mostrarlo.
+  - Causa real: el Content-Type. Monday sirve los assets de sus columnas de
+    archivo como `application/octet-stream`, y R2 guarda lo que trajo el upload
+    (a veces vacío). La miniatura sí se veía porque `<img>` no depende del
+    Content-Type, pero navegar a la URL sí. `worker/lib/mime.ts` deduce el tipo
+    de la extensión y lo aplican los tres caminos que sirven archivos:
+    `/api/files/:key` (rama R2 y fallback a Monday) y el asset de
+    `/api/boards/:slug/items/:id/asset/:assetId`, que hasta hoy solo distinguía
+    PDF. `svg` queda fuera de la tabla **a propósito**: servirlo inline desde el
+    origen del portal dejaría correr script dentro de esa pestaña.
+  - `src/components/core/FilePreviewModal.tsx` — visor compartido: imagen o PDF
+    (pdf.js sigue entrando lazy, no lo carga quien solo ve fotos), y para lo que
+    el navegador no dibuja (HEIC de iPhone, .ai…) ofrece descarga en vez de un
+    cuadro roto. Pie con "Abrir en pestaña" y "Descargar".
+  - `ZoneImage` estrena el ojito que abre el visor (y la miniatura misma es
+    clicable cuando no hay permiso de subir, donde no compite con el input de
+    archivo), así que lo heredan las tres vistas que la usan:
+    Embellecimientos de la Oportunidad, la del Proyecto y el panel de línea de
+    Costeo/Validación — ahí la imagen era una `<img>` muerta de 28px sin forma
+    de ver el archivo completo.
+
 - **El historial de actividad ya no lo ve el vendedor** (Efraín: "las
   actividades (historial) no quiero que las pueda ver el vendedor, solo admin y
   compras"). El tab Actividad y el reloj por renglón nacieron en este mismo día

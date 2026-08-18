@@ -41,6 +41,7 @@ import { putFile, oportunidadFileKey } from '../lib/r2';
 import { resolveCotizacionPdfUrl, CotizacionPdfError, type PdfKind } from '../lib/cotizacionPdfs';
 import { refetchItem, refetchItemTree, upsertItem } from '../sync';
 import { jsonStatus } from '../lib/http';
+import { contentTypeFor, isGenericType } from '../lib/mime';
 import { canWrite } from '../../shared/visibility';
 import { reserveNativeId } from '../lib/nativeSeq';
 import { canonValue, rawHash, type RawColumn } from '../lib/canon';
@@ -72,18 +73,21 @@ const PROYECTO_ACTIONS: Record<string, {
 /** Fallback de /api/files para assetIds aún no migrados a R2 — resuelve el
  * link firmado vigente de Monday y bufferea los bytes (mismo patrón que
  * /api/oportunidades/:id/cotizacion-pdf/:kind: streamear sin Content-Length
- * cuelga el proxy de Vite en dev). */
-async function proxyMondayAsset(env: Env, assetId: number): Promise<Response> {
+ * cuelga el proxy de Vite en dev). `name` (el key pedido) solo se usa para
+ * deducir el Content-Type: Monday manda todo como octet-stream y así el
+ * navegador descargaba las imágenes en vez de mostrarlas. */
+async function proxyMondayAsset(env: Env, assetId: number, name: string): Promise<Response> {
   const urls = await fetchAssetPublicUrls(env, [String(assetId)]);
   const url = urls.get(String(assetId));
   if (!url) return jsonStatus({ error: 'not found' }, 404);
   const upstream = await fetch(url);
   if (!upstream.ok) return jsonStatus({ error: 'no se pudo obtener el archivo' }, 502);
   const bytes = await upstream.arrayBuffer();
+  const upstreamType = upstream.headers.get('content-type');
   return new Response(bytes, {
     status: 200,
     headers: {
-      'Content-Type': upstream.headers.get('content-type') ?? 'application/octet-stream',
+      'Content-Type': isGenericType(upstreamType) ? contentTypeFor(name) : upstreamType!,
       'Content-Length': String(bytes.byteLength),
       'Cache-Control': 'private, max-age=60',
     },
@@ -630,10 +634,14 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
 
     const object = await c.env.FILES.get(key);
     if (object) {
+      // El tipo guardado gana, pero si el upload no traía uno (o llegó como
+      // octet-stream) se deduce de la extensión — si no, el navegador descarga
+      // la imagen en vez de abrirla.
+      const stored = object.httpMetadata?.contentType;
       return new Response(object.body, {
         status: 200,
         headers: {
-          'Content-Type': object.httpMetadata?.contentType ?? 'application/octet-stream',
+          'Content-Type': isGenericType(stored) ? contentTypeFor(key) : stored!,
           'Content-Length': String(object.size),
           'Cache-Control': 'private, max-age=3600',
         },
@@ -645,7 +653,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     try {
       const assetId = await resolveMondayAsset(c.env, key, viewer);
       if (assetId == null) return c.json({ error: 'not found' }, 404);
-      return await proxyMondayAsset(c.env, assetId);
+      return await proxyMondayAsset(c.env, assetId, key);
     } catch {
       return c.json({ error: 'internal error' }, 500);
     }

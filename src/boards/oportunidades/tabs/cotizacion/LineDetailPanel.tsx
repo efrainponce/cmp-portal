@@ -18,6 +18,7 @@ import { getZoneImages, getItem, usePoll, SOLO_NOMBRE } from '../../../../lib/ap
 import { StatusBadge } from '../../../../components/core/Badges';
 import { SearchInput } from '../../../../components/forms/SearchInput';
 import { EMB_STATUS_COL, EMB_LABEL_CON, explodeEmbellecimiento } from '../../../../lib/embellecimiento';
+import { ZoneImage } from '../EmbellecimientosTab';
 import {
   DESCRIPCION_COL, TALLAS_COL, PRODUCTO_CONFIRM_COL, PRODUCTO_PROVEEDOR_COL,
   CATALOGO_DESCRIPCION_COL, CATALOGO_TALLAS_COL, HISTORIAL_PRECIOS_COL,
@@ -61,11 +62,9 @@ function EmbellecimientoDetail({ product }: { product: ItemDTO }) {
                 <span style={{ color: 'var(--ink)' }}>{z.label}:</span> {z.value}
               </div>
               {images[z.label] && (
-                <img
-                  src={images[z.label]}
-                  alt={z.label}
-                  style={{ width: 28, height: 28, objectFit: 'cover', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)', flex: 'none' }}
-                />
+                // Misma miniatura + visor que la tab Embellecimientos: aquí era
+                // una <img> muerta, sin forma de ver el archivo completo.
+                <ZoneImage imageUrl={images[z.label]} uploading={false} onUpload={() => {}} canUpload={false} />
               )}
             </div>
           ))}

@@ -22,6 +22,7 @@ import { getZoneImages, uploadZoneImage } from '../../../lib/api';
 import { patchItem } from '../../../lib/apiClient';
 import { StatusBadge, MonoTag } from '../../../components/core/Badges';
 import { Button } from '../../../components/core/Button';
+import { FilePreviewModal } from '../../../components/core/FilePreviewModal';
 import { EMBELL_TEMPLATE_KEYS, explodeEmbellecimiento, upsertEmbellZone } from '../../../lib/embellecimiento';
 import { VersionChips } from './cotizacion/VersionChips';
 
@@ -56,8 +57,9 @@ const PencilIcon = ({ size = 12, color = 'var(--ink-faint)' }: { size?: number; 
 
 // file_mm5akjy5 es una columna de archivo genérica de Monday, no solo imágenes
 // (Efraín, 2026-07-16) — sin restricción de accept en el input. Si la URL no
-// carga como <img> (PDF, .docx…), cae a un link "Ver archivo" en vez de intentar
-// previsualizarlo.
+// carga como <img> (PDF, .docx…) la miniatura cae a un ícono de archivo, pero
+// el ojito abre igual el visor: FilePreviewModal dibuja imágenes y PDFs, y para
+// lo demás ofrece descarga.
 // Exportado para EmbellecimientosVirtualTab (Proyecto, solo lectura): con
 // canUpload=false y sin imageUrl no renderiza nada, así que sirve tal cual
 // para mostrar (sin poder subir) las mismas miniaturas que ve Oportunidades.
@@ -65,6 +67,9 @@ export function ZoneImage({ imageUrl, uploading, error, onUpload, canUpload }: {
   imageUrl?: string; uploading: boolean; error?: string; onUpload: (file: File) => void; canUpload: boolean;
 }) {
   const [previewFailed, setPreviewFailed] = useState(false);
+  // Visor dentro del portal: el link a /api/files/... terminaba descargando el
+  // archivo en vez de mostrarlo (ver FilePreviewModal).
+  const [preview, setPreview] = useState(false);
   const handleFile = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) onUpload(file);
@@ -94,13 +99,25 @@ export function ZoneImage({ imageUrl, uploading, error, onUpload, canUpload }: {
             {thumb}
             <input type="file" onChange={handleFile} style={{ display: 'none' }} disabled={uploading} />
           </label>
-        ) : thumb}
-        <a href={imageUrl} target="_blank" rel="noreferrer" title="Ver archivo" style={{ color: 'var(--ink-tertiary)', display: 'flex' }}>
+        ) : (
+          // Sin permiso de subir, la miniatura misma abre el visor — no hay
+          // input de archivo compitiendo por el clic.
+          <div onClick={() => setPreview(true)} title="Ver archivo" style={{ cursor: 'pointer', display: 'flex' }}>
+            {thumb}
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={() => setPreview(true)}
+          title="Ver archivo"
+          style={{ border: 'none', background: 'none', padding: 0, cursor: 'pointer', color: 'var(--ink-tertiary)', display: 'flex' }}
+        >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-            <path d="M15 3h6v6" /><path d="M10 14 21 3" />
+            <circle cx="12" cy="12" r="3" />
+            <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
           </svg>
-        </a>
+        </button>
+        {preview && <FilePreviewModal url={imageUrl} onClose={() => setPreview(false)} />}
       </div>
     );
   }

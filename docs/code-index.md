@@ -78,6 +78,7 @@ y `src/lib/estadoProductoBuckets.ts`.
 - [worker/lib/importeEnLetras.ts](worker/lib/importeEnLetras.ts) — Convierte un monto a su representación en letras para el PDF de cotización/OC, puerto exacto de la función equivalente de cmp-tallas. Exports: importeEnLetras.
 - [worker/lib/inventory.ts](worker/lib/inventory.ts) — Inventario DAL + validación (feature D1 nativa, no espejado de Monday). Exports: InventoryError, listWarehouses, listMovements, listStock.
 - [worker/lib/lineaAjustes.ts](worker/lib/lineaAjustes.ts) — "Ajustar línea" en Oportunidades: cambia producto/color/embellecimiento/cantidad de una línea sin crear versión ni pasar por costeo, incluso Ganada. Exports: AjusteLineaError, copyRemainingCols, ensureAjustesTable, AjustarLineaResult, ajustarLinea, listAjustes.
+- [worker/lib/mime.ts](worker/lib/mime.ts) — Content-Type por extensión para los archivos que sirve el worker (Monday manda todo como octet-stream). Exports: contentTypeFor, isGenericType.
 - [worker/lib/monday.ts](worker/lib/monday.ts) — Cliente GraphQL thin de Monday.com (API 2024-10). Exports: MondayCol, MondayItem, gql, ItemsPage.
 - [worker/lib/nativeItems.ts](worker/lib/nativeItems.ts) — Piezas comunes de un item NATIVO (Zona Efrain): columnas en shape de mirror, subitem propio y marcador de archivo en R2. Exports: toNativeColumns, insertNativeSubitem, stampNativeFileMarker.
 - [worker/lib/nativeUpdates.ts](worker/lib/nativeUpdates.ts) — Feed de Actualizaciones en D1 para items nativos (no existen en Monday); postUpdate/listUpdates eligen el lado por el id. Exports: listUpdates, postUpdate, attachToNativeUpdate, nativeUpdateAsset.
@@ -216,6 +217,7 @@ y `src/lib/estadoProductoBuckets.ts`.
 - [src/components/core/ConfirmButton.tsx](src/components/core/ConfirmButton.tsx) — Botón confirmación 2-paso. Exports: ConfirmButton.
 - [src/components/core/Modal.tsx](src/components/core/Modal.tsx) — Diálogo centrado (no fullscreen como OpportunityDrawer). Exports: Modal.
 - [src/components/core/PdfCanvasPreview.tsx](src/components/core/PdfCanvasPreview.tsx) — Renderiza TODAS las páginas de un PDF a canvas con pdfjs, una debajo de otra. Exports: warmPdfWorker, PdfCanvasPreview.
+- [src/components/core/FilePreviewModal.tsx](src/components/core/FilePreviewModal.tsx) — Visor de archivos en modal: imágenes inline y PDFs vía PdfCanvasPreview (lazy), con descarga para lo que el navegador no dibuja. Exports: FilePreviewModal.
 - [src/components/core/PersonAvatar.tsx](src/components/core/PersonAvatar.tsx) — Avatar circular de iniciales. Exports: PersonAvatar, PersonPair.
 - [src/components/documents/DocumentsPanel.tsx](src/components/documents/DocumentsPanel.tsx) — Panel reusable por fuente: genera, lista y firma documentos del portal. Exports: DocumentsPanel.
 - [src/components/documents/SignDocumentModal.tsx](src/components/documents/SignDocumentModal.tsx) — Modal de firma: previsualiza el PDF, captura el trazo, consentimiento + huella. Exports: SignDocumentModal.
