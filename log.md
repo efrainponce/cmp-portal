@@ -212,6 +212,13 @@
     nace con folio propio (su id sintético, el mismo fallback que ya usaba
     `oc.ts`). Método y condiciones de pago llegaban por request pero el PDF los
     lee de las columnas del Proyecto — se estampan antes de generar.
+  - **Tercera pasada, encontrada CLICANDO la app en producción** (Efraín pidió la
+    prueba de UI completa antes de mandar): subir la imagen de referencia de una
+    posición de embellecimiento tronaba en una línea nativa — la UI mostraba
+    "Error — reintentar" — porque `uploadZoneImage` iba directo a
+    `addFileToColumn` de Monday. Ahora tiene rama nativa: el archivo va a R2 y se
+    estampa el marcador en el mirror, igual que la OC del cliente y las guías de
+    Logística.
   - Segunda pasada (misma sesión, tras re-correr el E2E): faltaban los tres
     espejos "(auto)" del catálogo — Costo (`lookup_mm5ck4b3`), Descuento y
     Gastos %. De ahí sale el SNAPSHOT que congela "Mandar a costeo"

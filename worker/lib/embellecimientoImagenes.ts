@@ -8,6 +8,8 @@ import type { Identity } from '../../shared/types';
 import { getItem } from './dal';
 import { canWrite } from '../../shared/visibility';
 import { addFileToColumn } from './monday';
+import { isNativeId } from '../../shared/nativeId';
+import { stampNativeFileMarker } from './nativeItems';
 import { putFile, oportunidadFileKey } from './r2';
 import { refetchItem } from '../sync';
 import { BOARDS } from '../../shared/boards';
@@ -89,6 +91,19 @@ export async function uploadZoneImage(
   // scope 'own': sube un archivo a la línea (ver worker/lib/zonas.ts).
   const row = await getItem(env, 'oportunidades_sub', itemId, viewer, 'own');
   if (!row) throw new EmbellImageError(404, 'not found');
+
+  // Línea NATIVA (Zona Efrain): no existe del lado de Monday, así que no hay
+  // columna a la cual subir — el archivo vive SOLO en R2 y se estampa el
+  // marcador en el mirror, igual que la OC del cliente y las guías de
+  // Logística. Sin esto la subida tronaba y la UI marcaba "Error — reintentar"
+  // (encontrado clicando la app en producción, 2026-08-18).
+  if (isNativeId(itemId)) {
+    if (row.parent_item_id == null) throw new EmbellImageError(409, 'la línea no está ligada a una oportunidad');
+    const key = embellImageKey(row.parent_item_id, itemId, zone, filename);
+    await putFile(env, key, file);
+    await stampNativeFileMarker(env, 'oportunidades_sub', itemId, COL, `${zone}${SEP}${filename}`);
+    return { zone, url: `/api/files/${key}` };
+  }
 
   const asset = await addFileToColumn(env, itemId, COL, file, `${zone}${SEP}${filename}`);
   ctx.waitUntil(refetchItem(env, BOARDS.oportunidades_sub.id, itemId));
