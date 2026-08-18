@@ -33,10 +33,21 @@ export interface DocuSealSigner {
 export interface CreateSubmissionInput {
   /** Nombre de la submission en DocuSeal — cmp-tallas usa el item_id de Monday. */
   name: string;
-  /** URL pública del PDF ya subido a Monday (public_url de addFileToColumn). */
-  pdfUrl: string;
+  /** URL pública del PDF ya subido a Monday (public_url de addFileToColumn).
+   * Alternativa a `pdfBase64` — exactamente uno de los dos. */
+  pdfUrl?: string;
+  /** El PDF en base64, para documentos que NO viven en Monday (Zona Efrain):
+   * los genera el portal y quedan en R2, y una URL nuestra no le sirve a
+   * DocuSeal porque /api/* está detrás de Cloudflare Access — no podría
+   * descargarla. La API acepta cualquiera de las dos formas en el mismo campo
+   * `file` (verificado contra api.docuseal.com, 2026-08-18). */
+  pdfBase64?: string;
   filename: string;
   signers: DocuSealSigner[];
+  /** Copia a administración al completarse. Default true (lo que hace
+   * cmp-tallas). Se apaga en la zona privada: ahí el documento no debe salir
+   * de sus firmantes (Efraín, 2026-08-18). */
+  bccCompleted?: boolean;
 }
 
 /** Crea una submission nueva a partir del PDF hospedado en Monday. Devuelve el id
@@ -45,19 +56,22 @@ export interface CreateSubmissionInput {
 export async function createDocuSealSubmission(env: Env, input: CreateSubmissionInput): Promise<string> {
   if (!env.DOCUSEAL_API_KEY) throw new DocuSealError('DOCUSEAL_API_KEY not configured');
 
+  const file = input.pdfBase64 ?? input.pdfUrl;
+  if (!file) throw new DocuSealError('sin PDF: falta pdfUrl o pdfBase64');
+
   const res = await fetch(DOCUSEAL_URL, {
     method: 'POST',
     headers: { 'X-Auth-Token': env.DOCUSEAL_API_KEY, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       name: input.name,
-      documents: [{ file: input.pdfUrl, name: input.filename }],
+      documents: [{ file, name: input.filename }],
       submitters: input.signers.map(s => ({
         role: s.role, name: s.name, email: s.email, send_email: true,
         ...(s.order !== undefined ? { order: s.order } : {}),
       })),
       send_email: true,
       message: {},
-      bcc_completed: BCC_COMPLETED,
+      ...(input.bccCompleted === false ? {} : { bcc_completed: BCC_COMPLETED }),
       merge_documents: false,
       flatten: false,
       remove_tags: true,

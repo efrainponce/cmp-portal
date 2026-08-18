@@ -24,7 +24,7 @@ import { fetchAirtableImageUrl } from './airtable';
 import { importeEnLetras } from './importeEnLetras';
 import { getOrCreateDriveFolder, oportunidadRootFolderName, uploadPdfToDrive } from './drive';
 import { submitWrite } from './outbox';
-import { createDocument } from './documents';
+import { createDocument, documentPdf } from './documents';
 import type { RawCol } from './serialize';
 
 export class CotizacionError extends Error {
@@ -175,6 +175,27 @@ async function nextCotizacionSeq(env: Env, itemId: number): Promise<number> {
   return row?.seq ?? 1;
 }
 
+/** id de Monday de la primera persona de una columna `people` del mirror
+ * (mismo dato que firstPersonId, pero leyendo el Map<RawCol> del mirror en vez
+ * de la respuesta cruda de la API). */
+function personIdFromMirror(cols: Map<string, RawCol>, colId: string): number | null {
+  try {
+    const val = JSON.parse(cols.get(colId)?.value ?? 'null') as { personsAndTeams?: { id?: unknown }[] } | null;
+    const id = Number(val?.personsAndTeams?.[0]?.id);
+    return Number.isFinite(id) ? id : null;
+  } catch { return null; }
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  // De 8k en 8k: String.fromCharCode(...bytes) con un PDF entero revienta la
+  // pila de argumentos.
+  for (let i = 0; i < bytes.length; i += 8192) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
+  }
+  return btoa(binary);
+}
+
 async function resolveVendedor(env: Env, personId: number | null, fallbackName: string): Promise<{ name: string; email: string }> {
   if (personId) {
     try {
@@ -246,15 +267,46 @@ export async function generarCotizacionNativeD1(
   }
 
   const item = await getItem(env, 'oportunidades', itemId, viewer, 'own');
-  const folioOpp = colsOf(item?.columns ?? '[]').get(OPP_FOLIO)?.text || String(itemId);
+  const itemCols = colsOf(item?.columns ?? '[]');
+  const folioOpp = itemCols.get(OPP_FOLIO)?.text || String(itemId);
   const seq = await nextCotizacionSeq(env, itemId);
   const folioSuffix = folioOpp.includes('-') ? (folioOpp.split('-').pop() ?? folioOpp).trim() : folioOpp;
   const folio = `${folioSuffix} - ${seq}`;
 
-  await createDocument(env, viewer, { templateId: 'cotizacion', sourceId: String(itemId), folio });
+  const doc = await createDocument(env, viewer, { templateId: 'cotizacion', sourceId: String(itemId), folio });
   await submitWrite(env, ctx, 'oportunidades', itemId, { deal_stage: DEAL_STAGE_LABELS['6'] }, viewer, { trusted: true });
 
-  return { ok: true, folio, total: round2(subtotal * 1.16) };
+  // Firma y CORREO al vendedor. El flujo normal los da cmp-tallas
+  // (generate_cotizacion → Eledo + DocuSeal), pero ese endpoint lee la
+  // oportunidad de Monday por item_id y una oportunidad de la Zona Efrain no
+  // existe en Monday — ese es justamente el punto de la zona. Así que el
+  // Worker llama a DocuSeal directo con el PDF propio del portal en base64
+  // (una URL nuestra no sirve: /api/* vive detrás de Cloudflare Access y
+  // DocuSeal no podría descargarla). Sin bcc a administración: el documento
+  // no debe salir de la zona. No fatal — el PDF ya quedó guardado
+  // (Efraín, 2026-08-18: "no me llegó la cotización por correo").
+  let docusealId = '';
+  try {
+    const vendedor = await resolveVendedor(
+      env, personIdFromMirror(itemCols, OPP_VENDEDOR), itemCols.get(OPP_VENDEDOR)?.text ?? '',
+    );
+    if (!vendedor.email) throw new Error(`el vendedor (${vendedor.name}) no tiene correo en Monday`);
+    const { bytes, filename } = await documentPdf(env, doc.id, viewer, false);
+    docusealId = await createDocuSealSubmission(env, {
+      name: String(itemId),
+      pdfBase64: bytesToBase64(bytes),
+      filename,
+      signers: [{ role: 'Vendedor', name: vendedor.name, email: vendedor.email }],
+      bccCompleted: false,
+    });
+  } catch (err) {
+    docusealId = `ERROR: ${String(err)}`;
+    try {
+      await postUpdate(env, BOARDS.oportunidades.id, itemId, `⚠️ La cotización se generó pero no salió a firma/correo: ${String(err)}`);
+    } catch { /* best-effort */ }
+  }
+
+  return { ok: true, folio, total: round2(subtotal * 1.16), docusealId };
 }
 
 function cvNum2(cols: Map<string, RawCol>, id: string): number {

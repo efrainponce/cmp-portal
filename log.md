@@ -2,6 +2,27 @@
 
 ## 2026-08-18
 
+- **La cotización de la Zona Efrain sale a firma y por correo** (Efraín: "no me
+  llegó la cotización por correo"). En una oportunidad nativa el portal genera
+  su propio PDF y ahí se acababa: `generarCotizacionNativeD1` estaba escrito
+  explícitamente "sin DocuSeal ni Drive", y DocuSeal es justo quien manda el
+  correo.
+  - **Por qué no se puede usar el endpoint de cmp-tallas aquí** (que sí es el
+    camino normal): `POST /api/generate_cotizacion` recibe un `item_id` y lee
+    la oportunidad **de Monday**. Una oportunidad de la Zona Efrain no existe
+    en Monday — ese es el punto de la zona. No hay parámetro que arregle eso.
+  - Entonces el Worker llama a DocuSeal directo (ya lo hacía para el flujo
+    nativo-sobre-Monday), con el PDF del portal **en base64**: `documents[].file`
+    acepta base64 o URL (verificado contra api.docuseal.com), y una URL nuestra
+    no le sirve porque `/api/*` está detrás de Cloudflare Access y DocuSeal no
+    podría descargarla.
+  - **Sin bcc a administración** en la zona privada (`bccCompleted: false`) —
+    el resto del pipeline lo mantiene, como cmp-tallas.
+  - No fatal: si falla (o el vendedor no tiene correo en Monday) la cotización
+    igual queda guardada y se postea el motivo en Actualizaciones.
+  - `DOCUSEAL_API_KEY` no estaba como secret del Worker en producción (vivía
+    solo en `.env`, porque hasta hoy solo cmp-tallas firmaba). Ya está puesto.
+
 - **"Mandar a costeo" se esconde por etapa** (Efraín, probando Zona Efrain:
   "tienes que ir escondiendo dinámicamente los botones dependiendo de la
   etapa… mandar a costeo siempre se queda, los otros sí se mueven bien"). El
