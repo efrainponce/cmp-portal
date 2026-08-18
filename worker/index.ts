@@ -18,9 +18,11 @@ import { notificationRoutes } from './routes/notifications';
 import { documentRoutes } from './routes/documents';
 import { homeRoutes } from './routes/home';
 import { anuncioRoutes } from './routes/anuncios';
+import { telemetryRoutes } from './routes/telemetry';
 import { flushOutbox } from './lib/outbox';
 import { checkErrorsAndAlert } from './lib/errorAlerts';
 import { backupD1ToR2 } from './lib/backup';
+import { purgeUxEvents } from './lib/telemetry';
 import { logSync } from './sync/log';
 import { jsonStatus } from './lib/http';
 
@@ -51,6 +53,7 @@ notificationRoutes(app);
 documentRoutes(app);
 homeRoutes(app);
 anuncioRoutes(app);
+telemetryRoutes(app);
 
 app.all('*', c => c.env.ASSETS.fetch(c.req.raw));
 
@@ -94,7 +97,9 @@ export default {
       return;
     }
     if (controller.cron === BACKUP_CRON) {
-      ctx.waitUntil(backupD1ToR2(env));
+      // La poda de ux_event (90 días) se cuelga aquí y no del cron de 15 min:
+      // es un DELETE por rango que no tiene por qué correr 96 veces al día.
+      ctx.waitUntil(Promise.all([backupD1ToR2(env), purgeUxEvents(env)]));
       return;
     }
     const slugs = CRON_GROUPS[controller.cron] ?? (Object.keys(BOARDS) as BoardSlug[]);

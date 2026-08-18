@@ -531,3 +531,43 @@ CREATE TABLE IF NOT EXISTS anuncio_visto (
   seen_at      TEXT NOT NULL,
   PRIMARY KEY (anuncio_id, viewer_email)
 );
+
+-- Capa de INTERACCIÓN del portal (2026-08-17). Existe para poder comparar la
+-- fricción del portal contra la línea base de Monday (138,794 eventos de
+-- activity_logs, mar–ago 2026) en la renovación de feb-2027.
+--
+-- NO se mezcla con `activity_log` a propósito, y la separación no es cosmética:
+-- `activity_log` espeja lo que Monday REGISTRÓ (qué cambió), esto es lo que el
+-- servidor no puede saber solo (qué INTENTÓ la persona, cuánto esperó, si
+-- repitió el clic). Todo lo que hay aquí es, por construcción, del portal; la
+-- atribución portal-vs-Monday sobre activity_log se resuelve cruzando contra
+-- `outbox` (ver worker/lib/uxMetrics.ts).
+--
+-- GUARDARRAÍL: esto mide personas. Nunca guarda texto capturado por el usuario,
+-- nombres de cliente ni valores de campo — solo identificadores, slugs de
+-- control y tiempos; los regex de shared/telemetry.ts son la contención
+-- ejecutable de esa regla (con prueba en shared/telemetry.test.ts). El reporte
+-- por defecto es agregado; el desglose por persona es diagnóstico aparte.
+-- Retención de 90 días, podada desde el cron semanal (worker/index.ts).
+-- Se crea LAZY en runtime (mismo patrón que activity_log) — está aquí solo
+-- como documentación.
+CREATE TABLE IF NOT EXISTS ux_event (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  created_at  TEXT    NOT NULL,   -- ISO UTC, anclado por el SERVIDOR (el cliente manda `dt`)
+  user_id     INTEGER NOT NULL,   -- monday_user_id del identity del servidor, NUNCA del payload.
+                                  -- Entero a propósito: joinable 1:1 contra activity_log.user_id.
+  role        TEXT    NOT NULL,   -- rol al momento del evento; el reporte por defecto es POR ROL
+  session_id  TEXT    NOT NULL,   -- uuid por pestaña (sessionStorage), no persiste entre sesiones
+  kind        TEXT    NOT NULL,   -- click|ack|edit|nav|error
+  target      TEXT    NOT NULL,   -- slug estable de control: ^[a-z][a-z0-9:_-]{0,63}$
+  corr        TEXT,               -- correlación clic↔acuse (sin esto el 58/42 no se puede calcular)
+  board_slug  TEXT,
+  item_id     INTEGER,
+  column_id   TEXT,
+  latency_ms  INTEGER,            -- solo en kind='ack'/'error'
+  meta        TEXT                -- JSON saneado: number|boolean|slug corto, nada más
+);
+CREATE INDEX IF NOT EXISTS idx_ux_created ON ux_event(created_at);
+CREATE INDEX IF NOT EXISTS idx_ux_user    ON ux_event(user_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_ux_cell    ON ux_event(item_id, column_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_ux_corr    ON ux_event(corr);

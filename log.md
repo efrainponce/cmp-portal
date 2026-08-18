@@ -2,6 +2,79 @@
 
 ## 2026-08-17
 
+- Instrumentación de fricción de uso del portal (`ux_event`), pedido de Efraín
+  para la renovación de Monday de feb-2027: hoy todo lo que sabemos de fricción
+  sale de los activity_logs de Monday (138,794 eventos, mar–ago 2026) y no hay
+  NADA comparable del portal. Esto es el otro lado de esa tabla, calculado igual
+  para poder compararse sin asteriscos.
+  - **El problema real no era medir, era DISTINGUIR** (lo que cambió el diseño):
+    el portal escribe a Monday, así que una edición hecha en el portal viaja
+    outbox → Monday → activity_logs → delta sync y cae en `activity_log`
+    IDÉNTICA a una hecha a mano en Monday.com — mismo user_id, misma columna.
+    Medir re-edición sobre `activity_log` tal cual habría comparado Monday
+    contra (Monday + portal). La atribución NO es heurística: `outbox` nunca se
+    poda, tiene un solo escritor y guarda board+item+cols+autor+fecha, así que
+    cada fila se etiqueta cruzando las cuatro cosas (columna dentro del JSON de
+    `cols`, autor vía identity.monday_user_id) dentro de la ventana en que el
+    write pudo llegar a Monday. El único falso positivo posible —la misma
+    persona tocando la misma celda en las dos herramientas— se cuenta aparte en
+    `atribucion.ambiguos` en vez de esconderse.
+  - Tabla `ux_event` en D1 (lazy-create, como `activity_log`), SEPARADA de
+    `activity_log` a propósito: esa espeja lo que Monday registró, esta guarda
+    lo que el servidor no puede saber solo — qué intentó la persona, cuánto
+    esperó, si repitió el clic.
+  - Dos columnas que no estaban en la propuesta original y sin las cuales las
+    métricas no salen: **`corr`** (correlación clic↔acuse — sin ella el
+    emparejamiento sería "el clic más cercano anterior", que se vuelve ambiguo
+    justo cuando hay dos clics seguidos, o sea el caso que se está midiendo) y
+    **`role`** (denormalizado, para que el reporte agregado POR ROL sea el
+    camino fácil y el desglose por persona el que cueste trabajo).
+  - **Guardarraíl ejecutable, no convención**: `shared/telemetry.ts` valida
+    `target` contra un regex que no acepta mayúsculas, espacios ni arroba, y
+    sanea `meta` a number/boolean/slug corto descartando todo lo demás — un
+    nombre de cliente no pasa. Verificado en vivo: de un lote con
+    `target: "Hospital General de México"`, `meta: {cliente: "..."}` y un
+    `user_id: 99999` falsificado, entraron 7 de 9 eventos, cero fugas, y todo
+    atribuido al identity del SERVIDOR.
+  - **Bug encontrado antes de salir**, y es el motivo de
+    `worker/lib/uxMetrics.test.ts`: la clasificación de clic-sin-acuse comparaba
+    contra el acuse del clic inmediatamente anterior en vez de contra la primera
+    señal que hubiera llegado. Un tercer clic quedaba como "el sistema no dio
+    ninguna señal" aunque el acuse del primero ya estuviera en pantalla —
+    inflaba el 58% a costa del 42%, o sea justo el número a comparar. El SQL vive
+    en constantes exportadas para poder correrlo tal cual contra sqlite
+    (`node:sqlite`, sin dependencias nuevas); el typecheck no puede ver un bug
+    dentro de un string.
+  - Trampas ya conocidas, pagadas: `user_id` siempre del servidor (el del
+    payload ni se lee); INSERT troceado a 7 filas = 84 binds (D1 truena arriba
+    de ~100) en UN solo `batch()`; el POST responde 204 antes de tocar D1 y el
+    insert va en `waitUntil`; nada sale por evento, todo en lote; retención de
+    90 días colgada del cron semanal que ya existía.
+  - Trampa nueva encontrada: la lista poletea cada 5s (`src/lib/api.ts`), así que
+    medir latencia en TODOS los GET habría metido ~86k filas/día (~7.8M a 90
+    días). Las mutaciones se miden completas y los GET van al 2% — ~480k filas a
+    90 días, y p50/p90 siguen sobrando.
+  - Otra que habría dado un número bonito y falso: si un botón se deshabilita
+    mientras carga, el segundo clic nunca ocurre y el portal reportaría 0% de
+    clics repetidos — no por no tenerlos, sino por no poder verlos. De ahí
+    `uxClickBusy` y el `meta.busy` de `uxAction`.
+  - Suplantación: mientras un admin ve el portal "como" alguien más no se graba
+    nada (filtrado en el cliente Y en el worker). Sus clics se le atribuirían a
+    esa persona y ensuciarían adopción y tiempo por tarea.
+  - Instrumentado en el único punto de paso de cada cosa, no sembrado por la UI:
+    latencia en `apiFetch`, ediciones en `patchItem` (una fila por columna, solo
+    ids, nunca el valor), `drawer:open` y las 4 acciones de etapa del drawer.
+  - `GET /api/telemetry/report` (solo admin) devuelve las 5 métricas ya con el
+    corte portal-vs-Monday y con los parámetros de comparabilidad explícitos
+    (ventana de repetición 30s, cortes de 1 y 5 min) — tienen que ser los MISMOS
+    con que se recalcule la línea base en cmp-analisis.
+  - PENDIENTE de Efraín: la línea base del 73% se calculó sobre los
+    activity_logs CRUDOS de Monday, pero `activity_log` está filtrado por la
+    whitelist de ruido de `worker/lib/activityLog.ts` (3 boards, ~55 columnas).
+    Para comparar sin asterisco hay que re-correr esa línea base con la misma
+    whitelist aplicada (es un filtro sobre datos que ya existen, cero código
+    aquí). Sin eso, el número del portal saldría inflado.
+
 - OC a proveedor (PDF): el bloque de totales cambia el renglón vacío por
   "Unidades" con la suma de cantidades de todas las líneas
   (`fmtNumMx`) — el proveedor ve de un vistazo cuántas piezas son sin

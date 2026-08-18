@@ -19,6 +19,7 @@ import {
 import { statusIndex } from '../../lib/statusValue';
 import { DEAL_STAGE_LABELS, stageAtOrAfter, type StageBoardKey } from '../../lib/dealStages';
 import { useIsMobile } from '../../lib/useIsMobile';
+import { uxAction, uxNav } from '../../lib/telemetry';
 import { BoardTabsBar, type DrawerTabKey } from './BoardTabsBar';
 import { CotizacionTab } from './tabs/CotizacionTab';
 import { ETAPA_COSTEO_COL } from './tabs/cotizacion/gridMeta';
@@ -191,6 +192,12 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
   };
 
   useEffect(() => {
+    // Extremo inicial del "tiempo por tarea" (abrir el drawer → primer
+    // guardado). El otro extremo lo pone `uxEdit` desde patchItem. Va en el
+    // efecto de `id` y no en el montaje: el drawer NO se remonta al navegar
+    // entre oportunidades, solo cambia `id` — con un [] aquí solo se contaría
+    // la primera apertura de cada sesión.
+    uxNav('drawer:open', { boardSlug: boardKey ?? 'oportunidades', itemId: Number(id) || undefined });
     // Pinta primero lo cacheado (o limpia si es una oportunidad nueva) y
     // refresca en background — apertura instantánea en re-visitas.
     setItem(detailCache.get(id) ?? null);
@@ -420,7 +427,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
     } : cur);
   };
 
-  const onCancelarOportunidad = async () => {
+  const onCancelarOportunidad = () => uxAction('drawer:cancelar-oportunidad', { boardSlug: 'oportunidades', itemId: Number(id) || undefined }, async () => {
     setNotice(null);
     try {
       const res = await patchItem('oportunidades', id, { deal_stage: DEAL_STAGE_LABELS['5'] });
@@ -434,13 +441,13 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
     } catch {
       setNotice({ kind: 'error', title: 'No se pudo cancelar la oportunidad:', lines: ['Verifica tu conexión.'] });
     }
-  };
+  });
 
   // Reabrir: sin historial de etapa previa en el mirror (ni D1 ni Monday
   // guardan de dónde venía al cancelar/perder), así que siempre regresa a
   // "Nueva oportunidad" — mismo destino para las tres etapas cerradas
   // (Efraín, 2026-08-13).
-  const onReabrirOportunidad = async () => {
+  const onReabrirOportunidad = () => uxAction('drawer:reabrir-oportunidad', { boardSlug: 'oportunidades', itemId: Number(id) || undefined }, async () => {
     setNotice(null);
     try {
       const res = await patchItem('oportunidades', id, { deal_stage: DEAL_STAGE_LABELS['4'] });
@@ -454,9 +461,9 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
     } catch {
       setNotice({ kind: 'error', title: 'No se pudo reabrir la oportunidad:', lines: ['Verifica tu conexión.'] });
     }
-  };
+  });
 
-  const onPerderOportunidad = async () => {
+  const onPerderOportunidad = () => uxAction('drawer:perder-oportunidad', { boardSlug: 'oportunidades', itemId: Number(id) || undefined }, async () => {
     setNotice(null);
     try {
       const res = await patchItem('oportunidades', id, { deal_stage: DEAL_STAGE_LABELS['2'] });
@@ -470,9 +477,9 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
     } catch {
       setNotice({ kind: 'error', title: 'No se pudo marcar como perdida:', lines: ['Verifica tu conexión.'] });
     }
-  };
+  });
 
-  const onGanarOportunidad = async () => {
+  const onGanarOportunidad = () => uxAction('drawer:ganar-oportunidad', { boardSlug: 'oportunidades', itemId: Number(id) || undefined }, async () => {
     setNotice(null);
     try {
       const res = await ganarOportunidad(id);
@@ -486,7 +493,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
     } catch {
       setNotice({ kind: 'error', title: 'No se pudo marcar como ganada:', lines: ['Verifica tu conexión.'] });
     }
-  };
+  });
 
   if (error) return <div style={{ padding: 32, color: 'var(--ink-quiet)' }}>{error}</div>;
   if (!item) return <div style={{ padding: 32 }}>Cargando…</div>;

@@ -16,6 +16,7 @@ import { mockBoardMeta, mockItemDetail, mockPatch } from './mockFallback';
 import { getImpersonateTarget } from './impersonation';
 import { tomarPrecarga } from './apiPreload';
 import { markSessionExpired } from './sessionState';
+import { uxApiLatency, uxEdit } from './telemetry';
 import { CATALOGO_COLS } from './productSearch';
 
 export type {
@@ -85,9 +86,18 @@ export async function apiFetch(path: string, init?: RequestInit): Promise<Respon
   // manda X-Impersonate-Email, así que traería datos del admin). Si algo no
   // cuadra, cae al fetch normal.
   const precargada = target ? null : tomarPrecarga(url, init);
+  // Latencia real por endpoint (no existía ninguna medición). Aquí y no en cada
+  // llamador porque apiFetch es el ÚNICO punto de paso de todo el front. Es
+  // registro en memoria, no agrega ni una petición: sale en lote
+  // (src/lib/telemetry.ts), y los GET van muestreados porque la lista poletea
+  // cada 5s y medirlos todos ahogaría la tabla.
+  const t0 = performance.now();
   const res = precargada
     ? await precargada.catch(() => fetch(url, { credentials: 'same-origin', ...init, headers }))
     : await fetch(url, { credentials: 'same-origin', ...init, headers });
+  // La petición precargada arrancó antes que este cronómetro (script inline de
+  // index.html), así que su latencia saldría absurdamente corta — no se mide.
+  if (!precargada) uxApiLatency(init?.method ?? 'GET', path, performance.now() - t0, res.ok);
   if (res.status === 401) {
     if (recoverFromAccessSession()) return new Promise<Response>(() => {});
     markSessionExpired();
@@ -228,6 +238,16 @@ export async function getItem(slug: BoardSlug, id: string, opts?: { fresh?: bool
 export async function patchItem(slug: BoardSlug, id: string, cols: Record<string, string>): Promise<WriteResponse> {
   // Escribir un producto deja obsoleto el catálogo cacheado (getCatalogoProductos).
   if (slug === 'productos') invalidarCatalogoProductos();
+  // Canal de ATRIBUCIÓN de la telemetría (una fila `edit` por columna escrita).
+  // Va aquí, en el único write path del front, y no en cada llamador: sin él
+  // una edición hecha en el portal es indistinguible de una hecha en Monday.com
+  // —el portal escribe a Monday y la vuelta por activity_logs las deja
+  // idénticas—, y la métrica de re-edición mediría las dos herramientas juntas
+  // (ver worker/lib/uxMetrics.ts). SOLO viajan los ids de columna, nunca el
+  // valor escrito.
+  for (const columnId of Object.keys(cols)) {
+    uxEdit({ boardSlug: slug, itemId: Number(id) || undefined, columnId });
+  }
   try {
     const res = await apiFetch(`/boards/${slug}/items/${id}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cols }),
