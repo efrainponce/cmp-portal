@@ -20,7 +20,7 @@ import type { RawCol } from './serialize';
 import type { MondayItem, MondayCol } from './monday';
 import { logProductoStatusFromPortalWrite } from './estadoProducto';
 import { syncTallasPortal } from './airtable';
-import { recordDirectChanges, isPortalWriteColumn, type DirectChange } from './activityLog';
+import { recordDirectChanges, type DirectChange } from './activityLog';
 
 /** Shape REAL de lectura de Monday para board_relation ({linked_item_ids:[...]}
  * — distinto del shape de ESCRITURA que espera la mutación, {item_ids:[...]},
@@ -222,29 +222,6 @@ export async function submitWrite(
       actorEmail: viewer.email,
       comentario: cols['text_mm20gzsb'],
     });
-  }
-
-  // Actividad de las columnas que Monday registra con el usuario del TOKEN y
-  // no con quien de verdad editó (worker/lib/activityLog.ts, PORTAL_WRITE_COLUMNS
-  // — hoy el costeo de la línea del Proyecto). Se asienta aquí, con `row`
-  // todavía pre-merge, para tener el valor anterior real; el eco que llegue
-  // después por el delta sync se descarta al persistir. Best-effort: nunca
-  // debe tumbar un write que ya quedó firme. Los items NATIVOS no pasan por
-  // aquí — el bloque de abajo ya los registra completos.
-  if (!isNativeId(itemId)) {
-    const portalCols = colIds.filter(colId => isPortalWriteColumn(slug, colId));
-    if (portalCols.length > 0) {
-      try {
-        const rawCols: RawCol[] = JSON.parse(row.columns || '[]');
-        await recordDirectChanges(env, slug, portalCols.map(colId => ({
-          boardId: board.id, itemId, event: 'update_column_value' as const,
-          columnId: colId, columnTitle: boardMeta[colId]?.title ?? colId,
-          previousText: rawCols.find(c => c.id === colId)?.text ?? null,
-          newText: canonValue(types[colId], cols[colId]),
-          userId: viewer.monday_user_id,
-        })));
-      } catch { /* best-effort */ }
-    }
   }
 
   // Item nativo (Zona Efrain, "salir de Monday"): el merge optimista de arriba
