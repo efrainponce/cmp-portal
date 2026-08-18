@@ -2,6 +2,11 @@
 
 ## 2026-08-17
 
+- OC a proveedor (PDF): el bloque de totales cambia el renglón vacío por
+  "Unidades" con la suma de cantidades de todas las líneas
+  (`fmtNumMx`) — el proveedor ve de un vistazo cuántas piezas son sin
+  sumar renglón por renglón.
+
 - Anuncios del portal (pantalla nueva `/anuncios`, pedido de Efraín): Elisa y
   el CEO —los dos admin— pueden publicar comunicados para todo el equipo sin
   pasar por Monday ni por WhatsApp a mano. Nativo en D1 (`anuncios` +

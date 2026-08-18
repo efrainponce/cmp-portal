@@ -13,7 +13,7 @@
 import type { Block, DocumentMeta } from './layout';
 import { renderDocument } from './layout';
 import { LOGO_JPG_BASE64, CMP_ORANGE } from './logo';
-import { importeEnLetras } from '../importeEnLetras';
+import { importeEnLetras, fmtNumMx } from '../importeEnLetras';
 
 export interface OcProveedorLinea {
   producto: string;
@@ -68,6 +68,7 @@ function firmaBlock(label: string, nombre: string): Extract<Block, { kind: 'sign
 export function buildOrdenCompraProveedorPdf(input: OcProveedorPdfInput): Uint8Array {
   const moneda = input.lineas[0]?.moneda || 'MXN';
   const monto = input.lineas.reduce((s, l) => s + l.cantidad * l.precio * (1 - l.descuento), 0);
+  const totalUnidades = input.lineas.reduce((s, l) => s + l.cantidad, 0);
 
   const blocks: Block[] = [
     {
@@ -126,7 +127,7 @@ export function buildOrdenCompraProveedorPdf(input: OcProveedorPdfInput): Uint8A
         ['Subtotal', fmtMoney(monto, moneda)],
         ['Condiciones de pago', input.condicionesPago || '—'],
         ['IVA (16%)', fmtMoney(monto * 0.16, moneda)],
-        [' ', ' '],
+        ['Unidades', fmtNumMx(totalUnidades)],
         ['Total', fmtMoney(monto * 1.16, moneda)],
       ],
     },
