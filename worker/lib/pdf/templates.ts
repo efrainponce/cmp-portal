@@ -80,9 +80,8 @@ export interface CotizacionData {
  * (src/boards/oportunidades/tabs/cotizacion/gridMeta.tsx), en el mismo orden,
  * para que lo impreso coincida exactamente con lo que compras ya ve en
  * pantalla al validar. Los `formula_*` de Monday (costoReal, costoTotalUnit,
- * subtotal, margenGobTotal, utilidad, utilidadPct) llegan YA CALCULADOS por
- * Monday — aquí solo se leen e imprimen, no se recalculan. IVA y Total c/IVA
- * ya no se imprimen (Efraín, 2026-08-18), por eso tampoco se guardan. */
+ * subtotal, iva, totalConIva, margenGobTotal, utilidad, utilidadPct) llegan
+ * YA CALCULADOS por Monday — aquí solo se leen e imprimen, no se recalculan. */
 export interface CosteoValidacionLine {
   producto: string;
   sku?: string;
@@ -100,7 +99,10 @@ export interface CosteoValidacionLine {
   techo: number;
   precioSugerido: number;
   precioVenta: number;
+  ivaPct: number;
   subtotal: number;
+  iva: number;
+  totalConIva: number;
   margenGobPct: number;
   margenGobTotal: number;
   utilidad: number;
@@ -116,8 +118,8 @@ export interface CosteoValidacionData {
   zona?: string;
   lineas: CosteoValidacionLine[];
   subtotal: number;
-  /** Suma de la utilidad por línea — sustituye al total con IVA en el pie. */
-  utilidad: number;
+  iva: number;
+  total: number;
 }
 
 export interface RemisionInventarioData {
@@ -402,27 +404,21 @@ function costeoValidacionBlocks(d: CosteoValidacionData): Block[] {
     wrapCols: [0],
     cellSize: 8,
     headerSize: 7,
-    // Sin IVA ni Total c/IVA (Efraín, 2026-08-18: "el iva no nos interesa") —
-    // esta hoja es para validar costo contra precio, y las dos columnas de
-    // impuesto se llevaban el 18% del ancho, dejando los demás encabezados
-    // cortados ("Costo r…", "Marge…", "Utilid…"). Ese ancho se repartió aquí.
-    // Encabezados cortos a propósito: a 7pt, "Costo real C/U" o "Margen Gob %"
-    // no caben y el escritor los cortaba con elipsis ("COSTO REAL C…"), que fue
-    // justo lo que se vio en el PDF de OPP-0913. Los costos son unitarios y los
-    // porcentajes se leen en el propio valor, así que el sufijo no hacía falta.
     columns: [
-      { header: 'Producto', width: 0.15 },
+      { header: 'Producto', width: 0.145 },
       { header: 'SKU', width: 0.07 },
-      { header: 'Color', width: 0.065 },
-      { header: 'Cant.', width: 0.045, align: 'right' },
-      { header: 'Moneda', width: 0.06 },
-      { header: 'Costo real', width: 0.095, align: 'right' },
-      { header: 'Costo total', width: 0.095, align: 'right' },
-      { header: 'P. venta', width: 0.085, align: 'right' },
-      { header: 'Subtotal', width: 0.095, align: 'right' },
-      { header: 'Margen Gob', width: 0.085, align: 'right' },
-      { header: 'Utilidad', width: 0.09, align: 'right' },
-      { header: 'Util. %', width: 0.065, align: 'right' },
+      { header: 'Color', width: 0.08 },
+      { header: 'Cant.', width: 0.03, align: 'right' },
+      { header: 'Moneda', width: 0.05 },
+      { header: 'Costo real C/U', width: 0.075, align: 'right' },
+      { header: 'Costo total C/U', width: 0.08, align: 'right' },
+      { header: 'P. venta', width: 0.075, align: 'right' },
+      { header: 'Subtotal', width: 0.09, align: 'right' },
+      { header: 'IVA', width: 0.08, align: 'right' },
+      { header: 'Total c/IVA', width: 0.1, align: 'right' },
+      { header: 'Margen Gob %', width: 0.06, align: 'right' },
+      { header: 'Utilidad', width: 0.08, align: 'right' },
+      { header: 'Utilidad %', width: 0.06, align: 'right' },
     ],
     rows: d.lineas.map(l => [
       l.producto,
@@ -434,11 +430,13 @@ function costeoValidacionBlocks(d: CosteoValidacionData): Block[] {
       money(l.costoTotal),
       money(l.precioVenta),
       money(l.subtotal),
+      money(l.iva),
+      money(l.totalConIva),
       pct(l.margenGobPct),
       money(l.utilidad),
       pct(l.utilidadPct),
     ]),
-    footer: ['', '', '', '', '', '', '', '', money(d.subtotal), '', money(d.utilidad), ''],
+    footer: ['', '', '', '', '', '', '', '', money(d.subtotal), money(d.iva), money(d.total), '', '', ''],
     headerFill: CMP_ORANGE,
     headerTextColor: '#ffffff',
   });

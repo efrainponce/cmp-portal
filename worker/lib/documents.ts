@@ -188,7 +188,10 @@ const SUB_COSTO_EMBELL = 'numeric_mm0gxvpa';
 const SUB_COSTO_TOTAL = 'formula_mkznpfgg';
 const SUB_TECHO = 'numeric_mkznpn83';
 const SUB_PRECIO_SUGERIDO = 'numeric_mm2qzzbe';
+const SUB_IVA_PCT = 'numeric_mm0cg0bm';
 const SUB_SUBTOTAL = 'formula_mkznmjh6';
+const SUB_IVA = 'formula_mm0rtdqp';
+const SUB_TOTAL_CON_IVA = 'formula_mm00xy0n';
 const SUB_MARGEN_GOB_PCT = 'numeric_mkznnm5s';
 const SUB_MARGEN_GOB_TOTAL = 'formula_mkznsb7m';
 const SUB_UTILIDAD = 'formula_mkznry25';
@@ -320,10 +323,8 @@ async function cotizacionData(env: Env, oppId: number, viewer: Identity, folio: 
 
 /** Hoja de costeo al mandar a Validación (2026-08-14): snapshot de TODAS las
  * columnas de la grid de Costeo (mismo patrón D1 crudo + whitelist que
- * cotizacionData). Se dispara sola desde POST .../validar-costeo (7→9), con el
- * viewer admin que hizo el click — NO al mandar a validación: ahí el Precio de
- * Venta todavía no existe y el documento se congelaba en $0 (ver
- * generarHojaValidacion en worker/routes/oportunidades.ts) — canRead ya les deja ver el grupo AC
+ * cotizacionData). Se dispara sola desde POST .../enviar-validacion, con el
+ * viewer compras/admin que hizo el click — canRead ya les deja ver el grupo AC
  * de columnas de costeo; la vista del DOCUMENTO en sí queda además restringida
  * a compras/admin por `DOC_TEMPLATES['validacion-costeo'].view` (Efraín,
  * 2026-08-14: "ESTO SOLO LO VEN compras y admin"). */
@@ -360,7 +361,10 @@ async function costeoValidacionData(env: Env, oppId: number, viewer: Identity): 
       techo: subNum(c, SUB_TECHO),
       precioSugerido: subNum(c, SUB_PRECIO_SUGERIDO),
       precioVenta: subNum(c, SUB_PRECIO),
+      ivaPct: subNum(c, SUB_IVA_PCT),
       subtotal: subNum(c, SUB_SUBTOTAL),
+      iva: subNum(c, SUB_IVA),
+      totalConIva: subNum(c, SUB_TOTAL_CON_IVA),
       margenGobPct: subNum(c, SUB_MARGEN_GOB_PCT),
       margenGobTotal: subNum(c, SUB_MARGEN_GOB_TOTAL),
       utilidad: subNum(c, SUB_UTILIDAD),
@@ -376,7 +380,8 @@ async function costeoValidacionData(env: Env, oppId: number, viewer: Identity): 
     zona: text(OPP_ZONA),
     lineas,
     subtotal: round2(lineas.reduce((s, l) => s + l.subtotal, 0)),
-    utilidad: round2(lineas.reduce((s, l) => s + l.utilidad, 0)),
+    iva: round2(lineas.reduce((s, l) => s + l.iva, 0)),
+    total: round2(lineas.reduce((s, l) => s + l.totalConIva, 0)),
   };
 }
 
