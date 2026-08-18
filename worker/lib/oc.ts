@@ -18,6 +18,7 @@ import { importeEnLetras } from './importeEnLetras';
 import { getOrCreateDriveFolderForOportunidad, uploadPdfToDrive } from './drive';
 import { isNativeId } from '../../shared/nativeId';
 import { BOARDS } from '../../shared/boards';
+import { mergeNativeCols } from './nativeMirrors';
 import { oportunidadFileKey, putFile } from './r2';
 import { generarOcProveedorPdf } from './ocProveedorPdf';
 
@@ -241,8 +242,20 @@ function asMondayItemShape(row: MirrorItem): MondayItem {
  * vez de a una columna de Monday. Sin firmas DocuSeal ni Drive. */
 export async function generarOcNativeD1(
   env: Env, viewer: Identity, proyectoId: number,
-  opts: { onlyProveedor?: string } = {},
+  opts: { onlyProveedor?: string; metodoPago?: string; condPago?: string } = {},
 ): Promise<GenerarOcResult> {
+  // Método/condiciones de pago llegan por request (ProveedorGrid) pero el PDF
+  // los lee de las columnas del Proyecto — en el flujo real es Eledo quien
+  // recibe los overrides. Se estampan antes de generar, o salen vacíos en el
+  // PDF (prueba end-to-end en producción, 2026-08-18).
+  const pago: Record<string, string> = {};
+  if (opts.metodoPago) pago[PROYECTO_METODO_PAGO] = opts.metodoPago;
+  if (opts.condPago) pago[PROYECTO_COND_PAGO] = opts.condPago;
+  if (Object.keys(pago).length > 0) {
+    try { await mergeNativeCols(env, 'proyectos', proyectoId, pago); }
+    catch { /* best-effort: el PDF sale sin esos dos campos, no vale abortar la OC */ }
+  }
+
   const subitems = (await childrenOf(env, 'proyectos', proyectoId, viewer)).map(asMondayItemShape);
   const groups = groupSubitemsByProveedor(subitems, opts.onlyProveedor);
 

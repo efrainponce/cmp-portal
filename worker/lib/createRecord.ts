@@ -13,6 +13,7 @@ import { reserveNativeId } from './nativeSeq';
 import { rawHash, type RawColumn } from './canon';
 import { cachedFetchUsers } from './rosterCache';
 import { isZonaPrivadaAdminPermitido } from './zonas';
+import { stampInstitucionDeContacto, OPP_CONTACTO_REL } from './nativeMirrors';
 import { dealStageValue } from '../../shared/dealStages';
 import { boardRelationValue } from './outbox';
 import { recordDirectChanges } from './activityLog';
@@ -175,6 +176,14 @@ export async function submitCreateNative(
       now, now, rawHash(rawColumns), JSON.stringify(rawColumns),
     )
     .run();
+
+  // La Institución de la Oportunidad es un ESPEJO del Contacto ligado: en un
+  // item nativo nadie la calcula, y checkCosteo la exige (worker/lib/
+  // nativeMirrors.ts). Se resuelve aquí mismo, al nacer con contacto.
+  const contactoId = Number(cols?.[OPP_CONTACTO_REL]);
+  if (Number.isFinite(contactoId) && contactoId > 0) {
+    try { await stampInstitucionDeContacto(env, itemId, contactoId); } catch { /* best-effort */ }
+  }
 
   // Sin Monday del otro lado no hay activity_logs que jalar (worker/lib/
   // activityLog.ts) — se registra directo, best-effort.

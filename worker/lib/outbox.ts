@@ -6,6 +6,8 @@ import type { BoardSlug } from '../../shared/boards';
 import type { WriteResponse } from '../../shared/dto';
 import { BOARDS, boardById } from '../../shared/boards';
 import { isNativeId } from '../../shared/nativeId';
+import { nativeStatusValue } from './nativeItems';
+import { stampProductoEnLinea, stampInstitucionDeContacto, OPP_CONTACTO_REL } from './nativeMirrors';
 import { dealStageValue } from '../../shared/dealStages';
 import { canWrite } from '../../shared/visibility';
 import { COLUMN_META } from '../../shared/column-meta.gen';
@@ -122,6 +124,12 @@ export async function submitWrite(
     if (isNativeId(itemId)) {
       if (colId === 'deal_stage') mergedValue = JSON.stringify(dealStageValue(canon));
       else if (types[colId] === 'board_relation') mergedValue = JSON.stringify(boardRelationValue(canon));
+      // Cualquier otra columna `status` (project_status, Etapa Costeo,
+      // embellecimiento…): también con `{index}`. Guardar el label suelto dejaba
+      // al item fuera de TODOS los grupos de los boards, que filtran por índice
+      // — bug real de la prueba end-to-end en producción (2026-08-18), donde el
+      // Proyecto nativo desapareció del sidebar al reescribirse su status.
+      else if (types[colId] === 'status') mergedValue = JSON.stringify(nativeStatusValue(slug, colId, canon));
     }
     const mergedCol: RawCol = { id: colId, type: types[colId], text: canon, value: mergedValue };
     const mergedJson = JSON.stringify(mergedCol);
@@ -150,6 +158,10 @@ export async function submitWrite(
   // esto cubre la ventana optimista, que es la que el usuario ve.
   if (slug === 'oportunidades_sub' && SUB_PRODUCTO_REL in cols) {
     const productoId = productoIdDeWrite(cols[SUB_PRODUCTO_REL]);
+    // Línea NATIVA: no hay espejos de Monday que se rellenen solos, así que se
+    // copia el catálogo completo (SKU, ficha, colores, tallas, moneda, unidad,
+    // proveedor) y se renombra la línea al producto — worker/lib/nativeMirrors.ts.
+    if (isNativeId(itemId) && productoId) await stampProductoEnLinea(env, itemId, productoId);
     const ficha = productoId ? (await fichasDeProductos(env, [productoId])).get(productoId) : undefined;
     if (ficha) {
       const fichaJson = JSON.stringify({ id: SUB_FICHA, type: 'mirror', text: ficha, value: null } satisfies RawCol);
@@ -167,6 +179,13 @@ export async function submitWrite(
         .bind(SUB_FICHA, SUB_FICHA, fichaJson, fichaJson, now, board.id, itemId)
         .run();
     }
+  }
+
+  // Oportunidad NATIVA: la Institución es un espejo del Contacto y checkCosteo
+  // la exige — sin esto "Mandar a costeo" es imposible en Zona Efrain.
+  if (slug === 'oportunidades' && isNativeId(itemId) && OPP_CONTACTO_REL in cols) {
+    const contactoId = Number(canonValue('board_relation', cols[OPP_CONTACTO_REL]));
+    if (Number.isFinite(contactoId) && contactoId > 0) await stampInstitucionDeContacto(env, itemId, contactoId);
   }
 
   const canonCols: Record<string, string> = {};

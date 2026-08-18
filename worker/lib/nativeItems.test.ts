@@ -4,7 +4,7 @@
 // número en vez de string, 2026-08-13 — el PDF de la OC comparaba con === y
 // nunca hacía match). Por eso va anclado en test.
 import { describe, it, expect } from 'vitest';
-import { toNativeColumns } from './nativeItems';
+import { toNativeColumns, nativeStatusValue } from './nativeItems';
 
 describe('toNativeColumns', () => {
   it('board_relation guarda linked_item_ids como STRING, igual que Monday', () => {
@@ -38,5 +38,26 @@ describe('toNativeColumns', () => {
     const [col] = toNativeColumns({ text_mm0hyrfs: 'SKU-1' }, {});
     expect(col.type).toBe('text');
     expect(col.text).toBe('SKU-1');
+  });
+});
+
+describe('nativeStatusValue', () => {
+  it('project_status guarda {index}, no el label — si no, el item desaparece de los grupos', () => {
+    const v = nativeStatusValue('proyectos', 'project_status', 'Desglose de tallas') as { index: number };
+    expect(v.index).toBe(5);
+  });
+
+  it('el label se compara sin importar mayúsculas ni espacios', () => {
+    const v = nativeStatusValue('proyectos', 'project_status', '  ejecución ') as { index: number };
+    expect(v.index).toBe(3);
+  });
+
+  it('un label que no existe en la metadata se guarda tal cual, sin perder la escritura', () => {
+    expect(nativeStatusValue('proyectos', 'project_status', 'Etapa inventada')).toBe('Etapa inventada');
+  });
+
+  it('Etapa Costeo de una línea también resuelve su índice', () => {
+    const v = nativeStatusValue('oportunidades_sub', 'color_mm084gvf', 'Listo') as { index: number };
+    expect(typeof v.index).toBe('number');
   });
 });

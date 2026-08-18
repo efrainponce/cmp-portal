@@ -100,6 +100,8 @@ async function copyFiles(env: Env, sourceCols: Map<string, RawCol>, sourceColId:
 const PROYECTO_STATUS = 'project_status';
 const PROYECTO_STATUS_INICIAL = 'Desglose de tallas';
 const PROYECTO_STATUS_INICIAL_INDEX = 5;
+const PROYECTO_FOLIO = 'pulse_id_mm1a12gy';
+const PROYECTO_FOLIO_OPP = 'lookup_mm1d56mp';
 
 /** Primer person id de un value ya parseado ({personsAndTeams:[{id}]}) —
  * mismo shape que passthroughValue produce, para derivar vendedor_ids del
@@ -133,6 +135,12 @@ async function ganarOportunidadNativeD1(
       id: PROYECTO_STATUS, type: 'status', text: PROYECTO_STATUS_INICIAL,
       value: JSON.stringify({ index: PROYECTO_STATUS_INICIAL_INDEX, changed_at: new Date().toISOString() }),
     },
+    // Folios: en Monday los da la columna item_id del board (y su espejo hacia
+    // la Oportunidad). Un item nativo no los recibe y el PDF de la OC los
+    // imprimía como "—" (prueba end-to-end en producción, 2026-08-18); el id
+    // sintético es el mismo número que ya usa `oc.ts` como fallback.
+    { id: PROYECTO_FOLIO, type: 'item_id', text: String(proyectoId), value: null },
+    { id: PROYECTO_FOLIO_OPP, type: 'mirror', text: String(itemId), value: null },
   ];
   const compras = srcCols.get(OPP_COMPRAS);
   if (compras?.value) {

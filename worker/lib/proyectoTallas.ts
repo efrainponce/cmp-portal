@@ -9,6 +9,7 @@ import type { Identity, MirrorItem } from '../../shared/types';
 import type { TallaBoxInput, CapturarTallasResponse } from '../../shared/dto';
 import { postUpdate } from './nativeUpdates';
 import { toNativeColumns, insertNativeSubitem } from './nativeItems';
+import { proveedorPorId } from './nativeMirrors';
 import type { RawCol } from './serialize';
 import { getItem, childrenOf, linkedItemId, ownsItem, PROYECTO_OPP_REL } from './dal';
 import {
@@ -59,6 +60,7 @@ const SUB_MONEDA = 'text_mm1gdsvg';
 const SUB_DESCUENTO = 'numeric_mm1dmsaz';
 const SUB_UNIDAD = 'text_mm56dbkm';
 const SUB_PROVEEDOR = 'board_relation_mm1cfgv5';
+const SUB_PROVEEDOR_RZ = 'lookup_mm1d2y9b';   // espejo: Proveedor → Razón Social (lo imprime la OC)
 
 // Oportunidad — línea de cotización, mismos ids que TallasTab.tsx SUB_COLOR/
 // SUB_CANTIDAD: lo cotizado originalmente para esa línea (producto+color),
@@ -274,8 +276,22 @@ const TALLA_COL_TYPES: Record<string, string> = {
   [SUB_DESCUENTO]: 'numeric', [SUB_UNIDAD]: 'text', [SUB_PROVEEDOR]: 'board_relation',
 };
 
-const nativeTallaColumns = (desired: Record<string, unknown>): RawColumn[] =>
-  toNativeColumns(desired, TALLA_COL_TYPES);
+/** Columnas de una línea de talla NATIVA. Además de la conversión de shape,
+ * resuelve el proveedor: `toNativeColumns` deja el board_relation con el ID
+ * como texto, pero el agrupado y el PDF de la OC imprimen ese texto — en la
+ * prueba end-to-end de producción (2026-08-18) la OC salió a nombre de
+ * "11643361506" en vez de "UNIMX". La razón social es un espejo del board
+ * Proveedores, así que también se copia (worker/lib/nativeMirrors.ts). */
+async function nativeTallaColumns(env: Env, desired: Record<string, unknown>): Promise<RawColumn[]> {
+  const columns = toNativeColumns(desired, TALLA_COL_TYPES);
+  const proveedorId = Number(((desired[SUB_PROVEEDOR] as { item_ids?: number[] } | undefined)?.item_ids ?? [])[0]);
+  if (!Number.isFinite(proveedorId) || proveedorId <= 0) return columns;
+  const { nombre, razonSocial } = await proveedorPorId(env, proveedorId);
+  const rel = columns.find(c => c.id === SUB_PROVEEDOR);
+  if (rel) rel.text = nombre;
+  if (razonSocial) columns.push({ id: SUB_PROVEEDOR_RZ, type: 'mirror', text: razonSocial, value: null });
+  return columns;
+}
 
 export async function capturarTallas(
   env: Env, viewer: Identity, proyectoId: number, rows: TallaBoxInput[],
@@ -315,7 +331,7 @@ export async function capturarTallas(
     const match = byKey.get(key);
     if (!match) {
       if (native) {
-        await insertNativeSubitem(env, 'proyectos_sub', proyectoId, r.producto.trim(), nativeTallaColumns(desired));
+        await insertNativeSubitem(env, 'proyectos_sub', proyectoId, r.producto.trim(), await nativeTallaColumns(env, desired));
       } else {
         const subitem = await createSubitem(env, proyectoId, r.producto.trim(), desired);
         await upsertItem(env, 'proyectos_sub', subitem);
@@ -325,7 +341,7 @@ export async function capturarTallas(
     }
     if (!needsUpdate(colsOf(match), desired)) { omitted++; continue; }
     if (native) {
-      const columns = nativeTallaColumns(desired);
+      const columns = await nativeTallaColumns(env, desired);
       const byId = new Map(colsOf(match).entries());
       for (const c of columns) byId.set(c.id, c);
       await env.DB

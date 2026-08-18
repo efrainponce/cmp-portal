@@ -7,6 +7,7 @@
 // el shape del mirror.
 import type { Env } from '../env';
 import { BOARDS, type BoardSlug } from '../../shared/boards';
+import { COLUMN_META } from '../../shared/column-meta.gen';
 import { rawHash, type RawColumn } from './canon';
 import { reserveNativeId } from './nativeSeq';
 
@@ -97,4 +98,27 @@ export async function stampNativeFileMarker(
     .prepare(`UPDATE items SET columns = ?, synced_at = ? WHERE board_id = ? AND item_id = ?`)
     .bind(JSON.stringify(filtered), new Date().toISOString(), boardId, itemId)
     .run();
+}
+
+/** `value` de una columna `status` con el shape REAL de Monday (`{index}`), no
+ * el label suelto. TODO lo que agrupa o filtra por status lee `.index`
+ * (src/lib/statusValue.ts, los boards del sidebar, notify.ts): un item nativo
+ * escrito con el label como `value` desaparecía de todos los grupos — bug real
+ * encontrado en la prueba end-to-end de producción (2026-08-18), donde el
+ * Proyecto se volvió invisible al reescribirse `project_status`.
+ *
+ * El índice sale de shared/column-meta.gen.ts (misma fuente que la UI). Si el
+ * label no está en la metadata se devuelve el texto tal cual: mejor un valor
+ * raro que perder la escritura. */
+export function nativeStatusValue(slug: BoardSlug, colId: string, label: string): unknown {
+  const labels = COLUMN_META[slug]?.[colId]?.labels;
+  if (labels) {
+    const wanted = label.trim().toLowerCase();
+    for (const [index, meta] of Object.entries(labels)) {
+      if ((meta as { label?: string }).label?.trim().toLowerCase() === wanted) {
+        return { index: Number(index), post_id: null, changed_at: new Date().toISOString() };
+      }
+    }
+  }
+  return label;
 }

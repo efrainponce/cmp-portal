@@ -2,6 +2,55 @@
 
 ## 2026-08-18
 
+- Los espejos de Monday, resueltos localmente para items nativos
+  (`worker/lib/nativeMirrors.ts`, nuevo). Salió de correr el END-TO-END REAL EN
+  PRODUCCIÓN que pidió Efraín: copiar una oportunidad compleja (OPP-0870, 42
+  líneas, 2 proveedores) como oportunidad nativa de Zona Efrain y llevarla hasta
+  logística. Llegó — cotización ($171,656.80), Proyecto, 14 tallas, 2 OC con PDF
+  real y captura de logística con guía en R2 — pero se atoró en 4 puntos, todos
+  con la MISMA raíz: un item nativo no existe en Monday, así que el motor de
+  columnas ESPEJO (`lookup_*`) nunca corre para él y medio pipeline las lee como
+  si fueran datos propios.
+  - **Institución** (`lookup_mm1bs976`, espejo del Contacto): `checkCosteo` la
+    exige, así que "Mandar a costeo" era IMPOSIBLE en la zona. Ahora se resuelve
+    al ligar el contacto (en la creación y en el write path), siguiendo la misma
+    cadena que Monday: Oportunidad → `deal_contact` → Contacto →
+    `contact_account` → Institución. De paso también el puesto.
+  - **Nombre de la línea**: en Monday una automatización la renombra al elegir
+    el producto; una línea nativa se quedaba en "Nueva línea" para siempre, y
+    `checkTodoCuadra` cruza tallas POR NOMBRE — el resultado era
+    "Nueva línea: cotizado 80, asignado 0" junto a "Camisa Administrativa:
+    cotizado 0, asignado 45", o sea que confirmar tallas nunca cuadraba. Ahora
+    ligar el producto copia nombre + SKU + ficha comercial + colores
+    disponibles + tallas + moneda + unidad + proveedor (el bloque de ficha que
+    ya existía era justo este problema, resuelto para UNA columna).
+  - **Status guardado como TEXTO en vez de `{index}`** (`nativeStatusValue`,
+    `worker/lib/nativeItems.ts`): el merge nativo solo tenía el caso especial de
+    `deal_stage`. Todo lo demás que agrupa o filtra lee `.index`, así que cuando
+    `confirmTallasNativeD1` regresó el `project_status` al fallar el gate, el
+    Proyecto **desapareció de todos los boards** — el tab de Zona Efrain marcaba
+    "0 proyectos" con el Proyecto ahí. Ahora cualquier columna `status` nativa se
+    escribe con su índice real de `shared/column-meta.gen.ts`. Anclado en test.
+  - **La OC salía a nombre de un número**: `PROVEEDOR`/`RAZÓN SOCIAL` imprimían
+    "11643361506" y los folios "—". La línea de talla nativa ahora guarda el
+    NOMBRE del proveedor (no su id) y copia la razón social; el Proyecto nativo
+    nace con folio propio (su id sintético, el mismo fallback que ya usaba
+    `oc.ts`). Método y condiciones de pago llegaban por request pero el PDF los
+    lee de las columnas del Proyecto — se estampan antes de generar.
+  - Lo que NO se tocó porque no es del flujo nativo: `validacion-check` marcó 2
+    de 6 líneas con "descripción y tallas sin confirmar", y es condición real
+    del catálogo para esos dos productos (`checkValidacion` lee el board
+    Productos, no un espejo).
+  - Rastro de la prueba que quedó en producción y hay que limpiar a mano (el
+    token de `.env` es de SOLO LECTURA para D1, `code: 7500`): oportunidad
+    nativa `900359808091` + 6 líneas, Proyecto `900174095192` + 14 líneas de
+    talla, todo con nombre "PRUEBA E2E ZONA EFRAIN … — borrar", y
+    `oc_folios.seq = 2` (conviene regresarlo a 0: nunca se había emitido una OC
+    nativa en producción antes de esta prueba). Una sola notificación salió, a
+    la cuenta que corrió la prueba.
+
+## 2026-08-18
+
 - **Botón "Validar costeo" en Validación Costeo (etapa 7 → 9 "Costeo
   Confirmado")** — pedido de Efraín por WhatsApp mientras revisaba OPP-0913:
   "agrega botón de VALIDAR costeo, no generar cotización YA; es súper
