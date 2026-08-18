@@ -148,11 +148,20 @@ async function generarSolicitudCosteo(
   }
 }
 
-/** Hoja de costeo (todas las columnas de Costeo, en horizontal) al mandar a
- * Validación — sola, sin pedirle nada a nadie, mismo trato de "acuse
- * automático" que la solicitud de costeo. Best-effort: "Mandar a Validación"
- * ya movió la etapa y no se puede deshacer por esto. Solo la ven compras/admin
- * (shared/documents.ts DOC_TEMPLATES['validacion-costeo'].view). */
+/** Hoja de costeo (todas las columnas de Costeo, en horizontal) al **validar el
+ * costeo** (7→9) — sola, sin pedirle nada a nadie, mismo trato de "acuse
+ * automático" que la solicitud de costeo. Solo la ven compras/admin
+ * (shared/documents.ts DOC_TEMPLATES['validacion-costeo'].view).
+ *
+ * Salía al MANDAR a validación (15→7) hasta el 2026-08-18, y ahí el Precio de
+ * Venta todavía no existe: se captura durante la validación, así que el
+ * documento se congelaba con precio, subtotal y total en $0 y una utilidad
+ * negativa igual al costo (visto en OPP-0913: el precio entró 1h45 después de
+ * generarse el PDF). Efraín: "obvio necesito el precio si no no sirve de nada".
+ * Aquí el precio ya está garantizado — "Validar costeo" es justamente la
+ * aprobación de esa columna y la UI no deja apretarlo sin ella.
+ *
+ * Best-effort: la etapa ya se movió y no se deshace porque el PDF falle. */
 async function generarHojaValidacion(c: Context<{ Bindings: Env }>, itemId: number, viewer: Identity): Promise<void> {
   try {
     await createDocument(c.env, viewer, {
@@ -240,7 +249,6 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
 
     try {
       const result = await enviarAValidacion(c.env, c.executionCtx, itemId, viewer);
-      if (result.ok) await generarHojaValidacion(c, itemId, viewer);
       return result.ok ? c.json(result) : jsonStatus(result, 422);
     } catch (err) {
       if (err instanceof CosteoError) return jsonStatus({ ok: false, errors: [err.message] }, err.status);
@@ -263,7 +271,14 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
 
     try {
       const result = await confirmarCosteo(c.env, c.executionCtx, itemId, viewer);
-      if (result.ok) await refetchItem(c.env, BOARDS.oportunidades.id, itemId);
+      if (result.ok) {
+        // Árbol completo (no solo el padre) y ANTES de generar el documento: el
+        // Precio de Venta se captura seguido en Monday directo, y el documento
+        // congela lo que vea el espejo — con la relectura del padre nada más,
+        // las líneas podían entrar todavía con el precio viejo.
+        await refetchItemTree(c.env, BOARDS.oportunidades.id, itemId);
+        await generarHojaValidacion(c, itemId, viewer);
+      }
       return result.ok ? c.json(result) : jsonStatus(result, 422);
     } catch (err) {
       if (err instanceof CosteoError) return jsonStatus({ ok: false, errors: [err.message] }, err.status);

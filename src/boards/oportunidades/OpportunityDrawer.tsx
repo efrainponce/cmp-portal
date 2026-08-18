@@ -422,7 +422,10 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
       const res = await validarCosteo(id);
       if (res.ok) {
         applyStageOptimistic('9');
-        setNotice({ kind: 'ok', title: 'Costeo validado', lines: ['La etapa pasó a "Costeo Confirmado" y se avisó a Compras. Ya puedes generar la cotización.'] });
+        setNotice({ kind: 'ok', title: 'Costeo validado', lines: [
+          'La etapa pasó a "Costeo Confirmado" y se avisó a Compras. Ya puedes generar la cotización.',
+          'Se guardó la hoja "Costeo — Validación" (con precios) en la tab Documentación.',
+        ] });
         load();
       } else {
         setNotice({ kind: 'error', title: 'No se pudo validar el costeo:', lines: res.errors ?? ['Verifica tu conexión.'] });

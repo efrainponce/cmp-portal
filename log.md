@@ -2,6 +2,34 @@
 
 ## 2026-08-18
 
+- **La hoja "Costeo — Validación" ahora sí trae el precio, y sin IVA** (Efraín,
+  viendo el PDF de OPP-0913: "el documento de validacion esta mal... no tomas el
+  precio y el iva no nos interesa" + "obvio necesito el precio si no no sirve de
+  nada"). No era una columna mal leída: el documento se congelaba en el momento
+  equivocado. Cronología de OPP-0913 (hora CDMX): 10:20 se capturan IVA % y
+  Margen Gob, **10:31 se genera el documento con el Precio de Venta todavía
+  vacío**, 12:16 se escribe el precio por primera vez (8,500) y hasta 14:37
+  queda en 2,490. De ahí el $0 en precio/subtotal/total y la utilidad negativa
+  igual al costo (−156,765 = −6,270.6 × 25).
+  - **El disparo se mueve de "Mandar a validación" (15→7) a "Validar costeo"
+    (7→9)** — Efraín eligió moverlo, no duplicarlo. El precio se captura
+    *durante* la validación, así que ese es el primer punto del flujo donde
+    existe; además "Validar costeo" es literalmente la aprobación de esa columna
+    y la UI ya no deja apretarlo sin ella. Se pierde el documento del momento en
+    que se pidió la validación — aceptado a cambio de que el que queda sirva.
+  - `refetchItemTree` **antes** de generar (no `refetchItem`): el precio se
+    captura seguido en Monday directo, y el documento congela lo que vea el
+    espejo. Releyendo solo el padre, las líneas podían entrar con el precio
+    viejo — el mismo bug, una hora más tarde.
+  - Fuera **IVA** y **Total c/IVA** de la tabla (y del snapshot: ya no se
+    guardan). Se llevaban el 18% del ancho y por eso los demás encabezados
+    salían cortados ("COSTO REAL C…", "MARGE…", "UTILID…"); ese ancho se repartió
+    y los encabezados se acortaron hasta que ninguno se corta. El pie ahora
+    suma Subtotal y Utilidad en vez de Subtotal/IVA/Total.
+  - `worker/lib/pdf/validacionCosteo.test.ts` ancla las dos cosas que pidió
+    (precio impreso, IVA ausente) más "ningún encabezado con elipsis", que es
+    lo que un typecheck jamás vería.
+
 - **La cotización de la Zona Efrain sale a firma y por correo** (Efraín: "no me
   llegó la cotización por correo"). En una oportunidad nativa el portal genera
   su propio PDF y ahí se acababa: `generarCotizacionNativeD1` estaba escrito
