@@ -2,6 +2,7 @@ import { NavItem } from '../components/navigation/NavItem';
 import { NotificationBell } from '../components/notifications/NotificationBell';
 import { UserChip } from './UserChip';
 import { useMe } from '../lib/useMe';
+import { useAnuncios } from '../lib/anunciosApi';
 // 64x64, no el de 256: se pinta a 28 px y el grande eran 15.8 KB en la ventana
 // crítica de carga. Al pesar <4 KB, Vite lo mete inline como data URI y
 // además desaparece el request. El de 256 se queda para favicon/apple-touch
@@ -10,10 +11,11 @@ import logo from '../assets/logo-64.webp';
 import {
   IconHome, IconOportunidades, IconGlobe, IconCosteo, IconValidacion, IconDocTallas, IconOrdenesCompra, IconEjecucion, IconLogistica,
   IconProductos, IconCuentas, IconClientes, IconInventario, IconChevronLeft, IconChevronRight, IconSettings, IconLock,
+  IconAnuncios,
 } from '../components/icons';
 
 export type BoardKey =
-  | 'home'
+  | 'home' | 'anuncios'
   | 'oportunidades' | 'oportunidades_web' | 'costeo' | 'validacion' | 'doctallas' | 'ordenescompra' | 'ejecucion' | 'logistica'
   | 'productos' | 'instituciones' | 'contactos' | 'proveedores' | 'inventario' | 'settings'
   | 'zona_efrain';
@@ -61,6 +63,7 @@ export const BOARD_LABELS: Record<BoardKey, string> = {
       .map((i) => [i.key, i.label]),
   ),
   home: 'Inicio',
+  anuncios: 'Anuncios',
   settings: 'Configuración',
 } as Record<BoardKey, string>;
 
@@ -78,6 +81,10 @@ interface SidebarProps {
 
 export function Sidebar({ activeBoard, onSelectBoard, collapsed, onToggleCollapsed, hideCollapse, onOpenNotification }: SidebarProps) {
   const me = useMe();
+  // Badge de comunicados sin leer. Anuncios no es un board de Monday (como
+  // Inicio/Configuración): lo ven TODOS los roles, almacén incluido — un
+  // comunicado de dirección es justo lo que ese rol no se puede perder.
+  const { noLeidos } = useAnuncios();
   const visible = (items: NavItemConfig[]) => items.filter((item) => me?.boardAccess.includes(item.key));
   const ventasItems = me?.zonaEfrainAccess ? [...visible(VENTAS_ITEMS), ZONA_EFRAIN_ITEM] : visible(VENTAS_ITEMS);
   const proyectosItems = visible(PROYECTOS_ITEMS);
@@ -141,6 +148,17 @@ export function Sidebar({ activeBoard, onSelectBoard, collapsed, onToggleCollaps
             />
           </div>
         )}
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: me?.role && me.role !== 'almacen' ? 2 : 18 }}>
+          <NavItem
+            icon={<IconAnuncios />}
+            label="Anuncios"
+            active={activeBoard === 'anuncios'}
+            collapsed={collapsed}
+            onClick={() => onSelectBoard('anuncios')}
+            badge={noLeidos}
+          />
+        </div>
 
         {ventasItems.length > 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 26 }}>

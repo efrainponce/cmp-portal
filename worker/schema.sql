@@ -497,3 +497,37 @@ CREATE TABLE IF NOT EXISTS update_seen (
   seen_at      TEXT NOT NULL,
   PRIMARY KEY (update_id, viewer_email)
 );
+
+-- Anuncios del portal (2026-08-17, worker/lib/anuncios.ts) — comunicados que
+-- publican los admins (Elisa y el CEO) y lee el equipo en /anuncios. Nativo en D1:
+-- no hay board de Monday detrás, no pasa por outbox ni por el mirror. La audiencia
+-- son DOS listas que se cumplen a la vez: `roles` (JSON Role[]) y `zona_ids` (JSON
+-- de ids de `zonas`); lista vacía = "todos" en esa dimensión. Un admin ve todos los
+-- anuncios sin importar audiencia — es quien los administra. Se archiva en vez de
+-- borrar para no perder quién dijo qué. Se crean LAZY en runtime (mismo patrón que
+-- documents/zonas) — están aquí solo como documentación.
+CREATE TABLE IF NOT EXISTS anuncios (
+  id           TEXT PRIMARY KEY,   -- uuid
+  titulo       TEXT NOT NULL,
+  cuerpo       TEXT NOT NULL,
+  severidad    TEXT NOT NULL DEFAULT 'normal' CHECK (severidad IN ('normal','importante')),
+  roles        TEXT NOT NULL DEFAULT '[]',   -- JSON Role[]; [] = todos los roles
+  zona_ids     TEXT NOT NULL DEFAULT '[]',   -- JSON number[]; [] = todas las zonas
+  autor_email  TEXT NOT NULL,
+  autor_nombre TEXT NOT NULL,
+  archivado    INTEGER NOT NULL DEFAULT 0,
+  wa_enviados  INTEGER NOT NULL DEFAULT 0,   -- WhatsApp que salieron al publicar (casilla explícita)
+  created_at   TEXT NOT NULL,
+  updated_at   TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_anuncios_created ON anuncios(created_at);
+
+-- "Visto" por persona (mismo patrón que update_seen): alimenta el badge de no
+-- leídos del sidebar. Lo asienta la UI al desplegar el anuncio; el autor nace
+-- visto para sí mismo al publicarlo.
+CREATE TABLE IF NOT EXISTS anuncio_visto (
+  anuncio_id   TEXT NOT NULL,
+  viewer_email TEXT NOT NULL,
+  seen_at      TEXT NOT NULL,
+  PRIMARY KEY (anuncio_id, viewer_email)
+);

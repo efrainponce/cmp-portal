@@ -27,6 +27,13 @@ export const IconOportunidades = (p: IconProps) => (
   </svg>
 );
 
+export const IconAnuncios = (p: IconProps) => (
+  <svg {...base} {...p}>
+    <path d="M3 11v2a1 1 0 0 0 1 1h3l6 4V6L7 10H4a1 1 0 0 0-1 1z" />
+    <path d="M17 9a4 4 0 0 1 0 6" /><path d="M7 14v5" />
+  </svg>
+);
+
 export const IconLock = (p: IconProps) => (
   <svg {...base} {...p}>
     <rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" />

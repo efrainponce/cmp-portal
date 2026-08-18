@@ -391,3 +391,37 @@ export interface HomeResponse {
   greetingName: string;
   sections: HomeSectionDTO[];
 }
+
+// Anuncios del portal (worker/lib/anuncios.ts) — comunicados que publican los admins
+// y lee el equipo en /anuncios. Nativo en D1, sin board de Monday detrás. `roles` y
+// `zonaIds` son la audiencia: lista VACÍA = "para todos" en esa dimensión, y las dos
+// se cumplen a la vez (rol Y zona). `visto` es del viewer que pidió la lista.
+export type AnuncioSeveridad = 'normal' | 'importante';
+export interface AnuncioDTO {
+  id: string;
+  titulo: string;
+  cuerpo: string;
+  severidad: AnuncioSeveridad;
+  roles: Role[];
+  zonaIds: number[];
+  autorEmail: string;
+  autorNombre: string;
+  archivado: boolean;
+  waEnviados: number;           // cuántos WhatsApp salieron al publicarlo (0 = ninguno)
+  visto: boolean;
+  createdAt: string;            // ISO
+  updatedAt: string;            // ISO
+}
+export interface AnunciosResponse {
+  anuncios: AnuncioDTO[];
+  noLeidos: number;             // badge del sidebar: vigentes, dirigidos al viewer, sin abrir
+}
+export interface CrearAnuncioRequest {
+  titulo: string;
+  cuerpo: string;
+  severidad?: AnuncioSeveridad;
+  roles?: Role[];
+  zonaIds?: number[];
+  notificarWa?: boolean;        // casilla explícita del admin — nunca implícito por severidad
+}
+export interface CrearAnuncioResponse { anuncio: AnuncioDTO }

@@ -17,6 +17,7 @@ import { inventarioRoutes } from './routes/inventario';
 import { notificationRoutes } from './routes/notifications';
 import { documentRoutes } from './routes/documents';
 import { homeRoutes } from './routes/home';
+import { anuncioRoutes } from './routes/anuncios';
 import { flushOutbox } from './lib/outbox';
 import { checkErrorsAndAlert } from './lib/errorAlerts';
 import { backupD1ToR2 } from './lib/backup';
@@ -49,6 +50,7 @@ inventarioRoutes(app);
 notificationRoutes(app);
 documentRoutes(app);
 homeRoutes(app);
+anuncioRoutes(app);
 
 app.all('*', c => c.env.ASSETS.fetch(c.req.raw));
 

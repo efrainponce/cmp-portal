@@ -2,6 +2,40 @@
 
 ## 2026-08-17
 
+- Anuncios del portal (pantalla nueva `/anuncios`, pedido de Efraín): Elisa y
+  el CEO —los dos admin— pueden publicar comunicados para todo el equipo sin
+  pasar por Monday ni por WhatsApp a mano. Nativo en D1 (`anuncios` +
+  `anuncio_visto`, lazy-create como documents/zonas): no hay board detrás, no
+  toca el mirror ni el outbox. Leer es de cualquier rol, escribir SOLO admin
+  (`worker/routes/anuncios.ts` lo revalida; la UI solo refleja).
+  - **Audiencia = roles Y zonas** (decisión de Efraín al arrancar): cada lista
+    vacía significa "todos" en su dimensión, y las dos se cumplen a la vez —
+    `{roles:[vendedor], zonaIds:[3]}` es "los vendedores DE la zona 3", no
+    "vendedores o zona 3". Es la única regla de alcance que tiene la feature,
+    así que quedó anclada en `worker/lib/anuncios.test.ts`. La pertenencia a
+    zona se resuelve por `monday_user_id` y no por email, por la gente con dos
+    filas de identity (login de trabajo + gmail personal).
+  - **WhatsApp solo con casilla explícita** (lo otro que decidió Efraín): la
+    severidad "Importante" NO manda nada por su cuenta — el admin marca
+    "Avisar también por WhatsApp" al publicar. Sale en `waitUntil` (N
+    subrequests a Meta, el admin no espera), tope de 50 destinatarios, y usa
+    el mismo template `portal_notificacion` con `urlSuffix: 'anuncios'`.
+  - Un admin ve TODOS los anuncios (es quien los administra) pero el badge de
+    no leídos solo cuenta los que de verdad van dirigidos a él. El "visto" se
+    asienta cuando la tarjeta estuvo ~1.2s en pantalla (IntersectionObserver),
+    no al abrir la vista: con 8 anuncios y 2 leídos, el badge debe seguir
+    marcando 6. Se archiva en vez de borrar para no perder quién dijo qué.
+  - `useAnuncios` guarda el estado a nivel módulo (patrón de `useMe`): la
+    pantalla y el badge del sidebar están montados a la vez y con un `useState`
+    por hook el badge se quedaba pegado hasta el siguiente poll — bug visto en
+    verificación, no en teoría. Un solo poll ETag de 60s para ambos.
+  - `NavItem` acepta `badge` (pill con el número; punto cuando el sidebar está
+    colapsado). Los chips de la tarjeta usan `color-mix` y no `color + '1a'`:
+    los colores llegan como `var(--token)` y concatenarles el alfa en hex
+    produce CSS inválido que el navegador tira (se vio en el screenshot).
+  - Verificado en vivo con Playwright contra los dev servers: publicar, editar,
+    audiencia por rol, badge que sube y baja, 304 del ETag y layout a 390px.
+
 - Tab "Logística" del Proyecto (`LogisticaSection.tsx`, nuevo): Compras
   mandó capturas de su vista de recolección en Monday y agregó columnas
   nuevas a `proyectos_sub` (re-introspección con
