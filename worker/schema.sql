@@ -548,7 +548,11 @@ CREATE TABLE IF NOT EXISTS anuncio_visto (
 -- control y tiempos; los regex de shared/telemetry.ts son la contención
 -- ejecutable de esa regla (con prueba en shared/telemetry.test.ts). El reporte
 -- por defecto es agregado; el desglose por persona es diagnóstico aparte.
--- Retención de 90 días, podada desde el cron semanal (worker/index.ts).
+-- Retención: 90 días el grueso, pero los eventos kind='edit' viven 400 —
+-- son el rastro con que se atribuye cada fila de activity_log a portal o a
+-- Monday, y activity_log no se poda: borrarlos al mismo ritmo haría que las
+-- ediciones viejas del portal se contaran como Monday solas. Poda en el cron
+-- semanal (worker/index.ts).
 -- Se crea LAZY en runtime (mismo patrón que activity_log) — está aquí solo
 -- como documentación.
 CREATE TABLE IF NOT EXISTS ux_event (

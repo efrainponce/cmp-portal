@@ -11,7 +11,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   Q_ATRIBUCION, Q_AMBIGUOS, Q_CLIC_SIN_ACUSE, Q_REEDICION,
-  Q_TIEMPO_TAREA, Q_ADOPCION, Q_LATENCIA,
+  Q_TIEMPO_TAREA, Q_ADOPCION, Q_LATENCIA, Q_ATRIBUCION_DETALLE, Q_AUTOMATIZACIONES,
 } from './uxMetrics';
 
 let DatabaseSync: (new (path: string) => SqliteDb) | null = null;
@@ -67,6 +67,26 @@ function seed(): SqliteDb {
   // Luis toca la misma celda dos veces EN MONDAY (sin outbox), con 120s.
   [0, 120].forEach((s, k) => log.all(OPP, 777, 'deal_owner', 102, at(s), `m${k}`));
 
+  // Fila escrita POR EL PORTAL vía recordDirectChanges: se reconoce por el
+  // dedupe_key 'native:<uuid>' (el delta sync usa board:item:evento:col:tick).
+  // Item con id REAL de Monday a propósito: el marcador tiene que bastar solo.
+  log.all(OPP, 666, 'deal_stage', 101, at(150), 'native:9f8b7a6c-1234-4def-8888-aabbccddeeff');
+
+  // Automatización de Monday: user_id NEGATIVO. No es una persona — no debe
+  // contar como fricción humana ni aparecer en adopción.
+  [0, 30].forEach((s, k) => log.all(OPP, 444, 'deal_stage', -4, at(s), `bot${k}`));
+
+  // Item NATIVO (id sobre NATIVE_ID_FLOOR): no pasa por outbox — worker/lib/
+  // outbox.ts retorna antes y escribe activity_log directo. Solo el portal
+  // escribe ahí, así que es portal por definición.
+  log.all(OPP, 900000000123, 'deal_stage', 101, at(200), 'nat0');
+
+  // Edición del portal SIN fila de outbox pero CON rastro de interacción
+  // (`ux_event` edit, que es lo que emite patchItem). Es el caso que en
+  // producción quedaba mal etiquetado como Monday.
+  log.all(OPP, 888, 'deal_stage', 101, at(300), 'uxo0');
+  ux.all(at(298), SES, 'edit', 'edit:celda', null, 888, 'deal_stage', null);
+
   // Tres clics al mismo botón: el 2º sin ninguna señal todavía; el 3º cuando el
   // acuse del PRIMERO ya había llegado (= "respondió y no esperó").
   ux.all(at(0),   SES, 'click', 'drawer:mandar-costeo', 'corr-1111-2222-3333-4444aaaa', 555, null, null);
@@ -88,10 +108,43 @@ function seed(): SqliteDb {
 const run = (db: SqliteDb, q: string) => db.prepare(q).all(DESDE, HASTA);
 
 describe.skipIf(!DatabaseSync)('uxMetrics — SQL contra sqlite real', () => {
-  it('atribuye cada edición a portal o Monday cruzando contra outbox', () => {
-    // El punto entero de la feature: las 4 ediciones son idénticas en
-    // activity_log; solo el rastro de outbox separa las 2 del portal.
-    expect(run(seed(), Q_ATRIBUCION)[0]).toMatchObject({ ediciones: 4, portal: 2, monday: 2 });
+  it('atribuye por los TRES rastros: nativo, ux_event y outbox', () => {
+    // El punto entero de la feature: en activity_log las 6 ediciones son
+    // idénticas; los rastros son lo único que separa las 4 del portal.
+    //   portal = 2 (outbox) + 1 (dedupe_key native:) + 1 (item nativo) + 1 (ux_event)
+    //   monday = 2 (las de Luis, sin ningún rastro)
+    // Las 2 del bot NO entran: user_id negativo queda fuera del CTE.
+    expect(run(seed(), Q_ATRIBUCION)[0]).toMatchObject({ ediciones: 7, portal: 5, monday: 2 });
+  });
+
+  it('un item nativo es portal aunque no tenga NADA de outbox', () => {
+    // Regresión de un fallo real: con solo el cruce de outbox, los items
+    // nativos —que jamás encolan outbox— se contaban como Monday.
+    const filas = run(seed(), Q_ATRIBUCION_DETALLE) as { item_id: number; origen: string }[];
+    expect(filas.find(f => f.item_id === 900000000123)?.origen).toBe('portal');
+  });
+
+  it('una edición con rastro de ux_event es portal aunque no tenga outbox', () => {
+    const filas = run(seed(), Q_ATRIBUCION_DETALLE) as { item_id: number; origen: string }[];
+    expect(filas.find(f => f.item_id === 888)?.origen).toBe('portal');
+  });
+
+  it('el marcador dedupe_key "native:" basta por sí solo, sin outbox ni ux_event', () => {
+    const filas = run(seed(), Q_ATRIBUCION_DETALLE) as { item_id: number; origen: string }[];
+    expect(filas.find(f => f.item_id === 666)?.origen).toBe('portal');
+  });
+
+  it('excluye las automatizaciones de Monday (user_id negativo) y las reporta aparte', () => {
+    // Verificado en producción: son ~11% de las ediciones. Si contaran, un bot
+    // reescribiendo la misma columna se vería igual que alguien corrigiéndose.
+    const filas = run(seed(), Q_ATRIBUCION_DETALLE) as { item_id: number }[];
+    expect(filas.some(f => f.item_id === 444)).toBe(false);
+    expect(run(seed(), Q_AUTOMATIZACIONES)[0]).toMatchObject({ n: 2 });
+  });
+
+  it('una edición sin ningún rastro se queda en Monday', () => {
+    const filas = run(seed(), Q_ATRIBUCION_DETALLE) as { item_id: number; origen: string }[];
+    expect(filas.find(f => f.item_id === 777)?.origen).toBe('monday');
   });
 
   it('no reporta ambigüedad cuando nadie tocó la misma celda en las dos herramientas', () => {

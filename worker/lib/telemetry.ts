@@ -15,7 +15,7 @@
 import type { Env } from '../env';
 import type { Identity } from '../../shared/types';
 import {
-  UX_MAX_BATCH, UX_MAX_DT_MS, UX_RETENTION_DAYS,
+  UX_MAX_BATCH, UX_MAX_DT_MS, UX_RETENTION_DAYS, UX_EDIT_RETENTION_DAYS,
   isValidTarget, isValidUxId, isUxKind, sanitizeMeta,
   type UxEventInput,
 } from '../../shared/telemetry';
@@ -152,22 +152,30 @@ export async function ingestUxEvents(
   }
 }
 
-/** Poda a 90 días. Colgada del cron semanal que ya existe (worker/index.ts) —
- * la retención efectiva queda en ≤97 días, que para una ventana de 90 da igual
- * y evita meterle trabajo al cron de 15 min. */
+/** Poda. Colgada del cron semanal que ya existe (worker/index.ts) — la
+ * retención efectiva queda unos días por encima del corte, que para ventanas de
+ * 90/400 días da igual y evita meterle trabajo al cron de 15 min.
+ *
+ * DOS cortes, no uno: los `edit` viven mucho más porque son el rastro de
+ * atribución de `activity_log` (ver UX_EDIT_RETENTION_DAYS). Borrarlos al mismo
+ * ritmo que el resto reescribiría la historia en silencio. */
 export async function purgeUxEvents(env: Env): Promise<number> {
   try {
     await ensureTable(env);
-    const cutoff = new Date(Date.now() - UX_RETENTION_DAYS * 86400_000).toISOString();
+    const corte = (dias: number) => new Date(Date.now() - dias * 86400_000).toISOString();
     let deleted = 0;
-    for (let i = 0; i < PURGE_MAX_CHUNKS; i++) {
-      const res = await env.DB.prepare(
-        `DELETE FROM ux_event WHERE id IN (
-           SELECT id FROM ux_event WHERE created_at < ? LIMIT ${PURGE_CHUNK})`,
-      ).bind(cutoff).run();
-      const n = res.meta.changes ?? 0;
-      deleted += n;
-      if (n < PURGE_CHUNK) break;
+    for (const [cutoff, soloEdits] of [[corte(UX_RETENTION_DAYS), false], [corte(UX_EDIT_RETENTION_DAYS), true]] as const) {
+      for (let i = 0; i < PURGE_MAX_CHUNKS; i++) {
+        const res = await env.DB.prepare(
+          `DELETE FROM ux_event WHERE id IN (
+             SELECT id FROM ux_event
+             WHERE created_at < ? AND kind ${soloEdits ? '=' : '!='} 'edit'
+             LIMIT ${PURGE_CHUNK})`,
+        ).bind(cutoff).run();
+        const n = res.meta.changes ?? 0;
+        deleted += n;
+        if (n < PURGE_CHUNK) break;
+      }
     }
     return deleted;
   } catch {

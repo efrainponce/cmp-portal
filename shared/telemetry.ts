@@ -32,8 +32,19 @@ export const UX_MAX_BATCH = 200;
  * `dt` absurdo movería el evento a una fecha inventada. */
 export const UX_MAX_DT_MS = 30 * 60 * 1000;
 
-/** Retención: 90 días. La poda corre en el cron semanal que ya existe. */
+/** Retención del grueso de los eventos (click/ack/nav/error): 90 días. La poda
+ * corre en el cron semanal que ya existe. */
 export const UX_RETENTION_DAYS = 90;
+
+/** Retención de los `edit`, MÁS LARGA a propósito. No es un capricho de
+ * "guardemos más por si acaso": los `edit` son el rastro con que se atribuye
+ * cada fila de `activity_log` a portal o a Monday (worker/lib/uxMetrics.ts), y
+ * `activity_log` no se poda. Si los `edit` se borraran a los 90 días, las
+ * ediciones viejas del portal empezarían a contarse como Monday SOLAS y en
+ * silencio — un análisis hecho en feb-2027 sobre sep-2026 vería la herramienta
+ * equivocada. Son de bajo volumen (uno por columna escrita, ~cientos al día
+ * contra decenas de miles de eventos de latencia), así que 400 días no pesan. */
+export const UX_EDIT_RETENTION_DAYS = 400;
 
 /** Slug de control estable. Minúsculas, sin espacios, sin acentos: `drawer:mandar-costeo`.
  * Deliberadamente NO acepta mayúsculas, punto, arroba ni espacio — con eso, ni un

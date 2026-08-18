@@ -29,6 +29,7 @@
 // pueda descontar en vez de creerle a ciegas.
 // ────────────────────────────────────────────────────────────────────────────
 import type { Env } from '../env';
+import { NATIVE_ID_FLOOR } from '../../shared/nativeId';
 import { ensureUxTable } from './telemetry';
 
 // Ventana en que un write del portal pudo aparecer en los activity_logs de
@@ -51,22 +52,62 @@ const MAX_ENDPOINTS = 50;
 // outbox. strftime con este formato sí produce el mismo shape exacto.
 const ISO = `'%Y-%m-%dT%H:%M:%fZ'`;
 
-/** Etiqueta cada update_column_value de `activity_log` como 'portal' o 'monday'. */
+/** Etiqueta cada update_column_value de `activity_log` como 'portal' o 'monday'.
+ *
+ * CUATRO rastros, en orden de certeza. Al principio esto era solo el cruce con
+ * `outbox`; contra datos reales de producción resultó insuficiente y hubo que
+ * corregirlo (ver la nota de cabecera):
+ *
+ *  1. `dedupe_key` que empieza con 'native:' — marca EXACTA, sin ventanas ni
+ *     joins: esas filas las escribió `recordDirectChanges`, y a esa función
+ *     solo la llaman caminos del portal (outbox.ts rama nativa, createRecord.ts,
+ *     routes/oportunidades.ts). Las filas que vienen del delta sync usan la otra
+ *     forma de llave (board:item:evento:columna:tick).
+ *  2. Item NATIVO por id. Redundante con (1) en la práctica, pero es una
+ *     garantía distinta: no hay Monday del otro lado de esos items.
+ *  3. Rastro de INTERACCIÓN (`ux_event` kind='edit', que emite patchItem por
+ *     cada columna): cubre todo write que salga de la UI. Es el rastro
+ *     principal de aquí en adelante.
+ *  4. Rastro del WRITE PATH (`outbox`): cubre lo que no pasa por patchItem
+ *     —quoteVersions, automatizaciones del propio worker— y lo anterior a que
+ *     existiera ux_event.
+ *
+ * Son OR: basta uno para llamarlo portal. Lo que no deja ningún rastro es, por
+ * eliminación, Monday nativo.
+ *
+ * ⚠ SE EXCLUYEN los user_id NEGATIVOS: Monday los usa para sus automatizaciones
+ * e integraciones, no son personas (verificado en vivo — 67 de 588 ediciones,
+ * 11%, con dedupe_key de delta sync normal). Contarlas como fricción humana
+ * inflaría la re-edición —un bot reescribiendo la misma columna se ve igual que
+ * alguien corrigiéndose— y metería robots en la adopción semanal. La línea base
+ * de Monday tiene que excluirlas igual, o la comparación queda chueca. */
 const EDICIONES_CTE = `
   ediciones AS (
     SELECT a.item_id, a.column_id, a.user_id, a.created_at,
-      CASE WHEN EXISTS (
-        SELECT 1 FROM outbox o
-        JOIN identity i ON i.email = o.author_email
-        WHERE o.board_id = a.board_id AND o.item_id = a.item_id
-          AND i.monday_user_id = a.user_id
-          AND o.cols LIKE '%"' || a.column_id || '"%'
-          AND o.created_at >= strftime(${ISO}, a.created_at, '${ATRIB_ANTES}')
-          AND o.created_at <= strftime(${ISO}, a.created_at, '${ATRIB_DESPUES}')
-      ) THEN 'portal' ELSE 'monday' END AS origen
+      CASE
+        WHEN a.dedupe_key LIKE 'native:%' THEN 'portal'
+        WHEN a.item_id >= ${NATIVE_ID_FLOOR} THEN 'portal'
+        WHEN EXISTS (
+          SELECT 1 FROM ux_event u
+          WHERE u.kind = 'edit' AND u.item_id = a.item_id
+            AND u.column_id = a.column_id AND u.user_id = a.user_id
+            AND u.created_at >= strftime(${ISO}, a.created_at, '${ATRIB_ANTES}')
+            AND u.created_at <= strftime(${ISO}, a.created_at, '${ATRIB_DESPUES}')
+        ) THEN 'portal'
+        WHEN EXISTS (
+          SELECT 1 FROM outbox o
+          JOIN identity i ON i.email = o.author_email
+          WHERE o.board_id = a.board_id AND o.item_id = a.item_id
+            AND i.monday_user_id = a.user_id
+            AND o.cols LIKE '%"' || a.column_id || '"%'
+            AND o.created_at >= strftime(${ISO}, a.created_at, '${ATRIB_ANTES}')
+            AND o.created_at <= strftime(${ISO}, a.created_at, '${ATRIB_DESPUES}')
+        ) THEN 'portal'
+        ELSE 'monday' END AS origen
     FROM activity_log a
     WHERE a.event = 'update_column_value'
       AND a.column_id IS NOT NULL AND a.user_id IS NOT NULL
+      AND a.user_id > 0
       AND a.created_at >= ? AND a.created_at < ?
   )`;
 
@@ -76,7 +117,13 @@ export interface ReEdicionStats {
 export interface UxReport {
   desde: string; hasta: string;
   parametros: { repeatWindowS: number; reeditCortoS: number; reeditLargoS: number };
-  atribucion: { ediciones: number; portal: number; monday: number; ambiguos: number };
+  atribucion: {
+    ediciones: number; portal: number; monday: number; ambiguos: number;
+    /** Ediciones de automatizaciones de Monday (user_id negativo) excluidas del
+     * conteo de arriba. Se reporta en vez de esconderse: es ~11% del total y
+     * quien compare contra la línea base tiene que excluirlas allá también. */
+    automatizaciones: number;
+  };
   clicSinAcuse: {
     clics: number; repeticiones: number;
     sinNingunaSenal: number; respondioYNoEspero: number;
@@ -107,12 +154,27 @@ function stats(row: { pares: number; m1: number; m5: number } | undefined): ReEd
 // cosmético: la clasificación del clic-sin-acuse ya tenía un bug de ventana que
 // el typecheck no podía ver y que solo salió al ejecutarla con datos reales.
 
+export const Q_AUTOMATIZACIONES = `
+  SELECT COUNT(*) AS n FROM activity_log
+  WHERE event = 'update_column_value' AND column_id IS NOT NULL
+    AND user_id IS NOT NULL AND user_id < 0
+    AND created_at >= ? AND created_at < ?`;
+
 export const Q_ATRIBUCION = `
     WITH ${EDICIONES_CTE}
     SELECT COUNT(*) AS ediciones,
            SUM(CASE WHEN origen = 'portal' THEN 1 ELSE 0 END) AS portal,
            SUM(CASE WHEN origen = 'monday' THEN 1 ELSE 0 END) AS monday
     FROM ediciones`;
+
+/** Detalle fila por fila. No la usa el reporte: existe para poder auditar por
+ * qué una edición quedó etiquetada como quedó — la atribución es la pieza de la
+ * que cuelga todo el comparativo, y tuvo que corregirse una vez ya contra datos
+ * reales de producción. */
+export const Q_ATRIBUCION_DETALLE = `
+  WITH ${EDICIONES_CTE}
+  SELECT item_id, column_id, user_id, created_at, origen FROM ediciones
+  ORDER BY created_at`;
 
 export const Q_AMBIGUOS = `
     WITH ${EDICIONES_CTE}
@@ -219,6 +281,9 @@ export async function buildUxReport(env: Env, desde: string, hasta: string): Pro
 
   // Falso positivo posible de la atribución (ver cabecera): la misma persona
   // tocó la misma celda en las dos herramientas dentro de la ventana.
+  const bots = await env.DB.prepare(Q_AUTOMATIZACIONES)
+    .bind(desde, hasta).first<{ n: number }>();
+
   const ambiguos = await env.DB.prepare(Q_AMBIGUOS).bind(desde, hasta).first<{ n: number }>();
 
   // ── 2. Clic sin acuse (Monday: 58% sin ninguna señal / 42% no esperó) ──
@@ -255,6 +320,7 @@ export async function buildUxReport(env: Env, desde: string, hasta: string): Pro
       portal: atribucion?.portal ?? 0,
       monday: atribucion?.monday ?? 0,
       ambiguos: ambiguos?.n ?? 0,
+      automatizaciones: bots?.n ?? 0,
     },
     clicSinAcuse: {
       clics: clics?.clics ?? 0,

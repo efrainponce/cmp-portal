@@ -2,6 +2,50 @@
 
 ## 2026-08-17
 
+- Corrección de la atribución portal-vs-Monday tras verificar en PRODUCCIÓN (el
+  commit anterior salió con el mecanismo incompleto). Verificado con Chromium
+  contra prod + consultas a la D1 real; la receta quedó en memoria.
+  - Lo que se vio: `atribucion.portal` daba 0 de 588 ediciones. No era falta de
+    uso — el mecanismo no alcanzaba. Tres causas, todas reales:
+    1. **Los items nativos no pasan por `outbox`**: `worker/lib/outbox.ts`
+       retorna antes y escribe `activity_log` directo con `recordDirectChanges`.
+       Con solo el cruce de outbox quedaban etiquetados como Monday siendo
+       100% del portal.
+    2. **`outbox` y `activity_log` no se traslapaban ni un minuto**: outbox
+       terminaba el 2026-08-14T16:17 y activity_log empieza el 22:15 del mismo
+       día. Cero coincidencias posibles, aunque el SQL fuera correcto.
+    3. Faltaba el rastro más fuerte y más barato: `recordDirectChanges` escribe
+       `dedupe_key` como `native:<uuid>`, mientras el delta sync usa
+       `board:item:evento:columna:tick`. Es una marca EXACTA de "esta fila la
+       escribió el portal", sin ventanas de tiempo ni joins.
+  - La atribución ahora son CUATRO rastros en OR, por orden de certeza:
+    dedupe_key `native:` → item nativo por id → `ux_event` kind='edit' (que
+    emite `patchItem`, el único write path del front) → `outbox`. Lo que no deja
+    ningún rastro es, por eliminación, Monday nativo.
+  - **Las automatizaciones de Monday quedan fuera.** Monday usa `user_id`
+    NEGATIVO para sus automatizaciones e integraciones — verificado en vivo: 67
+    de 588 ediciones (11%) venían de `user_id = -4/-6` con dedupe_key de delta
+    sync normal, o sea no eran personas. Contarlas inflaba la re-edición (un bot
+    reescribiendo la misma columna se ve igual que alguien corrigiéndose) y
+    metía robots en la adopción semanal. Se reportan aparte en
+    `atribucion.automatizaciones` en vez de esconderse. **La línea base de
+    Monday tiene que excluirlas igual**, o la comparación queda chueca — esto se
+    suma al pendiente de la whitelist.
+  - **Retención partida en dos**: el grueso (click/ack/nav/error) sigue a 90
+    días, pero los `edit` viven 400. No es "guardemos más por si acaso": los
+    `edit` son el rastro con que se atribuye cada fila de `activity_log`, y
+    `activity_log` NO se poda. Borrarlos a los 90 días haría que las ediciones
+    viejas del portal se contaran como Monday solas y en silencio — un análisis
+    hecho en feb-2027 sobre sep-2026 vería la herramienta equivocada. Son de
+    bajo volumen (uno por columna escrita), así que 400 días no pesan.
+  - Todo esto quedó anclado en `worker/lib/uxMetrics.test.ts` (12 casos): item
+    nativo sin outbox, marcador `native:` bastando solo, rastro de `ux_event`
+    sin outbox, y exclusión de bots.
+  - Nota de operación: `outbox` no recibe una fila desde el 2026-08-14T16:17.
+    Puede ser normal (el equipo edita en Monday.com y usa el portal para ver y
+    cotizar) o puede ser que algo del write path a Monday dejó de usarse. No lo
+    toqué porque no es de este cambio, pero vale revisarlo.
+
 - Instrumentación de fricción de uso del portal (`ux_event`), pedido de Efraín
   para la renovación de Monday de feb-2027: hoy todo lo que sabemos de fricción
   sale de los activity_logs de Monday (138,794 eventos, mar–ago 2026) y no hay
