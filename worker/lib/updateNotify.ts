@@ -80,6 +80,22 @@ async function identityByMondayUserId(
   return row ?? null;
 }
 
+/** TODOS los correos activos detrás de un monday_user_id. Una misma persona puede
+ * tener dos filas de identity (login de trabajo + gmail personal, ver
+ * worker/lib/zonas.ts) y en producción hay ids con tres: excluir solo el email con
+ * el que se comentó dejaría que el autor se auto-notifique en su otro buzón. */
+async function actorEmailsFor(env: Env, id: number | undefined, actorEmail?: string | null): Promise<Set<string>> {
+  const emails = new Set<string>();
+  if (actorEmail) emails.add(actorEmail);
+  if (id !== undefined && Number.isFinite(id)) {
+    const { results } = await env.DB.prepare(
+      `SELECT email FROM identity WHERE monday_user_id = ? AND active = 1`,
+    ).bind(id).all<{ email: string }>();
+    for (const r of results ?? []) emails.add(r.email);
+  }
+  return emails;
+}
+
 export interface CommentNotifyArgs {
   slug: BoardSlug;
   itemId: number;
@@ -88,7 +104,8 @@ export interface CommentNotifyArgs {
   text: string;                 // texto plano del comentario (para el cuerpo)
   columnsJson: string;          // `columns` del mirror — de ahí sale el comprador asignado
   vendedorIds: number[];
-  actorEmail?: string | null;   // nunca se auto-notifica
+  actorEmail?: string | null;      // nunca se auto-notifica
+  actorMondayUserId?: number;      // sus OTROS logins tampoco (ver actorEmailsFor)
   actorName?: string | null;
   mentionIds?: number[];        // monday_user_ids etiquetados con @
 }
@@ -106,12 +123,13 @@ export async function notifyItemComment(env: Env, args: CommentNotifyArgs): Prom
     const boardId = BOARDS[args.slug].id;
     const preview = args.text.trim().slice(0, 140);
     const actor = args.actorName ?? args.actorEmail ?? null;
+    const actorEmails = await actorEmailsFor(env, args.actorMondayUserId, args.actorEmail);
 
     // 1) Menciones → 'Importantes' + WhatsApp (mismo trato que ya tenían las del portal).
     const mentioned = new Set<string>();
     for (const id of args.mentionIds ?? []) {
       const row = await identityByMondayUserId(env, id);
-      if (!row || row.email === args.actorEmail) continue;
+      if (!row || actorEmails.has(row.email)) continue;
       mentioned.add(row.email);
       await emitNotification(env, {
         recipientEmail: row.email,
@@ -134,7 +152,7 @@ export async function notifyItemComment(env: Env, args: CommentNotifyArgs): Prom
       actorEmail: args.actorEmail ?? undefined,
     });
     for (const recipientEmail of recipients) {
-      if (mentioned.has(recipientEmail)) continue;   // ya recibió la mención, no duplicar
+      if (mentioned.has(recipientEmail) || actorEmails.has(recipientEmail)) continue;
       await emitNotification(env, {
         recipientEmail,
         severity: 'importante',
@@ -220,6 +238,7 @@ export async function notifyUpdateFromWebhook(env: Env, e: WebhookUpdateEvent): 
       columnsJson: row.columns,
       vendedorIds,
       actorEmail: actor.email,
+      actorMondayUserId: Number(e.userId),
       actorName: actor.nombre,
       mentionIds: mentionIdsFromBody(html),
     });

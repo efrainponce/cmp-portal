@@ -517,7 +517,7 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
     await notifyItemComment(c.env, {
       slug, itemId, itemName: row.name, updateId: String(u.id), text,
       columnsJson: row.columns, vendedorIds: parseVendedorIds(row.vendedor_ids),
-      actorEmail: viewer.email, actorName: viewer.nombre,
+      actorEmail: viewer.email, actorMondayUserId: viewer.monday_user_id, actorName: viewer.nombre,
       mentionIds: mentions.map(m => m.id),
     });
 

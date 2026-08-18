@@ -55,6 +55,17 @@
   - Pruebas: `worker/lib/updateNotify.test.ts` (9) con los textos reales del feed
     de Oportunidades/Proyectos — si cmp-tallas cambia sus mensajes, ese archivo
     es el que hay que mover.
+  - **Webhooks registrados en vivo** (5 boards de primer nivel, ids 624824923 /
+    624824943 / 624824951 / 624824962 / 624824976) apuntando a
+    `portal.mexicanadeproteccion.com/api/sync/webhook/<token>`.
+  - **Verificado en producción, no asumido:** dos comentarios de prueba escritos
+    directo en Monday (fuera del portal) sobre OPP-0903 → webhook 200 sin
+    excepciones (`wrangler tail`) y dos filas `update_comment` en `notifications`
+    para el vendedor dueño. Comentarios y filas borrados después.
+  - Al verificar salió un detalle real del roster: un `monday_user_id` puede
+    tener 2-3 filas de `identity` (login de trabajo + gmail + otra), así que
+    excluir solo el correo con el que se comentó dejaba al autor auto-notificado
+    en su otro buzón. `actorEmailsFor` excluye TODOS sus correos activos.
 
 - Los espejos de Monday, resueltos localmente para items nativos
   (`worker/lib/nativeMirrors.ts`, nuevo). Salió de correr el END-TO-END REAL EN
