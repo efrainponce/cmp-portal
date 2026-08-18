@@ -2,6 +2,33 @@
 
 ## 2026-08-18
 
+- **Zona Efrain = Costeo + Validación en una sola pantalla** (Efraín: "ZONA
+  efrain debe ser igual que COSTEO y VALIDACION COSTEO, aquí no puedo cambiar
+  nada ni costos ni precio ni nada, es una combinación de los dos"). El board
+  privado heredaba la vista de **Venta**: sin columnas de costo (no existen en
+  `GRID_COLS_VENTA`) y con Precio de Venta de solo lectura (solo el board
+  Validación lo abre, vía `precioOnly`) — o sea, la única persona que trabaja
+  ahí no podía costear NI poner precio en su propio board.
+  - `GRID_COLS_ZONA` (gridMeta): se arma **desde** `GRID_COLS_COSTEO` (así una
+    columna nueva de Costeo aparece sola aquí) y le suma "Con Embellecimiento",
+    lo único que la vista de Venta edita en la grid y Costeo no pinta — en el
+    pipeline normal esa marca es trabajo de Ventas desde Oportunidades, y sin
+    ella no habría cómo prender un embellecimiento en la zona (la tab
+    Embellecimientos solo lista las líneas YA marcadas).
+  - `inlineEditableCols(lineEdits, precio)`: el precio es un eje aparte del de
+    edición de líneas. **No relaja ningún permiso** — la celda sigue pasando
+    por `writableIds` (`ColMeta.w`), y `numeric_mkzneg3d` sigue siendo `w: WA`
+    (solo admin) en shared/visibility.ts; lo que cambia es que ya no se
+    esconde donde el rol sí podía escribir. Anclado en `gridMeta.test.ts`.
+  - Botón **"Mandar a Validación de costeo"** (etapa 15) y las **condiciones de
+    la cotización** (comerciales/entrega/vigencia) vivían solo en el board
+    Costeo: ahora también en la zona, con su mismo `checkValidacion` de
+    respaldo. Sin eso el recorrido obligaba a salirse a /costeo/:id a medio
+    flujo (se vio en el E2E de producción).
+  - El reparto Ventas/Compras/dirección que justifica los candados de Costeo y
+    Validación no existe en la zona privada: ahí la misma persona captura las
+    líneas, costea y aprueba el precio.
+
 - **Elegir la Institución desde la oportunidad, y que se ligue sola al contacto**
   (Efraín: "necesito que se pueda elegir una institución a la oportunidad y
   cuando lo haces lo ligas al contacto automáticamente… al crear una

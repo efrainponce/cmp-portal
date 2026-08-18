@@ -39,12 +39,13 @@ import {
   PRODUCTO_COL, PRODUCTO_TXT_COL, PRODUCTO_REL_COL, COLOR_COL,
   EMB_STATUS_COL, EMB_LABEL_CON, EMB_LABEL_SIN,
   PRODUCTO_CONFIRM_COL, PRODUCTO_PROVEEDOR_COL, CATALOGO_TALLAS_COL, linkedProductoId, MONEY_COLS,
+  GRID_COLS_ZONA,
 } from './cotizacion/gridMeta';
 import type { ProductoChoice } from '../../../components/forms/ProductPicker';
 
 export function CotizacionTab({
   subCols, oppCols = [], products, variant = 'venta', onSaved, onVersioned, versions = [], onNuevaVersion, onRestoreVersion, editable = true, stage, oppId, item,
-  readOnly = false, precioOnly = false, draft = false, showCondiciones = false,
+  readOnly = false, precioOnly = false, draft = false, showCondiciones = false, zonaPrivada = false,
 }: {
   subCols: ColMeta[];
   /** ColMeta del board `oportunidades` — las condiciones de la cotización
@@ -82,6 +83,11 @@ export function CotizacionTab({
    * condiciones comerciales/entrega/vigencia ahí; no aplica en Oportunidades
    * ni en el resto de los boards de pipeline (Efraín, 2026-07-30). */
   showCondiciones?: boolean;
+  /** true en el board Zona Efrain — la grid de Costeo/Validación en una sola
+   * pantalla: costos + Precio de Venta + lo que la vista de Venta edita
+   * (producto/color/cantidad/embellecimiento). Ahí no hay traspaso entre
+   * Ventas, Compras y dirección: es la misma persona (Efraín, 2026-08-18). */
+  zonaPrivada?: boolean;
 }) {
   const isMobile = useIsMobile();
   const tabPadding = isMobile ? '14px 14px 24px' : '24px 32px 40px';
@@ -91,7 +97,7 @@ export function CotizacionTab({
   const hasSinFirmar = !!(item && latestFileUrl(item.cols[NO_FIRMADAS_COL]?.text));
   const hasFirmada = !!(item && latestFileUrl(item.cols[FIRMADAS_COL]?.text));
 
-  const gridCols = variant === 'costeo' ? GRID_COLS_COSTEO : GRID_COLS_VENTA;
+  const gridCols = zonaPrivada ? GRID_COLS_ZONA : variant === 'costeo' ? GRID_COLS_COSTEO : GRID_COLS_VENTA;
   // Sin costeo todavía no hay precios vigentes — ocultar Precio/Subtotal/IVA/Total
   // en Nueva oportunidad (o un borrador de versión sin costear) en vez de
   // enseñar columnas vacías o sin sentido (Efraín, 2026-07-20).
@@ -128,8 +134,8 @@ export function CotizacionTab({
   // candado que bloquee seguir editando (Efraín, 2026-08-14).
   const lineEdits = !readOnly && !precioOnly;
   const editableCols = useMemo(
-    () => (precioOnly ? new Set<string>([COL.precio]) : inlineEditableCols(lineEdits)),
-    [precioOnly, lineEdits],
+    () => (precioOnly ? new Set<string>([COL.precio]) : inlineEditableCols(lineEdits, zonaPrivada)),
+    [precioOnly, lineEdits, zonaPrivada],
   );
   const canAddLines = lineEdits && editable;
 

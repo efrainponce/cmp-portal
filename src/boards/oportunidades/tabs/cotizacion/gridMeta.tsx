@@ -95,7 +95,14 @@ export function suggestedPrecio23(costoTotalUnit: number, margenGobPct: number):
 // esos cambios requieren duplicar primero.
 // Precio: NUNCA editable por vendedor (solo vía cmp-tallas costeo/admin).
 // Costos: solo compras/admin.
-export function inlineEditableCols(lineEdits: boolean): Set<string> {
+// `precio` = true SOLO en la Zona Efrain (board privado): ahí no hay un
+// segundo par de ojos que valide el precio en otro board — quien cotiza,
+// costea y aprueba es la misma persona (Efraín, 2026-08-18: "es una
+// combinación de los dos"). En el pipeline normal Precio de Venta sigue
+// siendo exclusivo del board Validación (precioOnly) y del rol admin
+// (`w: WA` en shared/visibility.ts) — esta bandera no relaja el permiso del
+// server, solo deja de esconder la celda donde el rol ya podía escribir.
+export function inlineEditableCols(lineEdits: boolean, precio = false): Set<string> {
   const base = new Set<string>([
     COL.costoDistr, COL.descuentoPct, COL.conversion, COL.gastosPct, COL.margenGobPct, ETAPA_COSTEO_COL,
     // Costo embell. C/U — lo captura Compras en Costeo junto con el resto de los
@@ -116,6 +123,7 @@ export function inlineEditableCols(lineEdits: boolean): Set<string> {
     base.add(COL.cantidad);
     base.add(EMB_STATUS_COL);
   }
+  if (precio) base.add(COL.precio);
   return base;
 }
 
@@ -276,6 +284,21 @@ export const GRID_COLS_VENTA: GridCol[] = [
   { id: IVA_COL, label: 'IVA', align: 'right', kind: 'money', width: 90 },
   { id: TOTAL_CON_IVA_COL, label: 'Total c/IVA', align: 'right', kind: 'money', width: 105 },
 ];
+
+// Zona Efrain (board privado): el desglose completo de Costeo/Validación MÁS
+// lo único que la vista de Venta edita en la grid y Costeo no pinta, "Con
+// Embellecimiento" — en el pipeline normal esa marca es trabajo de Ventas
+// desde Oportunidades, pero en la zona privada no hay a quién pasársela: la
+// misma persona cotiza, costea y aprueba el precio sin cambiar de board
+// (Efraín, 2026-08-18). Se arma desde GRID_COLS_COSTEO para que cualquier
+// columna que se agregue allá aparezca aquí sin tocar nada.
+export const GRID_COLS_ZONA: GridCol[] = (() => {
+  const cols = [...GRID_COLS_COSTEO];
+  const emb = GRID_COLS_VENTA.find((c) => c.id === EMB_STATUS_COL);
+  const cant = cols.findIndex((c) => c.id === 'numeric_mkzm6399');
+  if (emb && cant >= 0) cols.splice(cant + 1, 0, { ...emb, width: 150 });
+  return cols;
+})();
 
 // Sin costeo todavía no hay precios vigentes que mostrar — en "Nueva
 // oportunidad" (o un borrador de versión sin costear, mismo trato que

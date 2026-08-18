@@ -49,7 +49,10 @@ interface Props {
   onDuplicated: (newId: string) => void;
 }
 
-const COSTEO_VARIANT_BOARDS: StageBoardKey[] = ['costeo', 'validacion'];
+// Boards que ven el desglose de costos en la grid de Cotización. 'zona_efrain'
+// va aquí porque ahí una sola persona hace el recorrido completo (cotizar,
+// costear, aprobar el precio) sin cambiar de board — ver `zonaPrivada`.
+const COSTEO_VARIANT_BOARDS: StageBoardKey[] = ['costeo', 'validacion', 'zona_efrain'];
 const PRECIO_COL = 'numeric_mkzneg3d';   // Precio de Venta C/U (subitems)
 const INSTITUCION_COL = 'lookup_mm1bs976'; // mirror desde Contacto (se edita en el contacto, ver EditInstitucionModal)
 const CONTACTO_COL = 'deal_contact';       // board_relation → Contactos ("Cliente")
@@ -258,7 +261,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
   // hace poll de respaldo (ver nota arriba) porque "descripción y tallas
   // confirmadas" lo marca Compras desde el catálogo, no desde esta oportunidad.
   useEffect(() => {
-    if (!item || stage !== '15' || boardKey !== 'costeo') { setValidacionReady(null); return; }
+    if (!item || stage !== '15' || (boardKey !== 'costeo' && boardKey !== 'zona_efrain')) { setValidacionReady(null); return; }
     let cancelled = false;
     let ready = false;
     const check = () => checkValidacion(id)
@@ -536,10 +539,19 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
   // Ventas — la oportunidad todavía no tiene dueño de costeo (Efraín, 2026-08-10).
   const readOnlyCosteo = boardKey === 'costeo' && stage !== '4';
   const isValidacion = boardKey === 'validacion';
+  // Zona Efrain = Costeo + Validación en la misma pantalla (Efraín, 2026-08-18:
+  // "debe ser igual que COSTEO y VALIDACION COSTEO, es una combinación de los
+  // dos"). El reparto Ventas/Compras/dirección que justifica los candados de
+  // esos dos boards no existe en la zona privada: la misma persona captura las
+  // líneas, los costos y el Precio de Venta, así que aquí se abre todo lo que
+  // su rol ya puede escribir en el server (no relaja ningún permiso: precio y
+  // costos siguen filtrados por shared/visibility.ts) y aparece también el
+  // botón de "Mandar a Validación de costeo", que solo vivía en el board Costeo.
+  const zonaPrivada = boardKey === 'zona_efrain';
   // Condiciones de la cotización (comerciales/entrega/vigencia): las llena
   // Compras en el board Costeo — no aplica en Oportunidades ni en el resto
   // de los boards de pipeline (Efraín, 2026-07-30).
-  const showCondiciones = readOnlyCosteo && (me?.role === 'compras' || me?.role === 'admin');
+  const showCondiciones = (readOnlyCosteo || zonaPrivada) && (me?.role === 'compras' || me?.role === 'admin');
   // Board Validación Costeo = lo ÚNICO editable es Precio de Venta; todo lo
   // demás (líneas, embellecimientos, nuevos productos, costos) es solo lectura
   // (Efraín, 2026-07-16).
@@ -681,7 +693,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
               onConfirm={onEnviarCosteo}
             />
           )}
-          {stage === '15' && readOnlyCosteo && !ajena && (
+          {stage === '15' && (readOnlyCosteo || zonaPrivada) && !ajena && (
             <ConfirmButton
               label="Mandar a Validación de costeo"
               confirmLabel="¿Mandar a validación de costeo?"
@@ -855,6 +867,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
           readOnly={readOnlyCosteo || ajena}
           precioOnly={isValidacion}
           showCondiciones={showCondiciones}
+          zonaPrivada={zonaPrivada && !ajena}
         />
       )}
       {activeTab === 'embellecimientos' && (
