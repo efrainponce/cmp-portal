@@ -1,5 +1,23 @@
 # Log de commits
 
+## 2026-08-17
+
+- Ícono 📋 "Ver actividad" por renglón de cotización (`QuoteRow.tsx`,
+  `MobileQuoteRow.tsx`): Efraín pidió separar la actividad de producto de la
+  de la oportunidad — la pestaña "Actividad" del drawer ya mezcla item padre +
+  todas las líneas (`worker/routes/boards.ts`), sin forma de ver solo un
+  renglón. El backend ya soportaba esto: `oportunidades_sub` es un `BoardSlug`
+  propio con su whitelist en `activityLog.ts`, así que el nuevo botón solo
+  reusa `ActividadTab` vía `ProductoActividadDrawer` (antes hardcodeado a
+  `slug="productos"`, ahora acepta `slug`/`title`) pidiendo
+  `GET /api/boards/oportunidades_sub/items/:id/activity` — mismo scoping de
+  lectura, sin cambios de permisos. El encabezado del drawer no puede usar
+  `producto.name`: en una línea ese campo es el índice de Monday ("1", "2"…),
+  no el producto elegido (vive en otra columna) — se pasa `displayProducto()`
+  ya computado en el callback en vez de recalcularlo aparte. Verificado en
+  vivo con Playwright (dev servers) contra una oportunidad real: el ícono
+  aparece junto a ▸/✎, pide el slug correcto y el título muestra el producto.
+
 ## 2026-08-15
 
 - Pausa temporal de las alertas WA de errores (`worker/lib/errorAlerts.ts`):

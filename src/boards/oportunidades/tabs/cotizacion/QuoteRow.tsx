@@ -75,6 +75,11 @@ export interface QuoteRowProps {
    * (stage 4/borrador), incluida la Oportunidad Ganada. */
   canAjustar: boolean;
   onAjustarLinea: (product: ItemDTO) => void;
+  /** "📋 Ver actividad" (Efraín, 2026-08-17): historial de SOLO este renglón,
+   * separado de la pestaña Actividad de la oportunidad (esa mezcla item+líneas).
+   * `displayName` porque `product.name` en una línea es el índice de Monday
+   * ("1", "2"…), no el producto elegido — ese vive en otra columna. */
+  onVerActividad: (product: ItemDTO, displayName: string) => void;
   /** "Dividida"/"Editada" al final del nombre — ver CotizacionTab.tsx (ajusteLabels). */
   ajusteLabel?: 'Dividida' | 'Editada';
 }
@@ -87,7 +92,7 @@ function QuoteRowInner({
   tallasSaving, tallasError, onEditTallas,
   generoMF, generoSaving, onToggleGenero,
   proveedorSaving, proveedorError, onEditProveedor,
-  canDelete, deleting, onDeleteLine, canAjustar, onAjustarLinea, ajusteLabel,
+  canDelete, deleting, onDeleteLine, canAjustar, onAjustarLinea, onVerActividad, ajusteLabel,
 }: QuoteRowProps) {
   const { lineWarnings, bannerText } = computeLineBanner(p, state, variant, catalog, precioOnly);
 
@@ -116,6 +121,14 @@ function QuoteRowInner({
           ✎
         </button>
       )}
+      <button
+        type="button"
+        onClick={() => onVerActividad(p, displayProducto(p, state.preview) || p.name)}
+        title="Ver actividad de este renglón"
+        style={{ background: 'none', border: 'none', cursor: 'pointer', font: 'inherit', padding: 0, color: 'var(--ink-tertiary)' }}
+      >
+        📋
+      </button>
     </div>
   );
 

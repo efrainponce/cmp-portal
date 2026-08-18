@@ -29,6 +29,7 @@ import { CondicionesCotizacion } from './cotizacion/CondicionesCotizacion';
 import { MobileQuoteRow } from './cotizacion/MobileQuoteRow';
 import { QuoteRow } from './cotizacion/QuoteRow';
 import { AjustarLineaModal } from './cotizacion/AjustarLineaModal';
+import { ProductoActividadDrawer } from '../../generic/ProductoActividadDrawer';
 import { ColumnVisibilityPicker } from './cotizacion/ColumnVisibilityPicker';
 import {
   type RowEditState, EMPTY_ROW, inlineEditableCols,
@@ -144,6 +145,13 @@ export function CotizacionTab({
   const canAjustar = !canAddLines && (me?.role === 'vendedor' || me?.role === 'compras' || me?.role === 'admin');
   const [ajustarLineaTarget, setAjustarLineaTarget] = useState<ItemDTO | null>(null);
   const [divergenciaNotice, setDivergenciaNotice] = useState<string | null>(null);
+  // 📋 Ver actividad por renglón (Efraín, 2026-08-17): separado de la pestaña
+  // Actividad de la oportunidad, que mezcla item padre + todas las líneas.
+  const [verActividadTarget, setVerActividadTarget] = useState<{ producto: ItemDTO; title: string } | null>(null);
+  const onVerActividad = useCallback(
+    (producto: ItemDTO, title: string) => setVerActividadTarget({ producto, title }),
+    [],
+  );
 
   // Label "Dividida"/"Editada" al final de la línea (Efraín, 2026-08-11): solo
   // la vigente trae `ajustes` (shared/dto.ts) — una línea nacida de un
@@ -529,12 +537,14 @@ export function CotizacionTab({
     onEmbellecimientoChange, onStatusChange, onProductoPick,
     onToggleConfirm, onEditTallas, onToggleGenero, onEditProveedor, onDeleteLine, toggleExpanded,
     onAjustarLinea: setAjustarLineaTarget,
+    onVerActividad,
   });
   latest.current = {
     onEdit, onBlur, onColorChange,
     onEmbellecimientoChange, onStatusChange, onProductoPick,
     onToggleConfirm, onEditTallas, onToggleGenero, onEditProveedor, onDeleteLine, toggleExpanded,
     onAjustarLinea: setAjustarLineaTarget,
+    onVerActividad,
   };
   const sEdit = useCallback((pr: ItemDTO, c: string, r: string) => latest.current.onEdit(pr, c, r), []);
   const sBlur = useCallback((pr: ItemDTO, c: string) => latest.current.onBlur(pr, c), []);
@@ -549,6 +559,7 @@ export function CotizacionTab({
   const sDeleteLine = useCallback((id: string) => latest.current.onDeleteLine(id), []);
   const sToggleExpand = useCallback((id: string) => latest.current.toggleExpanded(id), []);
   const sAjustarLinea = useCallback((pr: ItemDTO) => latest.current.onAjustarLinea(pr), []);
+  const sVerActividad = useCallback((pr: ItemDTO, title: string) => latest.current.onVerActividad(pr, title), []);
 
   if (selectedVersion) {
     return (
@@ -669,6 +680,7 @@ export function CotizacionTab({
               onDeleteLine={sDeleteLine}
               canAjustar={canAjustar}
               onAjustarLinea={sAjustarLinea}
+              onVerActividad={sVerActividad}
               ajusteLabel={ajusteLabels.get(Number(p.id))}
             />
           ))}
@@ -749,6 +761,7 @@ export function CotizacionTab({
               onDeleteLine={sDeleteLine}
               canAjustar={canAjustar}
               onAjustarLinea={sAjustarLinea}
+              onVerActividad={sVerActividad}
               ajusteLabel={ajusteLabels.get(Number(p.id))}
             />
           ))}
@@ -785,6 +798,14 @@ export function CotizacionTab({
           }}
           onVersioned={onVersioned}
           canEliminar={editable}
+        />
+      )}
+      {verActividadTarget && (
+        <ProductoActividadDrawer
+          producto={verActividadTarget.producto}
+          title={verActividadTarget.title}
+          slug="oportunidades_sub"
+          onClose={() => setVerActividadTarget(null)}
         />
       )}
     </div>
