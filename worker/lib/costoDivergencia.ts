@@ -10,8 +10,10 @@
 import type { Env } from '../env';
 import type { Identity, MirrorItem } from '../../shared/types';
 import type { CostoDivergenciaDTO } from '../../shared/dto';
+import { isNativeId } from '../../shared/nativeId';
+import { postUpdate } from './nativeUpdates';
 import { getItem } from './dal';
-import { createUpdate, type MentionInput } from './monday';
+import { type MentionInput } from './monday';
 import { emitNotification, personIdsFromColumns } from './notify';
 import { logSync } from '../sync/log';
 import { BOARDS } from '../../shared/boards';
@@ -102,8 +104,10 @@ export async function checkCostoDivergente(
     const body = `${marcadores ? marcadores + ' — ' : ''}${actorName} cambió el producto de "${lineaLabel}" `
       + `(${anterior.nombre} → ${nuevo.nombre}): el Costo Distribuidor pasó de $${anterior.costo.toLocaleString()} `
       + `a $${nuevo.costo.toLocaleString()} (${pctTxt}% de diferencia). Revisa si aplica ajuste de costeo.`;
-    if (mentions.length > 0) {
-      await createUpdate(env, oportunidadItemId, body, mentions);
+    // Ver el comentario gemelo en proyectoTallas.reportarTallasIncorrectas: en un
+    // item nativo el feed de D1 es el único rastro, así que no depende de mentions.
+    if (mentions.length > 0 || isNativeId(oportunidadItemId)) {
+      await postUpdate(env, BOARDS.oportunidades.id, oportunidadItemId, body, mentions);
     }
 
     for (const c of compradores) {

@@ -575,3 +575,28 @@ CREATE INDEX IF NOT EXISTS idx_ux_created ON ux_event(created_at);
 CREATE INDEX IF NOT EXISTS idx_ux_user    ON ux_event(user_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_ux_cell    ON ux_event(item_id, column_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_ux_corr    ON ux_event(corr);
+
+-- Comentarios ("updates") de un item NATIVO de Zona Efrain (2026-08-17,
+-- worker/lib/nativeUpdates.ts). Un item con id sintético (shared/nativeId.ts) no
+-- existe en Monday: `create_update` contra él truena y `updates` sale vacío, así que
+-- tanto el composer de Actualizaciones como los mensajes automáticos (cotización,
+-- OC, costeo, tallas) se perdían en silencio. Esta tabla es su feed equivalente y se
+-- sirve con el MISMO shape que un update de Monday (worker/lib/monday.ts
+-- MondayUpdate), para que las rutas no tengan que saber de qué lado está el item.
+-- `id` numérico como texto (no uuid) a propósito: las rutas validan /^\d+$/, el
+-- "visto" vive en update_seen y `seguimientos.monday_update_id` es INTEGER. Sin
+-- hilos (replies solo existen dentro de Monday.com). Los adjuntos viven en R2 y
+-- quedan listados en `attachments` — no hay asset de Monday que resolver. Se crea
+-- LAZY en runtime (mismo patrón que documents/zonas/anuncios) — está aquí solo como
+-- documentación.
+CREATE TABLE IF NOT EXISTS native_updates (
+  id           TEXT PRIMARY KEY,   -- numérico como texto, piso NATIVE_ID_FLOOR
+  board_id     INTEGER NOT NULL,
+  item_id      INTEGER NOT NULL,
+  author_email TEXT,               -- NULL = lo posteó el sistema, no una persona
+  author_name  TEXT NOT NULL,
+  body         TEXT NOT NULL,      -- texto plano (Monday guarda HTML; aquí nadie lo renderiza)
+  created_at   TEXT NOT NULL,
+  attachments  TEXT NOT NULL DEFAULT '[]'  -- JSON [{id,name,ext,key}] con el key de R2
+);
+CREATE INDEX IF NOT EXISTS idx_native_updates_item ON native_updates(item_id, created_at DESC);

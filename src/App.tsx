@@ -68,7 +68,8 @@ function App() {
         // igual que cuando eran 5 componentes distintos.
         <StageBoard key={activeBoard} boardKey={activeBoard} openId={itemId} onOpenChange={onOpenChange} onDuplicated={onDuplicated} />
       )}
-      {(activeBoard === 'doctallas' || activeBoard === 'ordenescompra' || activeBoard === 'ejecucion' || activeBoard === 'logistica') && (
+      {(activeBoard === 'doctallas' || activeBoard === 'ordenescompra' || activeBoard === 'ejecucion'
+        || activeBoard === 'logistica' || activeBoard === 'zona_efrain_proy') && (
         <ProyectoBoard
           key={activeBoard}
           boardKey={activeBoard}

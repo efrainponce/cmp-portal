@@ -30,6 +30,19 @@ const ESTADO_PRODUCTOS_COL = 'lookup_mm20g4n6';
 const STATUS_COL = 'project_status';
 const ZONA_COL = 'dropdown_mm0hnyv';
 
+/** ¿El Vendedor del proyecto es uno de estos nombres? Sin lista, pasa todo.
+ * Proyectos tiene UNA sola columna de dueño (shared/boards.ts authzCols), a
+ * diferencia de Oportunidades (dueño + secundario), pero el texto del mirror
+ * puede traer varias personas separadas por coma — se comparan todas. */
+function vendedorNamesMatch(item: ItemDTO, names: string[] | undefined): boolean {
+  if (!names || names.length === 0) return true;
+  const wanted = names.map((n) => n.toUpperCase());
+  return (item.cols[VENDEDOR_COL]?.text || '')
+    .split(',')
+    .map((s) => s.trim().toUpperCase())
+    .some((v) => v && wanted.includes(v));
+}
+
 function dedupeMirrorText(text: string): string {
   const parts = Array.from(new Set(text.split(',').map((s) => s.trim()).filter(Boolean)));
   return parts.length <= 2 ? parts.join(', ') : `${parts[0]} +${parts.length - 1}`;
@@ -80,7 +93,9 @@ export function ProyectoBoardList({ config, q, onSearch, onOpen, onReady }: Prop
     onReady?.();
   }, [status, onReady]);
   const allItems = data?.items ?? [];
-  const statusItems = allItems.filter((it) => config.statuses.includes(statusIndex(it.cols[STATUS_COL])));
+  const statusItems = allItems
+    .filter((it) => config.statuses.includes(statusIndex(it.cols[STATUS_COL])))
+    .filter((it) => vendedorNamesMatch(it, config.vendedorNames));
   const sync = lastMondayUpdateFromItems(statusItems);
 
   const { collapsedGroups, toggleGroup } = useSavedView(config.key);

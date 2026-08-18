@@ -30,7 +30,9 @@ import { listGeneroMF, setGeneroMF } from '../lib/productoGenero';
 import { syncTallasPortal } from '../lib/airtable';
 import { duplicateOportunidad, DuplicateOportunidadError } from '../lib/duplicateOportunidad';
 import { ganarOportunidad, GanarOportunidadError } from '../lib/ganarOportunidad';
-import { createSubitem, addFileToColumn, fetchAssetPublicUrls, createUpdate, gql, deleteItem } from '../lib/monday';
+import { createSubitem, addFileToColumn, fetchAssetPublicUrls, gql, deleteItem } from '../lib/monday';
+import { postUpdate } from '../lib/nativeUpdates';
+import { toNativeColumns, insertNativeSubitem, stampNativeFileMarker } from '../lib/nativeItems';
 import { insertSeguimiento } from '../lib/home';
 import { listZoneImages, uploadZoneImage, EmbellImageError } from '../lib/embellecimientoImagenes';
 import { listProposedProducts, addProposedProduct, ProposedProductError } from '../lib/productosPropuestos';
@@ -108,26 +110,6 @@ async function notifyCosteoIncompleto(env: Env, viewer: Identity, itemId: number
       dedupeKey: `costeo:${itemId}:${md5(errors.join('|'))}`,
     });
   } catch { /* best-effort — no bloquea la respuesta 422 */ }
-}
-
-/** Estampa un marcador de archivo en una columna tipo file de un Proyecto
- * nativo (Zona Efrain, "salir de Monday") — el archivo real vive en R2
- * (oportunidadFileKey), esto solo deja `text` no vacío para que checks como
- * checkOcCliente (worker/lib/proyectoTallas.ts) lo encuentren, igual que lo
- * haría el mirror de un file column real de Monday. */
-async function stampNativeFileMarker(env: Env, itemId: number, colId: string, filename: string): Promise<void> {
-  const row = await env.DB
-    .prepare(`SELECT columns FROM items WHERE board_id = ? AND item_id = ?`)
-    .bind(BOARDS.proyectos.id, itemId)
-    .first<{ columns: string }>();
-  const existing: { id: string; type: string; text: string | null; value: string | null }[] =
-    row ? JSON.parse(row.columns || '[]') : [];
-  const filtered = existing.filter(c => c.id !== colId);
-  filtered.push({ id: colId, type: 'file', text: filename, value: JSON.stringify({ files: [{ name: filename }] }) });
-  await env.DB
-    .prepare(`UPDATE items SET columns = ?, synced_at = ? WHERE board_id = ? AND item_id = ?`)
-    .bind(JSON.stringify(filtered), new Date().toISOString(), BOARDS.proyectos.id, itemId)
-    .run();
 }
 
 // "Solicitud Costeo" (docs/monday-column-map.md) — antes la llenaba el PDF de Eledo
@@ -283,7 +265,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     // prefija el nombre para que en Monday quede claro quién habló (mismo
     // patrón que worker/lib/productosPropuestos.ts / proyectoTallas.ts).
     const actorName = viewer.nombre ?? viewer.email;
-    const update = await createUpdate(c.env, itemId, `${actorName}: ${mensaje}`);
+    const update = await postUpdate(c.env, BOARDS.oportunidades.id, itemId, `${actorName}: ${mensaje}`);
     await insertSeguimiento(c.env, {
       itemId, mondayUpdateId: Number(update.id), autorEmail: viewer.email, mensaje,
     });
@@ -980,6 +962,13 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
   // proveedor" (only_proveedor) ya cubre una OC "de la nada" (Efraín, 2026-07-17).
   // Registrada ANTES de /api/proyectos/:id/:action a propósito: ese wildcard
   // también matchea /lineas (action="lineas") y la intercepta con 404 si va después.
+  // Tipos Monday de las columnas que llena la línea manual — los necesita
+  // toNativeColumns para escribir el mismo shape que dejaría un echo de Monday
+  // (worker/lib/nativeItems.ts).
+  const LINEA_MANUAL_COL_TYPES: Record<string, string> = {
+    text_mm0hs17x: 'text', board_relation_mm1cfgv5: 'board_relation', numeric_mm0hj2q4: 'numeric',
+    text_mm1antcb: 'text', text_mm0h4a1c: 'text', text_mm0hyrfs: 'text',
+  };
   app.post('/api/proyectos/:id/lineas', async c => {
     const itemId = Number(c.req.param('id'));
     if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
@@ -1003,6 +992,15 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     if (body.sku?.trim()) subitemCols.text_mm0hyrfs = body.sku.trim();
 
     try {
+      // Proyecto nativo (Zona Efrain): la línea es una fila más de `items` con
+      // id sintético — no hay subitem que crear del lado de Monday. Mismo
+      // camino que capturarTallas (worker/lib/proyectoTallas.ts), compartido
+      // vía worker/lib/nativeItems.ts.
+      if (isNativeId(itemId)) {
+        const columns = toNativeColumns(subitemCols, LINEA_MANUAL_COL_TYPES);
+        const id = await insertNativeSubitem(c.env, 'proyectos_sub', itemId, producto, columns);
+        return c.json({ ok: true, id: String(id) });
+      }
       const subitem = await createSubitem(c.env, itemId, producto, subitemCols);
       await upsertItem(c.env, 'proyectos_sub', subitem);
       return c.json({ ok: true, id: subitem.id });
@@ -1090,7 +1088,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       const oppId = linkedItemId(row, PROYECTO_OPP_REL);
       const key = oppId != null ? oportunidadFileKey(oppId, 'documento', file.name) : null;
       if (key) await putFile(c.env, key, file);
-      await stampNativeFileMarker(c.env, itemId, PROYECTO_DOCUMENTO_COL, file.name);
+      await stampNativeFileMarker(c.env, 'proyectos', itemId, PROYECTO_DOCUMENTO_COL, file.name, 'replace');
       return c.json({ ok: true, id: `native-${Date.now()}`, name: file.name, url: key ? `/api/files/${key}` : '' });
     }
 
@@ -1134,14 +1132,27 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     const file = form.get('file');
     if (!(file instanceof File)) return c.json({ error: 'file is required' }, 400);
 
-    const asset = await addFileToColumn(c.env, itemId, colId, file, file.name);
-    c.executionCtx.waitUntil(refetchItem(c.env, BOARDS.proyectos_sub.id, itemId));
-
     // Resolver el oppId: proyectos_sub no tiene el board_relation a la
     // Oportunidad directo — se sube por el padre (parent_item_id = Proyecto).
     const proyectoId = row.parent_item_id;
     const proyectoRow = proyectoId != null ? await getItem(c.env, 'proyectos', proyectoId, viewer, 'own') : null;
     const oppId = proyectoRow ? linkedItemId(proyectoRow, PROYECTO_OPP_REL) : null;
+
+    // Línea nativa (Zona Efrain): no hay columna de Monday a la que subir — el
+    // archivo vive SOLO en R2 y se estampa el marcador en el mirror, igual que
+    // /proyectos/:id/documento. Sin oppId no hay key estable que reconstruir
+    // después, así que ahí se rechaza en vez de dejar el archivo huérfano.
+    if (isNativeId(itemId)) {
+      if (oppId == null) return c.json({ error: 'el proyecto no está ligado a una oportunidad' }, 409);
+      const key = oportunidadFileKey(oppId, `logistica/${itemId}/${field}`, file.name);
+      await putFile(c.env, key, file);
+      await stampNativeFileMarker(c.env, 'proyectos_sub', itemId, colId, file.name);
+      return c.json({ ok: true, id: `native-${itemId}-${field}`, name: file.name, url: `/api/files/${key}` });
+    }
+
+    const asset = await addFileToColumn(c.env, itemId, colId, file, file.name);
+    c.executionCtx.waitUntil(refetchItem(c.env, BOARDS.proyectos_sub.id, itemId));
+
     if (oppId != null) {
       const key = oportunidadFileKey(oppId, `logistica/${itemId}/${field}`, file.name);
       await putFile(c.env, key, file);

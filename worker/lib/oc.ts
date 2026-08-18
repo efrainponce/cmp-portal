@@ -9,13 +9,15 @@
 // Google Sheets, mismo criterio que costeo/cotización/tallas).
 import type { Env } from '../env';
 import type { Identity, MirrorItem } from '../../shared/types';
+import { postUpdate } from './nativeUpdates';
 import { ownsItem, childrenOf, linkedItemId, getItemTrusted, PROYECTO_OPP_REL } from './dal';
-import { fetchItemWithSubitems, addFileToColumn, createUpdate, fetchUserById, cvText, cvNum, firstPersonId, type MondayCol, type MondayItem } from './monday';
+import { fetchItemWithSubitems, addFileToColumn, fetchUserById, cvText, cvNum, firstPersonId, type MondayCol, type MondayItem } from './monday';
 import { renderEledoPdf, ELEDO_TEMPLATE_OC } from './eledo';
 import { createDocuSealSubmission } from './docuseal';
 import { importeEnLetras } from './importeEnLetras';
 import { getOrCreateDriveFolderForOportunidad, uploadPdfToDrive } from './drive';
 import { isNativeId } from '../../shared/nativeId';
+import { BOARDS } from '../../shared/boards';
 import { oportunidadFileKey, putFile } from './r2';
 import { generarOcProveedorPdf } from './ocProveedorPdf';
 
@@ -312,7 +314,7 @@ export async function generarOcNative(
 
   if (groups.size === 0) {
     const reason = 'No hay subitems con proveedor asignado.';
-    try { await createUpdate(env, proyectoId, `⚠️ Proceso omitido: ${reason}`); } catch { /* best-effort */ }
+    try { await postUpdate(env, BOARDS.proyectos.id, proyectoId, `⚠️ Proceso omitido: ${reason}`); } catch { /* best-effort */ }
     return { ok: true, skipped: true, reason, ordenes: [] };
   }
 
@@ -381,7 +383,7 @@ export async function generarOcNative(
       '**Órdenes de Compra generadas**',
       ...ordenes.map(o => o.error ? `- ❌ ${o.proveedorNombre} → no se pudo generar` : `- ✅ ${o.folioOrden} | ${o.proveedorNombre}`),
     ];
-    await createUpdate(env, proyectoId, lines.join('\n'));
+    await postUpdate(env, BOARDS.proyectos.id, proyectoId, lines.join('\n'));
   } catch { /* best-effort — la(s) OC ya se emitieron */ }
 
   return { ok: !ordenes.some(o => o.error), ordenes };

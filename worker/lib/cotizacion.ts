@@ -10,9 +10,10 @@
 import type { ExecutionContext } from 'hono';
 import type { Env } from '../env';
 import type { Identity } from '../../shared/types';
+import { postUpdate } from './nativeUpdates';
 import { getItem, childrenOf, ownsItem } from './dal';
 import {
-  fetchItemWithSubitems, gql, moveItemToGroup, addFileToColumn, createUpdate,
+  fetchItemWithSubitems, gql, moveItemToGroup, addFileToColumn,
   fetchUserById, createNotification, cvText, cvNum, firstPersonId, type MondayItem,
 } from './monday';
 import { BOARDS } from '../../shared/boards';
@@ -186,14 +187,14 @@ async function resolveVendedor(env: Env, personId: number | null, fallbackName: 
 
 async function notifySkip(env: Env, itemId: number, reason: string): Promise<void> {
   try {
-    await createUpdate(env, itemId, `⚠️ Proceso omitido: ${reason}`);
+    await postUpdate(env, BOARDS.oportunidades.id, itemId, `⚠️ Proceso omitido: ${reason}`);
   } catch { /* best-effort */ }
 }
 
 async function notifyNoPrecio(env: Env, itemId: number, comprasPersonId: number | null, vendedorName: string): Promise<void> {
   const msg = `⚠️ Cotización NO generada: ningún producto tiene precio asignado.\nVendedor: ${vendedorName}. Por favor asignar precios en los subitems.`;
   try {
-    await createUpdate(env, itemId, msg);
+    await postUpdate(env, BOARDS.oportunidades.id, itemId, msg);
   } catch { /* best-effort */ }
   if (comprasPersonId) {
     try {
@@ -352,8 +353,8 @@ export async function generarCotizacionNative(env: Env, itemId: number, viewer: 
   // que move_to_cotizacion_stage/write_monday_update en Python: el PDF y la firma
   // ya están hechos, esto es organización visual + bitácora).
   try {
-    await createUpdate(
-      env, itemId,
+    await postUpdate(
+      env, BOARDS.oportunidades.id, itemId,
       `**Cotización generada — ${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC**\n- ✅ ${folioCotizacion}`,
     );
   } catch { /* best-effort */ }

@@ -95,6 +95,12 @@ async function copyFiles(env: Env, sourceCols: Map<string, RawCol>, sourceColId:
   }
 }
 
+// Estado inicial del Proyecto — el mismo default que aplica el board de Monday
+// al crear un Proyecto real (shared/column-meta.gen.ts project_status).
+const PROYECTO_STATUS = 'project_status';
+const PROYECTO_STATUS_INICIAL = 'Desglose de tallas';
+const PROYECTO_STATUS_INICIAL_INDEX = 5;
+
 /** Primer person id de un value ya parseado ({personsAndTeams:[{id}]}) —
  * mismo shape que passthroughValue produce, para derivar vendedor_ids del
  * Proyecto nativo (authzCols de shared/boards.ts). */
@@ -117,6 +123,16 @@ async function ganarOportunidadNativeD1(
   const proyectoId = await reserveNativeId(env);
   const columns: RawColumn[] = [
     { id: PROYECTO_OPP_REL, type: 'board_relation', text: source.name, value: JSON.stringify(boardRelationValue(String(itemId))) },
+    // Etapa inicial del post-venta. En un Proyecto REAL la estampa Monday sola
+    // (default del board al crear el item); un Proyecto nativo nacía sin ella y
+    // eso lo dejaba INVISIBLE en todos los accesos de Proyectos del sidebar —
+    // todos filtran por project_status (src/lib/projectStages.ts) y un item sin
+    // valor no cae en ningún grupo (Efraín, 2026-08-17: hallazgo al probar el
+    // tab de Zona Efrain del lado de Proyectos).
+    {
+      id: PROYECTO_STATUS, type: 'status', text: PROYECTO_STATUS_INICIAL,
+      value: JSON.stringify({ index: PROYECTO_STATUS_INICIAL_INDEX, changed_at: new Date().toISOString() }),
+    },
   ];
   const compras = srcCols.get(OPP_COMPRAS);
   if (compras?.value) {

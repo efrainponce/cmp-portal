@@ -8,11 +8,12 @@
 import type { ExecutionContext } from 'hono';
 import type { Env } from '../env';
 import type { Identity, MirrorItem } from '../../shared/types';
+import { postUpdate } from './nativeUpdates';
 import { getItem, childrenOf, linkedItemId, ownsItem } from './dal';
 import { hydrateFichaLineas } from './ficha';
 import { validarCosteo } from './automations';
 import { submitWrite } from './outbox';
-import { gql, moveItemToGroup, createUpdate, fetchItemWithSubitems, cvText, cvNum, type MondayCol } from './monday';
+import { gql, moveItemToGroup, fetchItemWithSubitems, cvText, cvNum, type MondayCol } from './monday';
 import { BOARDS } from '../../shared/boards';
 import { isNativeId } from '../../shared/nativeId';
 import type { RawCol } from './serialize';
@@ -332,7 +333,7 @@ async function rejectCosteoNative(env: Env, itemId: number, body: string): Promi
     `mutation($b:ID!,$i:ID!,$cv:JSON!){ change_multiple_column_values(board_id:$b,item_id:$i,column_values:$cv){ id } }`,
     { b: String(BOARDS.oportunidades.id), i: String(itemId), cv: JSON.stringify({ deal_stage: { label: 'Nueva oportunidad' } }) },
   );
-  await createUpdate(env, itemId, `⛔ Solicitud de costeo rechazada.\n\n${body}`);
+  await postUpdate(env, BOARDS.oportunidades.id, itemId, `⛔ Solicitud de costeo rechazada.\n\n${body}`);
 }
 
 // Folio propio del costeo nativo — reemplaza el conteo de archivos en
@@ -433,7 +434,7 @@ async function runCosteoNative(env: Env, itemId: number): Promise<EnviarCosteoRe
   try { await moveItemToGroup(env, itemId, GROUP_EN_COSTEO); } catch { /* best-effort */ }
   if (embellRepairs.length > 0) {
     try {
-      await createUpdate(env, itemId, `✅ Se corrigió el embellecimiento de: ${embellRepairs.map(r => r.nombre).join(', ')}.`);
+      await postUpdate(env, BOARDS.oportunidades.id, itemId, `✅ Se corrigió el embellecimiento de: ${embellRepairs.map(r => r.nombre).join(', ')}.`);
     } catch { /* best-effort */ }
   }
 

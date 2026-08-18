@@ -2,6 +2,64 @@
 
 ## 2026-08-17
 
+- Zona Efrain también del lado de PROYECTOS (pedido de Efraín: "necesito ZONA
+  EFRAIN en los proyectos igual"). Ventas ya tenía su tab privado y el flujo
+  nativo completo (Pasos 1-8, "salir de Monday"); el post-venta se quedó a
+  medias — una oportunidad nativa que se GANA crea un Proyecto en D1 y de ahí
+  para adelante varias cosas seguían hablándole a Monday con un id que allá no
+  existe. Dos frentes en el mismo cambio: el tab nuevo y cerrar los huecos.
+  - **Tab "Zona Efrain" en el grupo Proyectos del sidebar**
+    (`projectStages.ts` `zona_efrain_proy`, `Sidebar.tsx`, `App.tsx`,
+    `routing.ts`): espejo del de Ventas — TODAS las etapas del post-venta
+    (`PROJECT_STATUS_ORDER`), acotado a los proyectos del CEO
+    (`vendedorNames: ['Efrain Ponce']`, mismo criterio que
+    `STAGE_BOARDS.zona_efrain`) y visible solo a la whitelist
+    (`me.zonaEfrainAccess`). El filtro por vendedor es de CONVENIENCIA: la
+    privacidad real ya la hacía `dal.ts hidden_owner_ids`, que desde 2026-08-12
+    cubre `proyectos`/`proyectos_sub`.
+  - **Bug real encontrado al probarlo: un Proyecto nativo era INVISIBLE en todo
+    el sidebar.** `ganarOportunidadNativeD1` nunca estampaba `project_status`
+    (en un Proyecto real lo pone Monday sola, es el default del board) y los 4
+    accesos de Proyectos filtran por esa columna — un item sin valor no cae en
+    ningún grupo. Ahora nace en "Desglose de tallas" (index 5), como el real.
+  - **Comentarios nativos** (`worker/lib/nativeUpdates.ts` + tabla
+    `native_updates`, lazy): un item nativo no existe en Monday, así que
+    `create_update` tronaba y `updates` salía vacío — se perdía en silencio
+    TODO comentario, tanto el del composer como los automáticos (cotización,
+    OC, costeo, tallas, seguimiento, divergencia de costo, producto propuesto).
+    `postUpdate`/`listUpdates` eligen el lado por el id y devuelven el mismo
+    shape `MondayUpdate`, así que los 12 emisores solo cambiaron de función.
+    Los ids son numéricos (no uuid) a propósito: las rutas validan `/^\d+$/`,
+    los "ojitos" viven en `update_seen` y `seguimientos.monday_update_id` es
+    INTEGER. Adjuntos: los bytes van a R2 y el proxy de descarga los sirve de
+    ahí, acotados al item ya validado (un assetId adivinado da 404).
+  - **Línea manual del Proyecto** (`POST /api/proyectos/:id/lineas`) y
+    **archivos de Logística** (`POST /api/proyectos_sub/:id/logistica/:field`)
+    ganaron rama nativa. Lo común con el flujo de tallas se extrajo a
+    `worker/lib/nativeItems.ts` (`toNativeColumns`, `insertNativeSubitem`,
+    `stampNativeFileMarker`) en vez de una tercera copia; el test nuevo ancla
+    que `board_relation` guarda `linked_item_ids` como STRING — el bug de
+    2026-08-13 que rompía el PDF de la OC.
+  - **De paso, un hueco que NO era de la zona:** el tab Logística del
+    `ProyectoDrawer` seguía siendo el placeholder "próximamente". La captura de
+    recolección se construyó ayer para el drawer de la Oportunidad y este se
+    quedó atrás — o sea que el board del sidebar que se LLAMA Logística no
+    servía para capturar logística. Se conecta el mismo `LogisticaSection`
+    (mismos permisos, el server revalida). Efraín: si preferías dejarlo como
+    estaba en el board normal, se revierte solo esa parte.
+  - Límite conocido, sin cambiar: en un item nativo las @menciones son texto
+    plano (no hay update de Monday que notifique) — quien avisa de verdad es la
+    notificación del portal, que esos emisores ya mandan aparte. Y
+    `tallas-regenerar`/`tallas-importar` siguen en cmp-tallas: dependen del
+    Google Sheet que Efraín ya sacó del alcance.
+  - Verificado en vivo contra los dev servers, con una oportunidad nativa creada
+    y ganada de verdad: el Proyecto aparece en el tab (1 proyecto, grupo
+    "Desglose de tallas"), línea manual creada en D1, guía subida y descargada
+    de R2 desde el detalle de Logística, comentario nativo + adjunto + "visto
+    por" en Actualizaciones, adjunto de otro item da 404, PAM no ve el tab
+    (`zonaEfrainAccess:false`) y Elisa sí, y los 4 accesos normales siguen
+    listando todo (20 proyectos en Documentación y Tallas).
+
 - Tablero "Análisis" (admin): embudo de conversión, tiempo de costeo y montos,
   cortados por Zona o Vendedor. Pedido de Efraín — "empieza por algo super
   básico", y todo D1 driven ("si faltan datos hay que resolverlo").

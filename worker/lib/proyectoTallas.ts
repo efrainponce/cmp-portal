@@ -7,10 +7,12 @@ import type { ExecutionContext } from 'hono';
 import type { Env } from '../env';
 import type { Identity, MirrorItem } from '../../shared/types';
 import type { TallaBoxInput, CapturarTallasResponse } from '../../shared/dto';
+import { postUpdate } from './nativeUpdates';
+import { toNativeColumns, insertNativeSubitem } from './nativeItems';
 import type { RawCol } from './serialize';
 import { getItem, childrenOf, linkedItemId, ownsItem, PROYECTO_OPP_REL } from './dal';
 import {
-  createSubitem, createUpdate, gql, fetchItemWithSubitems, addFileToColumn, fetchUserById,
+  createSubitem, gql, fetchItemWithSubitems, addFileToColumn, fetchUserById,
   cvText, cvNum, firstPersonId, type MentionInput, type MondayCol,
 } from './monday';
 import { emitNotification } from './notify';
@@ -23,8 +25,7 @@ import { fechaLarga } from './pdf/templates';
 import { createDocuSealSubmission } from './docuseal';
 import { getOrCreateDriveFolderForOportunidad, uploadPdfToDrive } from './drive';
 import { fmtNumMx as NUM } from './importeEnLetras';
-import { reserveNativeId } from './nativeSeq';
-import { rawHash, type RawColumn } from './canon';
+import { type RawColumn } from './canon';
 import { submitWrite } from './outbox';
 import { oportunidadFileKey, putFile } from './r2';
 
@@ -273,19 +274,8 @@ const TALLA_COL_TYPES: Record<string, string> = {
   [SUB_DESCUENTO]: 'numeric', [SUB_UNIDAD]: 'text', [SUB_PROVEEDOR]: 'board_relation',
 };
 
-function nativeTallaColumns(desired: Record<string, unknown>): RawColumn[] {
-  return Object.entries(desired).map(([id, raw]) => {
-    const type = TALLA_COL_TYPES[id] ?? 'text';
-    if (type === 'board_relation') {
-      // linked_item_ids como STRING (no number) — mismo shape que Monday
-      // realmente manda, ver el comentario en outbox.ts's boardRelationValue.
-      const ids = ((raw as { item_ids?: number[] }).item_ids ?? []).map(String);
-      return { id, type, text: ids.join(','), value: JSON.stringify({ linked_item_ids: ids }) };
-    }
-    const text = String(raw);
-    return { id, type, text, value: JSON.stringify(text) };
-  });
-}
+const nativeTallaColumns = (desired: Record<string, unknown>): RawColumn[] =>
+  toNativeColumns(desired, TALLA_COL_TYPES);
 
 export async function capturarTallas(
   env: Env, viewer: Identity, proyectoId: number, rows: TallaBoxInput[],
@@ -325,16 +315,7 @@ export async function capturarTallas(
     const match = byKey.get(key);
     if (!match) {
       if (native) {
-        const subId = await reserveNativeId(env);
-        const columns = nativeTallaColumns(desired);
-        const now = new Date().toISOString();
-        await env.DB
-          .prepare(
-            `INSERT INTO items (board_id, item_id, parent_item_id, name, group_id, vendedor_ids, monday_updated_at, synced_at, content_hash, columns)
-             VALUES (?, ?, ?, ?, NULL, '[]', ?, ?, ?, ?)`,
-          )
-          .bind(BOARDS.proyectos_sub.id, subId, proyectoId, r.producto.trim(), now, now, rawHash(columns), JSON.stringify(columns))
-          .run();
+        await insertNativeSubitem(env, 'proyectos_sub', proyectoId, r.producto.trim(), nativeTallaColumns(desired));
       } else {
         const subitem = await createSubitem(env, proyectoId, r.producto.trim(), desired);
         await upsertItem(env, 'proyectos_sub', subitem);
@@ -427,7 +408,10 @@ export async function reportarTallasIncorrectas(
   const body = `${actorName} reportó que el desglose de tallas de "${producto}"${color ? ` (${color})` : ''} en ${proyectoNombre} no cuadra: ${detalle}.`;
 
   const mentions: MentionInput[] = compras.filter(c => c.nombre).map(c => ({ id: c.monday_user_id, nombre: c.nombre as string }));
-  if (mentions.length > 0) await createUpdate(env, proyectoId, body, mentions);
+  // Sin nadie a quien @mencionar no se postea nada del lado de Monday (un update
+  // que no le llega a nadie es ruido); en un Proyecto NATIVO el feed de D1 es el
+  // único rastro que queda del reporte, así que ahí sí va siempre.
+  if (mentions.length > 0 || isNativeId(proyectoId)) await postUpdate(env, BOARDS.proyectos.id, proyectoId, body, mentions);
 
   const reportId = crypto.randomUUID();
   let notificados = 0;
@@ -651,7 +635,7 @@ export async function confirmTallasNative(env: Env, viewer: Identity, proyectoId
         `mutation($b:ID!,$i:ID!,$cv:JSON!){ change_multiple_column_values(board_id:$b,item_id:$i,column_values:$cv){ id } }`,
         { b: String(BOARDS.proyectos.id), i: String(proyectoId), cv: JSON.stringify({ [PROYECTO_STATUS]: { label: PROYECTO_STATUS_REVERT } }) },
       );
-      await createUpdate(env, proyectoId, body);
+      await postUpdate(env, BOARDS.proyectos.id, proyectoId, body);
     } catch { /* best-effort: el rechazo ya quedó decidido, esto es solo el aviso */ }
     return { ok: false, errors: gate.reason ? [gate.reason] : gate.mismatches.map(m => `${m.producto}${m.color ? ` (${m.color})` : ''}: cotizado ${m.cotizado}, asignado ${m.asignado}`) };
   }

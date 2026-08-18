@@ -6,9 +6,11 @@
 import type { Env } from '../env';
 import type { Identity } from '../../shared/types';
 import type { ProposedProductDTO } from '../../shared/productosPropuestos';
+import { isNativeId } from '../../shared/nativeId';
+import { postUpdate } from './nativeUpdates';
 import { getItem } from './dal';
 import { putFile, oportunidadFileKey } from './r2';
-import { createUpdate, type MentionInput } from './monday';
+import { type MentionInput } from './monday';
 import { emitNotification } from './notify';
 import { logSync } from '../sync/log';
 import { BOARDS } from '../../shared/boards';
@@ -124,8 +126,9 @@ async function notifyComprador(env: Env, itemId: number, oppColumnsJson: string,
       .map((c) => ({ id: c.id, nombre: c.nombre as string }));
     const body = `${actorName} propuso un nuevo producto: "${producto.nombre}"`
       + (producto.descripcion ? ` — ${producto.descripcion}` : '');
-    if (mentions.length > 0) {
-      await createUpdate(env, itemId, body, mentions);
+    // Ver el comentario gemelo en proyectoTallas.reportarTallasIncorrectas.
+    if (mentions.length > 0 || isNativeId(itemId)) {
+      await postUpdate(env, BOARDS.oportunidades.id, itemId, body, mentions);
     }
 
     for (const c of compradores) {

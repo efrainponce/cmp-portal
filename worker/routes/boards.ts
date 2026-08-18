@@ -20,7 +20,12 @@ import { canRead, canReadBoard, canWrite } from '../../shared/visibility';
 import { submitWrite, OutboxError } from '../lib/outbox';
 import { submitCreate, submitCreateNative, CreateError } from '../lib/createRecord';
 import { duplicateVersion, esDraftVigente, QuoteVersionError, LINE_DEFINING_COLS } from '../lib/quoteVersions';
-import { fetchUpdates, createUpdate, addFileToUpdate, fetchAssetPublicUrls, deleteItem, type MentionInput } from '../lib/monday';
+import { addFileToUpdate, fetchAssetPublicUrls, deleteItem, type MentionInput } from '../lib/monday';
+// Los updates de un item nativo (Zona Efrain) viven en D1, no en Monday — estas
+// dos funciones eligen el lado por el id, así que la ruta no lo decide.
+import {
+  listUpdates, postUpdate, attachToNativeUpdate, nativeUpdateAsset,
+} from '../lib/nativeUpdates';
 import { listActivity } from '../lib/activityLog';
 import { cachedFetchUsers } from '../lib/rosterCache';
 import { getBoardAccess } from '../lib/boardAccess';
@@ -420,7 +425,7 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
     const row = await getItem(c.env, slug, itemId, viewer);
     if (!row) return c.json({ error: 'not found' }, 404);
 
-    const updates = await fetchUpdates(c.env, itemId);
+    const updates = await listUpdates(c.env, itemId);
     // Monday nests replies under their parent update; the feed shows them as
     // plain comments (no threading UI), so flatten and re-sort newest first.
     const flat = updates
@@ -485,15 +490,20 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
     // Cuando el autor tiene cuenta real de Monday (monday_user_id > 0), la firma
     // se manda como @mention de verdad — Monday la renderiza como link clickeable
     // en vez de solo texto plano. Nativos (id sintético <= 0) no tienen a quién
-    // apuntar el mention, así que se quedan con el texto plano de siempre.
+    // apuntar el mention, así que se quedan con el texto plano de siempre. Un
+    // ITEM nativo (Zona Efrain) tampoco: su feed vive en D1 y ahí el HTML de la
+    // mención se vería como HTML crudo — el firmado se queda plano.
     const authorName = viewer.nombre ?? viewer.email;
     const authorMention: MentionInput | null =
-      viewer.monday_user_id > 0 && viewer.nombre ? { id: viewer.monday_user_id, nombre: viewer.nombre } : null;
+      !isNativeId(itemId) && viewer.monday_user_id > 0 && viewer.nombre
+        ? { id: viewer.monday_user_id, nombre: viewer.nombre } : null;
     const signed = authorMention
       ? `${text}\n\n— @${authorMention.nombre} vía Portal CMP`
       : `${text}\n\n— ${authorName} vía Portal CMP`;
     const updateMentions = authorMention ? [...mentions, authorMention] : mentions;
-    const u = await createUpdate(c.env, itemId, signed, updateMentions);
+    const u = await postUpdate(c.env, BOARDS[slug].id, itemId, signed, updateMentions, {
+      email: viewer.email, nombre: viewer.nombre ?? undefined,
+    });
 
     // Notifica a cada compañero mencionado (nunca al propio autor). Best-effort:
     // emitNotification ya se traga sus propios errores; aquí solo protegemos el
@@ -547,7 +557,7 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
     // update de TODO Monday recibía el archivo (el gate de renglón protegía el
     // objeto equivocado). El composer adjunta justo después de crear el update,
     // así que siempre está entre los 50 más recientes que trae fetchUpdates.
-    const itemUpdates = await fetchUpdates(c.env, itemId);
+    const itemUpdates = await listUpdates(c.env, itemId);
     const belongs = itemUpdates.some(u =>
       u.id === updateId || (u.replies ?? []).some(r => r.id === updateId));
     if (!belongs) return c.json({ error: 'not found' }, 404);
@@ -555,6 +565,18 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
     const form = await c.req.formData();
     const file = form.get('file');
     if (!(file instanceof File)) return c.json({ error: 'file is required' }, 400);
+
+    // Item nativo (Zona Efrain): no hay update de Monday al cual adjuntar — los
+    // bytes van a R2 y el adjunto queda listado en la fila del update.
+    if (isNativeId(itemId)) {
+      try {
+        const asset = await attachToNativeUpdate(c.env, updateId, file);
+        return c.json({ ok: true, ...asset });
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        return jsonStatus({ ok: false, error: 'No se pudo adjuntar el archivo: ' + detail }, 500);
+      }
+    }
 
     try {
       const asset = await addFileToUpdate(c.env, updateId, file, file.name);
@@ -582,20 +604,32 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
     const row = await getItem(c.env, slug, itemId, viewer);
     if (!row) return c.json({ error: 'not found' }, 404);
 
-    const urls = await fetchAssetPublicUrls(c.env, [assetId]);
-    const url = urls.get(assetId);
-    if (!url) return c.json({ error: 'not found' }, 404);
+    // Adjunto de un update nativo (Zona Efrain): vive en R2, no en Monday.
+    // `nativeUpdateAsset` acota la búsqueda al item ya validado — un assetId
+    // adivinado no puede sacar el archivo de otro item.
+    const nativo = isNativeId(itemId) ? await nativeUpdateAsset(c.env, itemId, assetId) : null;
+    if (isNativeId(itemId) && !nativo) return c.json({ error: 'not found' }, 404);
+
+    const url = nativo ? null : (await fetchAssetPublicUrls(c.env, [assetId])).get(assetId);
+    if (!nativo && !url) return c.json({ error: 'not found' }, 404);
 
     const name = c.req.query('name') ?? 'archivo';
     const download = c.req.query('download') === '1';
     const ext = (name.split('.').pop() ?? '').toLowerCase();
     const contentType = ext === 'pdf' ? 'application/pdf' : 'application/octet-stream';
 
-    const upstream = await fetch(url);
-    if (!upstream.ok) return jsonStatus({ error: 'no se pudo obtener el archivo' }, 502);
-    // Buffer en vez de stream — mismo motivo que cotizacion-pdf: el proxy de
-    // Vite en dev se cuelga con una Response streameada sin Content-Length.
-    const bytes = await upstream.arrayBuffer();
+    let bytes: ArrayBuffer;
+    if (nativo) {
+      const object = await c.env.FILES.get(nativo.key);
+      if (!object) return jsonStatus({ error: 'no se pudo obtener el archivo' }, 404);
+      bytes = await object.arrayBuffer();
+    } else {
+      const upstream = await fetch(url!);
+      if (!upstream.ok) return jsonStatus({ error: 'no se pudo obtener el archivo' }, 502);
+      // Buffer en vez de stream — mismo motivo que cotizacion-pdf: el proxy de
+      // Vite en dev se cuelga con una Response streameada sin Content-Length.
+      bytes = await upstream.arrayBuffer();
+    }
     const safeName = name.replace(/["\r\n]/g, '');
     return new Response(bytes, {
       status: 200,

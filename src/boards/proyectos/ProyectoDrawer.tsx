@@ -17,9 +17,8 @@ import { getItemDetail, refreshItem, getProyectoOportunidad, useBoards, colForBo
 import { useIsMobile } from '../../lib/useIsMobile';
 import { useMe } from '../../lib/useMe';
 import { ActualizacionesTab } from '../oportunidades/tabs/ActualizacionesTab';
-import { EmptyDocTab } from '../oportunidades/tabs/EmptyDocTab';
 import { FechaEntregaField, OcContratoSection } from '../oportunidades/tabs/DocumentacionTab';
-import { ProyectoTallasSection, ProyectoOrdenesSection, EjecucionSection, type ProyectoState } from '../oportunidades/ProyectoSection';
+import { ProyectoTallasSection, ProyectoOrdenesSection, EjecucionSection, LogisticaSection, type ProyectoState } from '../oportunidades/ProyectoSection';
 import { CotizacionVirtualTab } from './CotizacionVirtualTab';
 import { EmbellecimientosVirtualTab } from './EmbellecimientosVirtualTab';
 import type { ProjectBoardKey } from '../../lib/projectStages';
@@ -207,12 +206,16 @@ export function ProyectoDrawer({ id, boardKey, backLabel, defaultTab, onBack, on
           <EjecucionSection state={proyectoState} oppId={oportunidadId} />
         </div>
       )}
+      {/* La captura de recolección (encargado, guías, evidencia) se construyó el
+          2026-08-17 para el drawer de la Oportunidad y este quedó con el
+          "próximamente" de antes — o sea que el board del sidebar que se LLAMA
+          Logística mostraba un placeholder. Es el mismo componente y los mismos
+          permisos (Compras/Admin editan; el server revalida), así que aquí solo
+          se conecta (Efraín, 2026-08-17). */}
       {tab === 'logistica' && (
-        <EmptyDocTab
-          title="Documentos de logística"
-          subtitle="Guías de embarque, comprobantes de entrega y documentación de envío."
-          uploadLabel="Subir documento de logística"
-        />
+        <div style={{ padding: '24px 32px 40px', maxWidth: 920, width: '100%', boxSizing: 'border-box' }}>
+          <LogisticaSection state={proyectoState} oppId={oportunidadId} />
+        </div>
       )}
     </div>
   );
