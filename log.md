@@ -37,6 +37,11 @@
     nace con folio propio (su id sintético, el mismo fallback que ya usaba
     `oc.ts`). Método y condiciones de pago llegaban por request pero el PDF los
     lee de las columnas del Proyecto — se estampan antes de generar.
+  - Segunda pasada (misma sesión, tras re-correr el E2E): faltaban los tres
+    espejos "(auto)" del catálogo — Costo (`lookup_mm5ck4b3`), Descuento y
+    Gastos %. De ahí sale el SNAPSHOT que congela "Mandar a costeo"
+    (`computeSnapshot`), así que sin ellos el snapshot nativo escribía 0, borraba
+    el costo capturado y la OC salía en $0.
   - Lo que NO se tocó porque no es del flujo nativo: `validacion-check` marcó 2
     de 6 líneas con "descripción y tallas sin confirmar", y es condición real
     del catálogo para esos dos productos (`checkValidacion` lee el board

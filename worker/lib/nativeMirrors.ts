@@ -11,6 +11,10 @@
 // prueba end-to-end en producción (2026-08-18) se atoraba en "Mandar a costeo"
 // y llegaba a la OC con el id del proveedor en vez de su nombre.
 //
+// Ojo con los tres "(auto)" de costo/descuento/gastos: de ahí sale el SNAPSHOT
+// que congela "Mandar a costeo" (worker/lib/costeo.ts computeSnapshot). Sin
+// ellos el snapshot nativo escribía 0 y borraba el costo, y la OC salía en $0.
+//
 // La copia se hace UNA vez, cuando se liga la relación que la alimenta (elegir
 // producto / elegir contacto), igual que Monday recalcularía el espejo. Si el
 // catálogo cambia después, el valor copiado se queda como estaba — que es
@@ -36,6 +40,9 @@ const LINEA_DESDE_PRODUCTO: Record<string, string> = {
   lookup_mm0x4kda: 'text_mm0wvga2',                // Nombre del producto
   lookup_mm19c0b6: 'long_text_mm174q0j',           // Tallas (json del catálogo)
   lookup_mm5v1qb:  'text_mm5v6jhj',                // Tallas disponibles (boxes de captura)
+  lookup_mm5ck4b3: 'numeric_mkzpx7eb',             // Costo (auto) — de aquí sale el snapshot de costeo
+  lookup_mm0bdwb5: 'numeric_mm0bgd2f',             // Descuento (auto)
+  lookup_mm0bbz02: 'numeric_mm0bnkch',             // Gastos % (auto)
   lookup_mm11t8gj: 'text_mkzp59zf',                // Moneda
   lookup_mm0w4f4v: 'text_mkzp9428',                // Unidad
   lookup_mm0xn98d: 'product_and_service_description', // Marca/línea
