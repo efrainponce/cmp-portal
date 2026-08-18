@@ -17,13 +17,15 @@ import { getItemDetail, refreshItem, getProyectoOportunidad, useBoards, colForBo
 import { useIsMobile } from '../../lib/useIsMobile';
 import { useMe } from '../../lib/useMe';
 import { ActualizacionesTab } from '../oportunidades/tabs/ActualizacionesTab';
+import { ActividadTab } from '../oportunidades/tabs/ActividadTab';
 import { FechaEntregaField, OcContratoSection } from '../oportunidades/tabs/DocumentacionTab';
 import { ProyectoTallasSection, ProyectoOrdenesSection, EjecucionSection, LogisticaSection, type ProyectoState } from '../oportunidades/ProyectoSection';
 import { CotizacionVirtualTab } from './CotizacionVirtualTab';
 import { EmbellecimientosVirtualTab } from './EmbellecimientosVirtualTab';
 import type { ProjectBoardKey } from '../../lib/projectStages';
+import { canReadActivity } from '../../../shared/visibility';
 
-type ProyectoTabKey = 'actualizaciones' | 'cotizacion' | 'embellecimientos' | 'documentacion' | 'tallas' | 'ordenes' | 'ejecucion' | 'logistica';
+type ProyectoTabKey = 'actualizaciones' | 'actividad' | 'cotizacion' | 'embellecimientos' | 'documentacion' | 'tallas' | 'ordenes' | 'ejecucion' | 'logistica';
 
 const FOLIO_COL = 'pulse_id_mm1a12gy';
 const INSTITUCION_COL = 'lookup_mm1dwn6';
@@ -32,6 +34,12 @@ const VENDEDOR_COL = 'multiple_person_mm0hrnqq';
 
 const TABS: { key: ProyectoTabKey; label: string }[] = [
   { key: 'actualizaciones', label: 'Actualizaciones' },
+  // Log de cambios del Proyecto y de sus líneas — el costeo de la OC se edita
+  // desde el portal y Monday lo atribuiría todo al usuario del token, así que
+  // el actor real solo se ve aquí (Efraín, 2026-08-18: "guardar la actividad
+  // por si cometemos error"). El reloj de cada línea en Órdenes de compra es
+  // la vista corta de lo mismo.
+  { key: 'actividad', label: 'Actividad' },
   { key: 'cotizacion', label: 'Cotización' },
   { key: 'embellecimientos', label: 'Embellecimientos' },
   { key: 'documentacion', label: 'Documentación' },
@@ -49,8 +57,8 @@ const TABS: { key: ProyectoTabKey; label: string }[] = [
 // actualizaciones" — se había quedado fuera de estos dos por error, no a propósito).
 // Cotización/Embellecimientos van en los 4 accesos por igual (Efraín, 2026-08-12).
 const TABS_BY_BOARD: Partial<Record<ProjectBoardKey, ProyectoTabKey[]>> = {
-  doctallas: ['actualizaciones', 'cotizacion', 'embellecimientos', 'documentacion', 'tallas'],
-  ordenescompra: ['actualizaciones', 'cotizacion', 'embellecimientos', 'documentacion', 'tallas', 'ordenes'],
+  doctallas: ['actualizaciones', 'actividad', 'cotizacion', 'embellecimientos', 'documentacion', 'tallas'],
+  ordenescompra: ['actualizaciones', 'actividad', 'cotizacion', 'embellecimientos', 'documentacion', 'tallas', 'ordenes'],
 };
 
 interface Props {
@@ -167,6 +175,9 @@ export function ProyectoDrawer({ id, boardKey, backLabel, defaultTab, onBack, on
           // grupo V) — almacén no debe ver Cotización ni Embellecimientos (esta
           // última ahora también muestra precio unitario/subtotal por línea).
           .filter((t) => (t.key !== 'cotizacion' && t.key !== 'embellecimientos') || me?.role !== 'almacen')
+          // Historial de cambios: solo Compras/Admin (shared/visibility.ts
+          // canReadActivity, Efraín 2026-08-18) — el endpoint responde 403 al resto.
+          .filter((t) => t.key !== 'actividad' || (me != null && canReadActivity(me.role)))
           .map((t) => (
           <div
             key={t.key}
@@ -183,6 +194,7 @@ export function ProyectoDrawer({ id, boardKey, backLabel, defaultTab, onBack, on
       </div>
 
       {tab === 'actualizaciones' && <ActualizacionesTab slug="proyectos" itemId={id} />}
+      {tab === 'actividad' && <ActividadTab slug="proyectos" itemId={id} />}
       {tab === 'cotizacion' && <CotizacionVirtualTab proyectoId={id} />}
       {tab === 'embellecimientos' && <EmbellecimientosVirtualTab proyectoId={id} />}
       {tab === 'documentacion' && (

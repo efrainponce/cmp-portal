@@ -2,6 +2,66 @@
 
 ## 2026-08-18
 
+- **Compras ya puede modificar las órdenes de compra, no solo generarlas**
+  (Efraín: "los de compras necesitan poder MODIFICAR las órdenes de compra o
+  crear nuevas a partir de productos que puede que no estén en la cotización" +
+  "veo que no se puede modificar el COSTO C/U en órdenes de compra, eso se debe
+  poder hacer y guardar la actividad por si cometemos error"). Todo escribe a
+  Monday por el camino de siempre (outbox / create_subitem / delete_item), no
+  se queda en D1.
+  - Whitelist (`shared/visibility.ts`, decisión de Efraín en esta sesión):
+    **Costo Distr. C/U** (`numeric_mm1dj4fp`), **Descuento** (`numeric_mm1dmsaz`),
+    **Moneda** (`text_mm1gdsvg`) y **Proveedor** (`board_relation_mm1cfgv5`)
+    pasan a `w: compras+admin`; eran `vis: AC` SIN `w`, así que el server
+    rechazaba el PATCH viniera de donde viniera y había que entrar a Monday.
+    La **fecha estimada de entrega del proveedor** (`date_mm20xdtm`) se saca del
+    grupo de solo lectura: la escribe Compras, el vendedor la sigue VIENDO.
+    Ventas y almacén siguen sin ver nada de esto — anclado en
+    `shared/visibility.test.ts`.
+  - Tab Órdenes de compra: cada celda de Cantidad/Costo/Moneda/Descuento/Entrega
+    se edita con un clic y guarda al salir del campo; `⇄` mueve la línea a otro
+    proveedor (o la deja sin proveedor, fuera de toda OC — con eso una línea
+    sobrante sale de la OC sin borrarse) y `✕` la borra. El encabezado de cada
+    tarjeta muestra ahora el **total de esa OC** ya con costo y descuento
+    aplicados, que es contra lo que se revisa que no se fue un cero de más.
+  - **"+ Agregar producto"**: `AgregarLineaModal` existía desde 2026-07-17 con
+    su endpoint, pero no estaba colgado de ninguna pantalla — nunca se pudo
+    usar. Ahora vive en el tab, y el alta lleva también costo/descuento/moneda
+    para que una OC "de la nada" nazca completa (sin costo el PDF salía en
+    ceros). Con un proveedor que no tenía líneas, se abre una tarjeta = una OC
+    nueva.
+  - `DELETE /api/proyectos/:id/lineas/:lineaId` propio en vez del DELETE
+    genérico de `/api/boards`: ese no distingue rol (un vendedor podía borrar
+    líneas del proyecto) ni deja rastro.
+  - **Actividad con el actor real.** Monday atribuye TODA escritura del portal
+    al dueño del token de la API, o sea que su activity_log dice siempre la
+    misma persona — inútil justo donde el punto es saber quién se equivocó. El
+    costeo de la línea del Proyecto (`PORTAL_WRITE_COLUMNS`) se asienta desde
+    `outbox.ts` en el momento del write, con el valor anterior real y el usuario
+    del portal; el eco que llega después por el delta sync se descarta con una
+    ventana de 45 min, así que una edición hecha DENTRO de Monday sí se sigue
+    registrando y no hay renglones duplicados. El borrado se asienta contra el
+    Proyecto padre (una fila colgada del item borrado sería inalcanzable).
+  - Se ve en dos lados, como pidió Efraín: el **reloj** de cada línea (su
+    historial) y el tab **Actividad** del Proyecto (todo el proyecto y sus
+    líneas), que además aplica el filtro de visibilidad por rol que ya tenía el
+    endpoint.
+  - Verificado en local contra el espejo real con el token de Monday
+    invalidado a propósito (producción intacta): PATCH de costo 685.6 → 999.5 →
+    712.3 con su historial, alta de línea con proveedor nuevo abriendo tarjeta
+    ($23,940 = 3 × 8,400 × 0.95), borrado, y el tab Actividad mostrando las dos
+    bajas. Gap conocido: en un Proyecto **nativo** (Zona Efrain) mover una línea
+    con `⇄` deja el id crudo del proveedor como título de la tarjeta hasta el
+    siguiente sync — el alta sí estampa el nombre.
+  - Doble revisión pedida sobre la cotización: editar una línea desde el tab
+    **Cotización** del acceso Órdenes de Compra sí modifica la Oportunidad y sí
+    llega a Monday — `ajustarLineaVirtual` → `applyAjusteLinea` → `submitWrite`
+    sobre `oportunidades_sub` + `flushOutbox`, y las líneas que muestra ese tab
+    son literalmente las de la Oportunidad (`childrenOf`), no una copia. Lo que
+    NO se toca entre sí (por diseño) son la cotización y las líneas del
+    Proyecto: la primera es lo que se le vende al cliente, las segundas lo que
+    se le compra al proveedor.
+
 - Contactos e Instituciones también pueden vivir sin Monday (Efraín: "eso es
   vital también"). Era la fuga que quedaba abierta en Zona Efrain: la
   oportunidad ya nacía invisible del lado de Monday, pero su **Contacto**

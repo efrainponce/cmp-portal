@@ -1,7 +1,10 @@
 // Línea manual del Proyecto — Compras agrega un producto que faltó en el
 // desglose de tallas o una compra independiente, sin tocar el Sheet importado.
 // Con Proveedor puesto, "Generar OC por proveedor" (only_proveedor) ya la
-// toma para una OC real (Efraín, 2026-07-17).
+// toma para una OC real (Efraín, 2026-07-17). Desde 2026-08-18 el alta lleva
+// también costo/descuento/moneda: es el camino para levantar una OC de un
+// producto que NUNCA estuvo en la cotización, y sin costo el PDF de la OC
+// saldría en ceros.
 import { useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import { Modal } from '../../components/core/Modal';
@@ -21,6 +24,9 @@ export function AgregarLineaModal({ proyectoId, onClose, onCreated }: Props) {
   const [talla, setTalla] = useState('');
   const [color, setColor] = useState('');
   const [sku, setSku] = useState('');
+  const [costo, setCosto] = useState('');
+  const [descuento, setDescuento] = useState('');
+  const [moneda, setMoneda] = useState('');
   const [proveedor, setProveedor] = useState<ItemDTO | null>(null);
   const [q, setQ] = useState('');
   const { data } = usePoll('proveedores', q, SOLO_NOMBRE);
@@ -39,6 +45,9 @@ export function AgregarLineaModal({ proyectoId, onClose, onCreated }: Props) {
       talla: talla.trim() || undefined,
       color: color.trim() || undefined,
       sku: sku.trim() || undefined,
+      costo: costo.trim() ? Number(costo) : undefined,
+      descuento: descuento.trim() ? Number(descuento) : undefined,
+      moneda: moneda.trim() || undefined,
     });
     setSaving(false);
     if (!res.ok) { setError(res.error ?? 'No se pudo guardar.'); return; }
@@ -63,6 +72,7 @@ export function AgregarLineaModal({ proyectoId, onClose, onCreated }: Props) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)' }}>
           Para un producto que faltó en el desglose de tallas o una compra independiente — no toca el archivo de tallas ni sus cantidades.
+          Con Proveedor puesto aparece en la OC de ese proveedor; si es uno que no tenía líneas, se abre una tarjeta nueva.
         </div>
         <Field label="Producto *">
           <input value={producto} onChange={(e) => setProducto(e.target.value)} style={inputStyle} />
@@ -75,6 +85,11 @@ export function AgregarLineaModal({ proyectoId, onClose, onCreated }: Props) {
         <Field label="SKU">
           <input value={sku} onChange={(e) => setSku(e.target.value)} style={inputStyle} />
         </Field>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <Field label="Costo Distr. C/U"><input value={costo} onChange={(e) => setCosto(e.target.value)} type="number" style={inputStyle} /></Field>
+          <Field label="Descuento %"><input value={descuento} onChange={(e) => setDescuento(e.target.value)} type="number" style={inputStyle} /></Field>
+          <Field label="Moneda"><input value={moneda} onChange={(e) => setMoneda(e.target.value)} placeholder="MXN" style={inputStyle} /></Field>
+        </div>
 
         <div>
           <div style={{ font: 'var(--text-label-strong)', color: 'var(--ink)', marginBottom: 6 }}>Proveedor</div>

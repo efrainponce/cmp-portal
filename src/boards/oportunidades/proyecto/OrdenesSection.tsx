@@ -1,11 +1,31 @@
 // Tab "Órdenes de compra" de la sección Proyecto — líneas del proyecto
 // agrupadas por proveedor, con botón "Generar OC" acotado a cada uno.
-import { lazy, Suspense, useState } from 'react';
-import { proyectoAction, type ItemDetailDTO, type ItemDTO } from '../../../lib/api';
+//
+// Desde 2026-08-18 la OC se EDITA aquí, no solo se genera (Efraín: "los de
+// compras necesitan poder modificar las órdenes de compra o crear nuevas a
+// partir de productos que puede que no estén en la cotización"): cantidad,
+// costo, moneda, descuento y fecha de entrega se guardan inline contra la
+// línea del Proyecto en Monday (PATCH /api/boards/proyectos_sub/items/:id →
+// outbox), la línea se puede mover de proveedor o borrar, y "+ Agregar
+// producto" levanta una línea que nunca estuvo en la cotización — con
+// proveedor nuevo, eso abre una tarjeta (= una OC) nueva.
+//
+// Cada cambio queda en el log de actividad CON EL USUARIO REAL del portal
+// (worker/lib/activityLog.ts, PORTAL_WRITE_COLUMNS — el activity log de
+// Monday atribuiría todo al dueño del token): el reloj de cada línea muestra
+// su historial, y el tab "Actividad" del Proyecto el del proyecto completo.
+import { lazy, Suspense, useEffect, useState } from 'react';
+import {
+  proyectoAction, patchItem, deleteProyectoLinea, getActivity, usePoll, SOLO_NOMBRE,
+  type ActivityEntryDTO, type ItemDetailDTO, type ItemDTO,
+} from '../../../lib/api';
 import { useMe } from '../../../lib/useMe';
 import { ConfirmButton } from '../../../components/core/ConfirmButton';
+import { Button } from '../../../components/core/Button';
 import { StatusBadge } from '../../../components/core/Badges';
 import { Modal } from '../../../components/core/Modal';
+import { SearchInput } from '../../../components/forms/SearchInput';
+import { AgregarLineaModal } from '../../proyectos/AgregarLineaModal';
 import { fmtMoney } from '../../../lib/format';
 import { PdfIcon } from '../tabs/cotizacion/CotizacionPdfRow';
 import {
@@ -78,34 +98,270 @@ function findLatestOcFile(files: { url: string; name: string }[], candidatos: st
   return latest;
 }
 
-const PROVEEDOR_GRID_TEMPLATE = '1.6fr 0.9fr 0.8fr 0.7fr 0.6fr 1.1fr 0.7fr 1.5fr 1fr';
+// 11 columnas en el ancho del drawer (~856px útiles con maxWidth 920): las de
+// acciones van al final y TIENEN que caber sin scroll horizontal, o el reloj y
+// el borrar quedan invisibles. Producto se lleva el sobrante y parte el texto.
+const PROVEEDOR_GRID_TEMPLATE = '1.25fr 0.7fr 0.6fr 0.5fr 0.4fr 0.75fr 0.45fr 0.45fr 1fr 0.8fr 0.5fr';
 const PROVEEDOR_GRID_COLS: { label: string; align: 'left' | 'right' }[] = [
   { label: 'Producto', align: 'left' }, { label: 'SKU', align: 'left' },
   { label: 'Color', align: 'left' }, { label: 'Talla', align: 'left' },
   { label: 'Cant.', align: 'right' }, { label: 'Costo Distr. C/U', align: 'right' },
-  { label: 'Desc. %', align: 'right' }, { label: 'Estado', align: 'left' },
-  { label: 'Entrega prov.', align: 'left' },
+  { label: 'Moneda', align: 'left' }, { label: 'Desc. %', align: 'right' },
+  { label: 'Estado', align: 'left' }, { label: 'Entrega prov.', align: 'left' },
+  { label: '', align: 'left' },
 ];
 
-function ProveedorLineaRow({ l }: { l: ItemDTO }) {
-  const estado = l.cols[S_ESTADO]?.text;
-  const color = estado ? ESTADO_PRODUCTO_COLORS[estado] : undefined;
-  const costo = Number(l.cols[S_COSTO]?.value ?? l.cols[S_COSTO]?.text);
-  const moneda = l.cols[S_MONEDA]?.text;
-  const cellStyle = { font: 'var(--text-label)', color: 'var(--ink-secondary)' } as const;
+const CELL_STYLE = { font: 'var(--text-label)', color: 'var(--ink-secondary)' } as const;
+
+/** Celda editable de una línea del Proyecto: guarda al salir del campo (o con
+ * Enter) contra Monday vía PATCH, y pinta el valor nuevo de inmediato aunque
+ * el espejo todavía no lo refleje — mismo patrón `overrides` que la captura de
+ * cantidades en TallasSection. Escape cancela. */
+function EditableCell({ value, onSave, align = 'left', type = 'text', suffix, placeholder, title }: {
+  value: string;
+  onSave: (v: string) => Promise<void>;
+  align?: 'left' | 'right';
+  type?: 'text' | 'number' | 'date';
+  suffix?: string;
+  placeholder?: string;
+  title?: string;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(false);
+
+  const commit = async () => {
+    const next = (draft ?? '').trim();
+    setDraft(null);
+    if (next === value.trim()) return;
+    setSaving(true);
+    setError(false);
+    try {
+      await onSave(next);
+    } catch {
+      setError(true);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (draft !== null) {
+    return (
+      <input
+        autoFocus
+        type={type}
+        value={draft}
+        onChange={e => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={e => {
+          if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+          if (e.key === 'Escape') setDraft(null);
+        }}
+        style={{
+          width: '100%', boxSizing: 'border-box', font: 'var(--text-label)', color: 'var(--ink)',
+          border: '1px solid var(--accent)', borderRadius: 'var(--radius-md)', padding: '3px 5px',
+          textAlign: align,
+        }}
+      />
+    );
+  }
+
+  const shown = value.trim();
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: PROVEEDOR_GRID_TEMPLATE, gap: 8, padding: '8px 12px', borderTop: '1px solid var(--border-subtle)', alignItems: 'center' }}>
-      <div style={{ ...cellStyle, color: 'var(--ink)', minWidth: 0, overflowWrap: 'anywhere' }}>{l.cols[S_PRODUCTO]?.text || l.name}</div>
-      <div style={cellStyle}>{l.cols[S_SKU]?.text || '—'}</div>
-      <div style={cellStyle}>{l.cols[S_COLOR]?.text || '—'}</div>
-      <div style={cellStyle}>{l.cols[S_TALLA]?.text || '—'}</div>
-      <div style={{ ...cellStyle, color: 'var(--ink)', textAlign: 'right' }}>{l.cols[S_CANTIDAD]?.text || '0'}</div>
-      <div style={{ ...cellStyle, color: 'var(--ink)', textAlign: 'right' }}>
-        {Number.isFinite(costo) && costo > 0 ? `${fmtMoney(costo)}${moneda ? ' ' + moneda : ''}` : '—'}
+    <div
+      onClick={() => setDraft(shown)}
+      title={title ?? 'Clic para editar'}
+      style={{
+        ...CELL_STYLE, textAlign: align, cursor: 'text', minWidth: 0,
+        borderRadius: 'var(--radius-md)', padding: '3px 5px',
+        border: `1px dashed ${error ? 'var(--status-perdida)' : 'transparent'}`,
+        background: saving ? 'var(--bg-sunken)' : 'transparent',
+        color: shown ? 'var(--ink)' : 'var(--ink-quiet)',
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+      }}
+      className="row-hover"
+    >
+      {saving ? '…' : error ? 'error' : shown ? `${shown}${suffix ?? ''}` : (placeholder ?? '—')}
+    </div>
+  );
+}
+
+/** Historial de una línea: las entradas del log de actividad del Proyecto que
+ * son de ESTA línea (el caller ya las trajo todas de una). Es lo que Efraín
+ * pidió "por si cometemos error" — quién cambió el costo, de cuánto a cuánto. */
+function LineaHistorial({ entries, onClose, titulo }: {
+  entries: ActivityEntryDTO[]; onClose: () => void; titulo: string;
+}) {
+  return (
+    <Modal title={`Historial — ${titulo}`} onClose={onClose} width={520}>
+      {entries.length === 0 ? (
+        <div style={{ font: 'var(--text-label)', color: 'var(--ink-quiet)' }}>
+          Sin cambios registrados en esta línea todavía.
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          {entries.map((e, i) => (
+            <div key={i} style={{ padding: '9px 2px', borderTop: i === 0 ? 'none' : '1px solid var(--border-subtle)' }}>
+              <div style={{ font: 'var(--text-label)', color: 'var(--ink)' }}>
+                {(e.actorName ?? 'Alguien')}
+                {e.columnTitle ? ` cambió ${e.columnTitle}` : ' hizo un cambio'}
+                {e.previousText ? ` de "${e.previousText}"` : ''}
+                {e.text ? ` a "${e.text}"` : ' (lo vació)'}
+              </div>
+              <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)', marginTop: 2 }}>
+                {new Date(e.at).toLocaleString('es-MX', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+/** Mover una línea a otro proveedor = sacarla de esta OC y meterla en la de
+ * otro (o dejarla sin proveedor, fuera de toda OC). Escribe el mismo
+ * board_relation que agrupa las tarjetas. */
+function MoverProveedorModal({ lineaId, onClose, onMoved }: {
+  lineaId: string; onClose: () => void; onMoved: () => void;
+}) {
+  const [q, setQ] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const { data } = usePoll('proveedores', q, SOLO_NOMBRE);
+  const opciones = data?.items ?? [];
+
+  const mover = async (proveedorId: string) => {
+    setSaving(true);
+    setError(null);
+    try {
+      await patchItem('proyectos_sub', lineaId, { [S_PROVEEDOR]: proveedorId });
+      onMoved();
+      onClose();
+    } catch {
+      setError('No se pudo mover la línea.');
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal title="Mover línea a otro proveedor" onClose={onClose} width={440}>
+      <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)', marginBottom: 10 }}>
+        La línea sale de la OC actual y entra en la del proveedor que elijas. Si aún no tiene tarjeta, se crea una.
       </div>
-      <div style={{ ...cellStyle, textAlign: 'right' }}>{l.cols[S_DESCUENTO]?.text ? `${l.cols[S_DESCUENTO].text}%` : '—'}</div>
-      <div>{estado && color ? <StatusBadge label={estado} color={color} tint={color + '22'} /> : <span style={{ ...cellStyle, color: 'var(--ink-quiet)' }}>—</span>}</div>
-      <div style={cellStyle}>{l.cols[S_ENTREGA_PROV]?.text || '—'}</div>
+      <SearchInput value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar proveedor…" style={{ maxWidth: 'none' }} />
+      <div style={{ maxHeight: 240, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', marginTop: 8 }}>
+        {opciones.length === 0 ? (
+          <div style={{ padding: 10, font: 'var(--text-label)', color: 'var(--ink-quiet)' }}>Sin resultados.</div>
+        ) : opciones.map(p => (
+          <div
+            key={p.id}
+            className="row-hover"
+            onClick={saving ? undefined : () => mover(p.id)}
+            style={{ padding: '8px 12px', borderBottom: '1px solid var(--border-subtle)', font: 'var(--text-label)', color: 'var(--ink)', cursor: saving ? 'default' : 'pointer' }}
+          >
+            {p.name}
+          </div>
+        ))}
+      </div>
+      <div
+        onClick={saving ? undefined : () => mover('')}
+        style={{ marginTop: 10, font: 'var(--text-label)', color: 'var(--accent)', cursor: saving ? 'default' : 'pointer' }}
+      >
+        Quitarle el proveedor (la saca de toda OC)
+      </div>
+      {error && <div style={{ marginTop: 8, color: 'var(--status-perdida)', font: 'var(--text-label)' }}>{error}</div>}
+    </Modal>
+  );
+}
+
+const ICON_BTN_STYLE = {
+  cursor: 'pointer', font: 'var(--text-caption)', color: 'var(--ink-tertiary)',
+  padding: '2px 4px', borderRadius: 'var(--radius-md)', userSelect: 'none',
+} as const;
+
+function ProveedorLineaRow({ l, proyectoId, canEdit, historial, onChanged }: {
+  l: ItemDTO; proyectoId: string; canEdit: boolean; historial: ActivityEntryDTO[]; onChanged: () => void;
+}) {
+  // Overrides locales: el espejo D1 tarda en confirmar el write a Monday, así
+  // que la celda muestra lo recién guardado en vez de regresar al valor viejo
+  // (mismo patrón que el resto de las previews locales del portal).
+  const [overrides, setOverrides] = useState<Record<string, string>>({});
+  const [verHistorial, setVerHistorial] = useState(false);
+  const [mover, setMover] = useState(false);
+  const [borrando, setBorrando] = useState(false);
+  const [errorBorrar, setErrorBorrar] = useState<string | null>(null);
+
+  const val = (colId: string) => overrides[colId] ?? l.cols[colId]?.text ?? '';
+  const save = (colId: string) => async (v: string) => {
+    await patchItem('proyectos_sub', l.id, { [colId]: v });
+    setOverrides(p => ({ ...p, [colId]: v }));
+    onChanged();
+  };
+
+  const estado = l.cols[S_ESTADO]?.text;
+  const estadoColor = estado ? ESTADO_PRODUCTO_COLORS[estado] : undefined;
+  const costoRaw = val(S_COSTO).replace(/,/g, '');
+  const costo = Number(costoRaw);
+  const moneda = val(S_MONEDA);
+  const nombreLinea = l.cols[S_PRODUCTO]?.text || l.name;
+
+  const borrar = async () => {
+    setBorrando(true);
+    setErrorBorrar(null);
+    const res = await deleteProyectoLinea(proyectoId, l.id);
+    setBorrando(false);
+    if (!res.ok) { setErrorBorrar(res.error ?? 'No se pudo eliminar.'); return; }
+    onChanged();
+  };
+
+  return (
+    <div style={{ borderTop: '1px solid var(--border-subtle)' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: PROVEEDOR_GRID_TEMPLATE, gap: 8, padding: '6px 12px', alignItems: 'center' }}>
+        <div style={{ ...CELL_STYLE, color: 'var(--ink)', minWidth: 0, overflowWrap: 'anywhere' }}>{nombreLinea}</div>
+        <div style={CELL_STYLE}>{l.cols[S_SKU]?.text || '—'}</div>
+        <div style={CELL_STYLE}>{l.cols[S_COLOR]?.text || '—'}</div>
+        <div style={CELL_STYLE}>{l.cols[S_TALLA]?.text || '—'}</div>
+        {canEdit ? (
+          <>
+            <EditableCell value={val(S_CANTIDAD)} onSave={save(S_CANTIDAD)} align="right" type="number" placeholder="0" />
+            <EditableCell value={costoRaw} onSave={save(S_COSTO)} align="right" type="number" placeholder="Sin costo" title="Costo que se le paga al proveedor — va en el PDF de la OC" />
+            <EditableCell value={moneda} onSave={save(S_MONEDA)} placeholder="MXN" />
+            <EditableCell value={val(S_DESCUENTO)} onSave={save(S_DESCUENTO)} align="right" type="number" suffix="%" />
+          </>
+        ) : (
+          <>
+            <div style={{ ...CELL_STYLE, color: 'var(--ink)', textAlign: 'right' }}>{val(S_CANTIDAD) || '0'}</div>
+            <div style={{ ...CELL_STYLE, color: 'var(--ink)', textAlign: 'right' }}>
+              {Number.isFinite(costo) && costo > 0 ? fmtMoney(costo) : '—'}
+            </div>
+            <div style={CELL_STYLE}>{moneda || '—'}</div>
+            <div style={{ ...CELL_STYLE, textAlign: 'right' }}>{val(S_DESCUENTO) ? `${val(S_DESCUENTO)}%` : '—'}</div>
+          </>
+        )}
+        <div>{estado && estadoColor ? <StatusBadge label={estado} color={estadoColor} tint={estadoColor + '22'} /> : <span style={{ ...CELL_STYLE, color: 'var(--ink-quiet)' }}>—</span>}</div>
+        {canEdit
+          ? <EditableCell value={val(S_ENTREGA_PROV)} onSave={save(S_ENTREGA_PROV)} type="date" placeholder="Sin fecha" />
+          : <div style={CELL_STYLE}>{val(S_ENTREGA_PROV) || '—'}</div>}
+        <div style={{ display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
+          <span onClick={() => setVerHistorial(true)} title="Ver quién cambió qué en esta línea" style={ICON_BTN_STYLE}>🕐</span>
+          {canEdit && <span onClick={() => setMover(true)} title="Mover esta línea a otro proveedor" style={ICON_BTN_STYLE}>⇄</span>}
+          {canEdit && (
+            <span
+              onClick={borrando ? undefined : () => { if (window.confirm(`¿Eliminar la línea "${nombreLinea}"? Se borra también en Monday.`)) borrar(); }}
+              title="Eliminar esta línea del proyecto"
+              style={{ ...ICON_BTN_STYLE, color: borrando ? 'var(--ink-quiet)' : 'var(--status-perdida)' }}
+            >
+              ✕
+            </span>
+          )}
+        </div>
+      </div>
+      {errorBorrar && (
+        <div style={{ padding: '0 12px 8px', font: 'var(--text-caption)', color: 'var(--status-perdida)' }}>{errorBorrar}</div>
+      )}
+      {verHistorial && <LineaHistorial entries={historial} titulo={nombreLinea} onClose={() => setVerHistorial(false)} />}
+      {mover && <MoverProveedorModal lineaId={l.id} onClose={() => setMover(false)} onMoved={onChanged} />}
     </div>
   );
 }
@@ -184,11 +440,23 @@ function NativeOcButton({ proyectoId, proveedorId }: { proyectoId: string; prove
  * Método/Condiciones de pago son overrides SOLO de esta OC (WhatsApp 2026-08-04:
  * antes el default del Proyecto se aplicaba igual a todos los proveedores) —
  * prellenados con el default, no se guardan de vuelta a Monday. */
-function ProveedorCard({ group, proyecto, oppId, reload }: { group: ProveedorGroup; proyecto: ItemDetailDTO; oppId: string | null; reload: () => void }) {
+function ProveedorCard({ group, proyecto, oppId, reload, canEdit, activity }: {
+  group: ProveedorGroup; proyecto: ItemDetailDTO; oppId: string | null; reload: () => void;
+  canEdit: boolean; activity: ActivityEntryDTO[];
+}) {
   const [outcome, setOutcome] = useState<ActionOutcome | null>(null);
   const [metodoPago, setMetodoPago] = useState(proyecto.cols[P_METODO_PAGO]?.text ?? '');
   const [condPago, setCondPago] = useState(proyecto.cols[P_COND_PAGO]?.text ?? '');
   const cantidadTotal = group.lineas.reduce((s, r) => s + (Number(r.cols[S_CANTIDAD]?.text?.replace(/,/g, '')) || 0), 0);
+  // Total de la OC con el costo YA editado — es el número contra el que Compras
+  // revisa que no se le fue un cero de más al capturar (Efraín, 2026-08-18).
+  const montoTotal = group.lineas.reduce((s, r) => {
+    const cant = Number(r.cols[S_CANTIDAD]?.text?.replace(/,/g, '')) || 0;
+    const costo = Number(r.cols[S_COSTO]?.text?.replace(/,/g, '')) || 0;
+    const desc = Number(r.cols[S_DESCUENTO]?.text?.replace(/,/g, '')) || 0;
+    return s + cant * costo * (1 - desc / 100);
+  }, 0);
+  const monedaOc = group.lineas.map(r => r.cols[S_MONEDA]?.text).find(Boolean) ?? '';
   const ocFiles = toR2Files(parseFiles(proyecto.cols[P_OC_PDF]?.text), oppId, 'oc');
   const ocFile = findLatestOcFile(ocFiles, [group.nombre, group.nombreItem]);
 
@@ -216,6 +484,7 @@ function ProveedorCard({ group, proyecto, oppId, reload }: { group: ProveedorGro
             <div style={{ font: 'var(--text-body-strong)', color: 'var(--ink)' }}>{group.nombre}</div>
             <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)' }}>
               {group.correo ? `${group.correo} · ` : ''}{group.lineas.length} línea{group.lineas.length === 1 ? '' : 's'} · {cantidadTotal} pzas
+              {montoTotal > 0 ? ` · ${fmtMoney(montoTotal)}${monedaOc ? ' ' + monedaOc : ''}` : ''}
             </div>
           </div>
         </div>
@@ -242,11 +511,20 @@ function ProveedorCard({ group, proyecto, oppId, reload }: { group: ProveedorGro
         </div>
       </div>
       <div style={{ overflowX: 'auto' }}>
-        <div style={{ minWidth: 720 }}>
+        <div style={{ minWidth: 840 }}>
           <div style={{ display: 'grid', gridTemplateColumns: PROVEEDOR_GRID_TEMPLATE, gap: 8, padding: '8px 12px', font: 'var(--text-caption)', color: 'var(--ink-tertiary)' }}>
             {PROVEEDOR_GRID_COLS.map(c => <div key={c.label} style={{ textAlign: c.align }}>{c.label}</div>)}
           </div>
-          {group.lineas.map(l => <ProveedorLineaRow key={l.id} l={l} />)}
+          {group.lineas.map(l => (
+            <ProveedorLineaRow
+              key={l.id}
+              l={l}
+              proyectoId={proyecto.id}
+              canEdit={canEdit}
+              historial={activity.filter(e => e.itemId === l.id)}
+              onChanged={reload}
+            />
+          ))}
         </div>
       </div>
       {outcome && (
@@ -260,11 +538,19 @@ function ProveedorCard({ group, proyecto, oppId, reload }: { group: ProveedorGro
 
 /** Grid de líneas del proyecto agrupadas por proveedor — el equivalente por-proveedor
  * de la tab Cotización, para la tab Órdenes de compra. */
-function ProveedorGrid({ lineas, proyecto, oppId, reload }: { lineas: ItemDTO[]; proyecto: ItemDetailDTO; oppId: string | null; reload: () => void }) {
+function ProveedorGrid({ lineas, proyecto, oppId, reload, canEdit, activity }: {
+  lineas: ItemDTO[]; proyecto: ItemDetailDTO; oppId: string | null; reload: () => void;
+  canEdit: boolean; activity: ActivityEntryDTO[];
+}) {
   const grupos = groupByProveedor(lineas);
   return (
     <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
-      {grupos.map(g => <ProveedorCard key={g.key} group={g} proyecto={proyecto} oppId={oppId} reload={reload} />)}
+      {grupos.map(g => (
+        <ProveedorCard
+          key={g.key} group={g} proyecto={proyecto} oppId={oppId} reload={reload}
+          canEdit={canEdit} activity={activity}
+        />
+      ))}
     </div>
   );
 }
@@ -272,6 +558,24 @@ function ProveedorGrid({ lineas, proyecto, oppId, reload }: { lineas: ItemDTO[];
 export function ProyectoOrdenesSection({ state, oppId }: { state: ProyectoState; oppId: string | null }) {
   const me = useMe();
   const canCompras = me?.role === 'compras' || me?.role === 'admin';
+  const [agregar, setAgregar] = useState(false);
+  // Actividad del Proyecto + TODAS sus líneas en una sola llamada (el endpoint
+  // ya agrega los hijos, worker/routes/boards.ts): cada línea filtra la suya
+  // para el reloj, en vez de una llamada por renglón.
+  const [activity, setActivity] = useState<ActivityEntryDTO[]>([]);
+  // `nonce` y no el largo de children: editar un costo no cambia el número de
+  // líneas, y sin esto el reloj seguía mostrando "sin cambios" justo después
+  // de guardar (visto en la prueba local 2026-08-18).
+  const [nonce, setNonce] = useState(0);
+  const proyectoId = state.proyecto?.id;
+  useEffect(() => {
+    // Solo Compras/Admin: el historial responde 403 al resto (shared/visibility.ts
+    // canReadActivity) y el grid con el reloj tampoco se les pinta.
+    if (!proyectoId || !canCompras) return;
+    getActivity('proyectos', proyectoId).then(setActivity).catch(() => setActivity([]));
+  }, [proyectoId, canCompras, nonce]);
+  const onChanged = () => { state.reload(); setNonce(n => n + 1); };
+
   if (state.loading) return <Shell hint="Buscando el proyecto ligado…" />;
   if (!state.proyecto) {
     return <Shell hint="Esta oportunidad aún no tiene Proyecto en Monday — se crea al GANAR la oportunidad; las órdenes de compra se generan desde el proyecto." />;
@@ -282,14 +586,33 @@ export function ProyectoOrdenesSection({ state, oppId }: { state: ProyectoState;
     <div style={{ marginTop: 16 }}>
       <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)', marginBottom: 10 }}>
         Proyecto {p.name} — una OC por proveedor, con firmas Elaborado → Revisado → Autorizado (DocuSeal).
+        {canCompras && ' Cantidad, costo, moneda, descuento y entrega se editan aquí mismo (clic en la celda) y se guardan en Monday.'}
       </div>
-      <ProyectoActionBar proyecto={p} reload={state.reload} actions={['generar-oc']} />
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <ProyectoActionBar proyecto={p} reload={state.reload} actions={['generar-oc']} />
+        {canCompras && (
+          <Button variant="secondary" onClick={() => setAgregar(true)}>
+            + Agregar producto
+          </Button>
+        )}
+      </div>
       {canCompras ? (
         lineas.length > 0
-          ? <ProveedorGrid lineas={lineas} proyecto={p} oppId={oppId} reload={state.reload} />
-          : <div style={{ marginTop: 14, font: 'var(--text-label)', color: 'var(--ink-quiet)' }}>Aún no hay líneas en el proyecto — importa las tallas primero.</div>
+          ? <ProveedorGrid lineas={lineas} proyecto={p} oppId={oppId} reload={onChanged} canEdit activity={activity} />
+          : (
+            <div style={{ marginTop: 14, font: 'var(--text-label)', color: 'var(--ink-quiet)' }}>
+              Aún no hay líneas en el proyecto — importa las tallas primero, o agrega un producto a mano con el botón de arriba.
+            </div>
+          )
       ) : (
         <div style={{ marginTop: 14, font: 'var(--text-label)', color: 'var(--ink-quiet)' }}>El desglose por proveedor lo gestiona Compras.</div>
+      )}
+      {agregar && (
+        <AgregarLineaModal
+          proyectoId={p.id}
+          onClose={() => setAgregar(false)}
+          onCreated={onChanged}
+        />
       )}
     </div>
   );

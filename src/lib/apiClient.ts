@@ -563,6 +563,9 @@ export interface ProyectoLineaInput {
   talla?: string;
   color?: string;
   sku?: string;
+  costo?: number;
+  descuento?: number;
+  moneda?: string;
 }
 
 /** Línea manual del Proyecto (producto faltante / compra independiente) —
@@ -577,6 +580,17 @@ export async function addProyectoLinea(
   });
   const body = await res.json();
   if (!res.ok) return { ok: false, error: body.error ?? 'No se pudo crear la línea.' };
+  return body;
+}
+
+/** Borra una línea del Proyecto (Compras/admin) — borra el subitem en Monday y
+ * en el espejo, y deja el rastro en el log de actividad del Proyecto. */
+export async function deleteProyectoLinea(
+  proyectoId: string, lineaId: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const res = await apiFetch(`/proyectos/${proyectoId}/lineas/${lineaId}`, { method: 'DELETE' });
+  const body = await res.json();
+  if (!res.ok) return { ok: false, error: body.error ?? 'No se pudo eliminar la línea.' };
   return body;
 }
 

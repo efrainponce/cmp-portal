@@ -53,10 +53,36 @@ const WHITELIST: Partial<Record<BoardSlug, Set<string>>> = {
     'dropdown_mm07pjsv', 'board_relation_mm1cwqky', 'boolean_mm5cqtjs', 'text_mm5v6jhj',
     'long_text_mm1tcga0',
   ]),
+  // Líneas del Proyecto — el costeo de la OC (Efraín, 2026-08-18: "guardar la
+  // actividad por si cometemos error"). Estado del producto NO va aquí: ya
+  // tiene su propio historial con comentario (worker/lib/estadoProducto.ts) y
+  // duplicarlo llenaría de ruido el tab.
+  proyectos_sub: new Set([
+    'numeric_mm1dj4fp', 'numeric_mm1dmsaz', 'text_mm1gdsvg', 'numeric_mm0hj2q4',
+    'board_relation_mm1cfgv5', 'date_mm20xdtm',
+  ]),
+};
+
+// Columnas cuyo cambio DESDE EL PORTAL se registra directo en el momento del
+// write (worker/lib/outbox.ts), aunque el item sea real de Monday. Motivo:
+// Monday atribuye TODA escritura del portal al dueño del token de la API, así
+// que su activity_log dice siempre la misma persona — inútil justo donde el
+// punto es saber quién se equivocó (Efraín, 2026-08-18, costo de la OC).
+// El camino de Monday sigue activo para estas columnas (alguien puede editarlas
+// dentro de Monday.com); el eco del propio portal se descarta al persistir —
+// ver `recentPortalWrite` en persistActivityEntries.
+const PORTAL_WRITE_COLUMNS: Partial<Record<BoardSlug, Set<string>>> = {
+  proyectos_sub: WHITELIST.proyectos_sub,
 };
 
 function isWhitelisted(boardSlug: BoardSlug, columnId: string): boolean {
   return WHITELIST[boardSlug]?.has(columnId) ?? false;
+}
+
+/** ¿Este write del portal se registra directo, sin esperar al activity_log de
+ * Monday? Lo consulta worker/lib/outbox.ts para armar las filas con el actor real. */
+export function isPortalWriteColumn(boardSlug: BoardSlug, columnId: string): boolean {
+  return PORTAL_WRITE_COLUMNS[boardSlug]?.has(columnId) ?? false;
 }
 
 /** `created_at` de Monday son ticks de 100ns desde epoch Unix (verificado en
@@ -143,6 +169,32 @@ function dedupeKey(r: ParsedRow): string {
   return `${r.boardId}:${r.itemId}:${r.event}:${r.columnId ?? '_'}:${r.createdAtTicks}`;
 }
 
+// Ventana para reconocer el eco de un write del portal en el activity_log de
+// Monday. El delta sync corre cada 15 min sobre una ventana que arranca en su
+// checkpoint anterior, así que un evento puede tardar hasta ~15 min en llegar;
+// 45 dan holgura para una corrida saltada sin abrir tanto como para tragarse
+// una edición distinta. Si alguien pone EL MISMO valor a mano en Monday dentro
+// de la ventana, esa fila se descarta — no se pierde información (el valor
+// nuevo ya está registrado), solo el segundo asiento redundante.
+const PORTAL_ECHO_WINDOW_MS = 45 * 60 * 1000;
+
+/** ¿Ya existe una fila de este mismo cambio, escrita directo por el portal
+ * (worker/lib/outbox.ts), dentro de la ventana de eco? Solo se consulta para
+ * las columnas de PORTAL_WRITE_COLUMNS — el resto no tiene camino directo con
+ * el que chocar. */
+async function recentPortalWrite(env: Env, r: ParsedRow, createdAt: string): Promise<boolean> {
+  const since = new Date(new Date(createdAt).getTime() - PORTAL_ECHO_WINDOW_MS).toISOString();
+  const hit = await env.DB.prepare(
+    `SELECT 1 FROM activity_log
+      WHERE board_id = ? AND item_id = ? AND column_id = ?
+        AND created_at >= ? AND created_at <= ?
+        AND IFNULL(new_text, '') = IFNULL(?, '')
+        AND dedupe_key LIKE 'direct:%'
+      LIMIT 1`,
+  ).bind(r.boardId, r.itemId, r.columnId, since, createdAt, r.newText).first();
+  return hit != null;
+}
+
 /** Filtra + persiste. Best-effort por fila: un tick/columna rara en un evento
  * no debe tumbar el resto del batch (mismo espíritu que el resto del delta
  * sync — ver worker/sync/delta.ts). Devuelve cuántas filas nuevas insertó. */
@@ -155,6 +207,9 @@ export async function persistActivityEntries(env: Env, entries: ActivityLogEntry
   for (const r of rows) {
     try {
       const createdAt = ticksToIso(r.createdAtTicks);
+      const slug = boardById(r.boardId)?.slug;
+      if (slug && r.columnId && isPortalWriteColumn(slug, r.columnId)
+          && await recentPortalWrite(env, r, createdAt)) continue;
       const result = await env.DB.prepare(
         `INSERT OR IGNORE INTO activity_log
           (board_id, item_id, event, column_id, column_title, previous_text, new_text, user_id, created_at, dedupe_key)
@@ -170,20 +225,28 @@ export async function persistActivityEntries(env: Env, entries: ActivityLogEntry
 }
 
 export interface DirectChange {
-  boardId: number; itemId: number; event: 'create_pulse' | 'update_name' | 'update_column_value';
+  // 'delete_pulse' no existe en el activity_log de Monday (borrar un item se
+  // registra allá como un evento de otra forma que el delta sync no jala): lo
+  // asienta el portal contra el item PADRE, porque una fila colgada del item
+  // borrado sería inalcanzable — GET .../activity arma sus targets con los
+  // hijos VIGENTES (worker/routes/boards.ts).
+  boardId: number; itemId: number; event: 'create_pulse' | 'update_name' | 'update_column_value' | 'delete_pulse';
   columnId: string | null; columnTitle: string | null;
   previousText: string | null; newText: string | null;
   userId: number;
 }
 
-/** Escritura directa para items NATIVOS (ver nota de archivo) — sin Monday del
- * otro lado, el caller (outbox.ts/createRecord.ts) ya trae todo lo que
- * parseEntry normalmente extrae de un activity_log real: valor previo/nuevo,
- * actor y momento del write. Misma whitelist que el camino de Monday, mismo
- * best-effort por fila (nunca debe tumbar el write real que la dispara).
- * Dedupe con UUID: a diferencia del camino de Monday (poll con ventanas que
- * se traslapan), esto es un INSERT único por write — no hay nada que
- * deduplicar contra corridas anteriores. */
+/** Escritura directa, sin pasar por el activity_log de Monday. Dos llamadores:
+ *  - items NATIVOS (ver nota de archivo): no existen del lado de Monday.
+ *  - columnas de PORTAL_WRITE_COLUMNS en items REALES: Monday sí las registra,
+ *    pero atribuidas al dueño del token de la API; el actor real solo lo
+ *    conoce el portal. El eco de Monday se descarta después (recentPortalWrite).
+ * El caller (outbox.ts/createRecord.ts) ya trae todo lo que parseEntry extrae
+ * de un activity_log real: valor previo/nuevo, actor y momento del write.
+ * Best-effort por fila — nunca debe tumbar el write real que la dispara.
+ * Dedupe con UUID: es un INSERT único por write, no un poll con ventanas que
+ * se traslapan; el prefijo `direct:` es lo que marca la fila como "escrita por
+ * el portal" para recentPortalWrite. */
 export async function recordDirectChanges(env: Env, boardSlug: BoardSlug, changes: DirectChange[]): Promise<void> {
   const relevant = changes.filter(c => c.event !== 'update_column_value' || isWhitelisted(boardSlug, c.columnId ?? ''));
   if (relevant.length === 0) return;
@@ -197,7 +260,7 @@ export async function recordDirectChanges(env: Env, boardSlug: BoardSlug, change
          VALUES (?,?,?,?,?,?,?,?,?,?)`,
       ).bind(
         c.boardId, c.itemId, c.event, c.columnId, c.columnTitle,
-        c.previousText, c.newText, c.userId, now, `native:${crypto.randomUUID()}`,
+        c.previousText, c.newText, c.userId, now, `direct:${crypto.randomUUID()}`,
       ).run();
     } catch { /* best-effort — nunca debe tumbar el write real */ }
   }

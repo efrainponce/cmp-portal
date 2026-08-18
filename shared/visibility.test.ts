@@ -3,7 +3,7 @@
 // readableCols(). Un cambio accidental aquí no lo atrapa el typecheck (todo son
 // strings), así que estos tests anclan las reglas que importan.
 import { describe, it, expect } from 'vitest';
-import { VISIBILITY, canRead, canReadBoard, canWrite, readableCols } from './visibility';
+import { VISIBILITY, canRead, canReadActivity, canReadBoard, canWrite, readableCols } from './visibility';
 import { COLUMN_META } from './column-meta.gen';
 import type { BoardSlug } from './boards';
 import type { Role } from './types';
@@ -210,6 +210,42 @@ describe('cantidad por talla — editable inline post-import (Efraín, 2026-08-0
   });
 });
 
+describe('costeo de la OC — editable por Compras (Efraín, 2026-08-18)', () => {
+  // "No se puede modificar el COSTO C/U en órdenes de compra, eso se debe poder
+  // hacer": estas columnas eran `vis: AC` SIN `w`, así que el server rechazaba
+  // el PATCH viniera de donde viniera y había que entrar a Monday.
+  const COSTEO_OC = [
+    'numeric_mm1dj4fp',        // Costo Distr. C/U
+    'numeric_mm1dmsaz',        // Descuento %
+    'text_mm1gdsvg',           // Moneda
+    'board_relation_mm1cfgv5', // Proveedor (mueve la línea de una OC a otra)
+  ];
+
+  it('compras y admin escriben el costeo de la línea del Proyecto', () => {
+    for (const col of COSTEO_OC) {
+      for (const role of ['compras', 'admin'] as Role[]) {
+        expect(canWrite('proyectos_sub', col, role), `${col}/${role}`).toBe(true);
+      }
+    }
+  });
+
+  it('ventas y almacén NO los escriben ni los ven (regla dura 2026-07-30)', () => {
+    for (const col of COSTEO_OC) {
+      for (const role of ['vendedor', 'almacen'] as Role[]) {
+        expect(canWrite('proyectos_sub', col, role), `${col}/${role}`).toBe(false);
+        expect(canRead('proyectos_sub', col, role), `${col}/${role}`).toBe(false);
+      }
+    }
+  });
+
+  it('la fecha de entrega del proveedor la escribe compras y el vendedor la VE', () => {
+    expect(canWrite('proyectos_sub', 'date_mm20xdtm', 'compras')).toBe(true);
+    expect(canWrite('proyectos_sub', 'date_mm20xdtm', 'admin')).toBe(true);
+    expect(canWrite('proyectos_sub', 'date_mm20xdtm', 'vendedor')).toBe(false);
+    expect(canRead('proyectos_sub', 'date_mm20xdtm', 'vendedor')).toBe(true);
+  });
+});
+
 describe('nombre del item — renombrable desde el drawer (Efraín, 2026-08-13)', () => {
   // `name` no es una columna de Monday: viaja como pseudo-columna en el mismo
   // PATCH y worker/lib/outbox.ts la trata aparte (espejo en items.name, echo
@@ -232,5 +268,20 @@ describe('nombre del item — renombrable desde el drawer (Efraín, 2026-08-13)'
         expect(canWrite(slug, 'name', role), `${slug}/${role}`).toBe(false);
       }
     }
+  });
+});
+
+describe('historial de actividad — solo Compras y Admin (Efraín, 2026-08-18)', () => {
+  // El endpoint entero se niega con 403 (worker/routes/boards.ts): el vendedor
+  // sí puede leer sus oportunidades, así que sin este gate veía el rastro de
+  // quién cambió qué. La UI solo esconde el tab y los accesos (📋/🕐).
+  it('vendedor y almacén no ven el historial', () => {
+    expect(canReadActivity('vendedor')).toBe(false);
+    expect(canReadActivity('almacen')).toBe(false);
+  });
+
+  it('compras y admin sí', () => {
+    expect(canReadActivity('compras')).toBe(true);
+    expect(canReadActivity('admin')).toBe(true);
   });
 });

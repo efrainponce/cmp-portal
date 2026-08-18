@@ -991,6 +991,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
   const LINEA_MANUAL_COL_TYPES: Record<string, string> = {
     text_mm0hs17x: 'text', board_relation_mm1cfgv5: 'board_relation', numeric_mm0hj2q4: 'numeric',
     text_mm1antcb: 'text', text_mm0h4a1c: 'text', text_mm0hyrfs: 'text',
+    numeric_mm1dj4fp: 'numbers', numeric_mm1dmsaz: 'numbers', text_mm1gdsvg: 'text',
   };
   app.post('/api/proyectos/:id/lineas', async c => {
     const itemId = Number(c.req.param('id'));
@@ -1000,6 +1001,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
 
     const body = await c.req.json<{
       producto?: string; proveedorId?: string; cantidad?: number; talla?: string; color?: string; sku?: string;
+      costo?: number; descuento?: number; moneda?: string;
     }>();
     const producto = body.producto?.trim();
     if (!producto) return c.json({ error: 'producto is required' }, 400);
@@ -1013,6 +1015,12 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     if (body.talla?.trim()) subitemCols.text_mm1antcb = body.talla.trim();
     if (body.color?.trim()) subitemCols.text_mm0h4a1c = body.color.trim();
     if (body.sku?.trim()) subitemCols.text_mm0hyrfs = body.sku.trim();
+    // Costo/descuento/moneda desde el alta (Efraín, 2026-08-18): una OC "de la
+    // nada" nace completa, sin tener que editar la línea inmediatamente después
+    // — son las mismas columnas que el PDF de la OC lee (worker/lib/ocProveedorPdf.ts).
+    if (body.costo !== undefined && Number.isFinite(body.costo)) subitemCols.numeric_mm1dj4fp = body.costo;
+    if (body.descuento !== undefined && Number.isFinite(body.descuento)) subitemCols.numeric_mm1dmsaz = body.descuento;
+    if (body.moneda?.trim()) subitemCols.text_mm1gdsvg = body.moneda.trim();
 
     try {
       // Proyecto nativo (Zona Efrain): la línea es una fila más de `items` con
@@ -1021,7 +1029,27 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       // vía worker/lib/nativeItems.ts.
       if (isNativeId(itemId)) {
         const columns = toNativeColumns(subitemCols, LINEA_MANUAL_COL_TYPES);
+        // toNativeColumns deja el `text` del board_relation como el ID crudo
+        // (es lo único que sabe); en un item real ese texto es el NOMBRE del
+        // proveedor, y es de donde la tarjeta de la OC saca su título. Sin
+        // esto la tarjeta se titulaba "12686013883" (visto en la prueba local
+        // 2026-08-18) — no hay espejo de Monday que lo rellene después.
+        if (body.proveedorId) {
+          const prov = await c.env.DB.prepare('SELECT name FROM items WHERE board_id = ? AND item_id = ?')
+            .bind(BOARDS.proveedores.id, Number(body.proveedorId)).first<{ name: string }>();
+          const rel = columns.find(col => col.id === 'board_relation_mm1cfgv5');
+          if (rel && prov?.name) rel.text = prov.name;
+        }
         const id = await insertNativeSubitem(c.env, 'proyectos_sub', itemId, producto, columns);
+        // El alta de una línea REAL la registra Monday en su activity_log y el
+        // delta sync la recoge (proyectos_sub ya está en la whitelist de
+        // worker/lib/activityLog.ts); un proyecto nativo no tiene ese log, así
+        // que se asienta aquí o el alta no deja rastro en ninguna parte.
+        await recordDirectChanges(c.env, 'proyectos_sub', [{
+          boardId: BOARDS.proyectos_sub.id, itemId: id, event: 'create_pulse',
+          columnId: null, columnTitle: null,
+          previousText: null, newText: producto, userId: viewer.monday_user_id,
+        }]);
         return c.json({ ok: true, id: String(id) });
       }
       const subitem = await createSubitem(c.env, itemId, producto, subitemCols);
@@ -1031,6 +1059,47 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       const detail = err instanceof Error ? err.message : String(err);
       return c.json({ error: 'No se pudo crear la línea: ' + detail }, 500);
     }
+  });
+
+  // Borrar una línea del Proyecto — Compras corrige una OC que trae de más
+  // (Efraín, 2026-08-18). No se usa el DELETE genérico de /api/boards porque
+  // ese no distingue rol (un vendedor podría borrar líneas del proyecto) ni
+  // deja rastro: aquí queda asentado en activity_log contra el Proyecto padre,
+  // que es lo único que sobrevive al borrado de la línea.
+  app.delete('/api/proyectos/:id/lineas/:lineaId', async c => {
+    const itemId = Number(c.req.param('id'));
+    const lineaId = Number(c.req.param('lineaId'));
+    if (!Number.isFinite(itemId) || !Number.isFinite(lineaId)) return c.json({ error: 'not found' }, 404);
+    const viewer = c.get('viewer');
+    if (viewer.role !== 'compras' && viewer.role !== 'admin') return c.json({ error: 'forbidden' }, 403);
+
+    const row = await getItem(c.env, 'proyectos', itemId, viewer, 'own');
+    if (!row) return c.json({ error: 'not found' }, 404);
+    const linea = await getItem(c.env, 'proyectos_sub', lineaId, viewer, 'own');
+    if (!linea || linea.parent_item_id !== itemId) return c.json({ error: 'not found' }, 404);
+
+    // Proyecto nativo (Zona Efrain): la línea solo vive en D1, no hay subitem
+    // que borrar del lado de Monday — mismo criterio que el alta de arriba.
+    if (!isNativeId(lineaId)) {
+      try {
+        await deleteItem(c.env, lineaId);
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        return c.json({ error: 'No se pudo eliminar la línea: ' + detail }, 500);
+      }
+    }
+    // Se borra del espejo aquí mismo y no se espera al webhook subitem_deleted
+    // (mismo motivo que el DELETE de /api/boards/:slug/items/:id: con el
+    // debounce la línea seguía apareciendo minutos después de "borrada").
+    await c.env.DB.prepare('DELETE FROM items WHERE board_id = ? AND item_id = ?')
+      .bind(BOARDS.proyectos_sub.id, lineaId).run();
+
+    await recordDirectChanges(c.env, 'proyectos', [{
+      boardId: BOARDS.proyectos.id, itemId, event: 'delete_pulse',
+      columnId: null, columnTitle: null,
+      previousText: linea.name, newText: null, userId: viewer.monday_user_id,
+    }]);
+    return c.json({ ok: true });
   });
 
   // Captura de tallas por boxes (vendedor) — crea subitems del Proyecto directo

@@ -163,7 +163,7 @@ export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
     ...vis(['name', 'text_mm0hs17x', 'text_mm0h4a1c',
       'text_mm1antcb', 'text_mm1a5yyq', 'text_mm0hyrfs',
       'text_mm52x1bx', 'text_mm56dbkm', 'text_mm0mzet0',
-      'date_mm20xdtm', 'date_mm20fq6t', 'date_mm20y5t3', 'date_mm21p1ex',
+      'date_mm20fq6t', 'date_mm20y5t3', 'date_mm21p1ex',
       'date_mm217ms0', 'date_mm21w46m', 'date_mm20t4kr', 'date_mm21swc5',
       'long_text_mm1cqh8e', 'long_text_mm1cyqts', 'long_text_mm1c59cg',
       'long_text_mm1c2eyf', 'long_text_mm1cyq91', 'long_text_mm1c6ya0',
@@ -181,8 +181,24 @@ export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
     // agregar más columnas de fecha en Monday por cada estado nuevo.
     color_mm0hqf79: { vis: V, w: AC },
     text_mm20gzsb: { vis: V, w: AC },
-    ...vis(['numeric_mm1dj4fp', 'numeric_mm1dmsaz', 'text_mm1gdsvg',
-      'board_relation_mm1cfgv5', 'lookup_mm1d2y9b', 'lookup_mm2145g'], AC),
+    // Costeo de la línea del Proyecto — tab "Órdenes de compra" (Efraín,
+    // 2026-08-18: "no se puede modificar el COSTO C/U en órdenes de compra,
+    // eso se debe poder hacer"). Compras negocia con el proveedor DESPUÉS de
+    // que se importaron las tallas, así que el costo con el que se cotizó no
+    // es el que va en la OC; hasta aquí eran de solo lectura y había que
+    // entrar a Monday. Reasignar Proveedor mueve la línea de una OC a otra.
+    // Cada cambio queda en activity_log con el actor REAL del portal
+    // (worker/lib/activityLog.ts, PORTAL_WRITE_COLUMNS) — no el usuario del
+    // token de la API, que es lo único que registra Monday.
+    numeric_mm1dj4fp:        { vis: AC, w: WAC },   // Costo Distr. C/U
+    numeric_mm1dmsaz:        { vis: AC, w: WAC },   // Descuento %
+    text_mm1gdsvg:           { vis: AC, w: WAC },   // Moneda
+    board_relation_mm1cfgv5: { vis: AC, w: WAC },   // Proveedor
+    ...vis(['lookup_mm1d2y9b', 'lookup_mm2145g'], AC),   // espejos del proveedor (Monday los calcula)
+    // Fecha estimada de entrega del proveedor — el vendedor la VE (es lo que
+    // le promete al cliente), la captura Compras al cerrar la OC. Estaba en el
+    // grupo `vis: V` de arriba sin `w`; se saca de ahí para darle escritura.
+    date_mm20xdtm: { vis: V, w: WAC },
     // Tab Logística del Proyecto (2026-08-17): Compras/Admin capturan la
     // recolección — encargado, folio/guías, evidencia, confirmación de
     // tallas completas y fecha. Vendedor sigue sin ver estas columnas (ya
@@ -268,3 +284,14 @@ export const canWrite = (b: BoardSlug, col: string, r: Role) =>
   !!VISIBILITY[b][col]?.w?.includes(r);
 export const readableCols = (b: BoardSlug, r: Role): string[] =>
   Object.entries(VISIBILITY[b]).filter(([, c]) => c.vis.includes(r)).map(([id]) => id);
+
+/** ¿Este rol puede ver el HISTORIAL de actividad (worker/lib/activityLog.ts)?
+ * Solo compras y admin (Efraín, 2026-08-18: "las actividades no quiero que las
+ * pueda ver el vendedor"). Es una regla de board completo, no por columna: el
+ * historial de un renglón dice quién cambió qué y cuándo, y aunque las filas
+ * ya se filtran con canRead (columnas de costo fuera), el resto sigue siendo
+ * información interna de operación — quién se equivocó, cuántas veces se
+ * corrigió un precio, cuándo entró Compras a la línea. El gate vive en el
+ * endpoint entero (worker/routes/boards.ts → 403); la UI solo esconde el tab
+ * y los accesos (📋/🕐) para no ofrecer algo que el server va a negar. */
+export const canReadActivity = (r: Role) => r === 'compras' || r === 'admin';

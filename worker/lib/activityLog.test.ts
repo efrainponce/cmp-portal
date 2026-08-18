@@ -5,12 +5,13 @@
 // get_board_activity) para no reintroducir el bug de Number() perdiendo
 // precisión pasado 2^53.
 import { describe, it, expect } from 'vitest';
-import { ticksToIso, parseEntry } from './activityLog';
+import { ticksToIso, parseEntry, isPortalWriteColumn } from './activityLog';
 import type { ActivityLogEntry } from './monday';
 
 const OPORTUNIDADES_BOARD_ID = 18395657596;
 const OPORTUNIDADES_SUB_BOARD_ID = 18395657607;
 const PRODUCTOS_BOARD_ID = 18395657591;
+const PROYECTOS_SUB_BOARD_ID = 18395657609;
 const INSTITUCIONES_BOARD_ID = 18395657597; // fuera de la whitelist a propósito
 
 function entry(overrides: Omit<Partial<ActivityLogEntry>, 'data'> & { data: object }): ActivityLogEntry {
@@ -103,5 +104,43 @@ describe('parseEntry — whitelist de ruido', () => {
   it('otros eventos no contemplados (subscribe, move_pulse_from_group) se descartan', () => {
     const row = parseEntry(entry({ event: 'subscribe', data: { pulse_id: 123 } }));
     expect(row).toBeNull();
+  });
+
+  it('acepta el costeo de la línea del Proyecto (edición hecha DENTRO de Monday)', () => {
+    const row = parseEntry(entry({
+      boardId: PROYECTOS_SUB_BOARD_ID,
+      data: { pulse_id: 321, column_id: 'numeric_mm1dj4fp', column_title: 'Costo Distr. C/U', textual_value: '180', previous_textual_value: '150' },
+    }));
+    expect(row).not.toBeNull();
+    expect(row?.previousText).toBe('150');
+  });
+
+  it('el estado del producto NO entra: ya tiene su propio historial con comentario', () => {
+    const row = parseEntry(entry({
+      boardId: PROYECTOS_SUB_BOARD_ID,
+      data: { pulse_id: 321, column_id: 'color_mm0hqf79', column_title: 'Estado del producto', textual_value: 'Entregado' },
+    }));
+    expect(row).toBeNull();
+  });
+});
+
+// El write del portal a estas columnas se asienta directo (worker/lib/outbox.ts)
+// porque Monday lo atribuiría al dueño del token de la API, no a quien editó.
+// Si una columna sale de este set, el log deja de tener actor real en silencio.
+describe('PORTAL_WRITE_COLUMNS — actor real en el costeo de la OC', () => {
+  it('el costeo de la línea del Proyecto se registra desde el portal', () => {
+    for (const col of ['numeric_mm1dj4fp', 'numeric_mm1dmsaz', 'text_mm1gdsvg',
+      'numeric_mm0hj2q4', 'board_relation_mm1cfgv5', 'date_mm20xdtm']) {
+      expect(isPortalWriteColumn('proyectos_sub', col), col).toBe(true);
+    }
+  });
+
+  it('los boards que sí quedan bien atribuidos en Monday no pasan por ahí', () => {
+    // Oportunidades y Productos siguen 100% sourced del activity_log de Monday
+    // — meterlos aquí duplicaría cada cambio (el eco solo se descarta para las
+    // columnas de PORTAL_WRITE_COLUMNS).
+    expect(isPortalWriteColumn('oportunidades', 'deal_stage')).toBe(false);
+    expect(isPortalWriteColumn('oportunidades_sub', 'numeric_mkzneg3d')).toBe(false);
+    expect(isPortalWriteColumn('productos', 'numeric_mkzpx7eb')).toBe(false);
   });
 });
