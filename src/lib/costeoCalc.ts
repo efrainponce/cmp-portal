@@ -107,10 +107,17 @@ const pctCol = (n: number): ColVal => ({ text: `${n}%`, value: n, type: 'formula
  * returns only the formula column ids the row already carries — so a role
  * that can't see a column (e.g. vendedor and Margen/Utilidad) never gets a
  * preview value for it either, matching the server whitelist.
+ *
+ * `todas` = true para una línea NATIVA (Zona Efrain): esas líneas no existen
+ * en Monday, así que nadie calcula sus fórmulas y no llegan en `cols` — sin
+ * esto, "solo las que ya trae" significa "ninguna" y la grid se queda con "—"
+ * y TOTAL $0 aunque el costo y el precio estén capturados (Efraín,
+ * 2026-08-18). Qué columnas se PINTAN lo sigue decidiendo el meta del board
+ * que filtra el server (visibleCols en CotizacionTab), no esto.
  */
-export function previewRow(product: ItemDTO, edited: Record<string, number>): Record<string, ColVal> {
+export function previewRow(product: ItemDTO, edited: Record<string, number>, todas = false): Record<string, ColVal> {
   const get = (colId: string) => edited[colId] ?? cellNumber(product, colId);
-  const has = (colId: string) => colId in product.cols;
+  const has = (colId: string) => todas || colId in product.cols;
 
   const cantidad = get(COL.cantidad);
   const cost = computeCostChain({

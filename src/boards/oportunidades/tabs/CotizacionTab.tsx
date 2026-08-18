@@ -18,6 +18,7 @@ import type { ColMeta, ColVal, ItemDetailDTO, ItemDTO, QuoteVersionDTO } from '.
 import { patchItem, apiFetch, getCatalogoProductos, getProductoGenero, patchProductoGenero } from '../../../lib/apiClient';
 import { Button } from '../../../components/core/Button';
 import { previewRow, COL } from '../../../lib/costeoCalc';
+import { isNativeId } from '../../../../shared/nativeId';
 import { useIsMobile } from '../../../lib/useIsMobile';
 import { useMe } from '../../../lib/useMe';
 import { canReadActivity } from '../../../../shared/visibility';
@@ -189,7 +190,25 @@ export function CotizacionTab({
   // deshabilitado), y parecía que el selector de color estaba roto
   // (Efraín, 2026-07-20).
   const [catalogLoading, setCatalogLoading] = useState(true);
-  const rowState = (id: string): RowEditState => rows[id] ?? EMPTY_ROW;
+  // Líneas NATIVAS (Zona Efrain): las columnas de fórmula las calcula Monday y
+  // estas líneas no viven en Monday, así que llegan vacías del mirror — la grid
+  // mostraba "—" en Costo real/Costo total/Subtotal/IVA/Utilidad y un TOTAL de
+  // $0 aunque el costo y el precio estuvieran capturados. Se derivan aquí con
+  // la MISMA cadena que ya usa el preview optimista al teclear
+  // (src/lib/costeoCalc.ts, verificada 1:1 contra las fórmulas de Monday); es
+  // solo lo que se pinta, no se escribe a ningún lado. El preview propio de la
+  // fila gana: es el valor recién tecleado, más fresco que `p.cols`.
+  const nativo = isNativeId(Number(oppId));
+  const rowsView = useMemo(() => {
+    if (!nativo) return rows;
+    const out: Record<string, RowEditState> = { ...rows };
+    for (const p of products) {
+      const base = out[p.id] ?? EMPTY_ROW;
+      out[p.id] = { ...base, preview: { ...previewRow(p, {}, true), ...base.preview } };
+    }
+    return out;
+  }, [nativo, products, rows]);
+  const rowState = (id: string): RowEditState => rowsView[id] ?? EMPTY_ROW;
   // Mezcla siempre sobre `r` (el estado más fresco que entrega el updater de
   // React), nunca sobre `rowState(id)` (closure del render en que se llamó a
   // patchRow) — con dos writes concurrentes en la misma línea (p.ej. Cantidad
@@ -427,7 +446,7 @@ export function CotizacionTab({
     // limpiaba" en pantalla al tocar Cantidad justo después de elegirlo
     // (Efraín, 2026-08-05).
     const preview = Number.isFinite(parseFloat(raw))
-      ? { ...state.preview, ...previewRow(product, edited) }
+      ? { ...state.preview, ...previewRow(product, edited, nativo) }
       : state.preview;
     patchRow(product.id, { editing, preview, error: undefined });
   };
@@ -696,7 +715,7 @@ export function CotizacionTab({
             />
           ))}
           {addingLineRow}
-          <TotalsRow variant={variant} visibleCols={visibleCols} products={products} rows={rows} isMobile />
+          <TotalsRow variant={variant} visibleCols={visibleCols} products={products} rows={rowsView} isMobile />
           {canAddLines && (
             <div style={{ padding: '16px', borderTop: '1px solid var(--border)', display: 'flex', gap: 8 }}>
               <Button
@@ -778,7 +797,7 @@ export function CotizacionTab({
             />
           ))}
           {addingLineRow}
-          <TotalsRow variant={variant} visibleCols={visibleCols} products={products} rows={rows} showActionsCol={canAddLines} />
+          <TotalsRow variant={variant} visibleCols={visibleCols} products={products} rows={rowsView} showActionsCol={canAddLines} />
         </div>
         {canAddLines && (
           <div style={{ padding: '16px', borderTop: '1px solid var(--border)', display: 'flex', gap: 8 }}>

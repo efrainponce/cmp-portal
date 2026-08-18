@@ -28,6 +28,14 @@
   - El reparto Ventas/Compras/dirección que justifica los candados de Costeo y
     Validación no existe en la zona privada: ahí la misma persona captura las
     líneas, costea y aprueba el precio.
+  - Con el desglose visible saltó lo otro: en una oportunidad **nativa** las
+    columnas de fórmula (Costo real, Costo total, Subtotal, IVA, Utilidad…)
+    las calcula **Monday**, y esas líneas no viven en Monday — llegaban vacías
+    y la grid mostraba "—" con TOTAL $0 aunque el costo y el precio estuvieran
+    capturados. `previewRow(..., todas)` las deriva con la misma cadena ya
+    verificada 1:1 contra Monday que usa el preview al teclear; es solo lo que
+    se pinta (nada se escribe) y qué columnas se ven lo sigue decidiendo el
+    meta filtrado por el server. Anclado en `costeoCalc.test.ts`.
 
 - **Elegir la Institución desde la oportunidad, y que se ligue sola al contacto**
   (Efraín: "necesito que se pueda elegir una institución a la oportunidad y
