@@ -100,13 +100,21 @@
     de 6 líneas con "descripción y tallas sin confirmar", y es condición real
     del catálogo para esos dos productos (`checkValidacion` lee el board
     Productos, no un espejo).
-  - Rastro de la prueba que quedó en producción y hay que limpiar a mano (el
-    token de `.env` es de SOLO LECTURA para D1, `code: 7500`): oportunidad
-    nativa `900359808091` + 6 líneas, Proyecto `900174095192` + 14 líneas de
-    talla, todo con nombre "PRUEBA E2E ZONA EFRAIN … — borrar", y
-    `oc_folios.seq = 2` (conviene regresarlo a 0: nunca se había emitido una OC
-    nativa en producción antes de esta prueba). Una sola notificación salió, a
-    la cuenta que corrió la prueba.
+  - **Resultado final: 23/23 pasos verdes en producción** — Nueva oportunidad →
+    Mandar a costeo → Compras costea → Validación → Cotización ($263,876.80) →
+    Ganar → Proyecto → 14 tallas → Confirmar tallas (PDF de relación) → 3 OC a
+    proveedor con PDF real (5.11 Tactical / UNIMX / SWA, con razón social,
+    folios, método y condiciones de pago, unidades y el descuento del catálogo)
+    → captura de logística con guía en R2 y descarga de vuelta. El PDF de la
+    OC-12 se revisó visualmente.
+  - Los dos scripts quedaron en el repo (`scripts/e2e-zona-efrain.mjs` y su
+    `-limpiar.mjs`) para poder repetirlo. Todo lo que crearon las 6 corridas se
+    borró después: 133 filas nativas, y los dos tabs de Zona Efrain quedaron
+    limpios. Lo único que NO se pudo revertir es el contador global
+    `oc_folios.seq` (llegó a 14): el token de `.env` es de SOLO LECTURA para D1
+    (`code: 7500`), así que la próxima OC real saldrá OC-15 salvo que se
+    regrese a mano. Antes de esta prueba la tabla no existía — nunca se había
+    emitido una OC nativa en producción.
 
 ## 2026-08-18
 
