@@ -10,6 +10,7 @@ import type { Env } from '../env';
 import type { Identity } from '../../shared/types';
 import { getItem } from './dal';
 import { fetchAssetPublicUrls } from './monday';
+import { oportunidadFileKey } from './r2';
 import type { RawCol } from './serialize';
 
 export class CotizacionPdfError extends Error {
@@ -29,7 +30,41 @@ const COL_BY_KIND: Record<PdfKind, string> = {
   solicitud_costeo: SOLICITUD_COSTEO_COL, sin_firmar: NO_FIRMADAS_COL, firmada: FIRMADAS_COL,
 };
 
-interface FileEntry { name: string; assetId: number }
+/** Carpeta en R2 por tipo de PDF, para una oportunidad NATIVA: ahí no hay
+ * assets de Monday que resolver (el item no existe en Monday), los bytes los
+ * escribe worker/lib/cotizacion.ts y el nombre queda en el marcador de la
+ * columna de archivo (stampNativeFileMarker). Mismos nombres de carpeta que
+ * usa el backfill de los PDFs de cmp-tallas, para que /api/files/... los sirva
+ * igual. La convención vive aquí, en un solo lugar: quien escribe y quien lee
+ * llaman a la misma función. */
+const R2_CATEGORIA_BY_KIND: Record<PdfKind, string> = {
+  solicitud_costeo: 'cotizacion-sin-precio', sin_firmar: 'cotizacion-no-firmada', firmada: 'cotizacion-firmada',
+};
+
+export function cotizacionR2Key(oppId: number, kind: PdfKind, filename: string): string {
+  return oportunidadFileKey(oppId, R2_CATEGORIA_BY_KIND[kind], filename);
+}
+
+/** Bytes del PDF de una oportunidad NATIVA, leídos de R2 por el nombre que
+ * quedó en el marcador de la columna. `undefined` si esa columna todavía no
+ * tiene archivo; lanza 404 si el marcador existe pero el objeto no está. */
+export async function nativeCotizacionPdf(
+  env: Env, itemId: number, viewer: Identity, kind: PdfKind,
+): Promise<{ bytes: ArrayBuffer; filename: string } | undefined> {
+  const row = await getItem(env, 'oportunidades', itemId, viewer);
+  if (!row) throw new CotizacionPdfError(404, 'not found');
+
+  const files = parseFiles(row.columns, COL_BY_KIND[kind]);
+  if (files.length === 0) return undefined;
+  const filename = files[files.length - 1].name;
+  const object = await env.FILES.get(cotizacionR2Key(itemId, kind, filename));
+  if (!object) throw new CotizacionPdfError(404, 'el PDF no está en R2');
+  return { bytes: await object.arrayBuffer(), filename };
+}
+
+// `assetId` solo existe cuando el archivo vive en Monday; en una oportunidad
+// nativa el marcador solo guarda el nombre y los bytes están en R2.
+interface FileEntry { name: string; assetId?: number }
 
 function parseFiles(columnsJson: string, colId: string): FileEntry[] {
   try {
@@ -54,6 +89,7 @@ export async function resolveCotizacionPdfUrl(
   if (files.length === 0) return undefined;
   // Monday agrega los archivos en orden de subida — el último es el vigente.
   const last = files[files.length - 1];
+  if (last.assetId == null) return undefined;   // nativo: ver nativeCotizacionPdf
   const urls = await fetchAssetPublicUrls(env, [String(last.assetId)]);
   return urls.get(String(last.assetId));
 }

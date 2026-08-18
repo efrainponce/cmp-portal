@@ -2,6 +2,33 @@
 
 ## 2026-08-18
 
+- **La cotización nativa se construye con Eledo, igual que la real** (Efraín:
+  "replicar la construcción de una cotización con Eledo y DocuSeal nativo").
+  Desde el 2026-08-13 la Zona Efrain generaba su propio PDF con el motor del
+  portal — servía como respaldo, pero no es el documento que ve el cliente.
+  - `generarCotizacionNativeD1` ahora arma el MISMO payload de Eledo que el
+    flujo real (`buildEledoFile`, plantilla `template_cotizacion_v2`), en sus
+    dos versiones: con precio y sin precio. Las líneas salen del mirror en D1
+    (`buildProductLinesFromMirror`) porque a Monday no se le puede preguntar
+    por un item que no existe ahí; los datos que necesita —SKU, marca, ficha,
+    unidad, id de Airtable— ya los deja `nativeMirrors.ts` al elegir producto.
+    La imagen del producto sigue viniendo de Airtable.
+  - Los PDFs no pueden subirse a una columna de archivo de Monday: van a **R2**
+    y en la columna queda el marcador con el nombre (`stampNativeFileMarker`),
+    que es lo que enciende los cuadros "Costeo"/"Sin firmar" de la UI igual que
+    en una oportunidad real. `cotizacionR2Key` centraliza la convención de
+    carpetas: quien escribe y quien lee llaman a la misma función. La ruta
+    `/api/oportunidades/:id/cotizacion-pdf/:kind` sirve esos bytes desde R2
+    cuando el id es nativo (antes solo sabía resolver assets de Monday).
+  - Firma y correo por DocuSeal con el PDF de Eledo en base64, sin bcc a
+    administración (zona privada). Si DocuSeal falla, la cotización igual queda
+    guardada y el motivo se postea en Actualizaciones.
+  - **Secrets que faltaban en el Worker de producción**: `ELEDO_API_KEY` y
+    `AIRTABLE_API_KEY` (vivían solo en `.env` porque hasta ahora el único que
+    renderizaba con Eledo era cmp-tallas). Ya están puestos.
+  - La plantilla `cotizacion` de documents.ts queda sin uso — se conserva como
+    respaldo si Eledo se cae.
+
 - **La hoja "Costeo — Validación" ahora sí trae el precio, y sin IVA** (Efraín,
   viendo el PDF de OPP-0913: "el documento de validacion esta mal... no tomas el
   precio y el iva no nos interesa" + "obvio necesito el precio si no no sirve de

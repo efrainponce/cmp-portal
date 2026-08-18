@@ -24,7 +24,9 @@ import { fetchAirtableImageUrl } from './airtable';
 import { importeEnLetras } from './importeEnLetras';
 import { getOrCreateDriveFolder, oportunidadRootFolderName, uploadPdfToDrive } from './drive';
 import { submitWrite } from './outbox';
-import { createDocument, documentPdf } from './documents';
+import { stampNativeFileMarker } from './nativeItems';
+import { putFile } from './r2';
+import { cotizacionR2Key } from './cotizacionPdfs';
 import type { RawCol } from './serialize';
 
 export class CotizacionError extends Error {
@@ -100,6 +102,39 @@ export function buildProductLines(subitems: MondayItem[]): { line: Omit<ProductL
         Precio: cvNum(cols, SUB_PRECIO),
       },
       airtableId: cvText(cols, SUB_AIRTABLE_ID),
+    });
+    partida++;
+  }
+  return out;
+}
+
+/** Mismo resultado que buildProductLines, pero leyendo el mirror de D1 (una
+ * oportunidad nativa no se puede pedir a la API de Monday: no existe ahí). Las
+ * columnas de las que sale todo esto son ESPEJOS del catálogo que Monday
+ * calcula solo; en una línea nativa las llena worker/lib/nativeMirrors.ts al
+ * elegir el producto (SKU, marca, ficha, unidad, id de Airtable). */
+export function buildProductLinesFromMirror(
+  lineas: { columns: string }[],
+): { line: Omit<ProductLine, 'Url'>; airtableId: string }[] {
+  const out: { line: Omit<ProductLine, 'Url'>; airtableId: string }[] = [];
+  let partida = 1;
+  for (const l of lineas) {
+    const c = colsOf(l.columns);
+    const txt = (id: string) => c.get(id)?.text ?? '';
+    if (txt(SUB_TIPO).toLowerCase() === 'embellecimiento') continue;
+    out.push({
+      line: {
+        NumPartida: partida,
+        Nombre: txt(SUB_NOMBRE),
+        Marca: txt(SUB_MARCA),
+        Modelo: txt(SUB_SKU),
+        Color: txt(SUB_COLOR),
+        Descripcion: txt(SUB_DESCRIPCION),
+        Cantidad: cvNum2(c, SUB_CANTIDAD),
+        Unidad: txt(SUB_UNIDAD),
+        Precio: cvNum2(c, SUB_PRECIO),
+      },
+      airtableId: txt(SUB_AIRTABLE_ID),
     });
     partida++;
   }
@@ -245,57 +280,82 @@ function colsOf(columns: string): Map<string, RawCol> {
 }
 
 /** "Generar Cotización" para una oportunidad nativa (Zona Efrain, "salir de
- * Monday") — PDF propio del portal (worker/lib/pdf/templates.ts, R2 vía
- * worker/lib/documents.ts) en vez de Eledo, sin subir nada a Monday, sin
- * DocuSeal ni Drive. Mismos dos checks de skip que el flujo real (sin líneas
- * / sin ningún precio asignado), sin los posts de update a Monday que ese
- * flujo usaba para avisar — no aplican aquí. */
+ * Monday"). Construye exactamente la MISMA cotización que el flujo real —
+ * plantilla de Eledo (con precio y sin precio) y firma DocuSeal del vendedor —
+ * pero sin pasar por Monday en ningún punto (Efraín, 2026-08-18: "replicar la
+ * construcción de una cotización con Eledo y DocuSeal nativo").
+ *
+ * Dos cosas cambian respecto a `generarCotizacionNative`, y solo porque el
+ * item no existe en Monday:
+ *   · los PDFs no se suben a una columna de archivo: van a R2 y en la columna
+ *     queda un marcador con el nombre (stampNativeFileMarker), que es lo que
+ *     hace que la UI encienda los cuadros "Costeo"/"Sin firmar" igual que en
+ *     una oportunidad real;
+ *   · DocuSeal recibe el PDF en base64 y no una URL — la nuestra está detrás
+ *     de Cloudflare Access y no la podría descargar. Sin bcc a administración:
+ *     el documento no debe salir de la zona privada.
+ *
+ * Tampoco puede delegarse a cmp-tallas: su endpoint recibe un item_id y lee la
+ * oportunidad de Monday, así que para la zona no hay nada que leer. */
 export async function generarCotizacionNativeD1(
   env: Env, ctx: ExecutionContext, itemId: number, viewer: Identity,
 ): Promise<GenerarCotizacionResult> {
   const lineas = await childrenOf(env, 'oportunidades', itemId, viewer);
-  const vivas = lineas.filter(l => (colsOf(l.columns).get(SUB_TIPO)?.text ?? '').trim().toLowerCase() !== 'embellecimiento');
-  if (vivas.length === 0) {
+  const rawLines = buildProductLinesFromMirror(lineas);
+  if (rawLines.length === 0) {
     return { ok: true, skipped: true, reason: 'No hay líneas de producto (¿todos son Embellecimiento?)' };
-  }
-  const subtotal = round2(vivas.reduce((s, l) => {
-    const c = colsOf(l.columns);
-    return s + cvNum2(c, SUB_CANTIDAD) * cvNum2(c, SUB_PRECIO);
-  }, 0));
-  if (subtotal <= 0) {
-    return { ok: true, skipped: true, reason: 'Ningún producto tiene precio. Cotización no generada.' };
   }
 
   const item = await getItem(env, 'oportunidades', itemId, viewer, 'own');
   const itemCols = colsOf(item?.columns ?? '[]');
-  const folioOpp = itemCols.get(OPP_FOLIO)?.text || String(itemId);
+  const txt = (id: string) => itemCols.get(id)?.text ?? '';
+
+  const vendedor = await resolveVendedor(env, personIdFromMirror(itemCols, OPP_VENDEDOR), txt(OPP_VENDEDOR));
+  // La imagen del producto sigue saliendo de Airtable, igual que el flujo real
+  // (degradación silenciosa: sin API key o sin record, la línea va sin imagen).
+  const products: ProductLine[] = await Promise.all(
+    rawLines.map(async r => ({ ...r.line, Url: await fetchAirtableImageUrl(env, r.airtableId) })),
+  );
+  const { subtotal, iva, total } = computeTotals(products);
+  if (subtotal <= 0) {
+    return { ok: true, skipped: true, reason: 'Ningún producto tiene precio. Cotización no generada.' };
+  }
+
+  const folioOpp = txt(OPP_FOLIO) || String(itemId);
   const seq = await nextCotizacionSeq(env, itemId);
   const folioSuffix = folioOpp.includes('-') ? (folioOpp.split('-').pop() ?? folioOpp).trim() : folioOpp;
-  const folio = `${folioSuffix} - ${seq}`;
+  const folioCotizacion = `${folioSuffix} - ${seq}`;
+  const safeFolio = folioCotizacion.replace(/ /g, '_').replace(/\//g, '-');
+  const filenameCP = `cotizacion_${safeFolio}.pdf`;
+  const filenameSP = `cotizacion_${safeFolio}_sin_precio.pdf`;
 
-  const doc = await createDocument(env, viewer, { templateId: 'cotizacion', sourceId: String(itemId), folio });
-  await submitWrite(env, ctx, 'oportunidades', itemId, { deal_stage: DEAL_STAGE_LABELS['6'] }, viewer, { trusted: true });
+  const baseArgs = {
+    folioCotizacion,
+    cliente: txt(OPP_CONTACTO),
+    cargo: txt(OPP_CARGO),
+    institucion: txt(OPP_INSTITUCION),
+    vendedorName: vendedor.name,
+    vigencia: txt(OPP_VIGENCIA),
+    tiempoEntrega: txt(OPP_ENTREGA),
+    comentarios: txt(OPP_COMENTARIOS),
+    products, subtotal, iva, total,
+  };
 
-  // Firma y CORREO al vendedor. El flujo normal los da cmp-tallas
-  // (generate_cotizacion → Eledo + DocuSeal), pero ese endpoint lee la
-  // oportunidad de Monday por item_id y una oportunidad de la Zona Efrain no
-  // existe en Monday — ese es justamente el punto de la zona. Así que el
-  // Worker llama a DocuSeal directo con el PDF propio del portal en base64
-  // (una URL nuestra no sirve: /api/* vive detrás de Cloudflare Access y
-  // DocuSeal no podría descargarla). Sin bcc a administración: el documento
-  // no debe salir de la zona. No fatal — el PDF ya quedó guardado
-  // (Efraín, 2026-08-18: "no me llegó la cotización por correo").
+  // PDF "con precio" — camino crítico, igual que en el flujo real: si Eledo
+  // falla no hay cotización que firmar ni que guardar.
+  const pdfCP = await renderEledoPdf(env, ELEDO_TEMPLATE_COTIZACION, buildEledoFile({ ...baseArgs, conPrecio: true }));
+  await putFile(env, cotizacionR2Key(itemId, 'sin_firmar', filenameCP), new Blob([pdfCP], { type: 'application/pdf' }), 'application/pdf');
+  await stampNativeFileMarker(env, 'oportunidades', itemId, OPP_FILE_CON_PRECIO, filenameCP);
+
+  // DocuSeal (firma del vendedor y correo con el PDF) — no fatal: la
+  // cotización ya quedó guardada.
   let docusealId = '';
   try {
-    const vendedor = await resolveVendedor(
-      env, personIdFromMirror(itemCols, OPP_VENDEDOR), itemCols.get(OPP_VENDEDOR)?.text ?? '',
-    );
     if (!vendedor.email) throw new Error(`el vendedor (${vendedor.name}) no tiene correo en Monday`);
-    const { bytes, filename } = await documentPdf(env, doc.id, viewer, false);
     docusealId = await createDocuSealSubmission(env, {
       name: String(itemId),
-      pdfBase64: bytesToBase64(bytes),
-      filename,
+      pdfBase64: bytesToBase64(pdfCP),
+      filename: filenameCP,
       signers: [{ role: 'Vendedor', name: vendedor.name, email: vendedor.email }],
       bccCompleted: false,
     });
@@ -306,7 +366,22 @@ export async function generarCotizacionNativeD1(
     } catch { /* best-effort */ }
   }
 
-  return { ok: true, folio, total: round2(subtotal * 1.16), docusealId };
+  // PDF "sin precio" — no fatal, mismo criterio que el flujo real.
+  try {
+    const pdfSP = await renderEledoPdf(env, ELEDO_TEMPLATE_COTIZACION, buildEledoFile({ ...baseArgs, conPrecio: false }));
+    await putFile(env, cotizacionR2Key(itemId, 'solicitud_costeo', filenameSP), new Blob([pdfSP], { type: 'application/pdf' }), 'application/pdf');
+    await stampNativeFileMarker(env, 'oportunidades', itemId, OPP_FILE_SIN_PRECIO, filenameSP);
+  } catch { /* non-fatal */ }
+
+  await submitWrite(env, ctx, 'oportunidades', itemId, { deal_stage: DEAL_STAGE_LABELS['6'] }, viewer, { trusted: true });
+  try {
+    await postUpdate(
+      env, BOARDS.oportunidades.id, itemId,
+      `**Cotización generada — ${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC**\n- ✅ ${folioCotizacion}`,
+    );
+  } catch { /* best-effort */ }
+
+  return { ok: true, folio: folioCotizacion, total, docusealId };
 }
 
 function cvNum2(cols: Map<string, RawCol>, id: string): number {

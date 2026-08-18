@@ -61,11 +61,13 @@ export const DOC_TEMPLATES: Record<DocTemplateId, DocTemplate> = {
     maxSignatures: 1,
     autoAcuse: true,
   },
-  // "Salir de Monday" (Zona Efrain, test, 2026-08-13): cotización con precios
-  // para el cliente, generada 100% en el portal (sin Eledo, sin subir a una
-  // columna de Monday) — solo la usa generarCotizacionNativeD1
-  // (worker/lib/cotizacion.ts) para items nativos. Auto-acuse, como
-  // solicitud-costeo: sin ceremonia de firma en este primer corte.
+  // "Salir de Monday" (Zona Efrain, 2026-08-13): cotización con precios para el
+  // cliente, generada 100% en el portal. SIN USO desde el 2026-08-18: la
+  // cotización nativa volvió a la plantilla de Eledo + firma DocuSeal, la misma
+  // que recibe el cliente en el flujo normal (Efraín: "replicar la construcción
+  // de una cotización con Eledo y DocuSeal nativo"), y vive en las columnas de
+  // archivo como cualquier otra. Se conserva la plantilla porque el motor de
+  // PDF propio sigue ahí y es el respaldo si Eledo se cae.
   cotizacion: {
     id: 'cotizacion',
     label: 'Cotización',

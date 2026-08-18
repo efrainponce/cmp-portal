@@ -39,7 +39,7 @@ import { listZoneImages, uploadZoneImage, EmbellImageError } from '../lib/embell
 import { listProposedProducts, addProposedProduct, ProposedProductError } from '../lib/productosPropuestos';
 import { resolveMondayAsset, PROYECTO_DOCUMENTO_COL } from '../lib/portalFiles';
 import { putFile, oportunidadFileKey } from '../lib/r2';
-import { resolveCotizacionPdfUrl, CotizacionPdfError, type PdfKind } from '../lib/cotizacionPdfs';
+import { resolveCotizacionPdfUrl, nativeCotizacionPdf, CotizacionPdfError, type PdfKind } from '../lib/cotizacionPdfs';
 import { refetchItem, refetchItemTree, upsertItem } from '../sync';
 import { jsonStatus } from '../lib/http';
 import { contentTypeFor, isGenericType } from '../lib/mime';
@@ -658,6 +658,22 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     const viewer = c.get('viewer');
 
     try {
+      // Oportunidad nativa (Zona Efrain): no hay asset de Monday que resolver —
+      // los PDFs de Eledo quedaron en R2 y el nombre en el marcador de la
+      // columna (worker/lib/cotizacion.ts).
+      if (isNativeId(itemId)) {
+        const nativo = await nativeCotizacionPdf(c.env, itemId, viewer, kind);
+        if (!nativo) return c.json({ error: 'not found' }, 404);
+        return new Response(nativo.bytes, {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/pdf',
+            'Content-Length': String(nativo.bytes.byteLength),
+            'Cache-Control': 'private, max-age=60',
+          },
+        });
+      }
+
       const url = await resolveCotizacionPdfUrl(c.env, itemId, viewer, kind);
       if (!url) return c.json({ error: 'not found' }, 404);
       const upstream = await fetch(url);

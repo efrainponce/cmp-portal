@@ -4,7 +4,9 @@
 // shared/column-meta.gen.ts, mirror 1:1 de cmp-tallas api/generate_cotizacion.py.
 import { describe, it, expect } from 'vitest';
 import type { MondayCol, MondayItem } from './monday';
-import { buildProductLines, computeTotals, buildEledoFile, type ProductLine } from './cotizacion';
+import {
+  buildProductLines, buildProductLinesFromMirror, computeTotals, buildEledoFile, type ProductLine,
+} from './cotizacion';
 
 const SUB_TIPO = 'lookup_mm07x7e7';
 const SUB_AIRTABLE_ID = 'lookup_mm0z4exs';
@@ -118,5 +120,39 @@ describe('buildEledoFile', () => {
     expect(file.IvaTotal).toBe('');
     expect(file.TotalTotal).toBe('');
     expect(file.TotalPalabras).toBe('');
+  });
+});
+
+// Zona Efrain (2026-08-18): la misma cotización de Eledo, pero armada desde el
+// mirror de D1 — una oportunidad nativa no se le puede pedir a Monday.
+describe('buildProductLinesFromMirror', () => {
+  const linea = (fields: Record<string, string>) => ({
+    columns: JSON.stringify(Object.entries(fields).map(([id, text]) => ({ id, type: 'text', text, value: null }))),
+  });
+
+  it('da el mismo shape que buildProductLines desde los mismos datos', () => {
+    const fields = {
+      [SUB_NOMBRE]: 'Camisa', [SUB_MARCA]: '5.11', [SUB_SKU]: '72175', [SUB_COLOR]: 'WHITE',
+      [SUB_DESCRIPCION]: 'Ficha', [SUB_UNIDAD]: 'PIEZA', [SUB_CANTIDAD]: '45', [SUB_PRECIO]: '2490',
+      [SUB_AIRTABLE_ID]: 'recABC',
+    };
+    const desdeMirror = buildProductLinesFromMirror([linea(fields)]);
+    const desdeMonday = buildProductLines([subitem('1', 'Camisa', fields)]);
+    expect(desdeMirror).toEqual(desdeMonday);
+    expect(desdeMirror[0].airtableId).toBe('recABC');
+  });
+
+  it('se salta las líneas de embellecimiento y renumera', () => {
+    const lines = buildProductLinesFromMirror([
+      linea({ [SUB_NOMBRE]: 'Camisa', [SUB_CANTIDAD]: '2', [SUB_PRECIO]: '100' }),
+      linea({ [SUB_TIPO]: 'Embellecimiento', [SUB_NOMBRE]: 'Bordado', [SUB_CANTIDAD]: '2' }),
+      linea({ [SUB_NOMBRE]: 'Pantalón', [SUB_CANTIDAD]: '1', [SUB_PRECIO]: '200' }),
+    ]);
+    expect(lines.map(l => l.line.NumPartida)).toEqual([1, 2]);
+    expect(lines.map(l => l.line.Nombre)).toEqual(['Camisa', 'Pantalón']);
+  });
+
+  it('una línea sin columnas parseables no truena', () => {
+    expect(buildProductLinesFromMirror([{ columns: 'no-json' }])).toHaveLength(1);
   });
 });
