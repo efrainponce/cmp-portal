@@ -3,6 +3,7 @@
 // keeps repeat callers (e.g. re-mounts) from re-requesting once cached.
 import { useEffect, useState } from 'react';
 import { getMe, type MeDTO } from './api';
+import { canReadActivity } from '../../shared/visibility';
 
 let cached: MeDTO | null = null;
 let inflight: Promise<MeDTO> | null = null;
@@ -43,4 +44,12 @@ export function useMe(): MeDTO | null {
     return () => { listeners.delete(setMe); };
   }, []);
   return me;
+}
+
+/** ¿El viewer puede ver el historial de actividad? Solo Compras/Admin
+ * (shared/visibility.ts canReadActivity — el server niega el endpoint con 403).
+ * Mientras /me carga devuelve false: no mostrar un tab que va a desaparecer. */
+export function useCanVerActividad(): boolean {
+  const me = useMe();
+  return me != null && canReadActivity(me.role);
 }

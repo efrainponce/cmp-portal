@@ -79,6 +79,8 @@ export interface QuoteRowProps {
    * separado de la pestaña Actividad de la oportunidad (esa mezcla item+líneas).
    * `displayName` porque `product.name` en una línea es el índice de Monday
    * ("1", "2"…), no el producto elegido — ese vive en otra columna. */
+  /** Historial por renglón: solo Compras/Admin (shared/visibility.ts canReadActivity). */
+  canVerActividad: boolean;
   onVerActividad: (product: ItemDTO, displayName: string) => void;
   /** "Dividida"/"Editada" al final del nombre — ver CotizacionTab.tsx (ajusteLabels). */
   ajusteLabel?: 'Dividida' | 'Editada';
@@ -92,7 +94,7 @@ function QuoteRowInner({
   tallasSaving, tallasError, onEditTallas,
   generoMF, generoSaving, onToggleGenero,
   proveedorSaving, proveedorError, onEditProveedor,
-  canDelete, deleting, onDeleteLine, canAjustar, onAjustarLinea, onVerActividad, ajusteLabel,
+  canDelete, deleting, onDeleteLine, canAjustar, onAjustarLinea, canVerActividad, onVerActividad, ajusteLabel,
 }: QuoteRowProps) {
   const { lineWarnings, bannerText } = computeLineBanner(p, state, variant, catalog, precioOnly);
 
@@ -121,6 +123,7 @@ function QuoteRowInner({
           ✎
         </button>
       )}
+      {canVerActividad && (
       <button
         type="button"
         onClick={() => onVerActividad(p, displayProducto(p, state.preview) || p.name)}
@@ -129,6 +132,7 @@ function QuoteRowInner({
       >
         📋
       </button>
+      )}
     </div>
   );
 

@@ -2,6 +2,25 @@
 
 ## 2026-08-18
 
+- **El historial de actividad ya no lo ve el vendedor** (Efraín: "las
+  actividades (historial) no quiero que las pueda ver el vendedor, solo admin y
+  compras"). El tab Actividad y el reloj por renglón nacieron en este mismo día
+  para rastrear el costeo de la OC; la parte del historial que sí era del
+  vendedor (etapa, fechas, nombre, precio de venta de su propia oportunidad)
+  también queda fuera — es información interna de operación: quién se equivocó,
+  cuántas veces se corrigió un precio, cuándo entró Compras a la línea.
+  - `canReadActivity` en `shared/visibility.ts` (compras + admin) y **403 en el
+    endpoint completo** `GET /api/boards/:slug/items/:id/activity`. Se niega
+    entero y no columna por columna a propósito: el vendedor tiene permiso
+    legítimo de leer sus oportunidades, así que el filtro por `canRead` que ya
+    tenía el endpoint le seguía devolviendo el rastro de quién cambió qué.
+    Almacén tampoco lo ve. Anclado en `shared/visibility.test.ts`.
+  - La UI solo deja de ofrecer lo que el server niega: tab Actividad oculto en
+    los drawers de Oportunidad y Proyecto, botón `📋` de la cotización oculto,
+    y en el catálogo de **Productos** la fila deja de ser clicable (el clic
+    abría justamente el historial del producto). `ActividadTab` no dispara la
+    llamada y explica de quién es la vista, por si queda un deep link abierto.
+
 - **Compras ya puede modificar las órdenes de compra, no solo generarlas**
   (Efraín: "los de compras necesitan poder MODIFICAR las órdenes de compra o
   crear nuevas a partir de productos que puede que no estén en la cotización" +

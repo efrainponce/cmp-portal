@@ -12,6 +12,7 @@ import { CreateRecordModal } from './CreateRecordModal';
 import { EditContactoModal } from './EditContactoModal';
 import { ProductoActividadDrawer } from './ProductoActividadDrawer';
 import { useIsMobile } from '../../lib/useIsMobile';
+import { useCanVerActividad } from '../../lib/useMe';
 import type { ItemDTO } from '../../lib/api';
 import type { ColMeta } from '../../../shared/dto';
 
@@ -54,7 +55,11 @@ export function GenericBoardView({ slug, title }: Props) {
   const createSlug = slug === 'instituciones' || slug === 'contactos' ? slug : null;
   const creatable = createSlug !== null;
   const canEditContacto = slug === 'contactos' && cols.some((c) => (c.id === 'contact_account' || c.id === 'multiple_person_mm03vqwx') && c.w);
-  const onRowClick = canEditContacto ? setEditingContact : slug === 'productos' ? setActivityProducto : undefined;
+  // El clic en un producto abre su historial de cambios — solo Compras/Admin
+  // (shared/visibility.ts canReadActivity, Efraín 2026-08-18); para el resto la
+  // fila deja de ser clicable en vez de abrir un panel que el server niega.
+  const verActividad = useCanVerActividad();
+  const onRowClick = canEditContacto ? setEditingContact : (slug === 'productos' && verActividad) ? setActivityProducto : undefined;
   const listColIds = LIST_COLS[slug];
   const hidden = HIDDEN_LIST_COLS[slug];
   const tableCols: ColMeta[] = listColIds

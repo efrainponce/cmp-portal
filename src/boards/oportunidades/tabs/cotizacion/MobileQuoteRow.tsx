@@ -32,7 +32,7 @@ function MobileQuoteRowInner({
   tallasSaving, tallasError, onEditTallas,
   generoMF, generoSaving, onToggleGenero,
   proveedorSaving, proveedorError, onEditProveedor,
-  canDelete, deleting, onDeleteLine, canAjustar, onAjustarLinea, onVerActividad, ajusteLabel,
+  canDelete, deleting, onDeleteLine, canAjustar, onAjustarLinea, canVerActividad, onVerActividad, ajusteLabel,
 }: {
   product: ItemDTO;
   /** Número 1-based de la línea en la grid — mismo orden que usan los mensajes
@@ -76,6 +76,8 @@ function MobileQuoteRowInner({
   canAjustar: boolean;
   onAjustarLinea: (product: ItemDTO) => void;
   /** "📋 Ver actividad" — ver QuoteRow.tsx. */
+  /** Historial por renglón: solo Compras/Admin (shared/visibility.ts canReadActivity). */
+  canVerActividad: boolean;
   onVerActividad: (product: ItemDTO, displayName: string) => void;
   /** "Dividida"/"Editada" al final del nombre — ver CotizacionTab.tsx (ajusteLabels). */
   ajusteLabel?: 'Dividida' | 'Editada';
@@ -269,6 +271,7 @@ function MobileQuoteRowInner({
             ✎
           </button>
         )}
+        {canVerActividad && (
         <button
           type="button"
           onClick={() => onVerActividad(p, displayProducto(p, state.preview) || p.name)}
@@ -277,6 +280,7 @@ function MobileQuoteRowInner({
         >
           📋
         </button>
+        )}
         {p.pendingWrite && <span title="guardado, sincronizando…" style={{ color: 'var(--accent)' }}>⏳</span>}
         <div style={{ flex: 1, minWidth: 0 }}>
           {titleWritable ? (

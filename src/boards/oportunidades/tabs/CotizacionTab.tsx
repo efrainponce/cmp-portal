@@ -20,6 +20,7 @@ import { Button } from '../../../components/core/Button';
 import { previewRow, COL } from '../../../lib/costeoCalc';
 import { useIsMobile } from '../../../lib/useIsMobile';
 import { useMe } from '../../../lib/useMe';
+import { canReadActivity } from '../../../../shared/visibility';
 import { latestFileUrl, NO_FIRMADAS_COL, FIRMADAS_COL, SOLICITUDES_COL } from './DocumentacionTab';
 import { VersionChips } from './cotizacion/VersionChips';
 import { SnapshotTable } from './cotizacion/SnapshotTable';
@@ -143,6 +144,9 @@ export function CotizacionTab({
   // de solo lectura). `canAddLines` ya combina ambos factores correctamente.
   const me = useMe();
   const canAjustar = !canAddLines && (me?.role === 'vendedor' || me?.role === 'compras' || me?.role === 'admin');
+  // Historial por renglón (📋): solo Compras/Admin — shared/visibility.ts
+  // canReadActivity (Efraín, 2026-08-18). El endpoint responde 403 al resto.
+  const canVerActividad = me != null && canReadActivity(me.role);
   const [ajustarLineaTarget, setAjustarLineaTarget] = useState<ItemDTO | null>(null);
   const [divergenciaNotice, setDivergenciaNotice] = useState<string | null>(null);
   // 📋 Ver actividad por renglón (Efraín, 2026-08-17): separado de la pestaña
@@ -680,6 +684,7 @@ export function CotizacionTab({
               onDeleteLine={sDeleteLine}
               canAjustar={canAjustar}
               onAjustarLinea={sAjustarLinea}
+              canVerActividad={canVerActividad}
               onVerActividad={sVerActividad}
               ajusteLabel={ajusteLabels.get(Number(p.id))}
             />
@@ -761,6 +766,7 @@ export function CotizacionTab({
               onDeleteLine={sDeleteLine}
               canAjustar={canAjustar}
               onAjustarLinea={sAjustarLinea}
+              canVerActividad={canVerActividad}
               onVerActividad={sVerActividad}
               ajusteLabel={ajusteLabels.get(Number(p.id))}
             />

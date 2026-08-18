@@ -16,7 +16,7 @@ import {
   ownsItem, leadsOthers, hasPendingWrites, upsertIdentity,
 } from '../lib/dal';
 import { toItemDTO, toColMeta, itemDetailEtag } from '../lib/serialize';
-import { canRead, canReadBoard, canWrite } from '../../shared/visibility';
+import { canRead, canReadActivity, canReadBoard, canWrite } from '../../shared/visibility';
 import { submitWrite, OutboxError } from '../lib/outbox';
 import { submitCreate, submitCreateNative, isNativeCreatable, CreateError } from '../lib/createRecord';
 import { duplicateVersion, esDraftVigente, QuoteVersionError, LINE_DEFINING_COLS } from '../lib/quoteVersions';
@@ -647,6 +647,11 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
     const itemId = Number(c.req.param('id'));
     if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
     const viewer = c.get('viewer');
+    // Historial = solo Compras/Admin (Efraín, 2026-08-18). Se niega el endpoint
+    // COMPLETO, no columna por columna: el vendedor tiene permiso de leer sus
+    // propias oportunidades, así que sin este gate seguía viendo el rastro de
+    // quién editó qué. shared/visibility.ts canReadActivity.
+    if (!canReadActivity(viewer.role)) return c.json({ error: 'forbidden' }, 403);
 
     const row = await getItem(c.env, slug, itemId, viewer);
     if (!row) return c.json({ error: 'not found' }, 404);

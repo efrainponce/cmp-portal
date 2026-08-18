@@ -3,6 +3,7 @@
 // pill-style grouped sections (Postventa: Documentación/Tallas · Proyectos:
 // Órdenes de compra/Logística), separated by hairline dividers.
 import { useIsMobile } from '../../lib/useIsMobile';
+import { useCanVerActividad } from '../../lib/useMe';
 
 export type DrawerTabKey =
   | 'actualizaciones' | 'cotizacion' | 'embellecimientos' | 'nuevosproductos' | 'actividad'
@@ -37,6 +38,10 @@ const PROYECTOS_TABS: { key: DrawerTabKey; label: string }[] = [
 
 export function BoardTabsBar({ active, onChange, updatesCount = 0, showPostventa = true, showProyectos = true }: Props) {
   const isMobile = useIsMobile();
+  // Historial: solo Compras/Admin (shared/visibility.ts canReadActivity, Efraín
+  // 2026-08-18). El server ya niega el endpoint con 403 — esto solo evita
+  // ofrecerle al vendedor un tab que le va a salir en error.
+  const verActividad = useCanVerActividad();
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: isMobile ? '0 14px' : '0 32px', borderBottom: '1px solid var(--border)', flex: 'none', overflowX: 'auto' }}>
       <UnderlineTab active={active === 'actualizaciones'} onClick={() => onChange('actualizaciones')}>
@@ -48,7 +53,7 @@ export function BoardTabsBar({ active, onChange, updatesCount = 0, showPostventa
         )}
       </UnderlineTab>
       <VDivider />
-      {UNDERLINE_TABS.map((t) => (
+      {UNDERLINE_TABS.filter((t) => t.key !== 'actividad' || verActividad).map((t) => (
         <UnderlineTab key={t.key} active={active === t.key} onClick={() => onChange(t.key)}>{t.label}</UnderlineTab>
       ))}
       {showPostventa && (
