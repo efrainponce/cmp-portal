@@ -601,3 +601,15 @@ CREATE TABLE IF NOT EXISTS native_updates (
   attachments  TEXT NOT NULL DEFAULT '[]'  -- JSON [{id,name,ext,key}] con el key de R2
 );
 CREATE INDEX IF NOT EXISTS idx_native_updates_item ON native_updates(item_id, created_at DESC);
+
+-- "Quitado" desde el portal: el item sigue vivo en Monday (el portal NUNCA
+-- borra allá — worker/lib/itemOculto.ts) pero desaparece de las lecturas del
+-- portal. Vive aparte de `items` a propósito: así refetch/reconcile pueden
+-- reescribir la fila las veces que quieran sin resucitar la línea.
+CREATE TABLE IF NOT EXISTS item_oculto (
+  board_id   INTEGER NOT NULL,
+  item_id    INTEGER NOT NULL,
+  hidden_at  TEXT NOT NULL,
+  by_email   TEXT,
+  PRIMARY KEY (board_id, item_id)
+);

@@ -1,5 +1,39 @@
 # Log de commits
 
+## 2026-08-19
+
+- **El portal ya NUNCA borra en Monday** (Efraín: "no se puede NUNCA NUNCA NUNCA
+  borrar de monday — solo modificar y o duplicar o crear"). El 2026-08-18 un
+  script de verificación limpió su rastro con
+  `GET /boards/oportunidades_sub/items?parent=<opp>`; ese parámetro NO existe en
+  esa ruta (acepta `q` y `cols`), se ignoró en silencio, la respuesta trajo el
+  board COMPLETO y el loop de borrado que venía detrás se llevó **70 líneas de
+  22 oportunidades** en 4.5 minutos. Nada lo frenó: el viewer era admin
+  (`unrestricted` en dal), no hay rate limiting de entrada, y `delete_item`
+  estaba a un import de distancia. Las 70 quedaron recuperables en la papelera
+  de Monday.
+  - `deleteItem` ya no existe en `worker/lib/monday.ts`. "Borrar" desde el
+    portal ahora es OCULTAR (`worker/lib/itemOculto.ts`): el item desaparece de
+    las lecturas del portal (dal: listItems/getItem/childrenOf/getItemTrusted) y
+    sigue intacto en Monday. El estado vive en su propia tabla `item_oculto`, no
+    en `items`, para que refetch/reconcile no resuciten la línea.
+  - Los cuatro caminos que borraban ahora ocultan: DELETE genérico de boards,
+    "ajustar línea → eliminar", línea de Proyecto y las líneas que quedan fuera
+    al restaurar una versión. Excepción: items NATIVOS (Zona Efrain) no existen
+    en Monday, ahí D1 es el sistema de registro y sí se borra la fila.
+  - Anclado en `worker/lib/monday.destructivo.test.ts`: lee el fuente del worker
+    y falla si aparece cualquier mutación destructiva de Monday, venga de un
+    helper o de un gql armado a mano.
+- **Las rutas rechazan query params que no conocen** en vez de ignorarlos
+  (`rejectUnknownQuery`, `worker/lib/http.ts`, con tests). Un filtro mal escrito
+  no debe degradar a "sin filtro": en una ruta de lista eso convierte un error
+  de tecleo en un barrido del board entero. Aplicado a la lista y al detalle de
+  boards.
+- **`scripts/e2e-zona-efrain.mjs` tenía el mismo bug**: pedía las líneas del
+  Proyecto con `?parent=` y se quedaba con la primera línea del board ENTERO,
+  que después estampaba con datos de prueba. Ahora filtra del lado del cliente.
+
+
 ## 2026-08-18
 
 - **Un vendedor nuevo aparecía cambiando el Precio de Venta** (Efraín: "¿cómo

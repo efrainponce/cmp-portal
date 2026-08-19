@@ -30,7 +30,8 @@ import { listGeneroMF, setGeneroMF } from '../lib/productoGenero';
 import { syncTallasPortal } from '../lib/airtable';
 import { duplicateOportunidad, DuplicateOportunidadError } from '../lib/duplicateOportunidad';
 import { ganarOportunidad, GanarOportunidadError } from '../lib/ganarOportunidad';
-import { createSubitem, addFileToColumn, fetchAssetPublicUrls, gql, deleteItem } from '../lib/monday';
+import { createSubitem, addFileToColumn, fetchAssetPublicUrls, gql } from '../lib/monday';
+import { ocultarItem } from '../lib/itemOculto';
 import { postUpdate } from '../lib/nativeUpdates';
 import { stampInstitucionEnOpsDeContacto } from '../lib/nativeMirrors';
 import { toNativeColumns, insertNativeSubitem, stampNativeFileMarker } from '../lib/nativeItems';
@@ -609,7 +610,10 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       const itemId = linea.parent_item_id;
       try {
         await duplicateVersion(c.env, c.executionCtx, itemId, viewer);
-        await deleteItem(c.env, lineaId);
+        // Quitar ≠ borrar: la línea sale de la cotización del portal y sigue
+        // intacta en Monday (worker/lib/itemOculto.ts). La versión que acaba de
+        // archivar duplicateVersion la conserva, así que es reversible.
+        await ocultarItem(c.env, BOARDS.oportunidades_sub.id, lineaId, viewer.email);
         await refetchItemTree(c.env, BOARDS.oportunidades.id, itemId);
         const versions = await listVersions(c.env, itemId, viewer);
         return c.json({ ok: true, lineaId, versions } satisfies AjustarLineaResponse);
@@ -1170,21 +1174,15 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     const linea = await getItem(c.env, 'proyectos_sub', lineaId, viewer, 'own');
     if (!linea || linea.parent_item_id !== itemId) return c.json({ error: 'not found' }, 404);
 
-    // Proyecto nativo (Zona Efrain): la línea solo vive en D1, no hay subitem
-    // que borrar del lado de Monday — mismo criterio que el alta de arriba.
-    if (!isNativeId(lineaId)) {
-      try {
-        await deleteItem(c.env, lineaId);
-      } catch (err) {
-        const detail = err instanceof Error ? err.message : String(err);
-        return c.json({ error: 'No se pudo eliminar la línea: ' + detail }, 500);
-      }
+    // Proyecto NATIVO (Zona Efrain): la línea solo vive en D1, ahí D1 ES el
+    // sistema de registro y sí se borra la fila. Si la línea existe en Monday,
+    // se OCULTA — el portal nunca borra allá (worker/lib/itemOculto.ts).
+    if (isNativeId(lineaId)) {
+      await c.env.DB.prepare('DELETE FROM items WHERE board_id = ? AND item_id = ?')
+        .bind(BOARDS.proyectos_sub.id, lineaId).run();
+    } else {
+      await ocultarItem(c.env, BOARDS.proyectos_sub.id, lineaId, viewer.email);
     }
-    // Se borra del espejo aquí mismo y no se espera al webhook subitem_deleted
-    // (mismo motivo que el DELETE de /api/boards/:slug/items/:id: con el
-    // debounce la línea seguía apareciendo minutos después de "borrada").
-    await c.env.DB.prepare('DELETE FROM items WHERE board_id = ? AND item_id = ?')
-      .bind(BOARDS.proyectos_sub.id, lineaId).run();
 
     await recordDirectChanges(c.env, 'proyectos', [{
       boardId: BOARDS.proyectos.id, itemId, event: 'delete_pulse',

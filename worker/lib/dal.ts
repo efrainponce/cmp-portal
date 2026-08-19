@@ -5,6 +5,7 @@ import type { BoardDef, BoardSlug } from '../../shared/boards';
 import { BOARDS } from '../../shared/boards';
 import { ZONA_PRIVADA_BOARDS } from './zonas';
 import { ensureItemOrderTable } from './itemOrder';
+import { ensureItemOcultoTable, NOT_OCULTO } from './itemOculto';
 
 interface Scope {
   where: string;
@@ -150,7 +151,10 @@ export async function listItems(env: Env, slug: BoardSlug, viewer: Identity, q?:
   const board = BOARDS[slug];
   const scope = scopeFor(slug, viewer, mode);
   const binds: unknown[] = [board.id, ...scope.binds];
-  let sql = `SELECT * FROM items WHERE board_id = ? AND (${scope.where})`;
+  // Lo "quitado" desde el portal no se ve, aunque el item siga vivo en Monday
+  // (el portal nunca borra allá — ver worker/lib/itemOculto.ts).
+  await ensureItemOcultoTable(env);
+  let sql = `SELECT * FROM items WHERE board_id = ? AND (${scope.where}) AND ${NOT_OCULTO}`;
   if (q) {
     const placeholders = SEARCHABLE_COLS.map(() => '?').join(',');
     // Una cláusula por palabra (AND entre ellas, OR entre campos dentro de
@@ -183,7 +187,8 @@ export async function getItem(
 ): Promise<MirrorItem | null> {
   const board = BOARDS[slug];
   const scope = scopeFor(slug, viewer, mode);
-  const sql = `SELECT * FROM items WHERE board_id = ? AND item_id = ? AND (${scope.where})`;
+  await ensureItemOcultoTable(env);
+  const sql = `SELECT * FROM items WHERE board_id = ? AND item_id = ? AND (${scope.where}) AND ${NOT_OCULTO}`;
   const row = await env.DB.prepare(sql).bind(board.id, itemId, ...scope.binds).first<MirrorItem>();
   return row ?? null;
 }
@@ -202,7 +207,9 @@ export async function ownsItem(env: Env, slug: BoardSlug, itemId: number, viewer
  * autorizado antes — no hay chequeo de propiedad aquí. */
 export async function getItemTrusted(env: Env, slug: BoardSlug, itemId: number): Promise<MirrorItem | null> {
   const board = BOARDS[slug];
-  const row = await env.DB.prepare('SELECT * FROM items WHERE board_id = ? AND item_id = ?').bind(board.id, itemId).first<MirrorItem>();
+  await ensureItemOcultoTable(env);
+  const row = await env.DB.prepare(`SELECT * FROM items WHERE board_id = ? AND item_id = ? AND ${NOT_OCULTO}`)
+    .bind(board.id, itemId).first<MirrorItem>();
   return row ?? null;
 }
 
@@ -215,9 +222,10 @@ export async function childrenOf(env: Env, parentSlug: BoardSlug, itemId: number
   const childBoard = BOARDS[childSlug];
   const scope = scopeFor(childSlug, viewer);
   await ensureItemOrderTable(env);
+  await ensureItemOcultoTable(env);
   const sql = `SELECT items.* FROM items
     LEFT JOIN item_order io ON io.board_id = items.board_id AND io.item_id = items.item_id
-    WHERE items.board_id = ? AND items.parent_item_id = ? AND (${scope.where})
+    WHERE items.board_id = ? AND items.parent_item_id = ? AND (${scope.where}) AND ${NOT_OCULTO}
     ORDER BY COALESCE(io.manual_order, io.monday_order, 999999), items.name`;
   const res = await env.DB.prepare(sql).bind(childBoard.id, itemId, ...scope.binds).all<MirrorItem>();
   return res.results ?? [];

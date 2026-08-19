@@ -17,7 +17,8 @@ import type { Identity, MirrorItem } from '../../shared/types';
 import type { QuoteLineSnapshot, QuoteVersionDTO } from '../../shared/dto';
 import { getItem, childrenOf, listItems } from './dal';
 import { submitWrite, flushOutbox } from './outbox';
-import { createSubitem, deleteItem } from './monday';
+import { createSubitem } from './monday';
+import { ocultarItem } from './itemOculto';
 import { upsertItem } from '../sync';
 import type { RawCol } from './serialize';
 import { listAjustes } from './lineaAjustes';
@@ -368,11 +369,13 @@ export async function restoreVersion(
     await upsertItem(env, 'oportunidades_sub', sub);
   }
 
-  // Líneas que no estaban en la versión restaurada: fuera de Monday. El
-  // refetchItemTree de la ruta purga sus filas del mirror.
+  // Líneas que no estaban en la versión restaurada: se QUITAN del portal, no se
+  // borran de Monday (el portal nunca borra allá — worker/lib/itemOculto.ts).
+  // Restaurar una versión vieja es reversible por definición: si mañana se
+  // restaura la versión nueva, estas líneas vuelven tal cual estaban.
   for (const cur of currentLines) {
     if (cur.subitemId != null && !targetIds.has(cur.subitemId)) {
-      await deleteItem(env, cur.subitemId);
+      await ocultarItem(env, BOARDS.oportunidades_sub.id, cur.subitemId, viewer.email);
     }
   }
 

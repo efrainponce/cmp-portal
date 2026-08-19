@@ -20,7 +20,8 @@ import { canRead, canReadActivity, canReadBoard, canWrite } from '../../shared/v
 import { submitWrite, OutboxError } from '../lib/outbox';
 import { submitCreate, submitCreateNative, isNativeCreatable, CreateError } from '../lib/createRecord';
 import { duplicateVersion, esDraftVigente, QuoteVersionError, LINE_DEFINING_COLS } from '../lib/quoteVersions';
-import { addFileToUpdate, fetchAssetPublicUrls, deleteItem, type MentionInput } from '../lib/monday';
+import { addFileToUpdate, fetchAssetPublicUrls, type MentionInput } from '../lib/monday';
+import { ocultarItem } from '../lib/itemOculto';
 // Los updates de un item nativo (Zona Efrain) viven en D1, no en Monday — estas
 // dos funciones eligen el lado por el id, así que la ruta no lo decide.
 import {
@@ -31,7 +32,7 @@ import { cachedFetchUsers } from '../lib/rosterCache';
 import { getBoardAccess } from '../lib/boardAccess';
 import { isZonaPrivadaAdminPermitido } from '../lib/zonas';
 import { refetchItem, refetchItemTree } from '../sync';
-import { jsonStatus } from '../lib/http';
+import { jsonStatus, rejectUnknownQuery } from '../lib/http';
 import { contentTypeFor } from '../lib/mime';
 import { notifyItemComment } from '../lib/updateNotify';
 import { markUpdatesSeen, seenByFor } from '../lib/updateSeen';
@@ -219,6 +220,12 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
   app.get('/api/boards/:slug/items', async c => {
     const slug = boardFor(c);
     if (!slug) return c.json({ error: 'not found' }, 404);
+    // Un filtro que esta ruta no conoce NO puede degradar a "sin filtro": esta
+    // lista devuelve el board completo, y quien la usa para decidir sobre qué
+    // items actuar (borrar, por ejemplo) se llevaría todo. Ver el porqué en
+    // worker/lib/http.ts.
+    const queryMala = rejectUnknownQuery(c.req.url, ['q', 'cols']);
+    if (queryMala) return queryMala;
     const viewer = c.get('viewer');
     const q = c.req.query('q');
 
@@ -260,6 +267,8 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
     if (!slug) return c.json({ error: 'not found' }, 404);
     const itemId = Number(c.req.param('id'));
     if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
+    const queryMala = rejectUnknownQuery(c.req.url, ['fresh']);
+    if (queryMala) return queryMala;
     const viewer = c.get('viewer');
 
     // `?fresh=1` (lo manda el drawer al abrir y al refrescar): relee item +
@@ -380,14 +389,14 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
       if (versionError) return jsonStatus({ ok: false, error: versionError.message }, versionError.status);
     }
 
-    // Item nativo (Zona Efrain, "salir de Monday"): no existe del lado de
-    // Monday — nada que borrar ahí, se salta directo al DELETE de D1 de abajo.
+    // Item NATIVO (Zona Efrain, "salir de Monday"): no existe del lado de
+    // Monday y D1 es su sistema de registro — ahí sí se borra la fila (el
+    // DELETE de abajo). Si el item vive en Monday, se OCULTA: desaparece del
+    // portal y sigue intacto allá. El portal nunca borra en Monday
+    // (worker/lib/itemOculto.ts, regla de Efraín 2026-08-19).
     if (!isNativeId(itemId)) {
-      try {
-        await deleteItem(c.env, itemId);
-      } catch {
-        return jsonStatus({ ok: false, error: 'No se pudo eliminar' }, 500);
-      }
+      await ocultarItem(c.env, BOARDS[slug].id, itemId, viewer.email);
+      return c.json({ ok: true });
     }
     // Antes solo se borraba en Monday y se esperaba al webhook subitem_deleted
     // (worker/sync/webhook.ts) para limpiar el mirror — con su debounce de

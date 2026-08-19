@@ -151,8 +151,12 @@ r = await api('POST', `/proyectos/${PROY}/generar-oc`, { metodoPago: 'Transferen
 paso('POST generar-oc (multi-proveedor)', r.json?.ok === true, JSON.stringify(r.json ?? r.text).slice(0, 600));
 
 // ── 8. Logística ──────────────────────────────────────────────────────────────
-r = await api('GET', `/boards/proyectos_sub/items?parent=${PROY}`);
-const subs = r.json?.items ?? [];
+// El filtro va del lado del cliente a propósito: `?parent=` NO existe en esa
+// ruta (acepta `q` y `cols`). Antes se ignoraba en silencio y esto se quedaba
+// con la primera línea del board ENTERO — una línea real, ajena a la prueba,
+// que el PATCH de abajo estampaba con datos E2E. Ver worker/lib/http.ts.
+r = await api('GET', '/boards/proyectos_sub/items');
+const subs = (r.json?.items ?? []).filter(s => String(s.parentId) === String(PROY));
 paso('leer líneas del Proyecto', subs.length > 0, `${subs.length} líneas`);
 if (subs.length > 0) {
   const s = subs[0].id;

@@ -34,6 +34,18 @@ con el Worker (`/api/*`). Bot de WhatsApp + chat del portal comparten agente Cla
   hace que Monday asigne una etiqueta arbitraria en silencio.
 - Permisos por columna/rol viven en `shared/visibility.ts` (server las filtra; la UI
   solo refleja `ColMeta.w`). Decisiones de whitelist son de Efraín — no las cambies solo.
+- **El portal NUNCA borra en Monday.** Su superficie de escritura hacia Monday es
+  solo **crear, modificar y duplicar** (Efraín, 2026-08-19). "Borrar" desde el
+  portal = OCULTAR (`worker/lib/itemOculto.ts`): el item desaparece de las
+  lecturas del portal y sigue intacto en Monday. Anclado en
+  `worker/lib/monday.destructivo.test.ts` — si agregas `delete_item` o cualquier
+  mutación destructiva, ese test falla. Excepción: items NATIVOS (Zona Efrain,
+  ids ≥ 900000000000) no existen en Monday y ahí D1 sí borra la fila.
+  El porqué: el 2026-08-18 un script pidió una lista con un filtro que la ruta
+  no conocía (`?parent=`), recibió el board COMPLETO y borró 70 líneas de 22
+  oportunidades en 4.5 minutos. En Monday no hay deshacer masivo.
+- **Las rutas rechazan query params que no conocen** (`rejectUnknownQuery` en
+  `worker/lib/http.ts`): un filtro mal escrito no debe degradar a "sin filtro".
 - Permisos por RENGLÓN: `worker/lib/dal.ts`. Leer = lo propio + la zona que el viewer
   lidera (`worker/lib/zonas.ts`); escribir = SOLO lo propio (`getItem(..., 'own')`).
   Todo endpoint que muta pide scope `'own'` — si agregas uno, hazlo también.
