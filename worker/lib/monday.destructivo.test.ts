@@ -57,3 +57,25 @@ describe('el worker nunca borra en Monday', () => {
     expect(destructivos).toEqual([]);
   });
 });
+
+// Efraín, 2026-08-19: "asegúrate que DIVIDIR o editar solo patchea lo existente
+// y crea subitems cuando es necesario". Así está hoy — `editar` hace un
+// submitWrite sobre la MISMA línea, y `dividir` crea la línea hermana y le
+// resta la cantidad al origen con otro submitWrite. Ninguno de los dos quita
+// nada: ni de Monday (ya no se puede) ni de la vista del portal.
+describe('ajustar línea (editar/dividir) solo modifica y crea', () => {
+  const src = readFileSync(join(RAIZ, 'lib/lineaAjustes.ts'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^\s*\/\/.*$/gm, '');
+
+  it('escribe con submitWrite y crea con createSubitem', () => {
+    expect(src).toContain('submitWrite(');
+    expect(src).toContain('createSubitem(');
+  });
+
+  it('no quita líneas: ni borrado de Monday ni ocultarItem', () => {
+    for (const prohibido of ['deleteItem', 'delete_item', 'ocultarItem', 'DELETE FROM items']) {
+      expect(src).not.toContain(prohibido);
+    }
+  });
+});
