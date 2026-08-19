@@ -19,7 +19,7 @@ import { toItemDTO, toColMeta, itemDetailEtag } from '../lib/serialize';
 import { canRead, canReadActivity, canReadBoard, canWrite } from '../../shared/visibility';
 import { submitWrite, OutboxError } from '../lib/outbox';
 import { submitCreate, submitCreateNative, isNativeCreatable, CreateError } from '../lib/createRecord';
-import { duplicateVersion, esDraftVigente, QuoteVersionError, LINE_DEFINING_COLS } from '../lib/quoteVersions';
+import { duplicateVersion, esDraftVigente, hayLineaPendiente, QuoteVersionError, LINE_DEFINING_COLS } from '../lib/quoteVersions';
 import { addFileToUpdate, fetchAssetPublicUrls, type MentionInput } from '../lib/monday';
 import { borrarItem, BorradoError } from '../lib/itemBorrado';
 import { esAjusteInlineCompras, registrarAjusteInline } from '../lib/lineaAjustes';
@@ -64,18 +64,27 @@ function boardFor(c: Context<{ Bindings: Env }>): BoardSlug | null {
  * mismo mecanismo que "+ Nueva versión" (duplicateVersion), pero disparado
  * por el write mismo en vez de requerir que el vendedor lo pida aparte: las
  * versiones son un registro "detrás", nunca un candado para seguir editando
- * (Efraín, 2026-08-14). No-op si la vigente ya es borrador (nada que
- * archivar) — mismo guard que duplicateVersion, evitado aquí de antemano
- * para no pagar su excepción en el camino feliz. Incluye Ganada/Perdida
- * (Efraín, 2026-08-14): también se puede versionar ahí. Devuelve el error de
- * duplicateVersion tal cual (p.ej. sin líneas); el caller decide qué hacer. */
+ * (Efraín, 2026-08-14). Incluye Ganada/Perdida (Efraín, 2026-08-14): también
+ * se puede versionar ahí. Devuelve el error de duplicateVersion tal cual
+ * (p.ej. sin líneas); el caller decide qué hacer.
+ *
+ * Dos cosas cambiaron el 2026-08-19 ("no podemos perder toda la info"):
+ *  - `resetear` viaja hasta duplicateVersion, así que solo la línea que se
+ *    tocó regresa a "No iniciado" — el costeo de las demás sobrevive.
+ *  - el no-op ya no es "la vigente es un borrador COMPLETO" sino "ya hay
+ *    alguna línea pendiente de costeo": con el reset por línea, la vigente
+ *    casi nunca queda toda en borrador, y sin esto cada tecleo posterior
+ *    archivaría otra versión (V2, V3, V4…). La primera edición sobre una
+ *    cotización enteramente costeada archiva la foto de ese estado; mientras
+ *    quede trabajo pendiente, las siguientes solo editan. */
 async function autoVersionLineaCosteada(
   env: Env, ctx: ExecutionContext, parentItemId: number, viewer: Identity,
+  resetear: 'todas' | number[],
 ): Promise<QuoteVersionError | null> {
   const lineas = await childrenOf(env, 'oportunidades', parentItemId, viewer);
-  if (lineas.length === 0 || esDraftVigente(lineas)) return null;
+  if (lineas.length === 0 || hayLineaPendiente(lineas)) return null;
   try {
-    await duplicateVersion(env, ctx, parentItemId, viewer);
+    await duplicateVersion(env, ctx, parentItemId, viewer, { resetear });
     return null;
   } catch (err) {
     if (err instanceof QuoteVersionError) return err;
@@ -368,7 +377,8 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
         if (esAjusteInlineCompras(viewer.role, Object.keys(body.cols))) {
           ajusteCompras = { parentItemId: linea.parent_item_id, linea };
         } else {
-          const versionError = await autoVersionLineaCosteada(c.env, c.executionCtx, linea.parent_item_id, viewer);
+          // Solo esta línea vuelve a costeo: es la única que cambió.
+          const versionError = await autoVersionLineaCosteada(c.env, c.executionCtx, linea.parent_item_id, viewer, [itemId]);
           if (versionError) {
             return jsonStatus({ ok: false, pending: false, error: versionError.message } satisfies WriteResponse, versionError.status);
           }
@@ -414,7 +424,9 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
     if (!row) return c.json({ error: 'not found' }, 404);
 
     if (slug === 'oportunidades_sub' && row.parent_item_id != null && !isNativeId(row.parent_item_id)) {
-      const versionError = await autoVersionLineaCosteada(c.env, c.executionCtx, row.parent_item_id, viewer);
+      // Borrar no descostea nada: la línea se va y las que quedan siguen
+      // costeadas igual. La versión archivada conserva la que se borró.
+      const versionError = await autoVersionLineaCosteada(c.env, c.executionCtx, row.parent_item_id, viewer, []);
       if (versionError) return jsonStatus({ ok: false, error: versionError.message }, versionError.status);
     }
 

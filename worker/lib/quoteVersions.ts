@@ -112,6 +112,24 @@ export function snapshotLine(row: MirrorItem): QuoteLineSnapshot {
   };
 }
 
+/** Qué líneas regresan a "No iniciado" al archivar una versión. 'todas' = el
+ * "+ Nueva versión" explícito (re-cotización completa); una lista = versionado
+ * automático, donde solo la línea que cambió pierde su Etapa Costeo y el costeo
+ * del resto sobrevive (Efraín, 2026-08-19: "no podemos perder toda la info").
+ * Una línea que ya estaba pendiente no se reescribe: sería un write a Monday
+ * para dejarla igual. Puro, para test unitario. */
+export function lineasAResetear(lines: QuoteLineSnapshot[], resetear: 'todas' | number[]): number[] {
+  const pedidas = resetear === 'todas' ? null : new Set(resetear);
+  const out: number[] = [];
+  for (const l of lines) {
+    if (l.subitemId == null) continue;
+    if (pedidas && !pedidas.has(l.subitemId)) continue;
+    if (!l.etapaCosteo || l.etapaCosteo === ETAPA_NO_INICIADO) continue;
+    out.push(l.subitemId);
+  }
+  return out;
+}
+
 function totalOf(lines: QuoteLineSnapshot[]): number {
   return lines.reduce((sum, l) => sum + (l.precioUnitario ?? 0) * l.cantidad, 0);
 }
@@ -188,16 +206,28 @@ export async function recordFirstVersion(
     .run();
 }
 
+function lineaPendiente(l: MirrorItem): boolean {
+  const etapa = (colsOf(l).get(SUB_ETAPA_COSTEO)?.text ?? '').trim();
+  return !etapa || etapa === ETAPA_NO_INICIADO;
+}
+
 /** true cuando la vigente es un borrador sin costear: TODAS las líneas con Etapa
  * Costeo vacía o "No iniciado" (duplicar la resetea; las líneas nuevas nacen sin
  * ella). Compartido con la ruta de crear líneas para desbloquear el grid como en
  * Nueva oportunidad. */
 export function esDraftVigente(lineas: MirrorItem[]): boolean {
   if (lineas.length === 0) return false;
-  return lineas.every(l => {
-    const etapa = (colsOf(l).get(SUB_ETAPA_COSTEO)?.text ?? '').trim();
-    return !etapa || etapa === ETAPA_NO_INICIADO;
-  });
+  return lineas.every(lineaPendiente);
+}
+
+/** true cuando ALGUNA línea espera costeo. Es el criterio de "esta cotización ya
+ * está en revisión" desde que el versionado automático dejó de resetear las
+ * líneas que nadie tocó (Efraín, 2026-08-19: "no podemos perder toda la info"):
+ * sirve para (a) no apilar una versión archivada por cada tecleo mientras la
+ * vigente ya tiene trabajo pendiente y (b) reactivar "Mandar a costeo", que es
+ * exactamente lo que `checkCosteo` ya evaluaba del lado del server. */
+export function hayLineaPendiente(lineas: MirrorItem[]): boolean {
+  return lineas.some(lineaPendiente);
 }
 
 /** "+ Nueva versión" = duplicar la vigente, literal (Efraín, 2026-07-17): archiva
@@ -207,7 +237,9 @@ export function esDraftVigente(lineas: MirrorItem[]): boolean {
  * se edita ninguna línea — eso es un paso aparte del vendedor sobre el borrador. */
 export async function duplicateVersion(
   env: Env, ctx: ExecutionContext, itemId: number, viewer: Identity,
+  opts: { resetear?: 'todas' | number[] } = {},
 ): Promise<void> {
+  const resetear = opts.resetear ?? 'todas';
   // scope 'own': reescribe las líneas de la oportunidad (ver worker/lib/zonas.ts).
   const opp = await getItem(env, 'oportunidades', itemId, viewer, 'own');
   if (!opp) throw new QuoteVersionError(404, 'not found');
@@ -232,10 +264,18 @@ export async function duplicateVersion(
   // Reset del ciclo de costeo — `trusted` porque es una decisión del server (el
   // vendedor no puede escribir Etapa Costeo por su cuenta), mismo criterio que
   // enviarAValidacion en costeo.ts.
-  for (const l of currentLines) {
-    if (l.subitemId != null && l.etapaCosteo && l.etapaCosteo !== ETAPA_NO_INICIADO) {
-      await submitWrite(env, ctx, 'oportunidades_sub', l.subitemId, { [SUB_ETAPA_COSTEO]: ETAPA_NO_INICIADO }, viewer, { skipFlush: true, trusted: true });
-    }
+  //
+  // `resetear` decide CUÁNTO se tira (Efraín, 2026-08-19: "no podemos perder
+  // toda la info"). 'todas' es el "+ Nueva versión" explícito: el vendedor está
+  // re-cotizando de cero y el borrador completo es justo lo que pidió. Una
+  // LISTA es el versionado automático: cambió una línea, así que solo esa
+  // regresa a "No iniciado" y las demás conservan su Etapa Costeo y su costeo.
+  // El resto del pipeline ya trabajaba por línea — `enviarACosteo` no
+  // recongela una línea ya costeada y solo manda las pendientes
+  // (worker/lib/costeo.ts) — era este reset en bloque el que borraba el rastro
+  // de qué había costeado Compras.
+  for (const subitemId of lineasAResetear(currentLines, resetear)) {
+    await submitWrite(env, ctx, 'oportunidades_sub', subitemId, { [SUB_ETAPA_COSTEO]: ETAPA_NO_INICIADO }, viewer, { skipFlush: true, trusted: true });
   }
   // Flush AQUÍ (no vía waitUntil): la ruta refetchea el árbol desde Monday
   // enseguida — sin este await el refetch pisaría el mirror con datos viejos.
@@ -245,7 +285,7 @@ export async function duplicateVersion(
   // un fallo aquí (p.ej. vendedor_ids no parseable) no debe convertir el write
   // que la disparó en un 500 a medias.
   try {
-    await notifyNuevaVersion(env, opp, itemId, version, viewer);
+    await notifyNuevaVersion(env, opp, itemId, version, viewer, resetear === 'todas');
   } catch { /* la notificación nunca bloquea el versionado */ }
 }
 
@@ -256,6 +296,7 @@ export async function duplicateVersion(
  * `emitNotification`/`resolveRecipients` ya se tragan sus propios errores. */
 async function notifyNuevaVersion(
   env: Env, opp: MirrorItem, itemId: number, version: number, viewer: Identity,
+  resetTotal: boolean,
 ): Promise<void> {
   const vendedorIds = JSON.parse(opp.vendedor_ids || '[]') as number[];
   const compradorIds = personIdsFromColumns(opp.columns, OPP_COMPRAS_COL);
@@ -270,7 +311,9 @@ async function notifyNuevaVersion(
       severity: 'importante',
       kind: 'nueva_version',
       title: `${actorName} creó V${version} de la cotización en ${opp.name}`,
-      body: 'La versión anterior quedó archivada — revisa la vigente.',
+      body: resetTotal
+        ? 'La versión anterior quedó archivada y todas las líneas regresaron a costeo — revisa la vigente.'
+        : 'La versión anterior quedó archivada. Solo la línea que cambió regresó a costeo; el resto conserva su Etapa Costeo.',
       boardKey: 'oportunidades',
       boardId: BOARDS.oportunidades.id,
       itemId,

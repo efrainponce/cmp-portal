@@ -1,5 +1,43 @@
 # Log de commits
 
+## 2026-08-19 (11)
+
+- **Editar una línea ya no tira el costeo de toda la cotización.** Efraín
+  (2026-08-19): "esto hay que resolverlo, no podemos perder toda la info". El
+  versionado automático del 2026-08-14 llamaba a `duplicateVersion`, que regresa
+  la Etapa Costeo de **todas** las líneas a "No iniciado" — cambiar el color de
+  una línea de 15 borraba el rastro de las 14 que Compras ya había costeado y
+  obligaba a repasarlas todas.
+- `duplicateVersion` ahora recibe **qué resetear**. `'todas'` (default) es el
+  "+ Nueva versión" explícito: el vendedor está re-cotizando y el borrador
+  completo es justo lo que pidió. Una **lista** es el versionado automático:
+  editar una línea resetea SOLO esa (`[lineaId]`), y borrar o agregar una no
+  resetea ninguna (`[]`) — la que se borró queda en la versión archivada y las
+  vivas siguen costeadas igual.
+- El resto del pipeline ya trabajaba por línea: `enviarACosteo` no recongela una
+  línea costeada y solo manda las pendientes, y `checkCosteo` reactiva el botón
+  con que haya **una** pendiente. El reset en bloque era el único que razonaba
+  "toda la cotización".
+- **El guard del auto-versionado pasa de "es borrador completo" a "ya hay alguna
+  línea pendiente"** (`hayLineaPendiente`, nuevo, junto a `esDraftVigente`): con
+  el reset por línea la vigente casi nunca queda entera en borrador, y sin este
+  cambio cada tecleo posterior habría archivado otra versión (V2, V3, V4…). La
+  primera edición sobre una cotización enteramente costeada archiva la foto de
+  ese estado; mientras quede trabajo pendiente, las siguientes solo editan.
+- **UI:** "Mandar a costeo" ya no exige que TODA la vigente esté en borrador,
+  basta con que quede una línea pendiente — la UI pedía `.every` mientras el
+  server siempre evaluó `.some`, así que con el reset por línea el botón se
+  habría escondido justo cuando hace falta. De paso el grid deja de esconder
+  Precio/Subtotal/IVA/Total después de cada edición (eso era el modo borrador).
+- La notificación a la otra parte dice cuál de los dos pasó: "todas las líneas
+  regresaron a costeo" o "solo la línea que cambió; el resto conserva su Etapa
+  Costeo".
+- `worker/lib/quoteVersions.test.ts` (nuevo) ancla lo puro: `lineasAResetear`
+  (todas / solo la editada / ninguna, y nunca reescribe una línea que ya estaba
+  pendiente) y la diferencia entre `esDraftVigente` y `hayLineaPendiente`.
+- Commiteado desde un worktree aparte: otra sesión tiene el árbol principal con
+  cambios en vuelo sobre estos mismos archivos (borrado real en Monday).
+
 ## 2026-08-19 (10)
 
 - **Ricardo no podía mandar a costeo y el error hablaba de una línea invisible.**

@@ -18,7 +18,7 @@ import {
 } from '../lib/automations';
 import { enviarACosteo, enviarAValidacion, confirmarCosteo, checkCosteo, checkValidacion, CosteoError } from '../lib/costeo';
 import { generarCotizacionNative, generarCotizacionNativeD1, CotizacionError } from '../lib/cotizacion';
-import { listVersions, duplicateVersion, restoreVersion, esDraftVigente, recordFirstVersion, QuoteVersionError } from '../lib/quoteVersions';
+import { listVersions, duplicateVersion, restoreVersion, hayLineaPendiente, recordFirstVersion, QuoteVersionError } from '../lib/quoteVersions';
 import { ajustarLinea, AjusteLineaError } from '../lib/lineaAjustes';
 import { listCotizacionVirtual, ajustarLineaVirtual, ProyectoCotizacionError } from '../lib/proyectoCotizacionVirtual';
 import { capturarTallas, reportarTallasIncorrectas, checkOcCliente, confirmTallasNative, confirmTallasNativeD1 } from '../lib/proyectoTallas';
@@ -531,8 +531,10 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
         // versiones son un registro "detrás", nunca un candado para seguir
         // trabajando la cotización, incluida Ganada/Perdida (Efraín, 2026-08-14).
         const lineas = await childrenOf(c.env, 'oportunidades', itemId, viewer);
-        if (lineas.length > 0 && !esDraftVigente(lineas)) {
-          await duplicateVersion(c.env, c.executionCtx, itemId, viewer);
+        // La línea nueva nace sin Etapa Costeo (= pendiente); las que ya
+        // estaban costeadas no se tocan (Efraín, 2026-08-19).
+        if (lineas.length > 0 && !hayLineaPendiente(lineas)) {
+          await duplicateVersion(c.env, c.executionCtx, itemId, viewer, { resetear: [] });
         }
       }
 
@@ -609,7 +611,9 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       if (!linea || linea.parent_item_id == null) return c.json({ error: 'not found' }, 404);
       const itemId = linea.parent_item_id;
       try {
-        await duplicateVersion(c.env, c.executionCtx, itemId, viewer);
+        // `resetear: []`: se archiva la foto (ahí queda la línea eliminada)
+        // y ninguna línea viva se descostea (Efraín, 2026-08-19).
+        await duplicateVersion(c.env, c.executionCtx, itemId, viewer, { resetear: [] });
         // Se borra en Monday y en el mirror (worker/lib/itemBorrado.ts): una
         // línea que solo se esconde del portal sigue contando en costeo y en la
         // cotización, que leen Monday directo (Efraín, 2026-08-19). Sigue

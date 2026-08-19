@@ -619,7 +619,17 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
   // que nadie puede resolver ("La oportunidad ya está en costeo"). El camino
   // para regresar a costeo desde una etapa avanzada sigue siendo "+ Nueva
   // versión": en cuanto la vigente queda en borrador, el botón reaparece.
-  const puedeMandarCosteo = puedeMandarACosteo(stage, draftVigente);
+  // ...y ya no exige que TODA la vigente esté en borrador: desde el 2026-08-19
+  // el versionado automático solo regresa a "No iniciado" la línea que cambió
+  // (Efraín: "no podemos perder toda la info"), así que basta con que quede una
+  // pendiente. Es justo lo que el server evalúa en `checkCosteo` — que siempre
+  // usó `.some` — mientras la UI pedía `.every` y escondía el botón cuando el
+  // reset dejó de ser en bloque.
+  const hayPendienteCosteo = stage !== '4' && products.some((p) => {
+    const etapa = (p.cols[ETAPA_COSTEO_COL]?.text ?? '').trim();
+    return !etapa || etapa === 'No iniciado';
+  });
+  const puedeMandarCosteo = puedeMandarACosteo(stage, hayPendienteCosteo);
   const vigenteLabel = versions.find((v) => v.status === 'vigente')?.label;
 
   // Generar cotización (etapa 7): cmp-tallas la omite si ningún producto tiene
