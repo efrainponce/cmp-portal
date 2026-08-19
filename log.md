@@ -2,6 +2,24 @@
 
 ## 2026-08-19 (18)
 
+- **Tarjeta de proveedor reacomodada: los 3 botones en una sola línea.** Efraín,
+  con la foto: "puedes mejorar el UI? o poner todos los botones en la misma
+  línea?". Método y Condiciones de pago eran dos inputs sueltos en el encabezado
+  —con la etiqueta solo de placeholder— y empujaban "Generar OC (Monday)" a un
+  segundo renglón. Ahora el encabezado es nombre del proveedor a la izquierda y
+  **Ver OC · Generar OC (portal) · Generar OC (Monday)** a la derecha, en fila.
+- Debajo, una franja "datos de esta OC" agrupa lo que se captura por orden:
+  Método de pago, Condiciones de pago (ya con etiqueta arriba y ejemplo en el
+  placeholder) y las Notas al proveedor. Antes las notas colgaban solas y los
+  dos campos de pago vivían lejos, entre los botones.
+- "Ver OC (portal)" se llama ahora **"Ver OC"** y dejó de parecer un input (era
+  un `<button>` con estilo de campo de texto): es botón secundario, al lado de
+  los otros dos. Sigue siendo vista previa: no consume folio ni guarda nada.
+- Verificado a 980px (los 3 botones en una línea) y a 430px (se acomodan en dos
+  renglones, sin desbordar).
+
+## 2026-08-19 (18)
+
 - **"Hay una versión nueva del portal" ya no se queda pegado en
   "Actualizando…".** Efraín mandó la captura de alguien esperando en esa
   pantalla: la recarga automática tras un deploy estaba topada a UNA sola vez

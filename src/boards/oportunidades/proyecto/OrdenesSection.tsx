@@ -380,12 +380,27 @@ function ProveedorLineaRow({ l, proyectoId, canEdit, historial, onChanged }: {
   );
 }
 
-const CARD_INPUT_STYLE = {
-  // Padding vertical (8) + borde (1+1) = 18, para igualar la altura del botón
-  // "Generar OC" (Button primario: padding 9 vertical, sin borde = 18 también).
-  font: 'var(--text-label)', padding: '8px', borderRadius: 'var(--radius-md)',
-  border: '1px solid var(--border)', minWidth: 160,
-} as const;
+/** Campo con etiqueta arriba dentro de la franja "datos de esta OC" — antes los
+ * inputs vivían sueltos en el encabezado, con la etiqueta solo de placeholder, y
+ * empujaban los botones a un segundo renglón (Efraín, 2026-08-19: "poner todos
+ * los botones en la misma línea"). */
+function CampoOc({ label, value, onChange, placeholder, title, flex }: {
+  label: string; value: string; onChange: (v: string) => void;
+  placeholder: string; title: string; flex: string;
+}) {
+  return (
+    <label style={{ flex, minWidth: 150, display: 'block' }} title={title}>
+      <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)', marginBottom: 4 }}>{label}</div>
+      <input
+        type="text" value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
+        style={{
+          width: '100%', boxSizing: 'border-box', font: 'var(--text-label)', color: 'var(--ink)',
+          padding: '8px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)',
+        }}
+      />
+    </label>
+  );
+}
 
 /** Miniatura de la última OC (PDF) generada para este proveedor, junto a su
  * nombre en la tarjeta — antes solo vivían en el listado plano al fondo de la
@@ -432,9 +447,9 @@ function NativeOcButton({ proyectoId, proveedorId }: { proyectoId: string; prove
   const url = `/api/proyectos/${proyectoId}/oc-nativa/${proveedorId}/pdf`;
   return (
     <>
-      <button type="button" onClick={() => setPreview(true)} style={CARD_INPUT_STYLE} title="Genera la OC de este proveedor con el motor propio del portal (con Precio/Cantidad/Subtotal correctos)">
-        Ver OC (portal)
-      </button>
+      <Button variant="secondary" onClick={() => setPreview(true)} title="Vista previa de esta OC con el motor del portal — no consume folio ni guarda nada">
+        Ver OC
+      </Button>
       {preview && (
         <Modal title="Orden de compra — portal" onClose={() => setPreview(false)} width={760}>
           <Suspense fallback={<div style={{ font: 'var(--text-label)', color: 'var(--ink-quiet)' }}>Generando…</div>}>
@@ -477,7 +492,7 @@ function NotaProveedor({ proyectoId, proveedorId, inicial }: {
   };
 
   return (
-    <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border-subtle)' }}>
+    <div style={{ flex: '1 1 100%' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', font: 'var(--text-caption)', color: 'var(--ink-tertiary)', marginBottom: 4 }}>
         <span>Notas para el proveedor — se imprimen en la OC</span>
         <span style={{ color: guardado === 'error' ? 'var(--status-perdida)' : 'var(--ink-quiet)' }}>
@@ -559,17 +574,7 @@ function ProveedorCard({ group, proyecto, oppId, reload, canEdit, activity, nota
             </div>
           </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <input
-            type="text" value={metodoPago} onChange={e => setMetodoPago(e.target.value)}
-            placeholder="Método de pago" title="Método de pago de esta OC (no cambia el default del Proyecto)"
-            style={CARD_INPUT_STYLE}
-          />
-          <input
-            type="text" value={condPago} onChange={e => setCondPago(e.target.value)}
-            placeholder="Condiciones de pago" title="Condiciones de pago de esta OC (no cambia el default del Proyecto)"
-            style={{ ...CARD_INPUT_STYLE, minWidth: 220 }}
-          />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           <NativeOcButton proyectoId={proyecto.id} proveedorId={group.proveedorId} />
           <ConfirmButton
             label="Generar OC (portal)"
@@ -592,8 +597,25 @@ function ProveedorCard({ group, proyecto, oppId, reload, canEdit, activity, nota
           />
         </div>
       </div>
-      {canEdit && group.proveedorId && (
-        <NotaProveedor proyectoId={proyecto.id} proveedorId={group.proveedorId} inicial={nota} />
+      {canEdit && (
+        <div style={{
+          padding: '10px 14px', borderBottom: '1px solid var(--border-subtle)',
+          display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-start',
+        }}>
+          <CampoOc
+            label="Método de pago" value={metodoPago} onChange={setMetodoPago}
+            placeholder="Ej. TRANSFERENCIA" flex="1 1 200px"
+            title="Método de pago de esta OC (no cambia el default del Proyecto)"
+          />
+          <CampoOc
+            label="Condiciones de pago" value={condPago} onChange={setCondPago}
+            placeholder="Ej. 50% anticipo, 50% contra entrega" flex="2 1 280px"
+            title="Condiciones de pago de esta OC (no cambia el default del Proyecto)"
+          />
+          {group.proveedorId && (
+            <NotaProveedor proyectoId={proyecto.id} proveedorId={group.proveedorId} inicial={nota} />
+          )}
+        </div>
       )}
       <div style={{ overflowX: 'auto' }}>
         <div style={{ minWidth: 840 }}>
