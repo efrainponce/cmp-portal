@@ -6,7 +6,7 @@ import type { ColVal, ItemDTO } from '../../../../lib/api';
 import { COL } from '../../../../lib/costeoCalc';
 import {
   inlineEditableCols, GRID_COLS_ZONA, GRID_COLS_COSTEO, GRID_COLS_VENTA, EMB_STATUS_COL,
-  getLineWarnings, EMPTY_ROW,
+  COLOR_COL, PRODUCTO_COL, getLineWarnings, EMPTY_ROW,
 } from './gridMeta';
 
 const CANTIDAD = 'numeric_mkzm6399';
@@ -22,6 +22,16 @@ describe('inlineEditableCols', () => {
     // ...sin desbloquear de paso la edición de líneas: son ejes independientes.
     expect(inlineEditableCols(false, true).has(CANTIDAD)).toBe(false);
     expect(inlineEditableCols(false, true).has(COL.precio)).toBe(true);
+  });
+
+  it('Compras: color y cantidad aunque el board sea de solo lectura (Efraín, 2026-08-19)', () => {
+    const compras = inlineEditableCols(false, false, true);
+    expect(compras.has(COLOR_COL)).toBe(true);
+    expect(compras.has(CANTIDAD)).toBe(true);
+    // ...sin abrirle producto ni embellecimiento (eso es de Ventas), ni el precio.
+    expect(compras.has(PRODUCTO_COL)).toBe(false);
+    expect(compras.has(EMB_STATUS_COL)).toBe(false);
+    expect(compras.has(COL.precio)).toBe(false);
   });
 
   it('mantiene los costos editables en ambos modos', () => {

@@ -3,7 +3,7 @@
 // worker/index.ts (2026-07-16) — sin cambios de comportamiento.
 import type { Context, ExecutionContext, Hono } from 'hono';
 import type { Env } from '../env';
-import type { Identity } from '../../shared/types';
+import type { Identity, MirrorItem } from '../../shared/types';
 import { BOARDS, boardById } from '../../shared/boards';
 import type { BoardSlug } from '../../shared/boards';
 import { isNativeId } from '../../shared/nativeId';
@@ -22,6 +22,7 @@ import { submitCreate, submitCreateNative, isNativeCreatable, CreateError } from
 import { duplicateVersion, esDraftVigente, QuoteVersionError, LINE_DEFINING_COLS } from '../lib/quoteVersions';
 import { addFileToUpdate, fetchAssetPublicUrls, type MentionInput } from '../lib/monday';
 import { ocultarItem } from '../lib/itemOculto';
+import { esAjusteInlineCompras, registrarAjusteInline } from '../lib/lineaAjustes';
 // Los updates de un item nativo (Zona Efrain) viven en D1, no en Monday — estas
 // dos funciones eligen el lado por el id, así que la ruta no lo decide.
 import {
@@ -341,6 +342,11 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
     const viewer = c.get('viewer');
     const body = await c.req.json<WriteRequest>();
 
+    // Cambio de Compras que se asienta como mini versión en vez de versionar —
+    // se resuelve aquí (con la línea ANTES del write) y se registra después de
+    // que el write salió bien.
+    let ajusteCompras: { parentItemId: number; linea: MirrorItem } | null = null;
+
     if (slug === 'oportunidades_sub' && Object.keys(body.cols).some(id => LINE_DEFINING_COLS.has(id))) {
       // La misma validación por columna que submitWrite hará abajo, pero ANTES
       // de auto-versionar: sin esto, un PATCH que iba a morir en 403 dejaba
@@ -352,15 +358,38 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
       }
       const linea = await getItem(c.env, 'oportunidades_sub', itemId, viewer, 'own');
       if (linea?.parent_item_id != null && !isNativeId(linea.parent_item_id)) {
-        const versionError = await autoVersionLineaCosteada(c.env, c.executionCtx, linea.parent_item_id, viewer);
-        if (versionError) {
-          return jsonStatus({ ok: false, pending: false, error: versionError.message } satisfies WriteResponse, versionError.status);
+        // Compras cambiando color/cantidad NO reinicia el ciclo de costeo
+        // (Efraín, 2026-08-19: "en cotización los de compras siempre pueden
+        // modificar colores y cantidades, acuérdate de hacer mini versiones
+        // 1.1"): versionar aquí archivaría la vigente y regresaría la Etapa
+        // Costeo de TODAS las líneas a "No iniciado" — o sea, Compras tirando
+        // su propio costeo por corregir un color. Queda como V{n}.{m}, igual
+        // que "Ajustar línea". El vendedor sí versiona, sin cambios.
+        if (esAjusteInlineCompras(viewer.role, Object.keys(body.cols))) {
+          ajusteCompras = { parentItemId: linea.parent_item_id, linea };
+        } else {
+          const versionError = await autoVersionLineaCosteada(c.env, c.executionCtx, linea.parent_item_id, viewer);
+          if (versionError) {
+            return jsonStatus({ ok: false, pending: false, error: versionError.message } satisfies WriteResponse, versionError.status);
+          }
         }
       }
     }
 
     try {
       const result = await submitWrite(c.env, c.executionCtx, slug, itemId, body.cols, viewer);
+      if (ajusteCompras && result.ok) {
+        // Best-effort: la mini versión es trazabilidad, no debe convertir un
+        // write ya aplicado en un 500. Sin subversión sobre un borrador todavía
+        // sin costear (mismo criterio que autoVersionLineaCosteada): ahí no hay
+        // vigente que retocar, la línea se está capturando.
+        try {
+          const lineas = await childrenOf(c.env, 'oportunidades', ajusteCompras.parentItemId, viewer);
+          if (lineas.length > 0 && !esDraftVigente(lineas)) {
+            await registrarAjusteInline(c.env, ajusteCompras.parentItemId, ajusteCompras.linea, body.cols, viewer);
+          }
+        } catch { /* la mini versión nunca bloquea el write */ }
+      }
       return c.json(result);
     } catch (err) {
       if (err instanceof OutboxError) {

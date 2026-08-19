@@ -285,3 +285,27 @@ describe('historial de actividad — solo Compras y Admin (Efraín, 2026-08-18)'
     expect(canReadActivity('admin')).toBe(true);
   });
 });
+
+describe('color y cantidad — Compras también los escribe (Efraín, 2026-08-19)', () => {
+  // "En cotización los de compras siempre pueden modificar colores y cantidades".
+  // Elizabeth (Compras) abría una oportunidad en Costeo y los dos campos salían
+  // de solo lectura: `w` era WV (vendedor+admin) y outbox.ts gatea con canWrite(),
+  // así que este es el candado real — la grid solo lo refleja.
+  it('compras escribe Color y Cantidad', () => {
+    for (const col of ['text_mm07s2mg', 'numeric_mkzm6399']) {
+      for (const role of ['vendedor', 'compras', 'admin'] as Role[]) {
+        expect(canWrite('oportunidades_sub', col, role), `${col}/${role}`).toBe(true);
+      }
+      expect(canWrite('oportunidades_sub', col, 'almacen'), col).toBe(false);
+    }
+  });
+
+  it('lo demás de la línea NO se le abrió: producto, embellecimiento y precio', () => {
+    // Producto y embellecimiento siguen siendo trabajo de Ventas; el precio es
+    // solo admin (arriba). Si esto truena, alguien amplió la excepción de más.
+    for (const col of ['text_mm0bkm1j', 'board_relation_mkzmafgp', 'color_mm1b34bg']) {
+      expect(canWrite('oportunidades_sub', col, 'compras'), col).toBe(false);
+    }
+    expect(canWrite('oportunidades_sub', 'numeric_mkzneg3d', 'compras')).toBe(false);
+  });
+});

@@ -240,6 +240,51 @@ async function registrarAjuste(
   ).run();
 }
 
+/** Color y Cantidad — lo ÚNICO de la línea que Compras cambia inline desde la
+ * grid de Cotización (shared/visibility.ts los abrió a `w: V` el 2026-08-19).
+ * Un cambio así NO reinicia el ciclo de costeo: se registra como mini versión
+ * V{mayor}.{n}, igual que "Ajustar línea" (Efraín, 2026-08-19: "acuérdate de
+ * hacer mini versiones 1.1"). */
+export const AJUSTE_INLINE_COLS: ReadonlySet<string> = new Set([SUB_COLOR, SUB_CANTIDAD]);
+
+/** El resto de LINE_DEFINING_COLS (worker/lib/quoteVersions.ts): cambiar
+ * producto o embellecimiento sí cambia QUÉ se cotiza y sigue disparando el
+ * versionado completo. Se enumera aquí en vez de importar LINE_DEFINING_COLS
+ * para no cerrar el ciclo de imports (quoteVersions ya importa listAjustes de
+ * este archivo); lineaAjustes.test.ts ancla que las dos mitades sumen
+ * exactamente ese conjunto, así que un cambio allá truena aquí. */
+const AJUSTE_INLINE_VERSIONABLES: ReadonlySet<string> = new Set([
+  SUB_PRODUCTO_REL, SUB_PRODUCTO_TXT, SUB_EMB_STATUS, SUB_EMB_DESC,
+]);
+
+/** ¿Este PATCH a una línea es un ajuste de Compras (mini versión) en vez de un
+ * versionado completo? Solo si lo manda Compras, toca color o cantidad y no
+ * arrastra ninguna otra columna definitoria — un PATCH que además cambie el
+ * producto sí versiona, como cualquier otro. Puro, para test unitario. */
+export function esAjusteInlineCompras(role: string, colIds: string[]): boolean {
+  if (role !== 'compras') return false;
+  if (colIds.some(id => AJUSTE_INLINE_VERSIONABLES.has(id))) return false;
+  return colIds.some(id => AJUSTE_INLINE_COLS.has(id));
+}
+
+/** Asienta el ajuste de un cambio inline de color/cantidad hecho por Compras.
+ * Se llama DESPUÉS de que el write salió bien (worker/routes/boards.ts): un
+ * PATCH que muere en 403 no debe dejar una mini versión fantasma. `linea` es
+ * el renglón del espejo ANTES del write — de ahí sale el "antes". */
+export async function registrarAjusteInline(
+  env: Env, itemId: number, linea: MirrorItem, cols: Record<string, unknown>, viewer: Identity,
+): Promise<void> {
+  const antes = snapshot(colsOf(linea));
+  const despues: LineaSnapshot = { ...antes };
+  if (cols[SUB_COLOR] !== undefined) despues.color = String(cols[SUB_COLOR] ?? '').trim();
+  if (cols[SUB_CANTIDAD] !== undefined) {
+    despues.cantidad = Number(String(cols[SUB_CANTIDAD] ?? '').replace(/,/g, '')) || 0;
+  }
+  // Reescribir el mismo valor (blur sin cambio) no merece una subversión.
+  if (antes.color === despues.color && antes.cantidad === despues.cantidad) return;
+  await registrarAjuste(env, itemId, linea.item_id, undefined, antes, despues, viewer);
+}
+
 export interface AjustarLineaResult { itemId: number; lineaId: number; nuevaLineaId?: number; costoDivergente?: CostoDivergenciaDTO }
 
 /** "Ajustar línea": ver comentario de archivo. `productoNombre` en el input es

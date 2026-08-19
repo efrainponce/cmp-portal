@@ -96,8 +96,16 @@ export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
     // de Efraín, mismo patrón que text_mm0gje0 en `oportunidades`.
     text_mm0bkm1j:        { vis: V, w: WV },   // Producto (texto libre)
     board_relation_mkzmafgp: { vis: V, w: WV }, // Producto (auto) → Productos; ya probado en createOportunidad.ts
-    text_mm07s2mg:        { vis: V, w: WV },   // Color
-    numeric_mkzm6399:     { vis: V, w: WV },   // Cantidad
+    // Color y Cantidad — también los escribe COMPRAS, en cualquier etapa
+    // (Efraín, 2026-08-19: "en cotización los de compras siempre pueden
+    // modificar colores y cantidades"). Elizabeth abría una oportunidad en
+    // Costeo y los dos campos salían de solo lectura: el `w: WV` de aquí es
+    // el candado real (outbox.ts gatea con canWrite), la grid solo lo refleja.
+    // Un cambio de Compras NO reinicia el ciclo de costeo como el del
+    // vendedor: queda como mini versión V{n}.{m} — worker/routes/boards.ts
+    // (esAjusteInlineCompras) y worker/lib/lineaAjustes.ts.
+    text_mm07s2mg:        { vis: V, w: V },    // Color
+    numeric_mkzm6399:     { vis: V, w: V },    // Cantidad
     color_mm1b34bg:       { vis: V, w: WV },   // Embellecimiento (status)
     // Descripción/imagen de zonas — Compras también las captura/edita desde
     // el board Costeo (tab Embellecimientos), no solo Ventas (Efraín, 2026-08-12).

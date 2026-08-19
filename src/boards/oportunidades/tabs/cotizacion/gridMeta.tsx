@@ -108,7 +108,7 @@ export function suggestedPrecio23(costoTotalUnit: number, margenGobPct: number):
 // siendo exclusivo del board Validación (precioOnly) y del rol admin
 // (`w: WA` en shared/visibility.ts) — esta bandera no relaja el permiso del
 // server, solo deja de esconder la celda donde el rol ya podía escribir.
-export function inlineEditableCols(lineEdits: boolean, precio = false): Set<string> {
+export function inlineEditableCols(lineEdits: boolean, precio = false, comprasLinea = false): Set<string> {
   const base = new Set<string>([
     COL.costoDistr, COL.descuentoPct, COL.conversion, COL.gastosPct, COL.margenGobPct, ETAPA_COSTEO_COL,
     // Costo embell. C/U — lo captura Compras en Costeo junto con el resto de los
@@ -128,6 +128,14 @@ export function inlineEditableCols(lineEdits: boolean, precio = false): Set<stri
     base.add(COLOR_COL);
     base.add(COL.cantidad);
     base.add(EMB_STATUS_COL);
+  }
+  // Compras: color y cantidad SIEMPRE, aunque el board sea de solo lectura para
+  // el resto de la línea (Efraín, 2026-08-19) — producto y embellecimiento
+  // siguen siendo trabajo de Ventas. El server ya lo permite (shared/visibility.ts
+  // `w: V`) y lo asienta como mini versión V{n}.{m} en vez de versionar.
+  if (comprasLinea) {
+    base.add(COLOR_COL);
+    base.add(COL.cantidad);
   }
   if (precio) base.add(COL.precio);
   return base;

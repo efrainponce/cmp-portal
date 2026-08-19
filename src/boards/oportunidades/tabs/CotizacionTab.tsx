@@ -134,9 +134,19 @@ export function CotizacionTab({
   // autoVersionIfCosted) — las versiones son un registro "detrás", nunca un
   // candado que bloquee seguir editando (Efraín, 2026-08-14).
   const lineEdits = !readOnly && !precioOnly;
+  const me = useMe();
+  // Compras cambia color y cantidad SIEMPRE, en cualquier board de etapa
+  // (Efraín, 2026-08-19: "en cotización los de compras siempre pueden modificar
+  // colores y cantidades") — hasta ahora la grid de Costeo los pintaba de solo
+  // lectura y había que ir a Monday. No abre el resto de la línea: producto y
+  // embellecimiento siguen siendo trabajo de Ventas en Oportunidades. Se apaga
+  // en una oportunidad ajena (el server responde 404 a todo write) y en
+  // Validación, donde lo único editable es el Precio de Venta.
+  const comprasLineEdits = !lineEdits && !precioOnly
+    && me?.role === 'compras' && item?.ownedByViewer !== false;
   const editableCols = useMemo(
-    () => (precioOnly ? new Set<string>([COL.precio]) : inlineEditableCols(lineEdits, zonaPrivada)),
-    [precioOnly, lineEdits, zonaPrivada],
+    () => (precioOnly ? new Set<string>([COL.precio]) : inlineEditableCols(lineEdits, zonaPrivada, comprasLineEdits)),
+    [precioOnly, lineEdits, zonaPrivada, comprasLineEdits],
   );
   const canAddLines = lineEdits && editable;
 
@@ -149,7 +159,6 @@ export function CotizacionTab({
   // encontrado probando en vivo con una oportunidad recién creada y marcada
   // Ganada sin costear: `!lineEdits` daba false aunque la fila ya se pintaba
   // de solo lectura). `canAddLines` ya combina ambos factores correctamente.
-  const me = useMe();
   const canAjustar = !canAddLines && (me?.role === 'vendedor' || me?.role === 'compras' || me?.role === 'admin');
   // Historial por renglón (📋): solo Compras/Admin — shared/visibility.ts
   // canReadActivity (Efraín, 2026-08-18). El endpoint responde 403 al resto.

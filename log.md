@@ -1,5 +1,40 @@
 # Log de commits
 
+## 2026-08-19 (9)
+
+- **Compras ya puede cambiar color y cantidad en la cotización.** Elizabeth
+  (WhatsApp, 2026-08-19): "oigan no he hecho nada, solo abrí la oportunidad y no
+  me deja cambiar colores o las cantidades" — con la captura del board Costeo y
+  los dos campos subrayados. Efraín: "en cotización los de compras SIEMPRE
+  pueden modificar colores y cantidades, acuérdate de hacer mini versiones 1.1.
+  Habilita los cambios a compras".
+- El candado real estaba en `shared/visibility.ts`: Color (`text_mm07s2mg`) y
+  Cantidad (`numeric_mkzm6399`) eran `w: WV` (vendedor+admin), y `outbox.ts`
+  gatea con `canWrite()` — la grid solo reflejaba eso. Pasan a `w: V`. Producto,
+  embellecimiento y Precio de Venta NO se tocan: siguen siendo de Ventas y de
+  admin respectivamente (anclado en `shared/visibility.test.ts`).
+- **El cambio de Compras no reinicia el costeo**: un PATCH de vendedor sobre una
+  línea ya costeada archiva la vigente y regresa la Etapa Costeo de TODAS las
+  líneas a "No iniciado" (auto-versionado del 2026-08-14). Aplicado a Compras eso
+  significaba tirar su propio costeo por corregir un color. Ahora, si el que
+  escribe es Compras y solo toca color/cantidad, se asienta una **mini versión
+  V{n}.{m}** en `cotizacion_ajustes` — el mismo registro que "Ajustar línea", que
+  ya sale en los chips de versión y marca la línea como "Editada". Si el mismo
+  PATCH arrastra producto o embellecimiento, versiona completo como siempre.
+- `worker/lib/lineaAjustes.ts` expone `esAjusteInlineCompras` (puro, con test) y
+  `registrarAjusteInline`; `worker/routes/boards.ts` elige camino antes del write
+  y asienta la mini versión después, best-effort — la trazabilidad nunca convierte
+  un write ya aplicado en un 500, y un borrador sin costear no genera subversión.
+- En la grid, `inlineEditableCols` acepta un modo "compras" que abre color y
+  cantidad aunque el board sea de solo lectura (Costeo). Se apaga en Validación
+  (ahí lo único editable es el Precio de Venta) y en una oportunidad ajena de
+  líder de zona. En Ganada/Perdida las líneas siguen bloqueadas inline y el
+  camino es el lápiz "Ajustar línea", que Compras ya tenía.
+- `lineaAjustes.test.ts` ancla que las dos mitades (mini versión vs versionable)
+  sumen exactamente `LINE_DEFINING_COLS`: si alguien agrega una columna
+  definitoria allá y no la clasifica aquí, truena en vez de colarse como mini
+  versión.
+
 ## 2026-08-19 (8)
 
 - **QA agresivo en producción: reglas escritas + arnés que las ejecuta.** Efraín
