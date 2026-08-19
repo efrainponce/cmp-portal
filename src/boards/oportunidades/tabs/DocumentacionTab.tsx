@@ -13,7 +13,7 @@
 // (Efraín, 2026-07-26).
 import { useState, type ChangeEvent } from 'react';
 import type { ItemDetailDTO } from '../../../lib/api';
-import { uploadProyectoDocumento } from '../../../lib/api';
+import { uploadProyectoDocumento, borrarProyectoDocumento, useBoards, colForBoard } from '../../../lib/api';
 import { patchItem } from '../../../lib/apiClient';
 import { useMe } from '../../../lib/useMe';
 import { P_OC_CLIENTE, type ProyectoState } from '../ProyectoSection';
@@ -25,13 +25,19 @@ export const FIRMADAS_COL = 'file_mm0zjras';    // Cotizaciones Firmadas
 export const INVENTARIO_COL = 'file_mm0hpefr';  // Inventario Actual (Imagen)
 const FECHA_ENTREGA_COL = 'date_mm0m1vfv';
 
-interface DocFile { url: string; name: string; key?: string }
+interface DocFile { url: string; name: string; key?: string; assetId?: number }
 
+/** El `text` de una columna file son las URLs de Monday
+ * (…/resources/<assetId>/<nombre>). El assetId se conserva porque es lo único
+ * que distingue dos archivos con el MISMO nombre — el caso que originó "quitar"
+ * (la misma OC subida dos veces, Efraín 2026-08-19). En items nativos el text
+ * es el puro nombre y no hay assetId. */
 function parseFiles(text?: string): DocFile[] {
   if (!text) return [];
   return text.split(',').map((s) => s.trim()).filter(Boolean).map((url) => ({
     url,
     name: decodeURIComponent(url.split('/').pop() || url),
+    assetId: Number(/\/resources\/(\d+)\//.exec(url)?.[1]) || 0,
   }));
 }
 
@@ -151,23 +157,52 @@ function FileSignature({ file }: { file: DocFile & { key: string } }) {
   );
 }
 
-function FileListOrEmpty({ files }: { files: DocFile[] }) {
+function FileListOrEmpty({ files, onDelete, borrando }: {
+  files: DocFile[]; onDelete?: (f: DocFile) => void; borrando?: string | null;
+}) {
   if (files.length === 0) return <div style={{ font: 'var(--text-caption)', color: 'var(--ink-faint)' }}>Sin documentos.</div>;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', border: '1px solid var(--border)', borderRadius: 'var(--radius-xl)', overflow: 'hidden' }}>
-      {files.map((f, i) => (
-        <a
-          key={i}
-          href={f.url}
-          target="_blank"
-          rel="noreferrer"
-          style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderTop: i === 0 ? 'none' : '1px solid var(--border-subtle)', background: '#fff', textDecoration: 'none' }}
-        >
-          <div style={{ font: 'var(--text-body-strong)', color: 'var(--accent)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</div>
-        </a>
-      ))}
+      {files.map((f, i) => {
+        const enCurso = borrando === fileKey(f);
+        return (
+          <div
+            key={i}
+            style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderTop: i === 0 ? 'none' : '1px solid var(--border-subtle)', background: '#fff' }}
+          >
+            <a
+              href={f.url}
+              target="_blank"
+              rel="noreferrer"
+              style={{ flex: 1, minWidth: 0, font: 'var(--text-body-strong)', color: 'var(--accent)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: 'none' }}
+            >
+              {f.name}
+            </a>
+            {onDelete && (
+              <button
+                type="button"
+                onClick={() => onDelete(f)}
+                disabled={enCurso}
+                title="Borrar el documento (también en Monday)"
+                style={{
+                  border: 'none', background: 'none', padding: '2px 4px', cursor: enCurso ? 'default' : 'pointer',
+                  font: 'var(--text-caption-strong)', color: enCurso ? 'var(--ink-faint)' : 'var(--ink-quiet)', flex: 'none',
+                }}
+              >
+                {enCurso ? 'Borrando…' : 'Borrar'}
+              </button>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
+}
+
+/** Identidad de una fila de la lista: el assetId cuando lo hay (dos archivos se
+ * pueden llamar igual), el nombre en items nativos. */
+function fileKey(f: DocFile): string {
+  return f.assetId ? String(f.assetId) : f.name;
 }
 
 /** Fecha de entrega del proyecto — obligatoria, la captura el vendedor
@@ -238,6 +273,10 @@ export function FechaEntregaField({ proyecto }: { proyecto?: ProyectoState }) {
 export function OcContratoSection({ proyecto, oppId }: { proyecto?: ProyectoState; oppId: string | null }) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [borrando, setBorrando] = useState<string | null>(null);
+  // Refleja ColMeta.w (shared/visibility.ts) en vez de repetir la whitelist aquí.
+  const { boards } = useBoards();
+  const canDelete = !!colForBoard(boards, 'proyectos').find((c) => c.id === P_OC_CLIENTE)?.w;
 
   const handleFile = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -249,6 +288,21 @@ export function OcContratoSection({ proyecto, oppId }: { proyecto?: ProyectoStat
     const res = await uploadProyectoDocumento(p.id, file);
     setUploading(false);
     if (!res.ok) { setError(res.error ?? 'No se pudo subir el archivo.'); return; }
+    proyecto?.reload();
+  };
+
+  // Borra en el portal y en Monday a la vez (worker/lib/archivoBorrado.ts, que
+  // respalda los bytes antes). El server solo deja borrar lo que uno subió — si
+  // fue alguien más responde con ese mensaje y se muestra tal cual.
+  const handleDelete = async (f: DocFile) => {
+    const p = proyecto?.proyecto;
+    if (!p) return;
+    if (!confirm(`¿Borrar "${f.name}"?\n\nSe quita del portal y de Monday. El portal guarda una copia de respaldo.`)) return;
+    setBorrando(fileKey(f));
+    setError(null);
+    const res = await borrarProyectoDocumento(p.id, { assetId: f.assetId ?? 0, nombre: f.name });
+    setBorrando(null);
+    if (!res.ok) { setError(res.error ?? 'No se pudo borrar el documento.'); return; }
     proyecto?.reload();
   };
 
@@ -286,7 +340,7 @@ export function OcContratoSection({ proyecto, oppId }: { proyecto?: ProyectoStat
         </span>
         <input type="file" onChange={handleFile} style={{ display: 'none' }} disabled={!canUpload || uploading} />
       </label>
-      <FileListOrEmpty files={files} />
+      <FileListOrEmpty files={files} onDelete={canDelete ? handleDelete : undefined} borrando={borrando} />
       {isMissing && (
         <div style={{
           marginTop: 8, padding: '8px 10px', border: '1px solid var(--status-perdida)', borderRadius: 'var(--radius-lg)',

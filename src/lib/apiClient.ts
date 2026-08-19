@@ -557,6 +557,23 @@ export async function uploadProyectoDocumento(
   return body;
 }
 
+/** Borra un archivo de la OC/contrato del cliente — del portal y de Monday, 1-1
+ * (el worker respalda los bytes en R2 antes; ver worker/lib/archivoBorrado.ts).
+ * `assetId` sale de la URL de Monday y es lo que distingue dos archivos con el
+ * MISMO nombre — justo el caso que originó esto (la misma OC subida dos veces). */
+export async function borrarProyectoDocumento(
+  proyectoId: string, archivo: { assetId: number; nombre: string },
+): Promise<{ ok: boolean; error?: string }> {
+  const res = await apiFetch(`/proyectos/${proyectoId}/documento/borrar`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ assetId: archivo.assetId, nombre: archivo.nombre }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) return { ok: false, error: body.error ?? 'No se pudo borrar el documento.' };
+  return { ok: true };
+}
+
 /** Sube "# Guia - empresa" / "Evidencia recolección" (tab Logística) a un
  * subitem de proyectos_sub. */
 export async function uploadLogisticaArchivo(

@@ -32,6 +32,7 @@ import { duplicateOportunidad, DuplicateOportunidadError } from '../lib/duplicat
 import { ganarOportunidad, GanarOportunidadError } from '../lib/ganarOportunidad';
 import { createSubitem, addFileToColumn, fetchAssetPublicUrls, gql } from '../lib/monday';
 import { borrarItem, BorradoError } from '../lib/itemBorrado';
+import { archivosDelMirror, borrarArchivoDeColumna, puedeBorrarArchivo, registrarSubida, subidoPor, ArchivoBorradoError } from '../lib/archivoBorrado';
 import { postUpdate } from '../lib/nativeUpdates';
 import { stampInstitucionEnOpsDeContacto } from '../lib/nativeMirrors';
 import { toNativeColumns, insertNativeSubitem, stampNativeFileMarker } from '../lib/nativeItems';
@@ -1279,11 +1280,20 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       const key = oppId != null ? oportunidadFileKey(oppId, 'documento', file.name) : null;
       if (key) await putFile(c.env, key, file);
       await stampNativeFileMarker(c.env, 'proyectos', itemId, PROYECTO_DOCUMENTO_COL, file.name, 'replace');
+      // assetId 0: un item nativo no tiene asset de Monday — el registro de
+      // quién subió empata por nombre (worker/lib/archivoBorrado.ts).
+      await registrarSubida(c.env, BOARDS.proyectos.id, itemId, PROYECTO_DOCUMENTO_COL, { assetId: 0, nombre: file.name }, viewer.email);
       return c.json({ ok: true, id: `native-${Date.now()}`, name: file.name, url: key ? `/api/files/${key}` : '' });
     }
 
     const asset = await addFileToColumn(c.env, itemId, PROYECTO_DOCUMENTO_COL, file, file.name);
     c.executionCtx.waitUntil(refetchItem(c.env, BOARDS.proyectos.id, itemId));
+
+    // Deja constancia de QUIÉN lo subió: Monday no lo sabe decir (todo sube con
+    // el token de servicio), y sin esto no se puede cumplir "solo el que lo
+    // subió lo puede borrar" (Efraín, 2026-08-19).
+    await registrarSubida(c.env, BOARDS.proyectos.id, itemId, PROYECTO_DOCUMENTO_COL,
+      { assetId: Number(asset.id) || 0, nombre: asset.name || file.name }, viewer.email);
 
     // Dual-write a R2: el Proyecto no trae el oppId directo, se resuelve del
     // board_relation ya cargado en `row` (ver worker/lib/dal.ts). Si el
@@ -1295,6 +1305,52 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       return c.json({ ok: true, id: asset.id, name: asset.name, url: `/api/files/${key}` });
     }
     return c.json({ ok: true, id: asset.id, name: asset.name, url: asset.publicUrl });
+  });
+
+  // Borra un archivo de la OC/contrato: del portal Y de Monday, 1-1
+  // (worker/lib/archivoBorrado.ts — respaldo en R2 antes, tope por hora, y
+  // `update_assets_on_item` en vez de cualquier mutación destructiva).
+  // Efraín, 2026-08-19: "vendedor puede borrar documentos que el SUBIO".
+  app.post('/api/proyectos/:id/documento/borrar', async c => {
+    const itemId = Number(c.req.param('id'));
+    if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
+    const viewer = c.get('viewer');
+    if (!canWrite('proyectos', PROYECTO_DOCUMENTO_COL, viewer.role)) return c.json({ error: 'forbidden' }, 403);
+
+    // scope 'own': borrar es una escritura — solo sobre lo propio, nunca sobre
+    // lo que el viewer apenas LEE por liderar la zona (worker/lib/zonas.ts).
+    const row = await getItem(c.env, 'proyectos', itemId, viewer, 'own');
+    if (!row) return c.json({ error: 'not found' }, 404);
+
+    const body = await c.req.json<{ assetId?: number; nombre?: string }>().catch(() => ({} as { assetId?: number; nombre?: string }));
+    const nombre = typeof body.nombre === 'string' ? body.nombre.trim() : '';
+    const assetId = Number(body.assetId) || 0;
+    if (!nombre && !assetId) return c.json({ error: 'falta el archivo a borrar' }, 400);
+
+    // Se pide contra lo que el usuario ESTÁ VIENDO (el mirror). La lista que se
+    // reescribe se relee en vivo dentro de borrarArchivoDeColumna: aquí solo se
+    // valida que el archivo exista y quién puede tocarlo.
+    const enMirror = archivosDelMirror(row, PROYECTO_DOCUMENTO_COL);
+    const archivo = enMirror.find(f => (assetId ? f.assetId === assetId : f.nombre === nombre));
+    if (!archivo) return c.json({ error: 'ese documento ya no está en el proyecto' }, 404);
+
+    const uploader = await subidoPor(c.env, BOARDS.proyectos.id, itemId, PROYECTO_DOCUMENTO_COL, archivo);
+    if (!puedeBorrarArchivo(viewer, uploader)) {
+      return c.json({ error: 'ese documento lo subió alguien más — pídele a quien lo subió, o a un admin, que lo borre' }, 403);
+    }
+
+    try {
+      const oppId = linkedItemId(row, PROYECTO_OPP_REL);
+      const res = await borrarArchivoDeColumna(c.env, {
+        slug: 'proyectos', itemId, colId: PROYECTO_DOCUMENTO_COL,
+        oppId, categoria: 'documento', ref: archivo, viewer,
+      });
+      if (!isNativeId(itemId)) await refetchItem(c.env, BOARDS.proyectos.id, itemId);
+      return c.json({ ok: true, nombre: res.nombre });
+    } catch (err) {
+      if (err instanceof ArchivoBorradoError) return jsonStatus({ error: err.message }, err.status);
+      return c.json({ error: 'No se pudo borrar el documento.' }, 500);
+    }
   });
 
   // Sube "# Guia - empresa" / "Evidencia recolección" (columnas file de

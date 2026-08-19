@@ -1,5 +1,44 @@
 # Log de commits
 
+## 2026-08-19 (12)
+- **El vendedor ya puede borrar un documento que subió.** Ricardo (WhatsApp, con
+  la foto de la pestaña Documentación de OPP-0506): "Subi dos veces el
+  documento… ¿Cómo puedo borrar algún documento en orden de compra?". Efraín:
+  "Vendedor puede borrar documentos que el SUBIO por favor".
+- La lista de "Órdenes de compra / contrato firmado" tiene ahora un **Borrar**
+  por renglón. Borra en el portal y en Monday a la vez — 1-1, la regla de la
+  entrada anterior.
+- Corrige lo que quedó escrito ahí: la API de Monday **sí** sabe quitar un
+  archivo suelto de una columna `file`. No con un `delete_*`, sino con
+  `update_assets_on_item`, que reescribe la lista de la columna a partir de
+  assets existentes; se manda sin el archivo a quitar y los demás quedan
+  intactos. Probado en vivo contra OPP-0506 (de paso se fue el duplicado de la
+  OC que reportó Ricardo).
+- Ojo con lo que eso significa: el asset que se deja fuera **desaparece de
+  Monday** (`assets(ids:)` ya no lo devuelve). Es destructivo aunque no lleve la
+  palabra delete, así que lleva las mismas guardas que `itemBorrado.ts`:
+  respaldo de los BYTES en R2 (`…/documento-borrado/<assetId>-<nombre>`, key
+  propio para que un duplicado no pise la copia buena) + renglón en
+  `archivo_borrado` ANTES de tocar Monday, de a un archivo por assetId, y tope
+  de 30 por hora y persona.
+- La lista que se reescribe se lee EN VIVO de Monday, no del mirror: con el
+  espejo atrasado, un archivo subido hace un minuto no aparecería en la lista y
+  la mutación lo borraría sin que nadie lo pidiera.
+- "Que el SUBIO" necesitó tabla propia: todo lo que sube el portal va con el
+  token de servicio, así que en Monday los 8 assets de OPP-0506 aparecen
+  subidos por "Efrain Ponce Salinas". Desde hoy cada subida deja renglón en
+  `archivo_subido` y solo ese correo (o un admin) puede borrar el archivo. Los
+  archivos anteriores no tienen dueño registrado: los puede borrar el dueño del
+  proyecto — que es lo que deja a Ricardo limpiar el suyo.
+- Escribir sigue pidiendo scope `'own'` (`getItem(..., 'own')`): un líder de
+  zona ve los documentos de su equipo y no los borra.
+- `archivoBorrado.test.ts` ancla las dos mitades: la lógica pura (empate por
+  assetId cuando dos archivos se llaman igual, quitar uno y no los dos, el key
+  del respaldo, quién puede borrar) y que `update_assets_on_item` aparezca en un
+  solo archivo, con respaldo y tope antes de la mutación.
+- `docs/code-index.md`: la entrada de `itemOculto.ts` (borrado en la entrada
+  anterior) se reemplazó por `itemBorrado.ts` y se agregó `archivoBorrado.ts`.
+
 ## 2026-08-19 (11)
 
 - **Editar una línea ya no tira el costeo de toda la cotización.** Efraín
