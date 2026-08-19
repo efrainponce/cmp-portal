@@ -49,6 +49,12 @@ export const TALLAS_COL = 'lookup_mm5v1qb';           // mirror: Tallas (fuente:
 // mientras el mirror asíncrono del subitem no se ha poblado todavía.
 export const CATALOGO_DESCRIPCION_COL = 'long_text_mm0xse7v';
 export const CATALOGO_TALLAS_COL = 'text_mm5v6jhj';
+// Costo Distribuidor en el catálogo (Productos) — el portal NO lo escribe
+// (`vis: AC` sin `w` en shared/visibility.ts): se captura en Airtable y baja por
+// el sync del catálogo. Se lee solo para distinguir "el costeo está pendiente"
+// de "este producto nunca ha tenido costo" — 685 de 1335 productos no lo traen
+// (medido en el mirror, 2026-08-19).
+export const CATALOGO_COSTO_COL = 'numeric_mkzpx7eb';
 // "Descripción y tallas confirmadas" — checkbox en Productos (18395657591), creada
 // 2026-07-18. Vive en el catálogo por SKU, no por línea (Efraín: la ficha es del
 // producto, no de la cotización) — Compras la marca y eso desbloquea "Mandar a
@@ -404,6 +410,19 @@ export function productoTallasOk(row: ItemDTO, catalog: ItemDTO[]): boolean {
   return tallas !== '' && tallas.toLowerCase() !== 'error';
 }
 
+// El producto de catálogo ligado no tiene Costo Distribuidor. `undefined` = no
+// se puede saber (sin producto ligado, catálogo todavía cargando, o un rol que
+// no ve esa columna — vendedor): quien pregunta se queda con el aviso genérico
+// en vez de afirmar algo falso.
+export function productoSinCosto(row: ItemDTO, catalog: ItemDTO[]): boolean | undefined {
+  const id = linkedProductoId(row);
+  if (id == null) return undefined;
+  const catalogItem = catalogIndex(catalog).byId.get(id);
+  const costo = catalogItem?.cols[CATALOGO_COSTO_COL];
+  if (!catalogItem || costo === undefined) return undefined;
+  return !(parseFloat(costo.text ?? '') > 0);
+}
+
 // Espejo del check del server (worker/lib/costeo.ts checkValidacion): el
 // producto de catálogo debe traer Proveedor asignado.
 export function productoProveedorOk(row: ItemDTO, catalog: ItemDTO[]): boolean {
@@ -569,9 +588,14 @@ export function getLineWarnings(
     warnings.push('Falta cantidad');
   }
 
-  // En costeo: debe tener costo distribuido asignado
+  // En costeo: debe tener costo distribuido asignado. "Pendiente de costeo"
+  // supone que alguien va a costear; si el CATÁLOGO nunca tuvo costo no hay
+  // nada que esperar —el dato se captura en Airtable y baja por el sync— y el
+  // aviso lo dice (Efraín, 2026-08-19: "Pendiente de costeo no es correcto,
+  // es agregar precio en Airtable"). Se puede teclear el costo en la línea
+  // igual; lo que cambia es el aviso, no lo que se puede hacer.
   if (variant === 'costeo' && !product.cols[COSTO_DISTR_COL]?.text) {
-    warnings.push('Pendiente de costeo');
+    warnings.push(productoSinCosto(product, catalog) ? 'Falta costo en Airtable' : 'Pendiente de costeo');
   }
 
   // En costeo: producto debe estar confirmado

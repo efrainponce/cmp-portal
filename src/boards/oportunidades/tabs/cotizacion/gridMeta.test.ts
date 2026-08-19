@@ -2,9 +2,11 @@
 // (Efraín, 2026-08-18). Si alguien vuelve a esconder el precio o el
 // embellecimiento ahí, o le quita una columna de costo, estos tests truenan.
 import { describe, it, expect } from 'vitest';
+import type { ColVal, ItemDTO } from '../../../../lib/api';
 import { COL } from '../../../../lib/costeoCalc';
 import {
   inlineEditableCols, GRID_COLS_ZONA, GRID_COLS_COSTEO, GRID_COLS_VENTA, EMB_STATUS_COL,
+  getLineWarnings, EMPTY_ROW,
 } from './gridMeta';
 
 const CANTIDAD = 'numeric_mkzm6399';
@@ -45,5 +47,40 @@ describe('GRID_COLS_ZONA', () => {
 
   it('incluye Precio de Venta (numeric_mkzneg3d)', () => {
     expect(GRID_COLS_ZONA.some((c) => c.id === COL.precio)).toBe(true);
+  });
+});
+
+// El aviso de la línea sin costo: "Pendiente de costeo" solo cuando de verdad
+// falta costear. Si el CATÁLOGO nunca tuvo costo, el arreglo está en Airtable
+// (el portal no escribe esa columna) — Efraín, 2026-08-19.
+describe('aviso de costo faltante', () => {
+  const CATALOGO_COSTO = 'numeric_mkzpx7eb';
+  const linea = (productoId: number | null): ItemDTO => ({
+    id: '1', name: 'línea', cols: {
+      lookup_mm0x4kda: { text: 'Bota 5.11', type: 'mirror' },
+      numeric_mkzm6399: { text: '30', type: 'numbers', value: 30 },
+      ...(productoId == null
+        ? {}
+        : { board_relation_mkzmafgp: { text: '', type: 'board_relation', value: { linked_item_ids: [productoId] } } }),
+    },
+  } as unknown as ItemDTO);
+  const producto = (cols: Record<string, ColVal>): ItemDTO[] =>
+    [{ id: '99', name: 'Bota 5.11', cols: { boolean_mm5cqtjs: { text: 'v', type: 'checkbox' }, ...cols } }] as unknown as ItemDTO[];
+  const warn = (row: ItemDTO, catalog: ItemDTO[]) => getLineWarnings(row, EMPTY_ROW, 'costeo', catalog);
+
+  it('sin costo en el catálogo: manda a Airtable', () => {
+    expect(warn(linea(99), producto({ [CATALOGO_COSTO]: { text: '', type: 'numbers' } })))
+      .toContain('Falta costo en Airtable');
+  });
+
+  it('con costo en el catálogo sigue siendo "Pendiente de costeo"', () => {
+    const avisos = warn(linea(99), producto({ [CATALOGO_COSTO]: { text: '1530', type: 'numbers', value: 1530 } }));
+    expect(avisos).toContain('Pendiente de costeo');
+    expect(avisos).not.toContain('Falta costo en Airtable');
+  });
+
+  it('si no se puede saber (rol sin esa columna, o sin producto ligado) no afirma nada', () => {
+    expect(warn(linea(99), producto({}))).toContain('Pendiente de costeo');
+    expect(warn(linea(null), producto({}))).toContain('Pendiente de costeo');
   });
 });

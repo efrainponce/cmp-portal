@@ -1,5 +1,25 @@
 # Log de commits
 
+## 2026-08-19 (7)
+
+- **"Pendiente de costeo" mentía cuando el producto nunca tuvo costo.** Efraín
+  (2026-08-19): "Pendiente de costeo no es correcto, es agregar precio en
+  Airtable". El aviso supone que alguien va a costear; si el CATÁLOGO no trae
+  Costo Distribuidor no hay nada que esperar — esa columna
+  (`numeric_mkzpx7eb`) es de solo lectura en el portal (`vis: AC` sin `w`), se
+  captura en Airtable y baja por el sync del catálogo. Ahora la línea dice
+  **"Falta costo en Airtable"**. No es un caso raro: **685 de 1335** productos
+  del mirror no traen costo.
+- Aplica en el board **Costeo** y en la **Zona Efrain** (decisión de Efraín):
+  cambia el texto del aviso, no lo que se puede hacer — el Costo distr. C/U de
+  la línea se sigue pudiendo teclear igual.
+- Si NO se puede saber (sin producto ligado, o un rol que no ve esa columna —
+  vendedor), el aviso se queda en el genérico: `productoSinCosto` devuelve
+  `undefined` en vez de afirmar algo falso.
+- `numeric_mkzpx7eb` entra a `CATALOGO_COLS` — sin eso la lectura llegaba
+  siempre vacía y el aviso habría salido en TODAS las líneas. Lo cachó
+  `src/lib/catalogoCols.test.ts`, que rehace la auditoría de columnas sola.
+
 ## 2026-08-19 (6)
 
 - **Zona Efrain: elegir el producto ya deja la línea COSTEADA.** Efraín

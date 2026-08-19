@@ -40,6 +40,11 @@ export const CATALOGO_COLS = [
   'text_mm5v6jhj',                // Tallas (gate de "Mandar a validación")
   'boolean_mm5cqtjs',             // Descripción y tallas confirmadas (checkbox de Compras)
   'board_relation_mm1cwqky',      // Proveedor (gate de "Mandar a validación")
+  // Costo Distribuidor — solo para saber si el producto NUNCA ha tenido costo y
+  // decir "Falta costo en Airtable" en vez de "Pendiente de costeo" (Efraín,
+  // 2026-08-19). El server la filtra por rol (`vis: AC`): a un vendedor no le
+  // llega y el aviso se queda en el genérico.
+  'numeric_mkzpx7eb',
 ] as const;
 
 /** Columnas del board Productos que el código SÍ lee, pero que a propósito NO
