@@ -1,5 +1,29 @@
 # Log de commits
 
+## 2026-08-19 (15)
+
+- **El catálogo de Productos ahora se trae cada 10 minutos.** Emy (WhatsApp, con
+  la foto de la línea de Chamarra Condor en rojo): "cuánto tarda en cargar las
+  tallas?, ya tengo como 15 min que subí las tallas y precio a Airtable, ya le di
+  varias veces a actualizar pero nadita". Productos vivía en el grupo de
+  reconcile de cada 12h (`0 6,18`), junto con instituciones/contactos/proveedores;
+  ahora sale de ahí y tiene su propio cron `*/10 * * * *` (`CRON_GROUPS` en
+  `worker/index.ts` + el string en `wrangler.jsonc`).
+- Sale barato: `reconcileAll` pregunta primero el `updated_at` del board y solo
+  pagina las 14 páginas (~1335 productos) cuando de verdad se movió. El resto de
+  las corridas es **una** call a Monday.
+- Es lo que el delta sync no cubría bien: el catálogo no lo teclea gente, lo
+  escribe el bot del sync de Airtable, y sus writes llegan en ráfaga — el delta
+  capea 50 refetches por corrida (tope que existe desde los 270 "Too many
+  subrequests" del 2026-08-14).
+- Sync forzado a mano en producción al momento (`POST /api/admin/sync/productos`).
+  De paso, el diagnóstico del caso de Emy: la espera **no era del portal**. El
+  producto CHA5047 quedó escrito en Monday a las 17:48:09 UTC (11:48 hora de
+  Mérida) por el usuario de integración, o sea exactamente cuando ella mandó el
+  mensaje — el costo (719) y las tallas ("XCH, CH, M, G, XL, XXL") tardaron en
+  cruzar de Airtable a Monday, no de Monday al portal. Los 10 minutos acotan
+  nuestro tramo; el de Airtable→Monday sigue siendo del scenario de Make.
+
 ## 2026-08-19 (14)
 
 - **Duplicar una oportunidad ahora sí hace una copia exacta.** Elizabeth

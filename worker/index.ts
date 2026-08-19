@@ -71,12 +71,13 @@ app.onError(async (err, c) => {
 // grupo — bajado de 6h a 12h el 2026-08-11 porque el delta sync (abajo) ya cubre
 // lo reciente en minutos, así que el full reconcile es ahora red de seguridad, no
 // la única fuente de verdad; corre la mitad de veces = la mitad de calls a Monday.
-// El tercer cron (cada 15 min) hace dos cosas SIN ser un board group: revisa
+// Productos se salió de ese reparto y tiene su propio cron de 10 min (ver abajo).
+// Otro cron (cada 15 min) hace dos cosas SIN ser un board group: revisa
 // sync_log y avisa por WhatsApp (worker/lib/errorAlerts.ts), y corre el delta sync
-// (worker/sync/delta.ts). El cuarto (semanal, 3am UTC) exporta el mirror D1 completo
+// (worker/sync/delta.ts). El último (semanal, 3am UTC) exporta el mirror D1 completo
 // a R2 (worker/lib/backup.ts) — retención larga más allá de los 30 días de D1 Time
 // Travel, no recovery del día a día. wrangler.jsonc debe declarar exactamente estos
-// cuatro strings de cron. OJO con el día-de-semana de Cloudflare: rechaza "0"
+// cinco strings de cron. OJO con el día-de-semana de Cloudflare: rechaza "0"
 // (con "0" el deploy sube el Worker pero el PUT de schedules falla en silencio,
 // el Action queda rojo y el cron no se registra — 2026-08-12/13) y su numeración
 // es 1=domingo…7=SÁBADO, no la de Unix: "0 3 * * 7" disparó en sábado
@@ -86,7 +87,16 @@ const ALERT_CRON = '*/15 * * * *';
 const BACKUP_CRON = '0 3 * * *';
 const CRON_GROUPS: Record<string, BoardSlug[]> = {
   '0 0,12 * * *': ['oportunidades', 'oportunidades_sub', 'proyectos', 'proyectos_sub'],
-  '0 6,18 * * *': ['productos', 'instituciones', 'contactos', 'proveedores'],
+  '0 6,18 * * *': ['instituciones', 'contactos', 'proveedores'],
+  // Productos aparte y cada 10 min (Efraín, 2026-08-19, urgente): el catálogo no
+  // lo edita gente en Monday, lo escribe el sync de Airtable, y Compras se queda
+  // esperando a que el costo/las tallas que acaba de capturar aparezcan en el
+  // portal ("ya tengo como 15 min que subí las tallas y precio a Airtable").
+  // Sale barato porque reconcileAll pregunta primero el updated_at del board y
+  // solo pagina (14 páginas, ~1335 productos) cuando de verdad se movió.
+  // Cubre lo que el delta sync no: los writes del bot de Airtable llegan en
+  // ráfaga y el delta capea 50 refetches por corrida.
+  '*/10 * * * *': ['productos'],
 };
 
 export default {
