@@ -1,5 +1,65 @@
 # Log de commits
 
+## 2026-08-19 (8)
+
+- **QA agresivo en producción: reglas escritas + arnés que las ejecuta.** Efraín
+  (2026-08-19): "necesito que hagas mejores test en Prod… tú solo checas cosas
+  mínimas, quiero un QA agresivo, sabiendo qué pasa cuando algo se mueve". El
+  caso que lo detonó: en la Zona Efrain no pudo crear una oportunidad, costearla
+  y meterle precio, y ninguna prueba existente lo habría detectado — todas se
+  conformaban con que el endpoint contestara 200.
+- **`docs/qa-prod.md`** es el entregable principal, y por pedido explícito de
+  Efraín ("deja un .MD con el proceso, no solo código") incluye el **happy path
+  escrito paso por paso y por rol** (Ventas levanta → Compras costea → Dirección
+  valida → Ventas cotiza y gana → Compras/Logística ejecutan), además de las 9
+  reglas: relectura obligatoria tras cada escritura, números contra la fórmula
+  reescrita a mano, probar el SEGUNDO cambio, candados verificados contra el
+  server y no contra la UI, PDFs parseados en vez de pesados, procedencia del
+  dato auditada punta a punta, nunca actuar sobre una lista sin contarla, un
+  paso que no corrió es falla y no "saltado", y todo lo que se escriba debe
+  poder borrarse.
+- **`scripts/qa-prod.mjs` + `scripts/qa/{lib,catalogo,ciclo,blindaje}.mjs`** —
+  89 checks. Suplanta roles reales vía `X-Impersonate-Email`
+  (`worker/mw/identity.ts`), así que los permisos se prueban como vendedor, como
+  compras y como un admin fuera de la whitelist, sin pedirle la contraseña a
+  nadie. Los PDFs se leen con `pdfjs-dist` (ya era dependencia) y se afirma
+  sobre su CONTENIDO: productos, cantidades, el proveedor por razón social y no
+  por id, el total calculado aparte — y lo que NO debe salir (la solicitud de
+  costeo no lleva precios). Supera a `scripts/e2e-zona-efrain.mjs`, que se deja
+  intacto por si otra sesión lo usa.
+- **Las fórmulas del costeo se reescribieron a mano** desde
+  `docs/monday-column-map.md` en vez de importar `worker/lib/costeoSnapshot.ts`:
+  importarlo probaría que el código es igual a sí mismo.
+- **La primera corrida completa encontró 6 cosas reales**, todas anotadas en la
+  sección "Hallazgos abiertos" del doc y dejadas EN ROJO a propósito:
+  1. La **hoja de validación sale con costos y subtotales en `$0`** en la Zona
+     Efrain — una línea nativa no recibe columnas de fórmula (nadie las calcula)
+     y la plantilla las imprime tal cual, aunque la línea sí tenga costo y precio
+     capturados. La cotización al cliente no sufre esto porque calcula aparte.
+  2. El write path **acepta una etiqueta de status que no existe**: `PATCH
+     color_mm084gvf: "Etiqueta Que No Existe QA"` devuelve 200 y la guarda como
+     texto crudo en vez de `{index}` — misma forma del bug que desaparecía al
+     Proyecto nativo de los boards que filtran por índice, y en un item real de
+     Monday una etiqueta desconocida hace que Monday asigne otra al azar.
+  3. **2 productos sin sincronizar desde Airtable** (`Pantalon Command`:
+     costo 858.48, USD y gastos 0.05 → todo vacío en el portal; `OUISTITI`).
+  4. **36 productos guardan un id de Airtable que ya no existe** → su imagen sale
+     vacía en las cotizaciones.
+  5. **27 productos en EUR/GBP**: el costeo solo distingue USD (TC=18) del resto
+     (TC=1), así que se costean como si el costo estuviera en pesos.
+  6. El **PDF de solicitud tarda >1 min** en abrirse desde el drawer (el
+     documento está en D1 al instante, pero el botón lee R2 y la subida va en
+     segundo plano); el check mide la demora en cada corrida.
+- **Dos checks propios se corrigieron por falsos positivos**, no el código: un
+  tope inventado de "costo absurdo" (el catálogo tiene sistemas de 28 M reales) y
+  aserciones sobre `lookup_mm5ck4b3` / `lookup_mkznm0h3`, que la API no expone a
+  NINGÚN rol — que esos espejos llegan bien se comprueba indirecto (el costo por
+  el snapshot, los colores porque `costeo-check` valida contra ellos).
+- La corrida escribe en producción (nativo en Zona Efrain, Monday no se toca) y
+  consume folios globales de OC que no se pueden regresar. Todo lo creado durante
+  el desarrollo se borró con `node scripts/qa-prod.mjs --limpiar`; el tree quedó
+  verde en `npm test` (417), typecheck y lint.
+
 ## 2026-08-19 (7)
 
 - **"Pendiente de costeo" mentía cuando el producto nunca tuvo costo.** Efraín
