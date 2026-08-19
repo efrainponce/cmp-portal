@@ -157,8 +157,12 @@ export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
       'file_mm1dm11c', 'file_mm0hj9pn', 'file_mm1g7cqz',
       'date_mm21c5ka', 'multiple_person_mm164em1', 'multiple_person_mm16qysk',
       'multiple_person_mm169k2f', 'file_mm478mkq', 'link_mm462saa',
-      'text_mm4cct6a', 'text_mm4cdyjb', 'text_mm4c74f8', 'color_mm52csps',
+      'text_mm4cct6a', 'text_mm4cdyjb', 'color_mm52csps',
       'file_mm4pa2h8', 'date_mm525k42', 'file_mm3393nf'], AC),
+    // Comentarios — lo que cmp-tallas imprime en la OC. El portal lo escribe
+    // como puente de la "nota al proveedor" del tab Órdenes de compra
+    // (worker/lib/ocNotas.ts, Efraín 2026-08-19).
+    text_mm4c74f8: { vis: AC, w: WAC },
     // Fecha Entrega — obligatoria (tab Documentación del Proyecto), la captura
     // el vendedor; compras/admin la ven pero no la tocan (Efraín, 2026-08-05).
     date_mm0m1vfv: { vis: V, w: WV },
@@ -168,7 +172,15 @@ export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
   },
 
   proyectos_sub: {
-    ...vis(['name', 'text_mm0hs17x', 'text_mm0h4a1c',
+    // Producto y Color de la línea — editables desde el tab "Órdenes de compra"
+    // por compras/admin (Efraín, 2026-08-19: "la opción de editar directamente
+    // el producto o su color en la orden antes de enviarla"). Antes eran de
+    // solo lectura por venir del catálogo de cmp-tallas, pero lo que va impreso
+    // en la OC es justo esto y corregirlo obligaba a entrar a Monday. Talla
+    // sigue de solo lectura: es la que cuadra contra el desglose de tallas.
+    text_mm0hs17x: { vis: V, w: AC },
+    text_mm0h4a1c: { vis: V, w: AC },
+    ...vis(['name',
       'text_mm1antcb', 'text_mm1a5yyq', 'text_mm0hyrfs',
       'text_mm52x1bx', 'text_mm56dbkm', 'text_mm0mzet0',
       'date_mm20fq6t', 'date_mm20y5t3', 'date_mm21p1ex',
@@ -178,9 +190,9 @@ export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
       'long_text_mm1cnbbr', 'long_text_mm2077h1'], V),   // incl. 8 zonas embellecimiento
     // Cantidad por talla — editable inline (tab Tallas del Proyecto) por
     // vendedor/compras/admin para corregir una línea ya importada sin tener
-    // que regresar al Sheet (Efraín, 2026-08-05). Talla y color se quedan de
-    // solo lectura: son texto libre que viene del catálogo de cmp-tallas y un
-    // typo aquí no calzaría con el Sheet/Monday.
+    // que regresar al Sheet (Efraín, 2026-08-05). Talla se queda de solo
+    // lectura: es texto libre del catálogo de cmp-tallas y un typo aquí no
+    // calzaría con el Sheet/Monday (Color dejó de serlo el 2026-08-19, arriba).
     numeric_mm0hj2q4: { vis: V, w: V },
     // Estado del producto + su comentario — tab Ejecución del Proyecto (2026-08-05).
     // El vendedor VE el avance (batería/chips) pero no lo cambia; compras/admin son

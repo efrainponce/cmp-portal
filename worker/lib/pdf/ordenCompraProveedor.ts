@@ -43,6 +43,9 @@ export interface OcProveedorPdfInput {
   fecha: string;
   metodoPago: string;
   condicionesPago: string;
+  /** Notas al proveedor (worker/lib/ocNotas.ts) — texto libre de Compras que
+   * se imprime tal cual en la OC. Vacío = el bloque no se dibuja. */
+  notas: string;
   lineas: OcProveedorLinea[];
   elaboradoNombre: string;
   revisadoNombre: string;
@@ -132,6 +135,15 @@ export function buildOrdenCompraProveedorPdf(input: OcProveedorPdfInput): Uint8A
       ],
     },
     { kind: 'text', text: `Importe con IVA en letras: ${importeEnLetras(monto * 1.16, moneda)}`, size: 9, bold: true },
+    // Notas al proveedor — arriba de las firmas a propósito: es parte de lo que
+    // se está firmando, no un pie de página (Efraín, 2026-08-19).
+    ...(input.notas.trim()
+      ? [
+          { kind: 'spacer', height: 8 },
+          { kind: 'text', text: 'Notas para el proveedor', size: 9.5, bold: true },
+          { kind: 'text', text: input.notas.trim(), size: 9 },
+        ] as Block[]
+      : []),
     { kind: 'spacer', height: 10 },
     firmaBlock('Elaborado por', input.elaboradoNombre),
     firmaBlock('Revisado por', input.revisadoNombre),

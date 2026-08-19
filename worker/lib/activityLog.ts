@@ -60,6 +60,10 @@ const WHITELIST: Partial<Record<BoardSlug, Set<string>>> = {
   proyectos_sub: new Set([
     'numeric_mm1dj4fp', 'numeric_mm1dmsaz', 'text_mm1gdsvg', 'numeric_mm0hj2q4',
     'board_relation_mm1cfgv5', 'date_mm20xdtm',
+    // Producto y Color — editables en la OC desde el 2026-08-19: son lo que
+    // lee el proveedor en el documento, así que su corrección se rastrea igual
+    // que la del costo.
+    'text_mm0hs17x', 'text_mm0h4a1c',
   ]),
 };
 

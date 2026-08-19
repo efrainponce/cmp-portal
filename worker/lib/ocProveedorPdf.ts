@@ -11,6 +11,7 @@ import { getItem, childrenOf } from './dal';
 import { toItemDTO } from './serialize';
 import type { ItemDTO } from '../../shared/dto';
 import { buildOrdenCompraProveedorPdf, type OcProveedorLinea } from './pdf/ordenCompraProveedor';
+import { getOcNota } from './ocNotas';
 
 export class OcProveedorPdfError extends Error {
   status: number;
@@ -37,6 +38,9 @@ const P_FOLIO_OPP = 'lookup_mm1d56mp';
 const P_COMPRADOR = 'project_owner';
 const P_METODO_PAGO = 'text_mm4cct6a';
 const P_COND_PAGO = 'text_mm4cdyjb';
+// Comentarios (nivel Proyecto) — fallback de las notas al proveedor cuando
+// esta OC todavía no tiene la suya en D1 (worker/lib/ocNotas.ts).
+const P_COMENTARIOS = 'text_mm4c74f8';
 
 // Revisado/Autorizado son constantes fijas — mismo criterio que
 // api/generate_oc.py (PAM_NAME/ELISA_NAME): esas dos firmas siempre las pone
@@ -90,6 +94,8 @@ export async function generarOcProveedorPdf(
     descuento: num(l.cols, S_DESCUENTO),
   }));
 
+  const notaProveedor = await getOcNota(env, proyectoId, proveedorId);
+
   return buildOrdenCompraProveedorPdf({
     folioProyecto: proyecto.cols[P_FOLIO]?.text || '',
     folioOpp: proyecto.cols[P_FOLIO_OPP]?.text || '',
@@ -100,6 +106,7 @@ export async function generarOcProveedorPdf(
     fecha: fechaHoy(),
     metodoPago: proyecto.cols[P_METODO_PAGO]?.text || '',
     condicionesPago: proyecto.cols[P_COND_PAGO]?.text || '',
+    notas: notaProveedor || proyecto.cols[P_COMENTARIOS]?.text || '',
     lineas,
     elaboradoNombre: proyecto.cols[P_COMPRADOR]?.text || '',
     revisadoNombre: REVISADO_NOMBRE,

@@ -21,6 +21,7 @@ import { BOARDS } from '../../shared/boards';
 import { mergeNativeCols } from './nativeMirrors';
 import { oportunidadFileKey, putFile } from './r2';
 import { generarOcProveedorPdf } from './ocProveedorPdf';
+import { getOcNota } from './ocNotas';
 
 // Proyecto (18395657594) — ids verificados contra shared/column-meta.gen.ts,
 // mismos que cmp-tallas api/generate_oc.py.
@@ -320,7 +321,10 @@ export async function generarOcNative(
   const nombreCompras = cvText(cols, PROYECTO_COMPRAS);
   const metodoPago = opts.metodoPago || cvText(cols, PROYECTO_METODO_PAGO);
   const condPago = opts.condPago || cvText(cols, PROYECTO_COND_PAGO) || DEFAULT_COND_PAGO;
-  const comentarios = cvText(cols, PROYECTO_COMENTARIOS_OC);
+  // Comentarios del Proyecto = fallback; la nota que Compras escribió PARA ESTE
+  // proveedor (worker/lib/ocNotas.ts) manda, y se resuelve dentro del loop
+  // porque cada OC lleva la suya (Efraín, 2026-08-19).
+  const comentariosProyecto = cvText(cols, PROYECTO_COMENTARIOS_OC);
 
   const signers = await resolveSigners(env, firstPersonId(cols, PROYECTO_ELABORADO));
   const groups = groupSubitemsByProveedor(subitems, opts.onlyProveedor);
@@ -355,6 +359,8 @@ export async function generarOcNative(
 
       const folioOrden = await nextOcFolio(env);
       orden.folioOrden = folioOrden;
+
+      const comentarios = (await getOcNota(env, proyectoId, group.proveedorId)) || comentariosProyecto;
 
       const pdfBytes = await renderEledoPdf(env, ELEDO_TEMPLATE_OC, buildEledoOcFile({
         folioOrden, folioProyecto, folioOpp, nombreProyecto: item.name, nombreCompras,

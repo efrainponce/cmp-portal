@@ -16,7 +16,8 @@
 // su historial, y el tab "Actividad" del Proyecto el del proyecto completo.
 import { lazy, Suspense, useEffect, useState } from 'react';
 import {
-  proyectoAction, patchItem, deleteProyectoLinea, getActivity, usePoll, SOLO_NOMBRE,
+  proyectoAction, patchItem, deleteProyectoLinea, getActivity, getOcNotas, saveOcNota,
+  usePoll, SOLO_NOMBRE,
   type ActivityEntryDTO, type ItemDetailDTO, type ItemDTO,
 } from '../../../lib/api';
 import { useMe } from '../../../lib/useMe';
@@ -117,7 +118,7 @@ const CELL_STYLE = { font: 'var(--text-label)', color: 'var(--ink-secondary)' } 
  * Enter) contra Monday vía PATCH, y pinta el valor nuevo de inmediato aunque
  * el espejo todavía no lo refleje — mismo patrón `overrides` que la captura de
  * cantidades en TallasSection. Escape cancela. */
-function EditableCell({ value, onSave, align = 'left', type = 'text', suffix, placeholder, title }: {
+function EditableCell({ value, onSave, align = 'left', type = 'text', suffix, placeholder, title, wrap }: {
   value: string;
   onSave: (v: string) => Promise<void>;
   align?: 'left' | 'right';
@@ -125,6 +126,10 @@ function EditableCell({ value, onSave, align = 'left', type = 'text', suffix, pl
   suffix?: string;
   placeholder?: string;
   title?: string;
+  /** Deja el valor en varias líneas en vez de recortarlo con elipsis — para
+   * Producto, cuya descripción se lleva medio renglón ("POLICIA VIAL 27 CM DE
+   * BASE BORDADO CON HILO DORADO…") y recortada no se puede ni revisar. */
+  wrap?: boolean;
 }) {
   const [draft, setDraft] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -177,7 +182,9 @@ function EditableCell({ value, onSave, align = 'left', type = 'text', suffix, pl
         border: `1px dashed ${error ? 'var(--status-perdida)' : 'transparent'}`,
         background: saving ? 'var(--bg-sunken)' : 'transparent',
         color: shown ? 'var(--ink)' : 'var(--ink-quiet)',
-        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        ...(wrap
+          ? { overflowWrap: 'anywhere' as const }
+          : { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }),
       }}
       className="row-hover"
     >
@@ -304,7 +311,7 @@ function ProveedorLineaRow({ l, proyectoId, canEdit, historial, onChanged }: {
   const costoRaw = val(S_COSTO).replace(/,/g, '');
   const costo = Number(costoRaw);
   const moneda = val(S_MONEDA);
-  const nombreLinea = l.cols[S_PRODUCTO]?.text || l.name;
+  const nombreLinea = val(S_PRODUCTO) || l.name;
 
   const borrar = async () => {
     setBorrando(true);
@@ -318,9 +325,16 @@ function ProveedorLineaRow({ l, proyectoId, canEdit, historial, onChanged }: {
   return (
     <div style={{ borderTop: '1px solid var(--border-subtle)' }}>
       <div style={{ display: 'grid', gridTemplateColumns: PROVEEDOR_GRID_TEMPLATE, gap: 8, padding: '6px 12px', alignItems: 'center' }}>
-        <div style={{ ...CELL_STYLE, color: 'var(--ink)', minWidth: 0, overflowWrap: 'anywhere' }}>{nombreLinea}</div>
+        {/* Producto y Color se corrigen aquí antes de mandar la OC (Efraín,
+            2026-08-19) — son justo lo que el proveedor lee en el documento.
+            Talla no: cuadra contra el desglose de tallas. */}
+        {canEdit
+          ? <EditableCell value={val(S_PRODUCTO) || l.name} onSave={save(S_PRODUCTO)} wrap placeholder="Sin producto" title="Producto tal como saldrá impreso en la OC" />
+          : <div style={{ ...CELL_STYLE, color: 'var(--ink)', minWidth: 0, overflowWrap: 'anywhere' }}>{nombreLinea}</div>}
         <div style={CELL_STYLE}>{l.cols[S_SKU]?.text || '—'}</div>
-        <div style={CELL_STYLE}>{l.cols[S_COLOR]?.text || '—'}</div>
+        {canEdit
+          ? <EditableCell value={val(S_COLOR)} onSave={save(S_COLOR)} wrap placeholder="Sin color" title="Color tal como saldrá impreso en la OC" />
+          : <div style={CELL_STYLE}>{l.cols[S_COLOR]?.text || '—'}</div>}
         <div style={CELL_STYLE}>{l.cols[S_TALLA]?.text || '—'}</div>
         {canEdit ? (
           <>
@@ -435,14 +449,66 @@ function NativeOcButton({ proyectoId, proveedorId }: { proyectoId: string; prove
   );
 }
 
+/** Notas al proveedor de ESTA OC — texto libre que sale IMPRESO en el PDF
+ * (Efraín, 2026-08-19: "un campo de texto en las Órdenes de Compra para dejar
+ * notas al proveedor, que aparezcan impresas en el documento final"). Vive por
+ * proveedor en D1 (worker/lib/ocNotas.ts), no en el Proyecto: la nota de un
+ * proveedor no tiene por qué salir en la OC de los demás. Guarda al salir del
+ * campo, como el resto de las celdas de este tab. */
+function NotaProveedor({ proyectoId, proveedorId, inicial }: {
+  proyectoId: string; proveedorId: string; inicial: string;
+}) {
+  const [texto, setTexto] = useState(inicial);
+  const [guardado, setGuardado] = useState<'idle' | 'guardando' | 'ok' | 'error'>('idle');
+  // La nota llega junto con el resto del tab (una sola llamada para todas las
+  // tarjetas): si el fetch resuelve después del primer render, se adopta —
+  // salvo que el usuario ya esté escribiendo.
+  const [tocado, setTocado] = useState(false);
+  useEffect(() => { if (!tocado) setTexto(inicial); }, [inicial, tocado]);
+
+  const commit = async () => {
+    if (texto.trim() === inicial.trim()) { setGuardado('idle'); return; }
+    setGuardado('guardando');
+    const res = await saveOcNota(proyectoId, proveedorId, texto);
+    if (!res.ok) { setGuardado('error'); return; }
+    setTexto(res.nota ?? '');
+    setTocado(false);
+    setGuardado('ok');
+  };
+
+  return (
+    <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border-subtle)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', font: 'var(--text-caption)', color: 'var(--ink-tertiary)', marginBottom: 4 }}>
+        <span>Notas para el proveedor — se imprimen en la OC</span>
+        <span style={{ color: guardado === 'error' ? 'var(--status-perdida)' : 'var(--ink-quiet)' }}>
+          {guardado === 'guardando' ? 'Guardando…' : guardado === 'ok' ? 'Guardado' : guardado === 'error' ? 'No se pudo guardar' : ''}
+        </span>
+      </div>
+      <textarea
+        value={texto}
+        maxLength={1200}
+        rows={2}
+        onChange={e => { setTocado(true); setTexto(e.target.value); setGuardado('idle'); }}
+        onBlur={commit}
+        placeholder="Ej. Entregar en almacén CDMX antes del 30 de agosto, marcar cajas por talla."
+        style={{
+          width: '100%', boxSizing: 'border-box', resize: 'vertical',
+          font: 'var(--text-label)', color: 'var(--ink)', padding: '8px',
+          borderRadius: 'var(--radius-md)', border: '1px solid var(--border)',
+        }}
+      />
+    </div>
+  );
+}
+
 /** Tarjeta de un proveedor: sus líneas + botón "Generar OC" acotado a él
  * (only_proveedor) — resultado local con el mismo contrato que ProyectoActionBar.
  * Método/Condiciones de pago son overrides SOLO de esta OC (WhatsApp 2026-08-04:
  * antes el default del Proyecto se aplicaba igual a todos los proveedores) —
  * prellenados con el default, no se guardan de vuelta a Monday. */
-function ProveedorCard({ group, proyecto, oppId, reload, canEdit, activity }: {
+function ProveedorCard({ group, proyecto, oppId, reload, canEdit, activity, nota }: {
   group: ProveedorGroup; proyecto: ItemDetailDTO; oppId: string | null; reload: () => void;
-  canEdit: boolean; activity: ActivityEntryDTO[];
+  canEdit: boolean; activity: ActivityEntryDTO[]; nota: string;
 }) {
   const [outcome, setOutcome] = useState<ActionOutcome | null>(null);
   const [metodoPago, setMetodoPago] = useState(proyecto.cols[P_METODO_PAGO]?.text ?? '');
@@ -510,6 +576,9 @@ function ProveedorCard({ group, proyecto, oppId, reload, canEdit, activity }: {
           />
         </div>
       </div>
+      {canEdit && group.proveedorId && (
+        <NotaProveedor proyectoId={proyecto.id} proveedorId={group.proveedorId} inicial={nota} />
+      )}
       <div style={{ overflowX: 'auto' }}>
         <div style={{ minWidth: 840 }}>
           <div style={{ display: 'grid', gridTemplateColumns: PROVEEDOR_GRID_TEMPLATE, gap: 8, padding: '8px 12px', font: 'var(--text-caption)', color: 'var(--ink-tertiary)' }}>
@@ -538,9 +607,9 @@ function ProveedorCard({ group, proyecto, oppId, reload, canEdit, activity }: {
 
 /** Grid de líneas del proyecto agrupadas por proveedor — el equivalente por-proveedor
  * de la tab Cotización, para la tab Órdenes de compra. */
-function ProveedorGrid({ lineas, proyecto, oppId, reload, canEdit, activity }: {
+function ProveedorGrid({ lineas, proyecto, oppId, reload, canEdit, activity, notas }: {
   lineas: ItemDTO[]; proyecto: ItemDetailDTO; oppId: string | null; reload: () => void;
-  canEdit: boolean; activity: ActivityEntryDTO[];
+  canEdit: boolean; activity: ActivityEntryDTO[]; notas: Record<string, string>;
 }) {
   const grupos = groupByProveedor(lineas);
   return (
@@ -549,6 +618,7 @@ function ProveedorGrid({ lineas, proyecto, oppId, reload, canEdit, activity }: {
         <ProveedorCard
           key={g.key} group={g} proyecto={proyecto} oppId={oppId} reload={reload}
           canEdit={canEdit} activity={activity}
+          nota={g.proveedorId ? (notas[g.proveedorId] ?? '') : ''}
         />
       ))}
     </div>
@@ -563,6 +633,9 @@ export function ProyectoOrdenesSection({ state, oppId }: { state: ProyectoState;
   // ya agrega los hijos, worker/routes/boards.ts): cada línea filtra la suya
   // para el reloj, en vez de una llamada por renglón.
   const [activity, setActivity] = useState<ActivityEntryDTO[]>([]);
+  // Notas al proveedor de TODAS las OC del proyecto, en una sola llamada —
+  // cada tarjeta toma la suya por id de proveedor.
+  const [notas, setNotas] = useState<Record<string, string>>({});
   // `nonce` y no el largo de children: editar un costo no cambia el número de
   // líneas, y sin esto el reloj seguía mostrando "sin cambios" justo después
   // de guardar (visto en la prueba local 2026-08-18).
@@ -573,6 +646,7 @@ export function ProyectoOrdenesSection({ state, oppId }: { state: ProyectoState;
     // canReadActivity) y el grid con el reloj tampoco se les pinta.
     if (!proyectoId || !canCompras) return;
     getActivity('proyectos', proyectoId).then(setActivity).catch(() => setActivity([]));
+    getOcNotas(proyectoId).then(setNotas).catch(() => setNotas({}));
   }, [proyectoId, canCompras, nonce]);
   const onChanged = () => { state.reload(); setNonce(n => n + 1); };
 
@@ -586,7 +660,7 @@ export function ProyectoOrdenesSection({ state, oppId }: { state: ProyectoState;
     <div style={{ marginTop: 16 }}>
       <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)', marginBottom: 10 }}>
         Proyecto {p.name} — una OC por proveedor, con firmas Elaborado → Revisado → Autorizado (DocuSeal).
-        {canCompras && ' Cantidad, costo, moneda, descuento y entrega se editan aquí mismo (clic en la celda) y se guardan en Monday.'}
+        {canCompras && ' Producto, color, cantidad, costo, moneda, descuento y entrega se editan aquí mismo (clic en la celda) y se guardan en Monday.'}
       </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <ProyectoActionBar proyecto={p} reload={state.reload} actions={['generar-oc']} />
@@ -598,7 +672,7 @@ export function ProyectoOrdenesSection({ state, oppId }: { state: ProyectoState;
       </div>
       {canCompras ? (
         lineas.length > 0
-          ? <ProveedorGrid lineas={lineas} proyecto={p} oppId={oppId} reload={onChanged} canEdit activity={activity} />
+          ? <ProveedorGrid lineas={lineas} proyecto={p} oppId={oppId} reload={onChanged} canEdit activity={activity} notas={notas} />
           : (
             <div style={{ marginTop: 14, font: 'var(--text-label)', color: 'var(--ink-quiet)' }}>
               Aún no hay líneas en el proyecto — importa las tallas primero, o agrega un producto a mano con el botón de arriba.

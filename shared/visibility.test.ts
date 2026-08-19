@@ -200,9 +200,22 @@ describe('cantidad por talla — editable inline post-import (Efraín, 2026-08-0
     expect(canWrite('proyectos_sub', 'numeric_mm0hj2q4', 'almacen')).toBe(false);
   });
 
-  it('talla y color se quedan de solo lectura (texto libre del catálogo cmp-tallas)', () => {
-    for (const col of ['text_mm1antcb', 'text_mm0h4a1c']) {
-      for (const role of ROLES) {
+  it('la talla se queda de solo lectura (cuadra contra el desglose de tallas)', () => {
+    for (const role of ROLES) {
+      expect(canWrite('proyectos_sub', 'text_mm1antcb', role)).toBe(false);
+    }
+    expect(canRead('proyectos_sub', 'text_mm1antcb', 'vendedor')).toBe(true);
+  });
+
+  // Efraín, 2026-08-19: "la opción de editar directamente el producto o su
+  // color en la orden antes de enviarla". Es lo que sale impreso en la OC, así
+  // que lo corrige quien la manda (Compras/Admin) — el vendedor solo lo ve.
+  it('producto y color los edita Compras/Admin en la OC, el vendedor no', () => {
+    for (const col of ['text_mm0hs17x', 'text_mm0h4a1c']) {
+      for (const role of ['compras', 'admin'] as Role[]) {
+        expect(canWrite('proyectos_sub', col, role)).toBe(true);
+      }
+      for (const role of ['vendedor', 'almacen'] as Role[]) {
         expect(canWrite('proyectos_sub', col, role)).toBe(false);
       }
       expect(canRead('proyectos_sub', col, 'vendedor')).toBe(true);

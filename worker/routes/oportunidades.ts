@@ -23,6 +23,7 @@ import { ajustarLinea, AjusteLineaError } from '../lib/lineaAjustes';
 import { listCotizacionVirtual, ajustarLineaVirtual, ProyectoCotizacionError } from '../lib/proyectoCotizacionVirtual';
 import { capturarTallas, reportarTallasIncorrectas, checkOcCliente, confirmTallasNative, confirmTallasNativeD1 } from '../lib/proyectoTallas';
 import { generarOcNative, generarOcNativeD1 } from '../lib/oc';
+import { getOcNota, getOcNotas, setOcNota, OC_NOTA_MAX } from '../lib/ocNotas';
 import { listEstadoHistorial } from '../lib/estadoProducto';
 import { recordDirectChanges } from '../lib/activityLog';
 import { listProductoResumen, upsertProductoResumen } from '../lib/productoResumen';
@@ -53,6 +54,11 @@ import { createDocument, documentPdf } from '../lib/documents';
 import { generarOcProveedorPdf, OcProveedorPdfError } from '../lib/ocProveedorPdf';
 import { generarCotizacionPreviewPdf, CotizacionPreviewPdfError } from '../lib/cotizacionPreviewPdf';
 import { md5 } from '../lib/canon';
+
+// Comentarios de la OC en el Proyecto (text_mm4c74f8) — es de donde cmp-tallas
+// saca el bloque de comentarios del PDF; el portal lo usa solo como puente para
+// la nota por proveedor que guarda en D1 (worker/lib/ocNotas.ts).
+const PROYECTO_COMENTARIOS_OC = 'text_mm4c74f8';
 
 // Acciones de cmp-tallas sobre el Proyecto. Cada una exige que el viewer pueda
 // ver el Proyecto (scoping de dal) + un gate de rol que refleja el botón de
@@ -888,6 +894,39 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     }
   });
 
+  // Notas al proveedor de una OC (worker/lib/ocNotas.ts) — texto libre de
+  // Compras que se imprime en el PDF. Una por proveedor, no una por Proyecto:
+  // ver el porqué en ese archivo. Mismo gate de rol que el resto del tab
+  // "Órdenes de compra" (el desglose por proveedor es de Compras/Admin).
+  app.get('/api/proyectos/:id/oc-notas', async c => {
+    const itemId = Number(c.req.param('id'));
+    if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
+    const viewer = c.get('viewer');
+    if (viewer.role !== 'compras' && viewer.role !== 'admin') return jsonStatus({ error: 'forbidden' }, 403);
+    const row = await getItem(c.env, 'proyectos', itemId, viewer);
+    if (!row) return c.json({ error: 'not found' }, 404);
+    return c.json({ notas: await getOcNotas(c.env, itemId) });
+  });
+
+  app.put('/api/proyectos/:id/oc-notas/:proveedorId', async c => {
+    const itemId = Number(c.req.param('id'));
+    if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
+    const proveedorId = c.req.param('proveedorId');
+    const viewer = c.get('viewer');
+    if (viewer.role !== 'compras' && viewer.role !== 'admin') return jsonStatus({ error: 'forbidden' }, 403);
+    // Muta -> scope 'own' (worker/lib/dal.ts): el líder de zona LEE el proyecto
+    // de su equipo pero no le escribe la nota.
+    const row = await getItem(c.env, 'proyectos', itemId, viewer, 'own');
+    if (!row) return c.json({ error: 'not found' }, 404);
+    const body = await c.req.json().catch(() => ({} as Record<string, unknown>));
+    const nota = typeof body.nota === 'string' ? body.nota : '';
+    if (nota.length > OC_NOTA_MAX) {
+      return jsonStatus({ error: `La nota no puede pasar de ${OC_NOTA_MAX} caracteres.` }, 400);
+    }
+    const guardada = await setOcNota(c.env, itemId, proveedorId, nota, viewer.email);
+    return c.json({ ok: true, nota: guardada });
+  });
+
   // Cotización — vista previa generada nativa por el portal (2026-08-13), mismo
   // template visual que la OC a proveedor. SOLO vista previa: no se guarda en
   // D1, no se firma, no sale de aquí — la cotización oficial para el cliente
@@ -1432,6 +1471,21 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       metodoPago: typeof body.metodoPago === 'string' ? body.metodoPago : undefined,
       condPago: typeof body.condPago === 'string' ? body.condPago : undefined,
     };
+
+    // cmp-tallas genera su PDF leyendo los comentarios de la COLUMNA del Proyecto
+    // y no acepta la nota por request (docs/cmp-tallas-endpoint-map.md): para ese
+    // camino la nota de ESTE proveedor se estampa en la columna justo antes de
+    // disparar, o la OC saldría sin ella. Los dos caminos nativos la leen directo
+    // de D1 (worker/lib/ocNotas.ts) y no pasan por aquí.
+    const legacyOc = actionKey === 'generar-oc' && !isNativeId(itemId) && c.env.OC_NATIVE !== '1';
+    if (legacyOc && opts.onlyProveedor) {
+      const nota = await getOcNota(c.env, itemId, opts.onlyProveedor);
+      if (nota) {
+        try {
+          await submitWrite(c.env, c.executionCtx, 'proyectos', itemId, { [PROYECTO_COMENTARIOS_OC]: nota }, viewer);
+        } catch { /* best-effort: la OC sale sin la nota, no vale abortar el flujo */ }
+      }
+    }
 
     try {
       // Fase 3/4 (plan "salir de Monday", 2026-08-12): mismo gate que

@@ -532,6 +532,30 @@ export async function proyectoAction(
   return body;
 }
 
+/** Notas al proveedor de cada OC del Proyecto (worker/lib/ocNotas.ts), por id
+ * de proveedor — se imprimen en el PDF de la orden. Solo Compras/Admin. */
+export async function getOcNotas(proyectoId: string): Promise<Record<string, string>> {
+  const res = await apiFetch(`/proyectos/${proyectoId}/oc-notas`);
+  if (!res.ok) throw new Error('GET oc-notas failed: ' + res.status);
+  const body: { notas?: Record<string, string> } = await res.json();
+  return body.notas ?? {};
+}
+
+/** Guarda la nota de UN proveedor (vacía = se borra). Devuelve la nota ya
+ * recortada por el server, que es la que va a salir impresa. */
+export async function saveOcNota(
+  proyectoId: string, proveedorId: string, nota: string,
+): Promise<{ ok: boolean; nota?: string; error?: string }> {
+  const res = await apiFetch(`/proyectos/${proyectoId}/oc-notas/${proveedorId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ nota }),
+  });
+  const body = await res.json();
+  if (!res.ok) return { ok: false, error: body.error ?? 'No se pudo guardar la nota.' };
+  return body;
+}
+
 /** Sube "Inventario Actual (Imagen)" a la Oportunidad — Compras, junto a la
  * cotización firmada (tab Documentación). */
 export async function uploadOportunidadInventario(

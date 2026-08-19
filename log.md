@@ -1,5 +1,37 @@
 # Log de commits
 
+## 2026-08-19 (16)
+
+- **Notas al proveedor en la Orden de Compra, impresas en el PDF.** Efraín
+  (WhatsApp, con la foto del tab de OC): "un campo de texto en las Órdenes de
+  Compra para dejar notas al proveedor (que aparezcan impresas en el documento
+  final)". Cada tarjeta de proveedor tiene ahora su recuadro de notas, arriba de
+  sus líneas; se guarda al salir del campo y sale impreso en la OC, justo antes
+  del pie de firmas (es parte de lo que se firma, no un pie de página).
+- **La nota es POR PROVEEDOR, no por Proyecto** (`worker/lib/ocNotas.ts`, D1,
+  tabla `oc_nota`). En Monday la única columna de comentarios de OC
+  (`text_mm4c74f8`) es una sola para todo el Proyecto, y un Proyecto reparte sus
+  líneas entre varios proveedores: una nota dirigida a uno saldría impresa en la
+  OC de todos. Esa columna se queda como fallback (proyectos que ya la traen
+  llena imprimen lo mismo que antes) y como puente para cmp-tallas, que arma su
+  PDF leyéndola y no acepta la nota por request: en ese camino la ruta la estampa
+  en la columna justo antes de disparar. Los dos caminos nativos (Eledo y el
+  motor propio del portal) la leen directo de D1.
+- **Producto y Color se editan en la OC antes de mandarla.** Segundo pedido de
+  la misma foto. Eran de solo lectura desde el import de tallas ("texto libre del
+  catálogo de cmp-tallas"), pero son justo lo que el proveedor lee en el
+  documento y corregir un color obligaba a entrar a Monday. Los escriben
+  **compras y admin** (Efraín: "compras y admin pueden modificar todo"); el
+  vendedor los sigue viendo. La **talla no** se toca: es la que cuadra contra el
+  desglose de tallas.
+- Ambas columnas entraron a `PORTAL_WRITE_COLUMNS` (`worker/lib/activityLog.ts`),
+  así que el reloj de cada línea registra quién cambió el producto o el color con
+  el usuario REAL del portal, igual que ya pasaba con el costo. Whitelist anclada
+  en `shared/visibility.test.ts` (el test que fijaba "talla y color de solo
+  lectura" ahora fija talla de solo lectura + producto/color de compras/admin).
+- La celda de Producto envuelve el texto en vez de recortarlo: las descripciones
+  de bordado se llevan medio renglón y recortadas no se pueden ni revisar.
+
 ## 2026-08-19 (15)
 
 - **El catálogo de Productos ahora se trae cada 10 minutos.** Emy (WhatsApp, con
