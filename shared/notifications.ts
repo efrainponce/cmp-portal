@@ -91,18 +91,28 @@ export const PROJECT_STATUS_BOARD_KEY: Record<string, string> = {
 // producto+color+talla del Proyecto) — copiados de shared/column-meta.gen.ts
 // (introspectado), no fabricados. Mismo motivo que PROJECT_STATUS_LABELS: el worker
 // no puede importar column-meta.gen.ts como fuente de labels de negocio.
+// Copia EXACTA de las etiquetas de `color_mm0hqf79` en Monday (Monday es la
+// verdad — Efraín, 2026-08-19). Realineado ese día tras re-introspeccionar:
+// el índice 5 dejó de ser "Enviado con el" y los índices 11-13 nunca habían
+// entrado aquí, así que `maybeLogProductoStatus` descartaba esas transiciones
+// en silencio (`if (!newLabel) return`) y el historial quedaba incompleto.
+// Si agregas una etiqueta en Monday, corre scripts/introspect-boards.mjs y
+// refleja el cambio aquí, en ESTADO_PRODUCTO_COLORS y en LABEL_TO_BUCKET.
 export const PRODUCT_STATUS_LABELS: Record<string, string> = {
   '0': 'Con vendedor para entrega cliente',
   '1': 'En CMP para embellecer',
   '2': 'En embellecimiento',
   '3': 'En CMP para entrega cliente',
   '4': 'En produccion',
-  '5': 'Enviado con el',
+  '5': 'Pendiente de Recolectar',
   '6': 'Entregado',
   '7': 'Incidencia/Retraso',
   '8': 'OC Proveedor enviada',
   '9': 'Pendiente OC al Prov',
   '10': 'En tránsito',
+  '11': 'ALMACEN CDMX',
+  '12': 'ALMACEN MERIDA',
+  '13': 'Pendiente de Recoleccion',
 };
 
 // Cuando una línea producto+talla del Proyecto (proyectos_sub) llega a un

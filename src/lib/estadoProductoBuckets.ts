@@ -1,4 +1,4 @@
-// src/lib/estadoProductoBuckets.ts — agrupa los 11 labels de `color_mm0hqf79`
+// src/lib/estadoProductoBuckets.ts — agrupa los 14 labels de `color_mm0hqf79`
 // (Estado del producto, proyectos_sub) en buckets de avance para la "batería" del
 // tab Ejecución (ProgressBattery.tsx). Lógica pura, sin red — testeable con vitest.
 // El orden aquí es el orden REAL del flujo (no el `index` que Monday trae hoy en el
@@ -24,14 +24,23 @@ export const ESTADO_BUCKETS: EstadoBucket[] = [
 ];
 
 // Labels de color_mm0hqf79 (shared/notifications.ts PRODUCT_STATUS_LABELS) → bucket.
+// Realineado con Monday el 2026-08-19: "Enviado con el" ya no existe en el
+// board y las cuatro etiquetas de abajo no estaban aquí, así que las líneas en
+// esos estados no sumaban a ningún segmento de la batería (se ignoran en
+// silencio, ver sumBuckets). El bucket de cada una es criterio del portal, no
+// de Monday: recolección pendiente = todavía sin surtir; almacén CMP = ya
+// llegó y va en camino al cliente, igual que "En CMP para entrega cliente".
 export const LABEL_TO_BUCKET: Record<string, EstadoBucketKey> = {
   'Pendiente OC al Prov': 'por_surtir',
   'OC Proveedor enviada': 'por_surtir',
-  'Enviado con el': 'por_surtir',
+  'Pendiente de Recolectar': 'por_surtir',
+  'Pendiente de Recoleccion': 'por_surtir',
   'En produccion': 'produccion',
   'En CMP para embellecer': 'embellecimiento',
   'En embellecimiento': 'embellecimiento',
   'En tránsito': 'en_camino',
+  'ALMACEN CDMX': 'en_camino',
+  'ALMACEN MERIDA': 'en_camino',
   'En CMP para entrega cliente': 'en_camino',
   'Con vendedor para entrega cliente': 'con_vendedor',
   'Entregado': 'entregado',
@@ -41,9 +50,11 @@ export const LABEL_TO_BUCKET: Record<string, EstadoBucketKey> = {
 // Orden real del flujo (no el `index` que Monday trae hoy, desordenado) — para el
 // selector de "cambiar estado" del tab Ejecución (ProyectoSection.tsx EstadoChip).
 export const ESTADO_PRODUCTO_ORDER: string[] = [
-  'Pendiente OC al Prov', 'OC Proveedor enviada', 'Enviado con el', 'En produccion',
-  'En tránsito', 'En CMP para embellecer', 'En embellecimiento', 'En CMP para entrega cliente',
-  'Con vendedor para entrega cliente', 'Entregado', 'Incidencia/Retraso',
+  'Pendiente OC al Prov', 'OC Proveedor enviada', 'Pendiente de Recolectar',
+  'Pendiente de Recoleccion', 'En produccion', 'En tránsito',
+  'ALMACEN CDMX', 'ALMACEN MERIDA', 'En CMP para embellecer', 'En embellecimiento',
+  'En CMP para entrega cliente', 'Con vendedor para entrega cliente',
+  'Entregado', 'Incidencia/Retraso',
 ];
 
 export interface LabelWeight { label: string; weight: number }

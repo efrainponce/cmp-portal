@@ -1,5 +1,37 @@
 # Log de commits
 
+## 2026-08-19 (5)
+
+- **Los mapas de "Estado del producto" llevaban semanas desfasados de Monday**
+  (Efraín, 2026-08-19: "monday es la verdad, copia todo lo que se hizo"). El
+  board había cambiado `color_mm0hqf79` y nada avisó, porque las dos rutas que
+  lo consumen fallan EN SILENCIO: `maybeLogProductoStatus` hace
+  `if (!newLabel) return` y `LABEL_TO_BUCKET` ignora lo que no conoce.
+  - Índice 5: "Enviado con el" → **"Pendiente de Recolectar"**. El historial de
+    estados venía asentando la etiqueta vieja.
+  - Índices 11/12/13 (ALMACEN CDMX, ALMACEN MERIDA, "Pendiente de Recoleccion")
+    no existían en `PRODUCT_STATUS_LABELS`: esas transiciones NO se registraban
+    y esas líneas no sumaban a ningún segmento de la batería del Proyecto.
+    Ahora también se pueden elegir en el selector del tab Ejecución.
+  - Buckets asignados por criterio del portal (Monday no los define):
+    recolección pendiente → "Por surtir"; ALMACEN CDMX/MERIDA → "En camino",
+    igual que "En CMP para entrega cliente".
+- **Dos columnas de Logística estaban rotuladas al revés.** En Monday
+  `text_mm4pywyx` pasó a llamarse "#GUIA - EMPRESA" y `file_mm4pz90b` "Guia EMB
+  o Cliente Final" — intercambiados respecto a como los pintaba el portal, o
+  sea que Compras capturaba cada guía en el campo del otro. También
+  `date_mm4p59q2` es "Fecha Recolección", no "Fecha confirmacion". Los rótulos
+  y los nombres de las constantes ya siguen a Monday; la llave del API de
+  subida (`guia-empresa`) se queda como está a propósito: es interna y
+  renombrarla rompería subidas en vuelo.
+- **`shared/estadoProductoLabels.test.ts`** ancla los mapas contra
+  `column-meta.gen.ts`: en cuanto alguien regenere el meta y deje los mapas
+  atrás, truena en vez de degradar en silencio. Probado a la inversa (quitando
+  una etiqueta el test falla).
+- Las columnas NUEVAS del board (ALMACEN 5.11, Fecha de Llegada, Flete Extra
+  Final, Fecha Entrega Cliente) NO se expusieron: eso es cambiar la whitelist
+  de `shared/visibility.ts` y esa decisión es de Efraín.
+
 ## 2026-08-19 (4)
 
 - **"Etapa Costeo" y "Listo" aparecían como zonas de venta.** No era del

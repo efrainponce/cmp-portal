@@ -31,6 +31,11 @@ export const PROYECTO_FILE_COLS: Record<string, string> = {
 // Tab Logística del Proyecto (2026-08-17): archivos por SUBITEM de
 // proyectos_sub, no por Proyecto — el key lleva subitemId+field
 // (worker/routes/oportunidades.ts POST /api/proyectos_sub/:id/logistica/:field).
+// OJO: la llave 'guia-empresa' quedó con el nombre viejo. En Monday esa columna
+// hoy se titula "Guia EMB o Cliente Final" (los títulos se intercambiaron con
+// text_mm4pywyx; ver LogisticaSection.tsx, realineado el 2026-08-19). La llave es
+// un identificador interno del API de subida — renombrarla rompería subidas en
+// vuelo y no aporta nada al usuario, que ya ve el rótulo correcto.
 export const LOGISTICA_FILE_COLS: Record<string, string> = {
   'guia-empresa': 'file_mm4pz90b',
   'evidencia-recoleccion': 'file_mm4pc4tj',

@@ -27,11 +27,18 @@ const S_UNIDAD = 'text_mm56dbkm';           // solo lectura (vis V, sin w)
 const S_ENCARGADO = 'multiple_person_mm4pc2ns';
 const S_RECOLECCION = 'text_mm4ph3a9';      // "# DE RECOLECCION"
 const S_COMENTARIOS = 'text_mm6aapc8';
-const S_GUIA_CLIENTE = 'text_mm4pywyx';     // "Guia EMB o Cliente Final"
-const S_GUIA_EMPRESA = 'file_mm4pz90b';     // "# Guia - empresa"
+// Los títulos de estas dos columnas se INTERCAMBIARON en Monday desde que se
+// construyó el tab: hoy el texto es "#GUIA - EMPRESA" y el archivo "Guia EMB o
+// Cliente Final" — exactamente al revés de como los rotulaba el portal, así que
+// Compras estaba capturando cada guía en el campo del otro. Realineado el
+// 2026-08-19 (Monday es la verdad — Efraín). La llave del API de archivos sigue
+// siendo 'guia-empresa' a propósito: es un identificador interno
+// (worker/lib/portalFiles.ts) y renombrarlo rompería subidas en vuelo.
+const S_GUIA_EMPRESA_TXT = 'text_mm4pywyx';   // "#GUIA - EMPRESA"
+const S_GUIA_CLIENTE_FILE = 'file_mm4pz90b';  // "Guia EMB o Cliente Final"
 const S_EVIDENCIA = 'file_mm4pc4tj';        // "Evidencia recolección"
 const S_CONFIRMAR = 'boolean_mm4p7eqb';
-const S_FECHA_CONF = 'date_mm4p59q2';
+const S_FECHA_RECOLECCION = 'date_mm4p59q2';  // "Fecha Recolección" (era "Fecha confirmacion")
 
 const fieldBtnStyle = { padding: '6px 14px', font: 'var(--text-label)' } as const;
 
@@ -195,7 +202,7 @@ function DateField({ label, value, rowId, onSaved }: { label: string; value: str
     if (raw === value) return;
     setSaving(true);
     try {
-      await patchItem('proyectos_sub', rowId, { [S_FECHA_CONF]: raw });
+      await patchItem('proyectos_sub', rowId, { [S_FECHA_RECOLECCION]: raw });
       onSaved();
     } finally {
       setSaving(false);
@@ -308,8 +315,8 @@ function LogisticaLineaRow({ row, canEdit, oppId, expanded, onToggleExpand, open
             onClose={() => setOpenPopover(null)} onSaved={onChanged}
           />
           <TextField
-            label="Guía EMB o Cliente Final" value={row.cols[S_GUIA_CLIENTE]?.text || ''} colId={S_GUIA_CLIENTE} rowId={row.id}
-            isOpen={openPopover === popKey('guiaCliente')} onOpen={() => setOpenPopover(popKey('guiaCliente'))}
+            label="#GUIA - EMPRESA" value={row.cols[S_GUIA_EMPRESA_TXT]?.text || ''} colId={S_GUIA_EMPRESA_TXT} rowId={row.id}
+            isOpen={openPopover === popKey('guiaEmpresa')} onOpen={() => setOpenPopover(popKey('guiaEmpresa'))}
             onClose={() => setOpenPopover(null)} onSaved={onChanged}
           />
           <TextField
@@ -317,11 +324,11 @@ function LogisticaLineaRow({ row, canEdit, oppId, expanded, onToggleExpand, open
             isOpen={openPopover === popKey('comentarios')} onOpen={() => setOpenPopover(popKey('comentarios'))}
             onClose={() => setOpenPopover(null)} onSaved={onChanged}
           />
-          <DateField label="Fecha confirmación" value={row.cols[S_FECHA_CONF]?.text || ''} rowId={row.id} onSaved={onChanged} />
+          <DateField label="Fecha Recolección" value={row.cols[S_FECHA_RECOLECCION]?.text || ''} rowId={row.id} onSaved={onChanged} />
           <div style={{ display: 'flex', alignItems: 'flex-end' }}>
             <CheckboxField label="Confirmar tallas completas" checked={!!row.cols[S_CONFIRMAR]?.text} rowId={row.id} onSaved={onChanged} />
           </div>
-          <FileField label="# Guía - empresa" field="guia-empresa" colId={S_GUIA_EMPRESA} row={row} oppId={oppId} onSaved={onChanged} />
+          <FileField label="Guía EMB o Cliente Final" field="guia-empresa" colId={S_GUIA_CLIENTE_FILE} row={row} oppId={oppId} onSaved={onChanged} />
           <FileField label="Evidencia recolección" field="evidencia-recoleccion" colId={S_EVIDENCIA} row={row} oppId={oppId} onSaved={onChanged} />
         </div>
       )}
