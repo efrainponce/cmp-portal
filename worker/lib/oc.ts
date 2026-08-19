@@ -21,6 +21,7 @@ import { BOARDS } from '../../shared/boards';
 import { mergeNativeCols } from './nativeMirrors';
 import { oportunidadFileKey, putFile } from './r2';
 import { generarOcProveedorPdf } from './ocProveedorPdf';
+import { refetchItemTree } from '../sync';
 import { getOcNota } from './ocNotas';
 
 // Proyecto (18395657594) — ids verificados contra shared/column-meta.gen.ts,
@@ -193,16 +194,46 @@ export function buildEledoOcFile(a: EledoOcArgs): Record<string, unknown> {
   };
 }
 
+/** Folio más alto que YA existe en Monday, leído de los nombres de archivo del
+ * espejo (`OC_OC-<n>_<proveedor>.pdf` en la columna de OCs del Proyecto).
+ *
+ * Existe porque hay DOS ledgers: cmp-tallas cuenta filas en su Google Sheet y
+ * el portal cuenta en D1, y no se hablan. El 2026-08-19 el contador de D1 iba
+ * en 23 mientras las OC reales ya iban en la 224 — el primer folio del portal
+ * habría salido "OC-24", repetido con una orden de hace meses. Este piso lo
+ * evita sin tocar el Sheet: el portal siempre emite por ENCIMA de lo que ve. */
+async function folioMasAltoEnEspejo(env: Env): Promise<number> {
+  const { results } = await env.DB
+    .prepare(`SELECT columns FROM items WHERE board_id = ? AND columns LIKE '%OC_OC-%'`)
+    .bind(BOARDS.proyectos.id)
+    .all<{ columns: string }>();
+  const re = /OC_OC-(\d+)_/g;
+  let max = 0;
+  for (const row of results ?? []) {
+    let m: RegExpExecArray | null;
+    re.lastIndex = 0;
+    while ((m = re.exec(row.columns || '')) !== null) {
+      const n = Number(m[1]);
+      if (Number.isFinite(n) && n > max) max = n;
+    }
+  }
+  return max;
+}
+
 // Folio GLOBAL "OC-n" — nunca decrece, una sola fila en D1 (a diferencia de
 // costeo/cotización/tallas, que son POR oportunidad/proyecto). Mirror 1:1 del
-// conteo de filas del ledger de Sheets que hacía cmp-tallas.
+// conteo de filas del ledger de Sheets que hacía cmp-tallas, más el piso de
+// arriba para no repetir un folio que ese ledger ya usó.
 let ocFolioTableReady = false;
 async function nextOcFolio(env: Env): Promise<string> {
   if (!ocFolioTableReady) {
     await env.DB.prepare(`CREATE TABLE IF NOT EXISTS oc_folios (id INTEGER PRIMARY KEY CHECK (id = 1), seq INTEGER NOT NULL DEFAULT 0)`).run();
     ocFolioTableReady = true;
   }
-  await env.DB.prepare(`INSERT INTO oc_folios (id, seq) VALUES (1, 1) ON CONFLICT(id) DO UPDATE SET seq = seq + 1`).run();
+  const piso = await folioMasAltoEnEspejo(env);
+  await env.DB.prepare(
+    `INSERT INTO oc_folios (id, seq) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET seq = MAX(seq, ?) + 1`,
+  ).bind(piso + 1, piso).run();
   const row = await env.DB.prepare(`SELECT seq FROM oc_folios WHERE id = 1`).first<{ seq: number }>();
   return `OC-${row?.seq ?? 1}`;
 }
@@ -294,6 +325,94 @@ export async function generarOcNativeD1(
       orden.error = String(err);
     }
     ordenes.push(orden);
+  }
+
+  return { ok: !ordenes.some(o => o.error), ordenes };
+}
+
+/** Botón "Generar OC (portal)" — emite la orden con el MOTOR PROPIO del portal
+ * (worker/lib/pdf/ordenCompraProveedor.ts) en vez de Eledo/cmp-tallas, y **sin
+ * firma electrónica** (Efraín, 2026-08-19: "sin firmas por lo pronto"). El PDF
+ * ya venía saliendo bien como vista previa desde el 2026-08-13; esto es el paso
+ * que faltaba: consume folio del ledger, se sube a la columna de OCs del
+ * Proyecto en Monday (portal y Monday 1-1) y se copia a R2 para que el portal
+ * la sirva sin pedirle a Monday un link firmado.
+ *
+ * Diferencias con `generarOcNative` (el otro nativo): ese usa Eledo y manda las
+ * 3 firmas de DocuSeal. Este no toca ninguno de los dos — el documento sale con
+ * los espacios de firma FÍSICA impresos, listos para firmarse a mano.
+ *
+ * El espejo se refresca ANTES de armar el PDF: las líneas se acaban de editar
+ * en la misma pantalla (costo, producto, color) y el echo del outbox puede ir
+ * atrás — una OC que sale con el costo viejo es una OC mal mandada. */
+export async function generarOcPortal(
+  env: Env, viewer: Identity, proyectoId: number,
+  opts: { onlyProveedor?: string; metodoPago?: string; condPago?: string } = {},
+): Promise<GenerarOcResult> {
+  if (!(await ownsItem(env, 'proyectos', proyectoId, viewer))) return { ok: false, reason: 'not found', ordenes: [] };
+
+  const nativo = isNativeId(proyectoId);
+  if (!nativo) {
+    try { await refetchItemTree(env, BOARDS.proyectos.id, proyectoId); }
+    catch { /* Monday caído: se sigue con el espejo, que es lo único que hay */ }
+  }
+
+  const proyectoRow = await getItemTrusted(env, 'proyectos', proyectoId);
+  if (!proyectoRow) return { ok: false, reason: 'not found', ordenes: [] };
+  const oppId = linkedItemId(proyectoRow, PROYECTO_OPP_REL);
+
+  const subitems = (await childrenOf(env, 'proyectos', proyectoId, viewer)).map(asMondayItemShape);
+  const groups = groupSubitemsByProveedor(subitems, opts.onlyProveedor);
+  if (groups.size === 0) {
+    return { ok: true, skipped: true, reason: 'No hay líneas con proveedor asignado.', ordenes: [] };
+  }
+
+  const ordenes: OrdenResult[] = [];
+  for (const group of groups.values()) {
+    const orden: OrdenResult = { proveedorId: group.proveedorId, proveedorNombre: group.proveedorNombre };
+    try {
+      const { monto, moneda } = groupTotals(group);
+      orden.monto = monto;
+      orden.moneda = moneda;
+
+      const folioOrden = await nextOcFolio(env);
+      orden.folioOrden = folioOrden;
+
+      const pdfBytes = await generarOcProveedorPdf(env, proyectoId, group.proveedorId, viewer, {
+        folioOrden, metodoPago: opts.metodoPago, condPago: opts.condPago,
+      });
+      const safeRZ = (group.proveedorRZ || group.proveedorNombre).replace(/[^\w\- ]/g, '_').slice(0, 40).trim();
+      // Mismo patrón de nombre que cmp-tallas: es de donde el tab saca la
+      // miniatura de "última OC de este proveedor" (findLatestOcFile).
+      const filename = `OC_${folioOrden}_${safeRZ}.pdf`;
+
+      // Copia en R2 con el key que ya usa el tab (toR2Files) — sirve la OC sin
+      // depender del link firmado de Monday, y es la única copia si el Proyecto
+      // es nativo (Zona Efrain), donde no hay columna a la cual subir.
+      if (oppId != null) {
+        const key = oportunidadFileKey(oppId, 'oc', filename);
+        await putFile(env, key, new Blob([pdfBytes], { type: 'application/pdf' }));
+        orden.pdfUrl = `/api/files/${key}`;
+      }
+
+      if (!nativo) {
+        const upload = await addFileToColumn(env, proyectoId, PROYECTO_OC_PDF, new Blob([pdfBytes], { type: 'application/pdf' }), filename);
+        orden.pdfUrl = orden.pdfUrl ?? upload.publicUrl;
+      }
+    } catch (err) {
+      orden.error = String(err);
+    }
+    ordenes.push(orden);
+  }
+
+  if (!nativo) {
+    try {
+      const lines = [
+        '**Órdenes de Compra generadas desde el portal** (sin firma electrónica)',
+        ...ordenes.map(o => o.error ? `- ❌ ${o.proveedorNombre} → no se pudo generar` : `- ✅ ${o.folioOrden} | ${o.proveedorNombre}`),
+      ];
+      await postUpdate(env, BOARDS.proyectos.id, proyectoId, lines.join('\n'));
+    } catch { /* best-effort — la(s) OC ya se emitieron */ }
   }
 
   return { ok: !ordenes.some(o => o.error), ordenes };

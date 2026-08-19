@@ -513,7 +513,10 @@ export async function getProyectoOportunidad(proyectoId: string): Promise<string
   return body.oportunidadId;
 }
 
-export type ProyectoAction = 'tallas-regenerar' | 'tallas-confirmar' | 'tallas-importar' | 'generar-oc';
+export type ProyectoAction =
+  | 'tallas-regenerar' | 'tallas-confirmar' | 'tallas-importar'
+  | 'generar-oc'          // cmp-tallas/Eledo + firmas DocuSeal
+  | 'generar-oc-portal';  // motor propio del portal, sin firma electrónica
 
 /** Acciones de cmp-tallas sobre el Proyecto (tallas y órdenes de compra).
  * `onlyProveedor` (solo 'generar-oc'): genera la OC de un solo proveedor en vez

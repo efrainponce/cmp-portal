@@ -58,8 +58,18 @@ function fechaHoy(): string {
   return new Date().toLocaleDateString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
+/** Overrides de la orden que se está EMITIENDO: el folio que le tocó y los
+ * términos capturados en su tarjeta (que son de esa OC, no del Proyecto — ver
+ * ProveedorCard). La vista previa no manda ninguno y todo sale del espejo. */
+export interface OcProveedorPdfOpts {
+  folioOrden?: string;
+  metodoPago?: string;
+  condPago?: string;
+}
+
 export async function generarOcProveedorPdf(
   env: Env, proyectoId: number, proveedorId: string, viewer: Identity,
+  opts: OcProveedorPdfOpts = {},
 ): Promise<Uint8Array> {
   const row = await getItem(env, 'proyectos', proyectoId, viewer);
   if (!row) throw new OcProveedorPdfError(404, 'proyecto no encontrado');
@@ -97,6 +107,7 @@ export async function generarOcProveedorPdf(
   const notaProveedor = await getOcNota(env, proyectoId, proveedorId);
 
   return buildOrdenCompraProveedorPdf({
+    folioOrden: opts.folioOrden || '',
     folioProyecto: proyecto.cols[P_FOLIO]?.text || '',
     folioOpp: proyecto.cols[P_FOLIO_OPP]?.text || '',
     nombreProyecto: proyecto.name || '',
@@ -104,8 +115,8 @@ export async function generarOcProveedorPdf(
     proveedorRazonSocial: razonSocial,
     comprador: proyecto.cols[P_COMPRADOR]?.text || '',
     fecha: fechaHoy(),
-    metodoPago: proyecto.cols[P_METODO_PAGO]?.text || '',
-    condicionesPago: proyecto.cols[P_COND_PAGO]?.text || '',
+    metodoPago: opts.metodoPago || proyecto.cols[P_METODO_PAGO]?.text || '',
+    condicionesPago: opts.condPago || proyecto.cols[P_COND_PAGO]?.text || '',
     notas: notaProveedor || proyecto.cols[P_COMENTARIOS]?.text || '',
     lineas,
     elaboradoNombre: proyecto.cols[P_COMPRADOR]?.text || '',

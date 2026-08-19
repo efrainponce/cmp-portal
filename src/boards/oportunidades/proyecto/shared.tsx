@@ -114,6 +114,12 @@ export function toR2Files(files: { url: string; name: string }[], oppId: string 
 
 export interface ActionOutcome { kind: 'ok' | 'warn' | 'error'; text: string }
 
+/** cmp-tallas devuelve `folio_orden`; el motor propio del portal, `folioOrden`. */
+function foliosDe(res: Record<string, unknown>): string {
+  const ordenes = Array.isArray(res.ordenes) ? res.ordenes as Record<string, unknown>[] : [];
+  return ordenes.map(o => String(o.folio_orden ?? o.folioOrden ?? '')).filter(Boolean).join(', ');
+}
+
 export function describeResult(action: ProyectoAction, res: Record<string, unknown>): ActionOutcome {
   if (res.ok === true) {
     switch (action) {
@@ -121,9 +127,12 @@ export function describeResult(action: ProyectoAction, res: Record<string, unkno
       case 'tallas-confirmar': return { kind: 'ok', text: `Tallas validadas (${String(res.validation ?? 'TODO CUADRA')}). PDF ${String(res.pdf_filename ?? '')} enviado a firma del vendedor.` };
       case 'tallas-importar': return { kind: 'ok', text: `Tallas importadas a Monday: ${String(res.talla_subitems ?? '?')} líneas + ${String(res.embell_subitems ?? 0)} embellecimientos.` };
       case 'generar-oc': {
-        const ordenes = Array.isArray(res.ordenes) ? res.ordenes as Record<string, unknown>[] : [];
-        const folios = ordenes.map(o => String(o.folio_orden ?? '')).filter(Boolean).join(', ');
+        const folios = foliosDe(res);
         return { kind: 'ok', text: `Órdenes generadas y enviadas a firma${folios ? `: ${folios}` : ''}.` };
+      }
+      case 'generar-oc-portal': {
+        const folios = foliosDe(res);
+        return { kind: 'ok', text: `Orden generada por el portal${folios ? `: ${folios}` : ''}. Sin firma electrónica — se firma a mano sobre el PDF.` };
       }
     }
   }
@@ -203,7 +212,7 @@ export function ProyectoActionBar({ proyecto, reload, actions }: {
         )}
         {actions.includes('generar-oc') && (
           <ConfirmButton
-            label="Generar todas las OC pendientes"
+            label="Generar todas las OC pendientes (Monday)"
             confirmLabel="¿Generar? Se manda a firmas"
             busyLabel="Generando órdenes… puede tardar unos minutos, no cierres esta pantalla"
             variant="secondary"

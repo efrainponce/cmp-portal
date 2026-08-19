@@ -22,7 +22,7 @@ import { listVersions, duplicateVersion, restoreVersion, hayLineaPendiente, reco
 import { ajustarLinea, AjusteLineaError } from '../lib/lineaAjustes';
 import { listCotizacionVirtual, ajustarLineaVirtual, ProyectoCotizacionError } from '../lib/proyectoCotizacionVirtual';
 import { capturarTallas, reportarTallasIncorrectas, checkOcCliente, confirmTallasNative, confirmTallasNativeD1 } from '../lib/proyectoTallas';
-import { generarOcNative, generarOcNativeD1 } from '../lib/oc';
+import { generarOcNative, generarOcNativeD1, generarOcPortal } from '../lib/oc';
 import { getOcNota, getOcNotas, setOcNota, OC_NOTA_MAX } from '../lib/ocNotas';
 import { listEstadoHistorial } from '../lib/estadoProducto';
 import { recordDirectChanges } from '../lib/activityLog';
@@ -65,7 +65,9 @@ const PROYECTO_COMENTARIOS_OC = 'text_mm4c74f8';
 // Monday: confirmar=VENDEDOR, importar/oc=COMPRAS, regenerar=ambos.
 const PROYECTO_ACTIONS: Record<string, {
   roles: string[];
-  run: (env: Env, id: number, opts: { onlyProveedor?: string; metodoPago?: string; condPago?: string }) => Promise<{ ok: boolean; [k: string]: unknown }>;
+  /** Camino cmp-tallas de la acción. Ausente = la acción no existe allá y la
+   * resuelve el portal por su cuenta (generar-oc-portal). */
+  run?: (env: Env, id: number, opts: { onlyProveedor?: string; metodoPago?: string; condPago?: string }) => Promise<{ ok: boolean; [k: string]: unknown }>;
 }> = {
   'tallas-regenerar': { roles: ['vendedor', 'compras', 'admin'], run: (env, id) => generateSheet(env, id) },
   'tallas-confirmar': { roles: ['vendedor', 'admin'], run: (env, id) => confirmTallas(env, id) },
@@ -77,6 +79,10 @@ const PROYECTO_ACTIONS: Record<string, {
     roles: ['compras', 'admin'],
     run: (env, id, opts) => generateOC(env, id, { onlyProveedor: opts.onlyProveedor, metodoPago: opts.metodoPago, condPago: opts.condPago }),
   },
+  // "Generar OC (portal)": emite la orden con el motor propio, sin firma
+  // electrónica (Efraín, 2026-08-19). No tiene camino en cmp-tallas — se
+  // despacha abajo, con el viewer, porque escribe a nombre de quien la genera.
+  'generar-oc-portal': { roles: ['compras', 'admin'] },
 };
 
 /** Fallback de /api/files para assetIds aún no migrados a R2 — resuelve el
@@ -1493,7 +1499,9 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       // corre en paralelo contra Proyectos reales antes de cortar el cable.
       // "tallas-regenerar"/"tallas-importar" siguen en cmp-tallas (dependen del
       // Sheet, que esta fase retiró — Efraín, 2026-08-12).
-      const result = actionKey === 'tallas-confirmar' && isNativeId(itemId)
+      const result = actionKey === 'generar-oc-portal'
+        ? await generarOcPortal(c.env, viewer, itemId, opts)
+        : actionKey === 'tallas-confirmar' && isNativeId(itemId)
         ? await confirmTallasNativeD1(c.env, c.executionCtx, viewer, itemId)
         : actionKey === 'tallas-confirmar' && c.env.TALLAS_NATIVE === '1'
         ? await confirmTallasNative(c.env, viewer, itemId)
@@ -1501,7 +1509,9 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
         ? await generarOcNativeD1(c.env, viewer, itemId, opts)
         : actionKey === 'generar-oc' && c.env.OC_NATIVE === '1'
         ? await generarOcNative(c.env, viewer, itemId, opts)
-        : await action.run(c.env, itemId, opts);
+        : action.run
+        ? await action.run(c.env, itemId, opts)
+        : { ok: false, reason: 'acción sin camino disponible' };
       // cmp-tallas (o el flujo nativo) escribe directo en Monday — refresca el mirror.
       await refetchItemTree(c.env, BOARDS.proyectos.id, itemId);
       return c.json(result);

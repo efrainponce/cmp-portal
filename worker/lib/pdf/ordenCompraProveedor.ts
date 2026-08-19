@@ -34,6 +34,9 @@ export interface OcProveedorLinea {
 }
 
 export interface OcProveedorPdfInput {
+  /** Folio de la orden ("OC-225") — lo asigna el ledger al GENERARLA. Vacío en
+   * la vista previa ("Ver OC (portal)"), que no consume folio. */
+  folioOrden: string;
   folioProyecto: string;
   folioOpp: string;
   nombreProyecto: string;
@@ -80,6 +83,7 @@ export function buildOrdenCompraProveedorPdf(input: OcProveedorPdfInput): Uint8A
       rows: [
         ['Proveedor', input.proveedor],
         ['Razón social', input.proveedorRazonSocial],
+        ...(input.folioOrden ? [['Folio OC', input.folioOrden] as [string, string]] : []),
         ['Folio oportunidad', input.folioOpp],
         ['Folio proyecto', input.folioProyecto],
         ['Comprador', input.comprador],
@@ -153,7 +157,7 @@ export function buildOrdenCompraProveedorPdf(input: OcProveedorPdfInput): Uint8A
   const meta: DocumentMeta = {
     title: 'Orden de Compra a Proveedor',
     subtitle: input.nombreProyecto,
-    docId: `${input.folioProyecto}-${input.proveedor}`,
+    docId: input.folioOrden || `${input.folioProyecto}-${input.proveedor}`,
     generatedAt: input.fecha,
     logo: base64ToBytes(LOGO_JPG_BASE64),
     hideGeneratedByLine: true,

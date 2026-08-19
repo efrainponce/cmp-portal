@@ -423,9 +423,9 @@ function OcThumb({ file }: { file: { url: string; name: string } | undefined }) 
 }
 
 /** Botón "Ver OC (portal)" — arma el PDF al vuelo en el Worker
- * (worker/lib/ocProveedorPdf.ts) en vez de disparar Eledo/cmp-tallas. v1 a
- * propósito simple (Efraín, 2026-08-13): solo genera/muestra, sin folio propio
- * ni firma electrónica — conviven los dos botones mientras se prueba. */
+ * (worker/lib/ocProveedorPdf.ts) en vez de disparar Eledo/cmp-tallas. Es SOLO
+ * vista previa: no consume folio ni guarda nada. Para emitirla de verdad está
+ * "Generar OC (portal)", al lado. */
 function NativeOcButton({ proyectoId, proveedorId }: { proyectoId: string; proveedorId: string | null }) {
   const [preview, setPreview] = useState(false);
   if (!proveedorId) return null;
@@ -526,20 +526,25 @@ function ProveedorCard({ group, proyecto, oppId, reload, canEdit, activity, nota
   const ocFiles = toR2Files(parseFiles(proyecto.cols[P_OC_PDF]?.text), oppId, 'oc');
   const ocFile = findLatestOcFile(ocFiles, [group.nombre, group.nombreItem]);
 
-  const onGenerar = async () => {
+  const correr = (accion: 'generar-oc' | 'generar-oc-portal') => async () => {
     setOutcome(null);
     try {
-      const res = await proyectoAction(proyecto.id, 'generar-oc', {
+      const res = await proyectoAction(proyecto.id, accion, {
         onlyProveedor: group.proveedorId!,
         metodoPago: metodoPago.trim() || undefined,
         condPago: condPago.trim() || undefined,
       });
-      setOutcome(describeResult('generar-oc', res));
+      setOutcome(describeResult(accion, res));
       reload();
     } catch {
       setOutcome({ kind: 'error', text: 'No se pudo ejecutar la acción. Verifica tu conexión.' });
     }
   };
+  // Dos motores para el mismo documento mientras se prueba el propio: el del
+  // portal (folio + PDF nativo, SIN firmas — Efraín, 2026-08-19) y el de
+  // siempre, que pasa por cmp-tallas/Eledo y manda las 3 firmas de DocuSeal.
+  const onGenerarPortal = correr('generar-oc-portal');
+  const onGenerar = correr('generar-oc');
 
   return (
     <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-xl)', background: '#fff', overflow: 'hidden' }}>
@@ -567,11 +572,22 @@ function ProveedorCard({ group, proyecto, oppId, reload, canEdit, activity, nota
           />
           <NativeOcButton proyectoId={proyecto.id} proveedorId={group.proveedorId} />
           <ConfirmButton
-            label="Generar OC"
+            label="Generar OC (portal)"
+            confirmLabel="¿Emitir la OC de este proveedor? Sin firmas"
+            busyLabel="Generando OC…"
+            disabled={!group.proveedorId}
+            title={!group.proveedorId
+              ? 'Asigna un proveedor a estas líneas primero'
+              : 'Emite la OC con el motor del portal: toma folio y la guarda en el Proyecto. Sin firma electrónica — se firma a mano.'}
+            onConfirm={onGenerarPortal}
+          />
+          <ConfirmButton
+            label="Generar OC (Monday)"
             confirmLabel="¿Generar la OC de este proveedor? Se manda a firmas"
             busyLabel="Generando… puede tardar unos minutos, no cierres esta pantalla"
+            variant="secondary"
             disabled={!group.proveedorId}
-            title={!group.proveedorId ? 'Asigna un proveedor a estas líneas primero' : 'Una OC de este proveedor + firmas Elaborado→Revisado→Autorizado'}
+            title={!group.proveedorId ? 'Asigna un proveedor a estas líneas primero' : 'Una OC de este proveedor por el flujo de Monday/cmp-tallas + firmas Elaborado→Revisado→Autorizado'}
             onConfirm={onGenerar}
           />
         </div>

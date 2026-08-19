@@ -1,5 +1,29 @@
 # Log de commits
 
+## 2026-08-19 (17)
+
+- **"Generar OC (portal)": la orden ya se EMITE con el motor propio, sin
+  firmas.** Efraín: "puedes hacer un GENERAR OC PORTAL? por fa sin firmas por lo
+  pronto". El PDF nativo existía desde el 2026-08-13 pero solo como vista previa
+  ("Ver OC (portal)"): ahora el botón toma folio del ledger, sube el PDF a la
+  columna de OCs del Proyecto en Monday (portal y Monday 1-1), deja copia en R2
+  y anota la bitácora. **Sin DocuSeal**: el documento sale con los espacios de
+  firma física impresos. El botón viejo se queda al lado como **"Generar OC
+  (Monday)"** (cmp-tallas/Eledo + las 3 firmas), igual que el del ActionBar.
+- **El folio ya no puede repetirse entre los dos motores.** Hay DOS ledgers que
+  no se hablan: cmp-tallas cuenta filas en su Google Sheet y el portal cuenta en
+  D1. El contador de D1 iba en **23** mientras las OC reales del Sheet ya iban en
+  la **224** — el primer folio del portal habría salido "OC-24", repetido con una
+  orden de hace meses. `nextOcFolio` ahora lee el folio más alto que ya existe en
+  el espejo (los nombres `OC_OC-<n>_<proveedor>.pdf` de la columna de OCs) y
+  emite por encima de eso. Aplica también a los otros dos caminos nativos.
+- El espejo se refresca ANTES de armar el PDF: las líneas se acaban de editar en
+  esa misma pantalla (costo, producto, color) y el echo del outbox puede ir
+  atrás — una OC con el costo viejo es una OC mal mandada.
+- El PDF ahora imprime **Folio OC** en el encabezado (antes no había folio que
+  imprimir) y toma método/condiciones de pago de la tarjeta que la generó, no del
+  default del Proyecto. La vista previa sigue sin consumir folio.
+
 ## 2026-08-19 (16)
 
 - **Notas al proveedor en la Orden de Compra, impresas en el PDF.** Efraín
