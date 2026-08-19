@@ -18,7 +18,7 @@ import { submitWrite } from './outbox';
 import { gql, moveItemToGroup, fetchItemWithSubitems, cvText, cvNum, type MondayCol } from './monday';
 import { BOARDS } from '../../shared/boards';
 import {
-  computeSnapshot, snapshotColumnValues, snapshotRawCols,
+  computeSnapshot, snapshotColumnValues, snapshotRawCols, debeEstamparSnapshot,
   SNAP_NOMBRE, type SnapshotValues,
 } from './costeoSnapshot';
 import { isNativeId } from '../../shared/nativeId';
@@ -347,8 +347,13 @@ async function runCosteoNative(env: Env, itemId: number): Promise<EnviarCosteoRe
   }
 
   // 1) Snapshot de costos — solo líneas todavía "No iniciado" (una vez costeada,
-  // el valor queda congelado aunque el catálogo/costo cambien después).
-  const toSnapshot = subitems.filter(s => cvText(s.column_values, SUB_ETAPA_COSTEO) === ETAPA_NO_INICIADO);
+  // el valor queda congelado aunque el catálogo/costo cambien después) Y que no
+  // traigan ya un costeo capturado a mano: "No iniciado" dejó de significar
+  // "nunca se costeó" cuando el versionado automático empezó a regresar ahí la
+  // línea editada, y re-estampar pisaba lo que Compras había capturado (ver
+  // debeEstamparSnapshot).
+  const toSnapshot = subitems.filter(s => cvText(s.column_values, SUB_ETAPA_COSTEO) === ETAPA_NO_INICIADO
+    && debeEstamparSnapshot(s.column_values));
   const snapOverrides = new Map<string, SnapshotValues>();
   for (const s of toSnapshot) snapOverrides.set(s.id, computeSnapshot(s.column_values));
   if (toSnapshot.length > 0) {
@@ -458,6 +463,7 @@ async function runCosteoNativeD1(
     const cols: MondayCol[] = JSON.parse(linea.columns || '[]');
     const etapa = (cols.find(c => c.id === SUB_ETAPA_COSTEO)?.text ?? '').trim();
     if (etapa && etapa !== ETAPA_NO_INICIADO) continue; // ya costeada — no recongelar
+    if (!debeEstamparSnapshot(cols)) continue;          // ...ni pisar lo capturado a mano
     await writeNativeLineCols(env, linea.item_id, snapshotRawCols(computeSnapshot(cols)));
   }
 

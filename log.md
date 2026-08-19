@@ -1,5 +1,30 @@
 # Log de commits
 
+## 2026-08-19 (13)
+
+- **Remandar a costeo ya no pisa el costo que Compras capturó.** Efraín
+  (2026-08-19): "no quiero que nunca se pierda lo costeado y el precio por fa".
+  Hueco encontrado al revisar el arreglo anterior: "Mandar a costeo" estampa el
+  snapshot del catálogo (Costo Distr., Descuento %, Gastos %, IVA, TC y
+  `numeric_mm2qzzbe`) en **toda** línea con Etapa Costeo "No iniciado" — y ese
+  estado dejó de significar "nunca se costeó" en cuanto el versionado automático
+  empezó a regresar ahí la línea editada. O sea: Compras costeaba una línea a
+  mano, alguien le cambiaba el color, y al remandarla a costeo el costo volvía al
+  del catálogo. Peor: si el espejo del catálogo venía vacío (Monday no siempre
+  recalcula los mirrors a tiempo), lo sobrescribía con **ceros**.
+- `debeEstamparSnapshot` (nuevo, en `worker/lib/costeoSnapshot.ts`) decide por
+  línea: se siembra si no hay costo capturado (primer costeo) o si cambió el
+  producto —SKU o nombre congelados ya no coinciden con el catálogo, o sea que
+  el costo viejo era de OTRO producto—. En cualquier otro caso gana lo que
+  capturó Compras. Ante duda (espejo vacío, dato incomparable) NO se pisa:
+  perder un costo negociado es más caro que no sembrar uno.
+- Aplica a los dos caminos de "Mandar a costeo": el de Monday (`runCosteoNative`)
+  y el nativo de la Zona Efrain (`runCosteoNativeD1`).
+- **El Precio de Venta C/U (`numeric_mkzneg3d`) nunca estuvo en riesgo** y ahora
+  hay test que lo ancla: el snapshot escribe `numeric_mm2qzzbe`, otra columna con
+  nombre parecido. En todo el worker solo lo escriben restaurar una versión (por
+  definición, restaura esa foto) y duplicar una oportunidad.
+
 ## 2026-08-19 (12)
 - **El vendedor ya puede borrar un documento que subió.** Ricardo (WhatsApp, con
   la foto de la pestaña Documentación de OPP-0506): "Subi dos veces el

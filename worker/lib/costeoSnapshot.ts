@@ -61,6 +61,40 @@ export function computeSnapshot(cols: MondayCol[]): SnapshotValues {
   };
 }
 
+/** ¿Hay que estampar el snapshot del catálogo en esta línea, o ya trae costeo
+ * capturado que NO se debe pisar? (Efraín, 2026-08-19: "no quiero que nunca se
+ * pierda lo costeado y el precio").
+ *
+ * "Mandar a costeo" estampa el snapshot en toda línea con Etapa Costeo "No
+ * iniciado", y ese estado ya no significa "nunca se costeó": desde que el
+ * versionado automático regresa a "No iniciado" SOLO la línea que cambió
+ * (worker/lib/quoteVersions.ts), una línea que Compras ya había costeado a mano
+ * puede volver ahí por un cambio de color o de cantidad. Re-estamparla
+ * sobrescribía Costo Distr./Descuento/Gastos/IVA/TC con los valores del
+ * catálogo — y si el espejo del catálogo viene vacío (pasa: Monday no siempre
+ * recalcula los mirrors a tiempo), con CEROS.
+ *
+ * Se re-estampa solo cuando hace falta de verdad:
+ *  - no hay costo capturado todavía → primer costeo, se siembra del catálogo;
+ *  - cambió el producto (SKU o nombre congelados ya no coinciden con los del
+ *    catálogo) → el costo viejo es de OTRO producto y dejarlo sería peor.
+ * En cualquier otro caso gana lo que capturó Compras. Ante duda —un espejo
+ * vacío, un dato que no se puede comparar— NO se pisa: perder un costo
+ * negociado es mucho más caro que reestampar uno de más.
+ *
+ * OJO: nada de esto toca `numeric_mkzneg3d` (Precio de Venta C/U, el que valida
+ * dirección). El snapshot escribe `numeric_mm2qzzbe`, que es otra columna. */
+export function debeEstamparSnapshot(cols: MondayCol[]): boolean {
+  if (!cvNum(cols, SNAP_COSTO)) return true;
+  const distinto = (congelado: string, actual: string) => {
+    const a = congelado.trim().toLowerCase();
+    const b = actual.trim().toLowerCase();
+    return !!a && !!b && a !== b;
+  };
+  return distinto(cvText(cols, SNAP_SKU), cvText(cols, SCOL_SKU))
+    || distinto(cvText(cols, SNAP_NOMBRE), cvText(cols, SCOL_PRODUCTO_NOMBRE));
+}
+
 /** El snapshot como `column_values` de Monday (id → texto). */
 export function snapshotColumnValues(snap: SnapshotValues): Record<string, string> {
   return {
