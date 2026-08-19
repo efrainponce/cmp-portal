@@ -1,5 +1,41 @@
 # Log de commits
 
+## 2026-08-19 (10)
+
+- **Ricardo no podía mandar a costeo y el error hablaba de una línea invisible.**
+  Efraín con la foto de la pantalla de Ricardo (OPP-0923): "Error a RICH no puede
+  mandar a costeo sin razón, yo no veo el error pero él sí". El aviso decía
+  `Nueva línea: ⚠️ Cantidad incorrecta. ⚠️ Compras debe subir la ficha comercial
+  a Airtable` sobre una línea que en el portal no existía.
+- La causa: esa misma mañana "borrar una línea" pasó a ser OCULTARLA
+  (`item_oculto`) para cumplir la regla de no borrar en Monday. La línea salía
+  del portal y seguía viva en Monday — y `validar_costeo` (cmp-tallas) lee los
+  subitems DIRECTO de Monday. Encontró la línea vacía (sin producto, cantidad 0),
+  rechazó el envío y revirtió la etapa. El pre-chequeo del portal, que lee D1 sin
+  las ocultas, daba todo en verde: por eso Efraín no veía nada y Ricardo sí.
+- Efraín: "necesito que se borren las líneas por favor, que todo sea 1-1 con
+  Monday si no errores van a pasar". El problema no era solo el bloqueo: una
+  línea quitada CON datos pasa la validación y se cotizaba al cliente igual.
+- Producción: se borraron en Monday las 17 líneas que estaban marcadas como
+  quitadas (1 vacía en OPP-0923 + 8 en OPP-0921 + 8 en OPP-0716), con respaldo
+  previo de sus columnas y verificando id por id que existieran, que fueran del
+  board de subitems y que su padre fuera el esperado. D1 quedó igual que Monday.
+- El código ahora borra de verdad, por un solo camino: `worker/lib/itemBorrado.ts`
+  (borra en Monday + mirror). `itemOculto.ts` se eliminó y `dal.ts` dejó de
+  filtrar ocultos. Cambian los cuatro caminos que ocultaban: DELETE genérico de
+  `/api/boards`, eliminar línea de cotización, eliminar línea de proyecto y
+  restaurar una versión vieja.
+- Las guardas del incidente del 2026-08-18 se quedan, ahora en ese archivo:
+  respaldo del renglón completo (nombre + todas las columnas) en `item_borrado`
+  ANTES de borrar, de a un id a la vez, y tope de 40 borrados por hora y persona
+  (un bucle se corta ahí; restaurar una versión de 15 líneas cabe de sobra).
+- `monday.destructivo.test.ts` deja de prohibir `delete_item` y ahora ancla que
+  aparezca SOLO en `itemBorrado.ts`, que el respaldo y el tope estén antes del
+  borrado, y que no se borre a partir de listas de ids. Las demás mutaciones
+  destructivas (`delete_board`, `delete_column`…) siguen prohibidas.
+- Los ARCHIVOS siguen ocultándose (`archivoOculto.ts`): la API de Monday no sabe
+  quitar un archivo suelto de una columna `file`, solo vaciar la columna entera.
+
 ## 2026-08-19 (9)
 
 - **Compras ya puede cambiar color y cantidad en la cotización.** Elizabeth

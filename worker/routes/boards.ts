@@ -21,7 +21,7 @@ import { submitWrite, OutboxError } from '../lib/outbox';
 import { submitCreate, submitCreateNative, isNativeCreatable, CreateError } from '../lib/createRecord';
 import { duplicateVersion, esDraftVigente, QuoteVersionError, LINE_DEFINING_COLS } from '../lib/quoteVersions';
 import { addFileToUpdate, fetchAssetPublicUrls, type MentionInput } from '../lib/monday';
-import { ocultarItem } from '../lib/itemOculto';
+import { borrarItem, BorradoError } from '../lib/itemBorrado';
 import { esAjusteInlineCompras, registrarAjusteInline } from '../lib/lineaAjustes';
 // Los updates de un item nativo (Zona Efrain) viven en D1, no en Monday — estas
 // dos funciones eligen el lado por el id, así que la ruta no lo decide.
@@ -418,24 +418,20 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
       if (versionError) return jsonStatus({ ok: false, error: versionError.message }, versionError.status);
     }
 
-    // Item NATIVO (Zona Efrain, "salir de Monday"): no existe del lado de
-    // Monday y D1 es su sistema de registro — ahí sí se borra la fila (el
-    // DELETE de abajo). Si el item vive en Monday, se OCULTA: desaparece del
-    // portal y sigue intacto allá. El portal nunca borra en Monday
-    // (worker/lib/itemOculto.ts, regla de Efraín 2026-08-19).
-    if (!isNativeId(itemId)) {
-      await ocultarItem(c.env, BOARDS[slug].id, itemId, viewer.email);
-      return c.json({ ok: true });
+    // Borra en Monday Y en el mirror (worker/lib/itemBorrado.ts): lo que se
+    // quita del portal tiene que desaparecer de Monday, o los flujos que leen
+    // Monday directo —costeo, cotización, tallas, OC— siguen viendo la línea
+    // (Efraín, 2026-08-19). El mirror se limpia aquí mismo y no se espera al
+    // webhook subitem_deleted: con su debounce de 10s más la latencia de
+    // Monday la línea seguía en el drawer minutos después (Efraín,
+    // 2026-08-13: "tarda muchísimo"). Si el webhook llega luego, su DELETE
+    // sobre una fila que ya no existe es un no-op.
+    try {
+      await borrarItem(c.env, BOARDS[slug].id, itemId, viewer.email);
+    } catch (err) {
+      if (err instanceof BorradoError) return jsonStatus({ ok: false, error: err.message }, err.status);
+      throw err;
     }
-    // Antes solo se borraba en Monday y se esperaba al webhook subitem_deleted
-    // (worker/sync/webhook.ts) para limpiar el mirror — con su debounce de
-    // 10s más la latencia real de entrega de Monday, la línea seguía
-    // apareciendo en el drawer varios segundos/minutos después de "borrada"
-    // (Efraín, 2026-08-13: "tarda muchísimo"). Se borra la fila de D1 aquí
-    // mismo, igual que el webhook — si el webhook llega después, el DELETE
-    // sobre una fila que ya no existe es un no-op inofensivo.
-    await c.env.DB.prepare('DELETE FROM items WHERE board_id = ? AND item_id = ?')
-      .bind(BOARDS[slug].id, itemId).run();
     return c.json({ ok: true });
   });
 

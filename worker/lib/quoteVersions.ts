@@ -18,7 +18,7 @@ import type { QuoteLineSnapshot, QuoteVersionDTO } from '../../shared/dto';
 import { getItem, childrenOf, listItems } from './dal';
 import { submitWrite, flushOutbox } from './outbox';
 import { createSubitem } from './monday';
-import { ocultarItem } from './itemOculto';
+import { borrarItem } from './itemBorrado';
 import { upsertItem } from '../sync';
 import type { RawCol } from './serialize';
 import { listAjustes } from './lineaAjustes';
@@ -369,13 +369,15 @@ export async function restoreVersion(
     await upsertItem(env, 'oportunidades_sub', sub);
   }
 
-  // Líneas que no estaban en la versión restaurada: se QUITAN del portal, no se
-  // borran de Monday (el portal nunca borra allá — worker/lib/itemOculto.ts).
-  // Restaurar una versión vieja es reversible por definición: si mañana se
-  // restaura la versión nueva, estas líneas vuelven tal cual estaban.
+  // Líneas que no estaban en la versión restaurada: se borran de Monday y del
+  // mirror (worker/lib/itemBorrado.ts). Esconderlas solo del portal no sirve —
+  // costeo y la cotización leen Monday directo y las seguirían cobrando
+  // (Efraín, 2026-08-19). Restaurar sigue siendo reversible: si mañana se
+  // restaura la versión nueva, el bloque de arriba las recrea desde su
+  // instantánea con createSubitem.
   for (const cur of currentLines) {
     if (cur.subitemId != null && !targetIds.has(cur.subitemId)) {
-      await ocultarItem(env, BOARDS.oportunidades_sub.id, cur.subitemId, viewer.email);
+      await borrarItem(env, BOARDS.oportunidades_sub.id, cur.subitemId, viewer.email);
     }
   }
 

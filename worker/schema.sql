@@ -602,14 +602,18 @@ CREATE TABLE IF NOT EXISTS native_updates (
 );
 CREATE INDEX IF NOT EXISTS idx_native_updates_item ON native_updates(item_id, created_at DESC);
 
--- "Quitado" desde el portal: el item sigue vivo en Monday (el portal NUNCA
--- borra allá — worker/lib/itemOculto.ts) pero desaparece de las lecturas del
--- portal. Vive aparte de `items` a propósito: así refetch/reconcile pueden
--- reescribir la fila las veces que quieran sin resucitar la línea.
-CREATE TABLE IF NOT EXISTS item_oculto (
-  board_id   INTEGER NOT NULL,
-  item_id    INTEGER NOT NULL,
-  hidden_at  TEXT NOT NULL,
-  by_email   TEXT,
+-- Respaldo de lo borrado desde el portal (worker/lib/itemBorrado.ts): el
+-- renglón completo —nombre y todas las columnas— se guarda aquí ANTES de
+-- borrarlo en Monday y en `items`, para poder recrearlo si algo se fue por
+-- error. También es el contador del tope de borrados por hora y por persona.
+CREATE TABLE IF NOT EXISTS item_borrado (
+  board_id       INTEGER NOT NULL,
+  item_id        INTEGER NOT NULL,
+  parent_item_id INTEGER,
+  name           TEXT,
+  columns        TEXT,
+  deleted_at     TEXT NOT NULL,
+  by_email       TEXT,
   PRIMARY KEY (board_id, item_id)
 );
+CREATE INDEX IF NOT EXISTS idx_item_borrado_email_fecha ON item_borrado (by_email, deleted_at);

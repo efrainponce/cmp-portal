@@ -34,16 +34,25 @@ con el Worker (`/api/*`). Bot de WhatsApp + chat del portal comparten agente Cla
   hace que Monday asigne una etiqueta arbitraria en silencio.
 - Permisos por columna/rol viven en `shared/visibility.ts` (server las filtra; la UI
   solo refleja `ColMeta.w`). Decisiones de whitelist son de Efraín — no las cambies solo.
-- **El portal NUNCA borra en Monday.** Su superficie de escritura hacia Monday es
-  solo **crear, modificar y duplicar** (Efraín, 2026-08-19). "Borrar" desde el
-  portal = OCULTAR (`worker/lib/itemOculto.ts`): el item desaparece de las
-  lecturas del portal y sigue intacto en Monday. Anclado en
-  `worker/lib/monday.destructivo.test.ts` — si agregas `delete_item` o cualquier
-  mutación destructiva, ese test falla. Excepción: items NATIVOS (Zona Efrain,
-  ids ≥ 900000000000) no existen en Monday y ahí D1 sí borra la fila.
-  El porqué: el 2026-08-18 un script pidió una lista con un filtro que la ruta
-  no conocía (`?parent=`), recibió el board COMPLETO y borró 70 líneas de 22
-  oportunidades en 4.5 minutos. En Monday no hay deshacer masivo.
+- **El portal y Monday quedan 1-1: lo que se borra en el portal se borra en
+  Monday** (Efraín, 2026-08-19 tarde). Ese día, por unas horas, "borrar" fue
+  OCULTAR y rompió costeo el mismo día: la línea escondida seguía viva en Monday
+  y `validar_costeo` (cmp-tallas, que lee los subitems DIRECTO de Monday) rechazó
+  el envío por una línea que el portal ya no le mostraba a nadie. Todo lo que se
+  esconda del portal reaparece como error en costeo/cotización/tallas/OC.
+  El borrado vive en **un solo lugar**, `worker/lib/itemBorrado.ts`, con guardas:
+  respaldo del renglón completo en `item_borrado` ANTES de borrar, de a un id a
+  la vez (nunca a partir de una lista) y tope de 40 borrados por hora y persona.
+  Anclado en `worker/lib/monday.destructivo.test.ts` — `delete_item` en cualquier
+  otro fuente, o cualquier otra mutación destructiva (`delete_board`,
+  `delete_column`…), tumba el test. Las guardas existen porque el 2026-08-18 un
+  script pidió una lista con un filtro que la ruta no conocía (`?parent=`),
+  recibió el board COMPLETO y borró 70 líneas de 22 oportunidades en 4.5 minutos:
+  en Monday no hay deshacer masivo. Excepciones: items NATIVOS (Zona Efrain, ids
+  ≥ 900000000000) no existen en Monday y solo se borra su fila de D1; y los
+  ARCHIVOS de una columna `file` sí se ocultan (`worker/lib/archivoOculto.ts`),
+  porque la API de Monday no sabe quitar un archivo suelto, solo vaciar la
+  columna entera.
 - **Las rutas rechazan query params que no conocen** (`rejectUnknownQuery` en
   `worker/lib/http.ts`): un filtro mal escrito no debe degradar a "sin filtro".
 - Permisos por RENGLÓN: `worker/lib/dal.ts`. Leer = lo propio + la zona que el viewer

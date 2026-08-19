@@ -217,20 +217,19 @@ export async function moveItemToGroup(env: Env, itemId: number, groupId: string)
   await gql(env, query, { id: String(itemId), g: groupId });
 }
 
-// NO existe deleteItem — y no debe volver a existir.
+// Este cliente NO borra. El único borrado del worker vive en
+// worker/lib/itemBorrado.ts y pasa por sus guardas: respaldo del renglón antes
+// de borrar, de a un id a la vez y con tope de ritmo por persona.
 //
-// Regla dura (Efraín, 2026-08-19): el portal NUNCA borra en Monday. Lo único
-// que este cliente puede hacer contra Monday es CREAR, MODIFICAR y DUPLICAR.
-// El 2026-08-18 un script de verificación pidió una lista con un filtro que la
-// ruta no conocía (`?parent=`), recibió el board COMPLETO y el loop de limpieza
-// que venía detrás borró 70 líneas de 22 oportunidades en 4.5 minutos. Nada lo
-// frenó porque `delete_item` estaba a un import de distancia.
+// El porqué de concentrarlo ahí: el 2026-08-18 un script de verificación pidió
+// una lista con un filtro que la ruta no conocía (`?parent=`), recibió el board
+// COMPLETO y el loop de limpieza que venía detrás borró 70 líneas de 22
+// oportunidades en 4.5 minutos. Nada lo frenó porque `delete_item` estaba a un
+// import de distancia de cualquier archivo.
 //
-// "Borrar" desde el portal ahora es OCULTAR (worker/lib/itemOculto.ts): el item
-// desaparece de la vista del portal y sigue intacto en Monday. Está anclado en
-// worker/lib/monday.destructivo.test.ts — si agregas una mutación destructiva
-// (delete_item, delete_subitem, delete_board, delete_column, delete_group…),
-// ese test falla.
+// Está anclado en worker/lib/monday.destructivo.test.ts: una mutación
+// destructiva (delete_item, delete_board, delete_column, delete_group…) fuera de
+// itemBorrado.ts tumba el test.
 
 /** Create a subitem under a parent item. Same full item shape back.
  * maxRetries capped at 1 (not the default 4) — this is a synchronous, user-
