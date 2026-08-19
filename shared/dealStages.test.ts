@@ -2,7 +2,7 @@
 // siempre visible y en media docena de etapas solo servía para mostrar un
 // banner rojo con un pendiente que nadie podía resolver.
 import { describe, it, expect } from 'vitest';
-import { puedeMandarACosteo, COSTEO_STAGE_BLOCKED, DEAL_STAGE_LABELS } from './dealStages';
+import { puedeMandarACosteo, puedeGenerarCotizacion, CLOSED_STAGES, COSTEO_STAGE_BLOCKED, DEAL_STAGE_LABELS } from './dealStages';
 
 describe('puedeMandarACosteo', () => {
   it('sí en Nueva oportunidad, aunque no haya borrador', () => {
@@ -26,5 +26,29 @@ describe('puedeMandarACosteo', () => {
     for (const stage of Object.keys(COSTEO_STAGE_BLOCKED)) {
       expect(DEAL_STAGE_LABELS[stage]).toBeTruthy();
     }
+  });
+});
+
+// Zona Efrain cotiza de un jalón (Efraín, 2026-08-19: "no hay etapas, toda la
+// info ya está de jalón… puede pasar de nueva oportunidad a cotización
+// enseguida"). Fuera de la zona el botón NO se adelanta a la validación del
+// precio, que es todo el punto de la etapa 9.
+describe('puedeGenerarCotizacion', () => {
+  it('fuera de la zona, solo en Costeo Confirmado', () => {
+    expect(puedeGenerarCotizacion('9', false)).toBe(true);
+    for (const stage of ['4', '15', '7', '6', '8', '0', '3']) {
+      expect(puedeGenerarCotizacion(stage, false)).toBe(false);
+    }
+  });
+
+  it('en la zona, desde Nueva oportunidad y en cualquier etapa abierta', () => {
+    for (const stage of Object.keys(DEAL_STAGE_LABELS)) {
+      expect(puedeGenerarCotizacion(stage, true)).toBe(!CLOSED_STAGES.has(stage));
+    }
+  });
+
+  it('nunca sin etapa', () => {
+    expect(puedeGenerarCotizacion(undefined, true)).toBe(false);
+    expect(puedeGenerarCotizacion('', true)).toBe(false);
   });
 });

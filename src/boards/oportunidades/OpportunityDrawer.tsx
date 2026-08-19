@@ -18,7 +18,7 @@ import {
 } from '../../lib/api';
 import { statusIndex } from '../../lib/statusValue';
 import { DEAL_STAGE_LABELS, stageAtOrAfter, type StageBoardKey } from '../../lib/dealStages';
-import { COSTEO_STAGE_BLOCKED, puedeMandarACosteo } from '../../../shared/dealStages';
+import { COSTEO_STAGE_BLOCKED, puedeMandarACosteo, puedeGenerarCotizacion } from '../../../shared/dealStages';
 import { useIsMobile } from '../../lib/useIsMobile';
 import { uxAction, uxNav } from '../../lib/telemetry';
 import { BoardTabsBar, type DrawerTabKey } from './BoardTabsBar';
@@ -442,7 +442,16 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
       if (res.ok && !res.skipped) {
         setNotice({
           kind: 'ok', title: 'Cotización generada',
-          lines: [`${String(res.folio_cotizacion ?? '')} · total $${Number(res.total ?? 0).toLocaleString()} — enviada a firma del vendedor.`],
+          lines: [
+            `${String(res.folio_cotizacion ?? '')} · total $${Number(res.total ?? 0).toLocaleString()} — enviada a firma del vendedor.`,
+            // En la zona la cotización es el ÚNICO paso, así que de ahí salen
+            // también los dos PDFs que en el pipeline normal producen "Mandar a
+            // costeo" y "Validar costeo" (Efraín, 2026-08-19: "sí deja el PDF
+            // de solicitud y validación") — ver worker/routes/oportunidades.ts.
+            ...(boardKey === 'zona_efrain'
+              ? ['La etapa pasó a "Cotización". En Documentación quedaron también la solicitud de costeo y la hoja "Costeo — Validación".']
+              : []),
+          ],
         });
         load();
         loadVersions();
@@ -629,7 +638,10 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
     const etapa = (p.cols[ETAPA_COSTEO_COL]?.text ?? '').trim();
     return !etapa || etapa === 'No iniciado';
   });
-  const puedeMandarCosteo = puedeMandarACosteo(stage, hayPendienteCosteo);
+  // ...y nunca en Zona Efrain (Efraín, 2026-08-19: "solo generar cotización"):
+  // ahí la oportunidad nace con toda la info y salta directo a Cotización, así
+  // que costeo/validación no son pasos de nadie — ver `puedeGenerarCotizacion`.
+  const puedeMandarCosteo = !zonaPrivada && puedeMandarACosteo(stage, hayPendienteCosteo);
   const vigenteLabel = versions.find((v) => v.status === 'vigente')?.label;
 
   // Generar cotización (etapa 7): cmp-tallas la omite si ningún producto tiene
@@ -756,13 +768,15 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
               onConfirm={onValidarCosteo}
             />
           )}
-          {stage === '9' && !ajena && (
+          {puedeGenerarCotizacion(stage, zonaPrivada) && !ajena && (
             <ConfirmButton
               label="Generar cotización"
-              confirmLabel="¿Generar y mandar a firma?"
+              confirmLabel={zonaPrivada && stage !== '9' ? '¿Cotizar ya y mandar a firma?' : '¿Generar y mandar a firma?'}
               busyLabel="Generando cotización… puede tardar unos minutos, no cierres esta pantalla"
               disabled={!hasPrecio}
-              title={hasPrecio ? 'PDFs con y sin precio + firma del vendedor (DocuSeal)' : 'Ningún producto tiene Precio de Venta — captúralo antes de cotizar'}
+              title={!hasPrecio ? 'Ningún producto tiene Precio de Venta — captúralo antes de cotizar'
+                : zonaPrivada ? 'PDFs con y sin precio + firma (DocuSeal) y pasa a "Cotización" — deja también la solicitud de costeo y la hoja de validación en Documentación'
+                : 'PDFs con y sin precio + firma del vendedor (DocuSeal)'}
               onConfirm={onGenerarCotizacion}
             />
           )}

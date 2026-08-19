@@ -7,6 +7,7 @@ import type { Env } from '../env';
 import type { Identity } from '../../shared/types';
 import { BOARDS } from '../../shared/boards';
 import { isNativeId } from '../../shared/nativeId';
+import { stageAtOrAfter, stageKeyForLabel } from '../../shared/dealStages';
 import type { AjustarLineaRequest, AjustarLineaResponse, CotizacionVirtualDTO, DuplicarOportunidadRequest, DuplicarOportunidadResponse, DuplicarVersionResponse, ItemDetailDTO, QuoteVersionsResponse, TallaBoxInput, CapturarTallasResponse, EstadoHistorialResponse, ProductoResumenResponse, ProductoGeneroResponse } from '../../shared/dto';
 import type { ProposedProductsResponse, AddProposedProductResponse } from '../../shared/productosPropuestos';
 import { getItem, childrenOf, pendingItemIds, proyectoForOportunidad, linkedItemId, PROYECTO_OPP_REL } from '../lib/dal';
@@ -428,6 +429,25 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     // de su equipo pero no dispara automatizaciones sobre ellas (worker/lib/zonas.ts).
     const row = await getItem(c.env, 'oportunidades', itemId, viewer, 'own');
     if (!row) return c.json({ error: 'not found' }, 404);
+    // La etapa ANTES de cotizar (toda cotización la mueve a "Cotización"): con
+    // ella se decide abajo si hay que emitir la solicitud de costeo y la hoja
+    // de validación. Mismo parseo crudo que en /productos — MirrorItem.columns
+    // es el [{id,type,text,value}] de Monday, no el ItemDTO serializado.
+    const stageAntes = (() => {
+      let col: { text?: string; value?: string } | undefined;
+      try {
+        const raw: { id: string; text: string; value: string }[] = JSON.parse(row.columns || '[]');
+        col = raw.find(x => x.id === 'deal_stage');
+      } catch { return ''; }
+      try {
+        const idx = (JSON.parse(col?.value ?? 'null') as { index?: unknown })?.index;
+        if (idx !== undefined && idx !== null) return String(idx);
+      } catch { /* value vacío u optimista — cae al label */ }
+      // Sin índice (write optimista todavía sin echo) manda el label: quedarse
+      // en '' haría fallar abierto a `stageAtOrAfter` y la zona se quedaría
+      // justo sin los dos PDFs que este camino tiene que dejar.
+      return stageKeyForLabel(col?.text ?? '') ?? '';
+    })();
 
     try {
       // Fase 2 (plan "salir de Monday", 2026-08-12): mismo gate que COSTEO_NATIVE —
@@ -444,6 +464,27 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       if (result.ok) {
         const folio = 'folio' in result ? result.folio : (result as { folio_cotizacion?: unknown }).folio_cotizacion;
         await recordFirstVersion(c.env, itemId, viewer, typeof folio === 'string' ? folio : undefined, Number(result.total ?? 0));
+      }
+      // Cotizar SALTÁNDOSE costeo y validación (Zona Efrain, Efraín 2026-08-19:
+      // "solo generar cotización pero sí deja el PDF de solicitud y
+      // validación"): ahí "Mandar a costeo" y "Validar costeo" ya no se pintan
+      // (shared/dealStages.ts puedeGenerarCotizacion) y con ellos se irían los
+      // dos PDFs que produce ese camino. Se emiten aquí, con los mismos
+      // helpers y el mismo acuse automático que en el pipeline normal.
+      //
+      // El gate es la etapa DE ANTES, no el board ni `isNativeId`: en Zona
+      // Efrain también viven oportunidades reales de Monday (el board filtra
+      // por vendedor, no por id nativo), y en el pipeline normal — que solo
+      // cotiza desde "Costeo Confirmado" — esos dos documentos ya existen y no
+      // hay que regenerarlos. `stageAtOrAfter` falla abierto ante una etapa
+      // desconocida, así que la duda no genera documentos de más.
+      // Best-effort dentro de cada helper: la cotización ya se generó y no se
+      // deshace porque falle un PDF.
+      if (result.ok && !result.skipped && !stageAtOrAfter(stageAntes, '9')) {
+        // Sin `folioCosteo`: ese argumento solo sirve para subir el PDF a la
+        // columna de Monday, y aquí no hubo folio de costeo que respetar.
+        await generarSolicitudCosteo(c, itemId, viewer);
+        await generarHojaValidacion(c, itemId, viewer);
       }
       await refetchItem(c.env, BOARDS.oportunidades.id, itemId);
       return c.json(result);

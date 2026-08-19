@@ -1,5 +1,30 @@
 # Log de commits
 
+## 2026-08-19 (19)
+
+- **Zona Efrain cotiza de un jalón: "Generar cotización" desde Nueva
+  oportunidad.** Efraín: "necesito que en Zona Efrain la etapa sea Generar
+  cotización, porque la verdad no hay etapas, toda la info ya está de jalón…
+  puede pasar de nueva oportunidad a cotización enseguida". Ahí una sola
+  persona captura líneas, costos y Precio de Venta en la misma pantalla, así
+  que costeo → validación → confirmado eran tres clics de trámite sobre datos
+  que ya estaban puestos.
+- En la zona **"Mandar a costeo" desaparece** (Efraín: "solo generar
+  cotización") y "Generar cotización" se pinta en cualquier etapa abierta,
+  incluida Nueva oportunidad. Fuera de la zona nada cambia: sigue apareciendo
+  solo en "Costeo Confirmado", después de que dirección valida el precio. La
+  regla vive en `shared/dealStages.ts` (`puedeGenerarCotizacion`), anclada en
+  tests.
+- **Los dos PDFs no se pierden** (Efraín: "pero sí deja el PDF de solicitud y
+  validación"): la solicitud de costeo y la hoja "Costeo — Validación" las
+  emite ahora la propia cotización, con los mismos helpers y el mismo acuse
+  automático. El gate es la **etapa de antes**, no el board: si se cotiza
+  saltándose la validación del precio, salen; en el pipeline normal ya existían
+  y no se regeneran.
+- Sigue visible en etapa "Cotización" dentro de la zona a propósito: tras
+  "+ Nueva versión" no habría ningún otro botón para volver a cotizar ahora que
+  "Mandar a costeo" ya no está ahí.
+
 ## 2026-08-19 (18)
 
 - **Tarjeta de proveedor reacomodada: los 3 botones en una sola línea.** Efraín,

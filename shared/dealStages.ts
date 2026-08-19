@@ -95,3 +95,31 @@ export function dealStageValue(label: string): { label: string; index?: number }
   const key = stageKeyForLabel(label);
   return key === undefined ? { label } : { label, index: Number(key) };
 }
+
+/**
+ * ¿Se pinta el botón "Generar cotización"?
+ *
+ * Pipeline normal: SOLO en "Costeo Confirmado" (9) — primero dirección aprueba
+ * el precio con "Validar costeo" y hasta entonces se cotiza (Efraín,
+ * 2026-08-18).
+ *
+ * Zona Efrain: desde CUALQUIER etapa abierta, incluida "Nueva oportunidad"
+ * (Efraín, 2026-08-19: "en Zona Efrain la etapa sea Generar cotización, porque
+ * la verdad no hay etapas, toda la info ya está de jalón… puede pasar de nueva
+ * oportunidad a cotización enseguida"). Ahí una sola persona hace el recorrido
+ * completo dentro del mismo board, así que costeo → validación → confirmado no
+ * son pasos de nadie: son tres clics de trámite sobre datos que ya están
+ * capturados. A cambio, "Mandar a costeo" desaparece de la zona y los dos PDFs
+ * que producía ese camino (solicitud de costeo y hoja de validación) los emite
+ * la propia cotización — ver worker/routes/oportunidades.ts.
+ *
+ * Sigue apareciendo en etapa 6 ("Cotización") dentro de la zona a propósito:
+ * tras "+ Nueva versión" no hay ningún otro botón que vuelva a cotizar, y sin
+ * esto el único camino sería el que acabamos de quitar. Nunca en las etapas
+ * cerradas (Ganada/Perdida/Cancelada).
+ */
+export function puedeGenerarCotizacion(stage: string | undefined, zonaPrivada: boolean): boolean {
+  if (stage === '9') return true;
+  if (!zonaPrivada) return false;
+  return !!stage && !CLOSED_STAGES.has(stage);
+}
