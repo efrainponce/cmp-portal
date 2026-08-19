@@ -1,5 +1,36 @@
 # Log de commits
 
+## 2026-08-19 (4)
+
+- **"Etapa Costeo" y "Listo" aparecían como zonas de venta.** No era del
+  portal: la columna Zona del board Oportunidades (`dropdown_mm03g067`) tenía 9
+  etiquetas en Monday y las dos últimas eran basura. Verificado contra la API
+  antes de tocar nada: **cero oportunidades** las usaban.
+  - Borradas en Monday (Efraín autorizó el 2026-08-19). La API exige quitar
+    UNA etiqueta por llamada — `update_column` con más de un borrado responde
+    "Deleting or updating more than one label is unsupported without actions",
+    así que van dos mutaciones encadenando la `revision`.
+  - `shared/column-meta.gen.ts` regenerado: los labels que ve el form salen de
+    ese archivo estático vía `toColMeta`, NO del mirror, así que sin regenerar
+    el portal habría seguido ofreciéndolas.
+- **La re-introspección destapó drift del board Líneas de Proyecto** (nadie lo
+  había regenerado en semanas). Queda asentado en el generado; los mapas
+  hardcodeados NO se tocaron porque cada uno necesita decisión de Efraín:
+  - `color_mm0hqf79` índice 5 hoy es "Pendiente de Recolectar" (antes vacío),
+    pero `PRODUCT_STATUS_LABELS` lo llama "Enviado con el" → el historial de
+    estados asienta la etiqueta equivocada. Mismo tipo de bug que el corregido
+    el 2026-08-13.
+  - Índices 11/12/13 (ALMACEN CDMX, ALMACEN MERIDA, "Pendiente de Recoleccion")
+    no existen en ese mapa: `maybeLogProductoStatus` hace `if (!newLabel)
+    return` → esas transiciones no se registran, en silencio. Tampoco están en
+    `LABEL_TO_BUCKET`, así que no cuentan en la batería del Proyecto.
+  - "Pendiente de Recolectar" (5) y "Pendiente de Recoleccion" (13) parecen la
+    misma etiqueta duplicada en Monday.
+  - `text_mm4pywyx` y `file_mm4pz90b` INTERCAMBIARON título en Monday: el texto
+    ahora se llama "#GUIA - EMPRESA" y el archivo "Guia EMB o Cliente Final" —
+    justo al revés de como los rotula LogisticaSection.tsx. Y `date_mm4p59q2`
+    pasó de "Fecha confirmacion" a "Fecha Recolección".
+
 ## 2026-08-19 (3)
 
 - **Un campo elegido en "Nueva oportunidad" no se podía dejar vacío.** Ni el
