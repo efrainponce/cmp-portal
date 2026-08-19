@@ -78,6 +78,12 @@ export function SearchableSelect({
     };
   }, [open]);
 
+  const clear = () => {
+    onChange('');
+    setOpen(false);
+    setQuery('');
+  };
+
   const choose = (opt: SearchableOption) => {
     onChange(opt.value);
     setOpen(false);
@@ -89,6 +95,7 @@ export function SearchableSelect({
     if (e.key === 'ArrowDown') { e.preventDefault(); if (!open) { openList(); return; } setActiveIndex((i) => Math.min(i + 1, filtered.length - 1)); return; }
     if (e.key === 'ArrowUp') { e.preventDefault(); setActiveIndex((i) => Math.max(i - 1, 0)); return; }
     if (e.key === 'Enter') { e.preventDefault(); const opt = filtered[activeIndex]; if (opt) choose(opt); return; }
+    if ((e.key === 'Backspace' || e.key === 'Delete') && selected && query === '') { e.preventDefault(); clear(); return; }
   };
 
   return (
@@ -104,11 +111,32 @@ export function SearchableSelect({
         disabled={disabled}
         style={{
           ...fieldStyle,
+          paddingRight: selected && !disabled ? 32 : undefined,
           color: disabled ? 'var(--ink-faint)' : (selected || open ? 'var(--ink)' : 'var(--ink-quiet)'),
           cursor: disabled ? 'not-allowed' : 'text',
           background: disabled ? 'var(--bg-sunken)' : 'var(--bg-raised)',
         }}
       />
+      {/* Limpiar: sin esto un valor elegido solo se podía reemplazar por otro,
+          nunca vaciar (Efraín, 2026-08-18). mousedown en vez de click para
+          ganarle al onFocus del input, que reabriría la lista. */}
+      {selected && !disabled && (
+        <button
+          type="button"
+          aria-label="Limpiar selección"
+          title="Limpiar"
+          onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); clear(); }}
+          style={{
+            position: 'absolute', top: '50%', right: 8, transform: 'translateY(-50%)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            width: 22, height: 22, padding: 0, borderRadius: '50%', border: 'none',
+            background: 'transparent', color: 'var(--ink-quiet)', cursor: 'pointer',
+            fontSize: 17, lineHeight: 1,
+          }}
+        >
+          ×
+        </button>
+      )}
       {open && rect && createPortal(
         <div
           style={{

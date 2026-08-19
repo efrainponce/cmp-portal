@@ -1,5 +1,22 @@
 # Log de commits
 
+## 2026-08-19 (3)
+
+- **Un campo elegido en "Nueva oportunidad" no se podía dejar vacío.** Ni el
+  combobox (Vendedor, Vendedor secundario, Compras, Contacto, Institución,
+  Zona) ni los chips (Tipo de cotización, ¿nuevos productos?) tenían forma de
+  volver a "sin valor": una vez tocados, la única salida era elegir OTRA opción
+  o cerrar el modal y volver a empezar. Efraín lo reportó el 2026-08-19.
+  - `SearchableSelect`: botón **×** a la derecha del campo cuando hay algo
+    elegido (22px, oculto si el campo está deshabilitado). Va por `mousedown`
+    con `preventDefault` para ganarle al `onFocus` del input, que si no reabría
+    la lista al instante. Backspace/Delete con la caja de búsqueda vacía limpia
+    también.
+  - `ChipSelect`: volver a hacer click en el chip ya elegido lo deselecciona.
+  - Limpiar el Vendedor arrastra el Contacto (ya existía ese efecto: el contacto
+    debe pertenecer al vendedor), así que el form no queda en un estado inválido.
+  - Verificado con Playwright montando ambos componentes en aislado.
+
 ## 2026-08-19 (2)
 
 - **El respaldo de D1 nunca había producido un archivo.** Al preguntarse qué red
