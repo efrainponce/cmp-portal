@@ -2,9 +2,10 @@ import { Component, type ReactNode } from 'react';
 
 const CHUNK_ERROR = /dynamically imported module|Importing a module script failed|Failed to fetch dynamically/i;
 const RELOAD_KEY = 'cmp:chunkReload';
-// Máximo de recargas automáticas y espera entre la 2ª y la última: el deploy
-// puede tardar unos segundos en propagarse, así que la 1ª recarga es inmediata
-// y las siguientes esperan a que los assets nuevos estén servidos.
+// Máximo de recargas automáticas y espera antes de CADA una: el deploy tarda
+// unos segundos en propagarse, así que recargar en el mismo instante vuelve a
+// caer en el chunk viejo y solo quema un intento (Efraín: "la 1era recarga no
+// sirve de nada, a mi no me ha servido nunca").
 const MAX_TRIES = 3;
 const RETRY_MS = 6000;
 // Si el último intento fue hace más de esto, la app estuvo viva un buen rato:
@@ -19,20 +20,26 @@ function readTries(): number {
   return Date.now() - at > WINDOW_MS ? 0 : tries;
 }
 
+// Una recarga ya agendada en esta carga de la página: el mismo fallo llega por
+// dos caminos (vite:preloadError en main.tsx y el boundary), y sin esto el
+// segundo gastaría un intento de más agendando una recarga duplicada.
+let agendada = false;
+
 // Cloudflare Workers Assets pisa los archivos del build anterior en cada
 // deploy — si el navegador ya tenía la app abierta y dispara un import()
 // diferido (lazy de una vista, ver App.tsx) justo después de un push a main,
-// el chunk viejo ya no existe y el import falla. Recarga sola: la 1ª vez de
-// inmediato y, si al volver sigue fallando, hasta MAX_TRIES veces esperando
-// RETRY_MS (antes se recargaba UNA sola vez y quien caía en la 2ª se quedaba
+// el chunk viejo ya no existe y el import falla. Recarga sola a los RETRY_MS,
+// hasta MAX_TRIES veces (antes se recargaba UNA sola vez, en el acto: el
+// deploy seguía propagándose, la recarga fallaba igual y la persona se quedaba
 // mirando «Actualizando…» para siempre). Pasado el tope se rinde y deja el
 // botón, para no quedar en loop si el deploy está roto por otra razón.
 export function reloadOnceForNewDeploy() {
+  if (agendada) return true;
   const tries = readTries();
   if (tries >= MAX_TRIES) return false;
   sessionStorage.setItem(RELOAD_KEY, `${tries + 1}:${Date.now()}`);
-  if (tries === 0) window.location.reload();
-  else window.setTimeout(() => window.location.reload(), RETRY_MS);
+  agendada = true;
+  window.setTimeout(() => window.location.reload(), RETRY_MS);
   return true;
 }
 

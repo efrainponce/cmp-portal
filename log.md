@@ -26,11 +26,13 @@
   por pestaña (guard de `sessionStorage`), así que quien volvía a tropezar con
   un chunk viejo — el deploy tarda unos segundos en propagarse — se quedaba
   mirando el mensaje sin que nada pasara.
-- Ahora `ChunkReloadBoundary` cuenta intentos: la 1ª recarga sigue siendo
-  inmediata y las siguientes (hasta 3 en total) esperan **6 segundos** antes de
-  recargar, que es lo que tarda en asentarse el deploy. Pasado el tope se rinde
-  y muestra el botón **Recargar** en vez de mentir con "Actualizando…" — el loop
-  infinito, que era el motivo del guard original, sigue descartado.
+- Ahora `ChunkReloadBoundary` cuenta intentos y recarga sola **hasta 3 veces,
+  esperando 6 segundos cada una**. La recarga instantánea se quitó a petición de
+  Efraín ("la 1era recarga no sirve de nada, a mi no me ha servido nunca"): con
+  el deploy todavía propagándose vuelve a caer en el chunk viejo y lo único que
+  logra es quemar un intento. Pasado el tope se rinde y muestra el botón
+  **Recargar** en vez de mentir con "Actualizando…" — el loop infinito, que era
+  el motivo del guard original, sigue descartado.
 - El contador vive en `sessionStorage` con timestamp: si el último intento fue
   hace más de un minuto la app estuvo viva un buen rato, es otro deploy y
   vuelve a empezar de cero.
