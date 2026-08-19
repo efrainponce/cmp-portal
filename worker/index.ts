@@ -67,17 +67,16 @@ app.onError(async (err, c) => {
 });
 
 // Los 8 boards no caben en una sola invocación de reconcile (ver comentario en
-// reconcileBoard): dos cron triggers a las 12h uno del otro, cada uno con su propio
-// grupo — bajado de 6h a 12h el 2026-08-11 porque el delta sync (abajo) ya cubre
-// lo reciente en minutos, así que el full reconcile es ahora red de seguridad, no
-// la única fuente de verdad; corre la mitad de veces = la mitad de calls a Monday.
-// Productos se salió de ese reparto y tiene su propio cron de 10 min (ver abajo).
+// reconcileBoard): van repartidos en dos cron triggers, cada uno con su propio
+// grupo — el de pipeline cada 12h (bajado de 6h el 2026-08-11 porque el delta
+// sync ya cubre lo reciente en minutos, así que el full reconcile es red de
+// seguridad y no la única fuente de verdad) y el de catálogos cada 10 min.
 // Otro cron (cada 15 min) hace dos cosas SIN ser un board group: revisa
 // sync_log y avisa por WhatsApp (worker/lib/errorAlerts.ts), y corre el delta sync
 // (worker/sync/delta.ts). El último (semanal, 3am UTC) exporta el mirror D1 completo
 // a R2 (worker/lib/backup.ts) — retención larga más allá de los 30 días de D1 Time
 // Travel, no recovery del día a día. wrangler.jsonc debe declarar exactamente estos
-// cinco strings de cron. OJO con el día-de-semana de Cloudflare: rechaza "0"
+// cuatro strings de cron. OJO con el día-de-semana de Cloudflare: rechaza "0"
 // (con "0" el deploy sube el Worker pero el PUT de schedules falla en silencio,
 // el Action queda rojo y el cron no se registra — 2026-08-12/13) y su numeración
 // es 1=domingo…7=SÁBADO, no la de Unix: "0 3 * * 7" disparó en sábado
@@ -87,16 +86,28 @@ const ALERT_CRON = '*/15 * * * *';
 const BACKUP_CRON = '0 3 * * *';
 const CRON_GROUPS: Record<string, BoardSlug[]> = {
   '0 0,12 * * *': ['oportunidades', 'oportunidades_sub', 'proyectos', 'proyectos_sub'],
-  '0 6,18 * * *': ['instituciones', 'contactos', 'proveedores'],
-  // Productos aparte y cada 10 min (Efraín, 2026-08-19, urgente): el catálogo no
-  // lo edita gente en Monday, lo escribe el sync de Airtable, y Compras se queda
-  // esperando a que el costo/las tallas que acaba de capturar aparezcan en el
-  // portal ("ya tengo como 15 min que subí las tallas y precio a Airtable").
-  // Sale barato porque reconcileAll pregunta primero el updated_at del board y
-  // solo pagina (14 páginas, ~1335 productos) cuando de verdad se movió.
-  // Cubre lo que el delta sync no: los writes del bot de Airtable llegan en
-  // ráfaga y el delta capea 50 refetches por corrida.
-  '*/10 * * * *': ['productos'],
+  // Este grupo corría cada 12h ('0 6,18 * * *') y pasó a cada 10 MINUTOS
+  // (Efraín, 2026-08-19, urgente): Productos no lo teclea gente en Monday, lo
+  // escribe el sync de Airtable, y Compras se quedaba esperando a que el costo y
+  // las tallas que acababa de capturar aparecieran en el portal ("ya tengo como
+  // 15 min que subí las tallas y precio a Airtable"). Cubre lo que el delta sync
+  // no: los writes del bot llegan en ráfaga y el delta capea 50 refetches por
+  // corrida.
+  //
+  // Productos NO se llevó su propio cron porque la cuenta está en Workers Free y
+  // el tope es de 5 cron triggers POR CUENTA — ya usados (4 aquí + 1 de
+  // janing-portal). Un sexto lo rechaza la API con el código 10072 y, como el
+  // deploy del código sí pasa, el Worker queda arriba con los crons viejos: el
+  // Action en rojo es el ÚNICO aviso. Con Workers Paid el tope sube a 1000 y
+  // entonces sí conviene separarlos por cadencia.
+  //
+  // Los otros tres se vienen de pasajeros y sale barato: reconcileAll pide UNA
+  // vez el updated_at de los cuatro boards y solo pagina el que de verdad se
+  // movió (productos 14 páginas, instituciones 32, contactos 8, proveedores 2).
+  // La corrida típica es una sola call a Monday, y el peor caso —los cuatro
+  // movidos— es exactamente el trabajo que este mismo grupo ya hacía a las 6 y
+  // a las 18.
+  '*/10 * * * *': ['productos', 'instituciones', 'contactos', 'proveedores'],
 };
 
 export default {
