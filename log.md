@@ -2,6 +2,48 @@
 
 ## 2026-08-19 (14)
 
+- **Duplicar una oportunidad ahora sí hace una copia exacta.** Elizabeth
+  (WhatsApp, con la foto del clon de OPP-0593): "acabo de duplicar una opp pero
+  no jala todos los datos". Efraín: "se necesita hacer una copia exacta y no es
+  lo que esta pasando". Comparado en producción OPP-0593 contra su clon
+  OPP-0925, el duplicado copiaba **4 columnas** de la cabecera (Etapa, Vendedor,
+  Compras, Contacto) y todo lo demás nacía vacío: Zona ("Centro"), Tipo de
+  cotización ("Estudio de mercado"), Fecha límite, Fecha de cotización,
+  "¿Quieres cotizar nuevos productos?", Vendedores secundarios, Responsable
+  compras, Vigencia, Tiempo de entrega — y las **condiciones comerciales**, que
+  aparecían con el texto por defecto de Monday en vez del que había escrito
+  Compras.
+- La cabecera pasó de 4 campos sueltos a una tabla, `COPY_ITEM_COLS`, con el
+  tipo de escritura de cada columna (status `{label}`, dropdown `{labels:[…]}`,
+  date `{date:…}`). La Zona va por TEXTO, nunca por id de label — mismo motivo
+  ya documentado en `ganarOportunidad.ts`, donde copiar `{ids:[…]}` tradujo
+  "Centro" a "Sur" en silencio.
+- **Las líneas ya no se revuelven.** Se creaban con `Promise.all`, y en Monday
+  el orden de los subitems es el orden en que se crean: el clon salió
+  Chamarra/UA Stellar/Camisola cuando la original iba Pantalón/Camisola/Chamarra,
+  con los renglones todavía llamados "1".."9" pero en otra posición. Ahora se
+  crean una por una. Las imágenes de embellecimiento siguen en paralelo (ya no
+  hay orden que preservar) para no pagar toda la latencia.
+- En cada línea se agregaron SKU, el desglose de Costo Embellecimiento por zona,
+  Recosteo?, Nuevo producto y el Precio de Venta sugerido; y el nombre del
+  producto + SKU se copian **siempre**, no solo cuando la línea no está ligada al
+  catálogo (un producto escrito a mano perdía su nombre). También se re-sube la
+  imagen de Inventario Actual.
+- Lo que sigue sin copiarse es **decisión de Efraín** (2026-08-19), no olvido:
+  los PDFs (cotizaciones generadas/sin precio/firmadas, solicitud de costeo),
+  las fechas de solicitud y validación de costeo, la liga al Proyecto y la
+  carpeta de Drive, la razón de pérdida, y el Event ID / Origen Web. "Copia
+  exacta" son los datos, no la evidencia de pasos que el clon no vivió.
+- `worker/lib/duplicateOportunidad.test.ts` (nuevo) ancla las dos cosas: cada
+  columna escribible de Oportunidades y de sus subitems tiene que estar copiada
+  o listada en `NO_COPIAR` con su razón —si Monday gana una columna y se
+  re-introspecta, el test truena hasta que alguien decida de qué lado va—, y
+  las líneas tienen que crearse una por una.
+- El nombre del clon se queda como está (`OPP-0925 - OPP-0593 - … (copia)`,
+  con el folio viejo adentro): Efraín lo prefirió así.
+
+## 2026-08-19 (14)
+
 - **Admin igual que Compras: color y cantidad, y también como mini versión.**
   Efraín (2026-08-19): "te faltó que yo como admin también puedo hacerlo…
   o sea los admins pueden hacer todo esto igual". El server ya se lo permitía
