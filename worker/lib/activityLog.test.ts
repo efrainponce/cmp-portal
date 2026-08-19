@@ -5,7 +5,7 @@
 // get_board_activity) para no reintroducir el bug de Number() perdiendo
 // precisión pasado 2^53.
 import { describe, it, expect } from 'vitest';
-import { ticksToIso, parseEntry, isPortalWriteColumn, actorNameResolver } from './activityLog';
+import { ticksToIso, parseEntry, isPortalWriteColumn, actorNameResolver, textualOf } from './activityLog';
 import type { ActivityLogEntry } from './monday';
 
 const OPORTUNIDADES_BOARD_ID = 18395657596;
@@ -183,5 +183,43 @@ describe('actorNameResolver — quién firma la actividad', () => {
   it('correo sin fila de identity se muestra tal cual, nunca el nombre de otro', () => {
     const name = actorNameResolver(ROSTER, IDENTITIES);
     expect(name({ actor_email: 'borrado@cmp.com', user_id: 98389537 })).toBe('borrado@cmp.com');
+  });
+});
+
+// Monday no manda `previous_textual_value` para todos los tipos de columna: en
+// las NUMÉRICAS solo viene `{value: "..."}`. Sin este respaldo, `activity_log`
+// guardaba el cambio con el "antes" vacío justo donde más importa — medido el
+// 2026-08-19: Precio de Venta, 918 filas, CERO valores previos.
+describe('textualOf — el "antes" cuando Monday no manda textual_value', () => {
+  it('numéricas: {value} (el caso del incidente del 2026-08-18)', () => {
+    expect(textualOf({ value: '1170' })).toBe('1170');
+    expect(textualOf({ value: 2490 })).toBe('2490');
+  });
+
+  it('status/color: {label:{text}}', () => {
+    expect(textualOf({ label: { text: 'Listo', index: 5, style: { color: '#00c875' } } })).toBe('Listo');
+  });
+
+  it('texto, fecha, link', () => {
+    expect(textualOf({ text: 'Dark Navy' })).toBe('Dark Navy');
+    expect(textualOf({ date: '2026-08-18' })).toBe('2026-08-18');
+    expect(textualOf({ url: 'https://x.test', text: '' })).toBe('https://x.test');
+  });
+
+  it('listas (board_relation / people)', () => {
+    expect(textualOf([{ name: 'Ana' }, { name: 'Luis' }])).toBe('Ana, Luis');
+    expect(textualOf({ linkedPulseIds: [{ linkedPulseId: 11013699728 }] })).toBe('11013699728');
+  });
+
+  it('vacío es null, no la cadena "undefined"', () => {
+    expect(textualOf(null)).toBeNull();
+    expect(textualOf(undefined)).toBeNull();
+    expect(textualOf({})).toBeNull();
+    expect(textualOf('')).toBeNull();
+  });
+
+  it('un 0 legítimo NO se pierde', () => {
+    expect(textualOf({ value: '0' })).toBe('0');
+    expect(textualOf(0)).toBe('0');
   });
 });

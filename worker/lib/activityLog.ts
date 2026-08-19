@@ -135,9 +135,54 @@ export function parseEntry(entry: ActivityLogEntry): ParsedRow | null {
   return {
     ...base, event: entry.event, columnId,
     columnTitle: (parsed.column_title as string) ?? columnId,
-    previousText: (parsed.previous_textual_value as string) ?? null,
-    newText: (parsed.textual_value as string) ?? null,
+    previousText: (parsed.previous_textual_value as string) ?? textualOf(parsed.previous_value),
+    newText: (parsed.textual_value as string) ?? textualOf(parsed.value),
   };
+}
+
+/** Saca el texto de un valor de columna de Monday cuando `*_textual_value` no
+ * viene.
+ *
+ * Monday NO manda `previous_textual_value` para todos los tipos: para las
+ * columnas NUMÉRICAS manda `{"value": "1170"}` y nada más. El resultado era que
+ * `activity_log` guardaba el cambio pero con el "antes" vacío justo en las
+ * columnas que importan — medido el 2026-08-19: Precio de Venta con 918 filas y
+ * CERO valores previos, mientras que Historial precios (texto largo, que sí
+ * trae textual_value) tenía 83 de 89.
+ *
+ * Eso vaciaba el propósito del log ("guardar la actividad por si cometemos
+ * error", Efraín 2026-08-18): el 2026-08-18 los 1,081 precios pisados solo se
+ * pudieron devolver leyendo el activity_log de MONDAY, no el nuestro. Para los
+ * items nativos —que no tienen activity_log en Monday— no habría habido de
+ * dónde.
+ */
+export function textualOf(v: unknown): string | null {
+  if (v === null || v === undefined) return null;
+  if (typeof v === 'string') return v || null;
+  if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+  if (Array.isArray(v)) {
+    const partes = v.map(textualOf).filter((x): x is string => !!x);
+    return partes.length ? partes.join(', ') : null;
+  }
+  if (typeof v !== 'object') return null;
+  const o = v as Record<string, unknown>;
+  // status/color: {label: {text: "Listo", index: 5, style: {...}}}
+  if (o.label !== undefined) return textualOf(o.label);
+  // numéricas: {value: "1170"} · fecha: {date: "2026-08-18"} · texto: {text}
+  for (const k of ['text', 'value', 'name', 'date', 'url', 'email', 'phone', 'linkedPulseId', 'linked_pulse_id']) {
+    if (o[k] !== undefined) {
+      const r = textualOf(o[k]);
+      if (r !== null) return r;
+    }
+  }
+  // board_relation y people traen listas de ids con nombres variables
+  for (const k of ['linkedPulseIds', 'linked_pulse_ids', 'personsAndTeams', 'chosenValues']) {
+    if (Array.isArray(o[k])) {
+      const r = textualOf(o[k]);
+      if (r !== null) return r;
+    }
+  }
+  return null;
 }
 
 let tableReady = false;

@@ -13,6 +13,19 @@
     llave y el TAMAÑO del archivo escrito, para poder verificar de inmediato que
     de verdad quedó algo en R2 y no otro fallo silencioso.
   - El cron pasa de semanal a DIARIO mientras se estabiliza.
+- **Nuestro propio log de actividad guardaba el cambio sin el "antes".**
+  `parseEntry` leía solo `previous_textual_value`, y Monday NO lo manda para
+  todos los tipos: en las columnas NUMÉRICAS solo viene `{"value": "1170"}`.
+  Medido el 2026-08-19: **Precio de Venta, 918 filas, CERO valores previos**,
+  mientras que Historial precios (texto largo, que sí trae textual_value) tenía
+  83 de 89. Por eso los 1,081 precios del incidente solo se pudieron devolver
+  leyendo el activity_log de MONDAY — el nuestro no servía. Para los items
+  NATIVOS, que no tienen activity_log en Monday, no habría habido de dónde.
+  - `textualOf` (puro, con tests) saca el texto de las formas reales de Monday:
+    `{value}` numéricas, `{label:{text}}` status, `{date}`, `{url}`, listas de
+    board_relation/people. Se usa como respaldo cuando falta el textual.
+  - Un `0` legítimo no se pierde (está anclado en un test).
+
 - **Reparación del incidente del 2026-08-18** (ver entrada anterior), toda
   verificada releyendo Monday, no confiando en lo que reportó cada script:
   - 1,081 líneas con el precio falso: 896 devueltas a su valor real (del
