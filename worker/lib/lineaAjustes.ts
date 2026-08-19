@@ -257,12 +257,19 @@ const AJUSTE_INLINE_VERSIONABLES: ReadonlySet<string> = new Set([
   SUB_PRODUCTO_REL, SUB_PRODUCTO_TXT, SUB_EMB_STATUS, SUB_EMB_DESC,
 ]);
 
-/** ¿Este PATCH a una línea es un ajuste de Compras (mini versión) en vez de un
- * versionado completo? Solo si lo manda Compras, toca color o cantidad y no
+/** Roles que cambian color/cantidad sin reiniciar el costeo: Compras y ADMIN
+ * (Efraín, 2026-08-19: "te faltó que yo como admin también puedo hacerlo… o sea
+ * los admins pueden hacer todo esto igual"). El vendedor no: su cambio sigue
+ * archivando versión completa y regresando esa línea a costeo, que es lo que el
+ * traspaso Ventas→Compras necesita. */
+const AJUSTE_INLINE_ROLES = ['compras', 'admin'];
+
+/** ¿Este PATCH a una línea es un ajuste (mini versión) en vez de un versionado
+ * completo? Solo si lo manda Compras o admin, toca color o cantidad y no
  * arrastra ninguna otra columna definitoria — un PATCH que además cambie el
  * producto sí versiona, como cualquier otro. Puro, para test unitario. */
-export function esAjusteInlineCompras(role: string, colIds: string[]): boolean {
-  if (role !== 'compras') return false;
+export function esAjusteInline(role: string, colIds: string[]): boolean {
+  if (!AJUSTE_INLINE_ROLES.includes(role)) return false;
   if (colIds.some(id => AJUSTE_INLINE_VERSIONABLES.has(id))) return false;
   return colIds.some(id => AJUSTE_INLINE_COLS.has(id));
 }

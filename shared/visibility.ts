@@ -101,9 +101,9 @@ export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
     // modificar colores y cantidades"). Elizabeth abría una oportunidad en
     // Costeo y los dos campos salían de solo lectura: el `w: WV` de aquí es
     // el candado real (outbox.ts gatea con canWrite), la grid solo lo refleja.
-    // Un cambio de Compras NO reinicia el ciclo de costeo como el del
-    // vendedor: queda como mini versión V{n}.{m} — worker/routes/boards.ts
-    // (esAjusteInlineCompras) y worker/lib/lineaAjustes.ts.
+    // Un cambio de Compras o de ADMIN no reinicia el ciclo de costeo como el
+    // del vendedor: queda como mini versión V{n}.{m} — worker/routes/boards.ts
+    // (esAjusteInline) y worker/lib/lineaAjustes.ts.
     text_mm07s2mg:        { vis: V, w: V },    // Color
     numeric_mkzm6399:     { vis: V, w: V },    // Cantidad
     color_mm1b34bg:       { vis: V, w: WV },   // Embellecimiento (status)

@@ -22,7 +22,7 @@ import { submitCreate, submitCreateNative, isNativeCreatable, CreateError } from
 import { duplicateVersion, esDraftVigente, hayLineaPendiente, QuoteVersionError, LINE_DEFINING_COLS } from '../lib/quoteVersions';
 import { addFileToUpdate, fetchAssetPublicUrls, type MentionInput } from '../lib/monday';
 import { borrarItem, BorradoError } from '../lib/itemBorrado';
-import { esAjusteInlineCompras, registrarAjusteInline } from '../lib/lineaAjustes';
+import { esAjusteInline, registrarAjusteInline } from '../lib/lineaAjustes';
 // Los updates de un item nativo (Zona Efrain) viven en D1, no en Monday — estas
 // dos funciones eligen el lado por el id, así que la ruta no lo decide.
 import {
@@ -367,14 +367,14 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
       }
       const linea = await getItem(c.env, 'oportunidades_sub', itemId, viewer, 'own');
       if (linea?.parent_item_id != null && !isNativeId(linea.parent_item_id)) {
-        // Compras cambiando color/cantidad NO reinicia el ciclo de costeo
-        // (Efraín, 2026-08-19: "en cotización los de compras siempre pueden
-        // modificar colores y cantidades, acuérdate de hacer mini versiones
-        // 1.1"): versionar aquí archivaría la vigente y regresaría la Etapa
-        // Costeo de TODAS las líneas a "No iniciado" — o sea, Compras tirando
-        // su propio costeo por corregir un color. Queda como V{n}.{m}, igual
-        // que "Ajustar línea". El vendedor sí versiona, sin cambios.
-        if (esAjusteInlineCompras(viewer.role, Object.keys(body.cols))) {
+        // Compras/admin cambiando color/cantidad NO reinician el ciclo de
+        // costeo (Efraín, 2026-08-19: "en cotización los de compras siempre
+        // pueden modificar colores y cantidades, acuérdate de hacer mini
+        // versiones 1.1" + "los admins pueden hacer todo esto igual"):
+        // versionar aquí archivaría la vigente y regresaría a costeo la línea
+        // que ellos mismos están costeando. Queda como V{n}.{m}, igual que
+        // "Ajustar línea". El vendedor sí versiona, sin cambios.
+        if (esAjusteInline(viewer.role, Object.keys(body.cols))) {
           ajusteCompras = { parentItemId: linea.parent_item_id, linea };
         } else {
           // Solo esta línea vuelve a costeo: es la única que cambió.

@@ -24,7 +24,7 @@ describe('inlineEditableCols', () => {
     expect(inlineEditableCols(false, true).has(COL.precio)).toBe(true);
   });
 
-  it('Compras: color y cantidad aunque el board sea de solo lectura (Efraín, 2026-08-19)', () => {
+  it('Compras/admin: color y cantidad aunque el board sea de solo lectura (Efraín, 2026-08-19)', () => {
     const compras = inlineEditableCols(false, false, true);
     expect(compras.has(COLOR_COL)).toBe(true);
     expect(compras.has(CANTIDAD)).toBe(true);

@@ -1,5 +1,20 @@
 # Log de commits
 
+## 2026-08-19 (14)
+
+- **Admin igual que Compras: color y cantidad, y también como mini versión.**
+  Efraín (2026-08-19): "te faltó que yo como admin también puedo hacerlo…
+  o sea los admins pueden hacer todo esto igual". El server ya se lo permitía
+  (`w: V` incluye admin), pero la grid solo le pintaba los campos a Compras y la
+  mini versión estaba atada a ese rol: un admin editando desde Costeo veía todo
+  de solo lectura, y desde Oportunidades su cambio archivaba versión completa.
+- `esAjusteInlineCompras` → `esAjusteInline` (compras + admin). El vendedor no
+  entra: su cambio sigue archivando versión y regresando esa línea a costeo, que
+  es lo que el traspaso Ventas→Compras necesita.
+- Sin cambios en Validación de Costeo (ahí lo único editable sigue siendo el
+  Precio de Venta, Efraín 2026-07-16) ni en Ganada/Perdida, donde la vía es el
+  lápiz "Ajustar línea" — que compras y admin ya tenían.
+
 ## 2026-08-19 (13)
 
 - **Remandar a costeo ya no pisa el costo que Compras capturó.** Efraín

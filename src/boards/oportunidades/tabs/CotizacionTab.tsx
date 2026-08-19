@@ -135,18 +135,19 @@ export function CotizacionTab({
   // candado que bloquee seguir editando (Efraín, 2026-08-14).
   const lineEdits = !readOnly && !precioOnly;
   const me = useMe();
-  // Compras cambia color y cantidad SIEMPRE, en cualquier board de etapa
-  // (Efraín, 2026-08-19: "en cotización los de compras siempre pueden modificar
-  // colores y cantidades") — hasta ahora la grid de Costeo los pintaba de solo
-  // lectura y había que ir a Monday. No abre el resto de la línea: producto y
-  // embellecimiento siguen siendo trabajo de Ventas en Oportunidades. Se apaga
-  // en una oportunidad ajena (el server responde 404 a todo write) y en
-  // Validación, donde lo único editable es el Precio de Venta.
-  const comprasLineEdits = !lineEdits && !precioOnly
-    && me?.role === 'compras' && item?.ownedByViewer !== false;
+  // Compras Y ADMIN cambian color y cantidad SIEMPRE, en cualquier board de
+  // etapa (Efraín, 2026-08-19: "en cotización los de compras siempre pueden
+  // modificar colores y cantidades" + "los admins pueden hacer todo esto
+  // igual") — hasta ahora la grid de Costeo los pintaba de solo lectura y había
+  // que ir a Monday. No abre el resto de la línea: producto y embellecimiento
+  // siguen siendo trabajo de Ventas en Oportunidades. Se apaga en una
+  // oportunidad ajena (el server responde 404 a todo write) y en Validación,
+  // donde lo único editable es el Precio de Venta.
+  const ajusteLineEdits = !lineEdits && !precioOnly
+    && (me?.role === 'compras' || me?.role === 'admin') && item?.ownedByViewer !== false;
   const editableCols = useMemo(
-    () => (precioOnly ? new Set<string>([COL.precio]) : inlineEditableCols(lineEdits, zonaPrivada, comprasLineEdits)),
-    [precioOnly, lineEdits, zonaPrivada, comprasLineEdits],
+    () => (precioOnly ? new Set<string>([COL.precio]) : inlineEditableCols(lineEdits, zonaPrivada, ajusteLineEdits)),
+    [precioOnly, lineEdits, zonaPrivada, ajusteLineEdits],
   );
   const canAddLines = lineEdits && editable;
 
