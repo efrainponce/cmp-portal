@@ -18,6 +18,17 @@ const FORCE_FULL_MS = 24 * 60 * 60 * 1000;
 // (primer reconcile después de un hueco largo, como el que motivó este fix).
 const BATCH_CHUNK = 100;
 
+// Parámetros ligados por UNA query — D1 rechaza más de ~100 (mismo tope que ya
+// documenta worker/lib/updateSeen.ts). El `IN (...)` de prevColumns iba en lotes
+// de BATCH_CHUNK, o sea 100 ids MÁS el board_id = 101, y reventaba con
+// "D1_ERROR: too many SQL variables" en cuanto un reconcile encontraba 100
+// items ya existentes cambiados. Se veía poco porque hace falta ese volumen de
+// golpe, pero cuando pasa **aborta el board entero antes de escribir nada** y,
+// como board_state no avanza, la siguiente corrida vuelve a fallar igual: el
+// board se queda congelado indefinidamente (visto en vivo 2026-08-19T18:02 en
+// oportunidades).
+const BIND_CHUNK = 99;
+
 function chunk<T>(arr: T[], size: number): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
@@ -66,7 +77,7 @@ export async function reconcileBoard(env: Env, slug: BoardSlug): Promise<{ upser
   const prevColumns = new Map<number, string>();
   if (needsPrev && changed.length) {
     const needPrevIds = changed.filter(c => existingHash.has(c.itemId)).map(c => c.itemId);
-    for (const ids of chunk(needPrevIds, BATCH_CHUNK)) {
+    for (const ids of chunk(needPrevIds, BIND_CHUNK)) {
       if (!ids.length) continue;
       const placeholders = ids.map(() => '?').join(',');
       const rows = await env.DB.prepare(

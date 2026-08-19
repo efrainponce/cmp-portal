@@ -25,6 +25,20 @@
   peor caso —los cuatro movidos— es el trabajo que ese grupo ya hacía a las 6 y a
   las 18. Con Workers Paid el tope sube a 1000 y ahí sí convendría darle a cada
   board su propia cadencia.
+- **De pilón, un bug que congelaba el reconcile de Oportunidades.** El primer
+  disparo del cron nuevo cayó en el fallback (los 8 boards) porque a las 18:00 el
+  Worker todavía servía el código anterior — el deploy había terminado 2 min
+  antes. Ese barrido dejó `D1_ERROR: too many SQL variables` en oportunidades: el
+  `IN (...)` que trae las columnas previas iba en lotes de `BATCH_CHUNK` = 100
+  ids **más** el `board_id` = 101 parámetros, y D1 no acepta más de ~100 por
+  query (tope que `worker/lib/updateSeen.ts` ya documentaba desde su propio
+  500). Hacía falta que 100 items YA EXISTENTES cambiaran de golpe para verlo,
+  pero cuando pasa es peor que un error suelto: la SELECT va **antes** de
+  cualquier escritura, así que aborta el board entero sin escribir nada y
+  `board_state` no avanza — la siguiente corrida vuelve a encontrar los mismos
+  100 cambios y falla igual, indefinidamente. Ahora ese lote va por `BIND_CHUNK`
+  = 99.
+
 - Sync forzado a mano en producción al momento (`POST /api/admin/sync/productos`).
   De paso, el diagnóstico del caso de Emy: la espera **no era del portal**. El
   producto CHA5047 quedó escrito en Monday a las 17:48:09 UTC (11:48 hora de
