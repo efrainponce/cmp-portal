@@ -48,11 +48,19 @@ con el Worker (`/api/*`). Bot de WhatsApp + chat del portal comparten agente Cla
   `delete_column`…), tumba el test. Las guardas existen porque el 2026-08-18 un
   script pidió una lista con un filtro que la ruta no conocía (`?parent=`),
   recibió el board COMPLETO y borró 70 líneas de 22 oportunidades en 4.5 minutos:
-  en Monday no hay deshacer masivo. Excepciones: items NATIVOS (Zona Efrain, ids
-  ≥ 900000000000) no existen en Monday y solo se borra su fila de D1; y los
-  ARCHIVOS de una columna `file` sí se ocultan (`worker/lib/archivoOculto.ts`),
-  porque la API de Monday no sabe quitar un archivo suelto, solo vaciar la
-  columna entera.
+  en Monday no hay deshacer masivo. Excepción: items NATIVOS (Zona Efrain, ids
+  ≥ 900000000000) no existen en Monday y solo se borra su fila de D1.
+- **Los ARCHIVOS también son 1-1** (`worker/lib/archivoBorrado.ts`, 2026-08-19):
+  sí se puede quitar UN archivo de una columna `file` sin vaciar la columna —
+  `update_assets_on_item` la reescribe a partir de los assets que se quedan (no
+  hace falta ningún `delete_*`). Ojo: el asset que se deja fuera DESAPARECE de
+  Monday, así que va con las mismas guardas — respaldo de los bytes en R2
+  (`…/documento-borrado/<assetId>-<nombre>`) + renglón en `archivo_borrado`
+  ANTES de tocar Monday, de a un archivo por assetId, tope de 30 por hora y
+  persona, y la lista de sobrevivientes leída EN VIVO de Monday (con el mirror
+  atrasado se borraría un archivo recién subido). Quién puede: **solo quien lo
+  subió** (`archivo_subido`; en Monday todo aparece subido por el token de
+  servicio, por eso el registro es propio) o un admin.
 - **Las rutas rechazan query params que no conocen** (`rejectUnknownQuery` en
   `worker/lib/http.ts`): un filtro mal escrito no debe degradar a "sin filtro".
 - Permisos por RENGLÓN: `worker/lib/dal.ts`. Leer = lo propio + la zona que el viewer

@@ -71,6 +71,8 @@
   una subida — borrar algo recién subido contestaba "ese documento ya no está en
   el proyecto". Ahora lo busca en vivo (`buscarArchivo`), igual que la lista que
   se reescribe.
+- `CLAUDE.md` decía que los archivos se ocultaban "porque la API de Monday no
+  sabe quitar un archivo suelto". Corregido con la regla real y sus guardas.
 
 ## 2026-08-19 (11)
 
