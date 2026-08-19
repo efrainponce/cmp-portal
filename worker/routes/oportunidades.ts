@@ -32,7 +32,7 @@ import { duplicateOportunidad, DuplicateOportunidadError } from '../lib/duplicat
 import { ganarOportunidad, GanarOportunidadError } from '../lib/ganarOportunidad';
 import { createSubitem, addFileToColumn, fetchAssetPublicUrls, gql } from '../lib/monday';
 import { borrarItem, BorradoError } from '../lib/itemBorrado';
-import { archivosDelMirror, borrarArchivoDeColumna, puedeBorrarArchivo, registrarSubida, subidoPor, ArchivoBorradoError } from '../lib/archivoBorrado';
+import { buscarArchivo, borrarArchivoDeColumna, puedeBorrarArchivo, registrarSubida, subidoPor, ArchivoBorradoError } from '../lib/archivoBorrado';
 import { postUpdate } from '../lib/nativeUpdates';
 import { stampInstitucionEnOpsDeContacto } from '../lib/nativeMirrors';
 import { toNativeColumns, insertNativeSubitem, stampNativeFileMarker } from '../lib/nativeItems';
@@ -1327,11 +1327,9 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     const assetId = Number(body.assetId) || 0;
     if (!nombre && !assetId) return c.json({ error: 'falta el archivo a borrar' }, 400);
 
-    // Se pide contra lo que el usuario ESTÁ VIENDO (el mirror). La lista que se
-    // reescribe se relee en vivo dentro de borrarArchivoDeColumna: aquí solo se
-    // valida que el archivo exista y quién puede tocarlo.
-    const enMirror = archivosDelMirror(row, PROYECTO_DOCUMENTO_COL);
-    const archivo = enMirror.find(f => (assetId ? f.assetId === assetId : f.nombre === nombre));
+    // En vivo, no contra el mirror: el espejo tarda en ver una subida y borrar
+    // lo recién subido contestaba 404 (prueba de producción, 2026-08-19).
+    const archivo = await buscarArchivo(c.env, BOARDS.proyectos.id, itemId, PROYECTO_DOCUMENTO_COL, { assetId, nombre });
     if (!archivo) return c.json({ error: 'ese documento ya no está en el proyecto' }, 404);
 
     const uploader = await subidoPor(c.env, BOARDS.proyectos.id, itemId, PROYECTO_DOCUMENTO_COL, archivo);

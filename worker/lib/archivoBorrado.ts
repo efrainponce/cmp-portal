@@ -28,7 +28,7 @@
 // Items NATIVOS (Zona Efrain, ids >= 900000000000): no existen en Monday, así
 // que solo se reescribe el marcador de D1 (worker/lib/nativeItems.ts).
 import type { Env } from '../env';
-import type { Identity, MirrorItem, Role } from '../../shared/types';
+import type { Identity, Role } from '../../shared/types';
 import type { BoardSlug } from '../../shared/boards';
 import { BOARDS } from '../../shared/boards';
 import { gql } from './monday';
@@ -294,8 +294,16 @@ function safeCols(columnsJson: string): RawCol[] {
   try { return JSON.parse(columnsJson || '[]') as RawCol[]; } catch { return []; }
 }
 
-/** Los archivos que el mirror trae para una columna — lo usa la ruta para
- * validar contra lo que el usuario está viendo antes de tocar Monday. */
-export function archivosDelMirror(row: MirrorItem, colId: string): ArchivoRef[] {
-  return parseArchivos(safeCols(row.columns).find(c => c.id === colId)?.value ?? null);
+/** Encuentra el archivo pedido para decidir permisos ANTES de borrar. Lee la
+ * columna EN VIVO (no el mirror) por lo mismo que el borrado: el espejo tarda
+ * en enterarse de una subida, y validar contra él contestaba "ese documento ya
+ * no está en el proyecto" a quien acababa de subirlo (encontrado en la prueba
+ * de producción del 2026-08-19). null = no está. */
+export async function buscarArchivo(
+  env: Env, boardId: number, itemId: number, colId: string, pedido: { assetId: number; nombre: string },
+): Promise<ArchivoRef | null> {
+  const actuales = isNativeId(itemId)
+    ? await archivosNativos(env, boardId, itemId, colId)
+    : await archivosEnColumna(env, itemId, colId);
+  return actuales.find(f => (pedido.assetId ? f.assetId === pedido.assetId : f.nombre === pedido.nombre)) ?? null;
 }

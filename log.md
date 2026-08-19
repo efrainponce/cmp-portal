@@ -38,6 +38,14 @@
   solo archivo, con respaldo y tope antes de la mutación.
 - `docs/code-index.md`: la entrada de `itemOculto.ts` (borrado en la entrada
   anterior) se reemplazó por `itemBorrado.ts` y se agregó `archivoBorrado.ts`.
+- Probado en producción (suplantando a Ricardo y al comprador dueño del
+  proyecto): se fue el duplicado de la DECLARACION, la segunda llamada da 404,
+  y los otros dos documentos siguen en Monday. El respaldo quedó en R2 con su
+  renglón en `archivo_borrado`.
+- Ahí salió un bug: la ruta buscaba el archivo en el ESPEJO, que tarda en ver
+  una subida — borrar algo recién subido contestaba "ese documento ya no está en
+  el proyecto". Ahora lo busca en vivo (`buscarArchivo`), igual que la lista que
+  se reescribe.
 
 ## 2026-08-19 (11)
 
