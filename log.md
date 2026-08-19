@@ -1,5 +1,22 @@
 # Log de commits
 
+## 2026-08-19 (18)
+
+- **"Hay una versión nueva del portal" ya no se queda pegado en
+  "Actualizando…".** Efraín mandó la captura de alguien esperando en esa
+  pantalla: la recarga automática tras un deploy estaba topada a UNA sola vez
+  por pestaña (guard de `sessionStorage`), así que quien volvía a tropezar con
+  un chunk viejo — el deploy tarda unos segundos en propagarse — se quedaba
+  mirando el mensaje sin que nada pasara.
+- Ahora `ChunkReloadBoundary` cuenta intentos: la 1ª recarga sigue siendo
+  inmediata y las siguientes (hasta 3 en total) esperan **6 segundos** antes de
+  recargar, que es lo que tarda en asentarse el deploy. Pasado el tope se rinde
+  y muestra el botón **Recargar** en vez de mentir con "Actualizando…" — el loop
+  infinito, que era el motivo del guard original, sigue descartado.
+- El contador vive en `sessionStorage` con timestamp: si el último intento fue
+  hace más de un minuto la app estuvo viva un buen rato, es otro deploy y
+  vuelve a empezar de cero.
+
 ## 2026-08-19 (17)
 
 - **"Generar OC (portal)": la orden ya se EMITE con el motor propio, sin
