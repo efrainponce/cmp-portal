@@ -83,7 +83,7 @@ app.onError(async (err, c) => {
 // 2026-08-15T03:00 UTC (verificado en vivo). El backup corre sábados — da igual
 // el día mientras sea semanal.
 const ALERT_CRON = '*/15 * * * *';
-const BACKUP_CRON = '0 3 * * 7';
+const BACKUP_CRON = '0 3 * * *';
 const CRON_GROUPS: Record<string, BoardSlug[]> = {
   '0 0,12 * * *': ['oportunidades', 'oportunidades_sub', 'proyectos', 'proyectos_sub'],
   '0 6,18 * * *': ['productos', 'instituciones', 'contactos', 'proveedores'],

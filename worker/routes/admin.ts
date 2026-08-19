@@ -15,6 +15,7 @@ import {
   zonaPrivadaMemberIds, isZonaPrivadaAdminPermitido,
 } from '../lib/zonas';
 import { reconcileBoard } from '../sync/reconcile';
+import { backupD1ToR2 } from '../lib/backup';
 import { buildAnalyticsResponse } from '../lib/analytics';
 import type { GroupBy } from '../../shared/analytics';
 
@@ -212,6 +213,24 @@ export function adminRoutes(app: Hono<{ Bindings: Env }>) {
       const detail = err instanceof Error ? err.message : String(err);
       return c.json({ error: `sync failed: ${detail}` }, 502);
     }
+  });
+
+  // Dispara el respaldo de D1 a R2 sin esperar al cron. El respaldo llevaba
+  // desde el 2026-08-15 fallando en silencio (`access to _cf_KV.key is
+  // prohibited`) y NADIE se enteraba: el cron es semanal, el error solo se
+  // asentaba en sync_log y no había forma de probarlo sin esperar al sábado.
+  // Encontrado 2026-08-19 revisando qué red de seguridad tiene D1 — la
+  // respuesta era "solo Time Travel", porque en R2 no había un solo archivo.
+  // Devuelve la llave escrita y su tamaño para poder verificar de inmediato.
+  app.post('/api/admin/backup', async c => {
+    if (c.get('viewer').role !== 'admin') return c.json({ error: 'forbidden' }, 403);
+    await backupD1ToR2(c.env);
+    const row = await c.env.DB.prepare(
+      "SELECT ok, detail, at FROM sync_log WHERE kind = 'backup' ORDER BY at DESC LIMIT 1",
+    ).first<{ ok: number; detail: string; at: string }>();
+    if (!row?.ok) return c.json({ ok: false, error: row?.detail ?? 'sin registro' }, 500);
+    const obj = await c.env.FILES.head(row.detail);
+    return c.json({ ok: true, key: row.detail, bytes: obj?.size ?? null, at: row.at });
   });
 
   // Tablero de Análisis (Efraín, 2026-08-17): embudo de conversión, tiempo de

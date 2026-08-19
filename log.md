@@ -1,5 +1,37 @@
 # Log de commits
 
+## 2026-08-19 (2)
+
+- **El respaldo de D1 nunca había producido un archivo.** Al preguntarse qué red
+  de seguridad tiene D1 si el desastre pasa allá, la respuesta resultó ser "solo
+  Time Travel": el export semanal a R2 corrió UNA vez (2026-08-15), falló con
+  `access to _cf_KV.key is prohibited` y nadie se enteró — el cron era semanal y
+  el error solo se asentaba en `sync_log`. Confirmado contra la API de R2: cero
+  objetos bajo `backups/`. El bug del `_cf_KV` ya estaba corregido, pero sin
+  forma de probarlo hasta el siguiente sábado.
+  - `POST /api/admin/backup` (solo admin) dispara el respaldo y devuelve la
+    llave y el TAMAÑO del archivo escrito, para poder verificar de inmediato que
+    de verdad quedó algo en R2 y no otro fallo silencioso.
+  - El cron pasa de semanal a DIARIO mientras se estabiliza.
+- **Reparación del incidente del 2026-08-18** (ver entrada anterior), toda
+  verificada releyendo Monday, no confiando en lo que reportó cada script:
+  - 1,081 líneas con el precio falso: 896 devueltas a su valor real (del
+    `previous_value` del activity_log de Monday) y 184 vaciadas — esas nunca
+    tuvieron precio, el script se lo inventó. Verificación final: 1,080/1,080
+    correctas, cero discrepancias.
+  - 70 líneas restauradas de la papelera de Monday perdieron el vínculo al
+    producto: **Monday no restaura las columnas connect-boards**. Se repusieron
+    89 cruzando snapshots del portal + espejo + SKU. Un snapshot venía MAL
+    (decía USWPT24008 donde el SKU real era PA2011) — de ahí que cada
+    reasignación se verificara contra el SKU de la propia línea.
+  - 85 líneas quedaron con Etapa Costeo en "No iniciado" por el
+    `duplicateVersion` que disparó el borrado falso; 15 seguían así y se
+    devolvieron a Listo/En curso, 70 ya se habían movido solas.
+  - Barrido de 30 días en Monday con el detector correcto (ráfagas que tocan
+    MÁS DE UNA oportunidad): no había pasado antes.
+  - `scripts/e2e-zona-efrain.mjs` tenía el mismo `?parent=` y estampaba datos de
+    prueba sobre la primera línea del board entero. Corregido.
+
 ## 2026-08-19
 
 - **El portal ya NUNCA borra en Monday** (Efraín: "no se puede NUNCA NUNCA NUNCA
