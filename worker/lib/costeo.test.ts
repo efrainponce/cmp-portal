@@ -5,7 +5,8 @@
 // shared/column-meta.gen.ts (sección "oportunidades_sub") — nunca inventados.
 import { describe, it, expect } from 'vitest';
 import type { MondayCol } from './monday';
-import { computeSnapshot, checkSubitemNative } from './costeo';
+import { checkSubitemNative } from './costeo';
+import { computeSnapshot } from './costeoSnapshot';
 
 const SCOL_COSTO = 'lookup_mm5ck4b3';
 const SCOL_MONEDA = 'lookup_mm11t8gj';

@@ -22,6 +22,8 @@
 import type { Env } from '../env';
 import { BOARDS, type BoardSlug } from '../../shared/boards';
 import type { RawColumn } from './canon';
+import { nativeStatusValue } from './nativeItems';
+import { computeSnapshot, snapshotRawCols, snapshotEmptyCols } from './costeoSnapshot';
 
 // ── Oportunidad ───────────────────────────────────────────────────────────────
 const OPP_CONTACTO_REL = 'deal_contact';
@@ -55,6 +57,11 @@ const LINEA_TEXTO_DESDE_PRODUCTO: Record<string, string> = {
   text_mm0bxy39: 'product_and_service_sku',        // SKU
   text_mm0bkm1j: 'text_mm0wvga2',                  // Nombre del producto (SNAP_NOMBRE del costeo)
 };
+/** Moneda propia de la línea (status) — la del catálogo llega por el espejo
+ * `lookup_mm11t8gj`, pero quien manda para el costeo es esta (ver
+ * src/boards/oportunidades/tabs/cotizacion/gridMeta.tsx MONEDA_COL). */
+const LINEA_MONEDA = 'color_mm5s709s';
+const PRODUCTO_MONEDA = 'text_mkzp59zf';   // Moneda en el catálogo (fuente del espejo lookup_mm11t8gj)
 const PRODUCTO_NOMBRE = 'text_mm0wvga2';
 const PRODUCTO_PROVEEDOR_REL = 'board_relation_mm1cwqky';
 const PROVEEDOR_RAZON_SOCIAL = 'text_mm1d43t4';
@@ -177,13 +184,29 @@ export async function stampInstitucionEnOpsDeContacto(
 }
 
 /** Todo lo que la línea hereda del Producto: los espejos del catálogo, las dos
- * columnas de texto que el flujo real llena por automatización, y el NOMBRE de
+ * columnas de texto que el flujo real llena por automatización, el NOMBRE de
  * la línea (en Monday lo renombra una automatización al elegir el producto —
  * `checkTodoCuadra` cruza tallas contra ese nombre, así que una línea nativa
- * llamada "Nueva línea" nunca cuadraba). */
+ * llamada "Nueva línea" nunca cuadraba) y —desde 2026-08-19— el COSTEO.
+ *
+ * Solo corre sobre líneas NATIVAS (el único llamador la gatea con `isNativeId`,
+ * worker/lib/outbox.ts). En el pipeline normal el costeo lo congela "Mandar a
+ * costeo" y lo captura Compras: ahí NADA de esto cambia. En la Zona Efrain no
+ * hay ese ida y vuelta —la misma persona cotiza, costea y aprueba de un jalón
+ * (Efraín, 2026-08-19)— y la línea se quedaba en "Pendiente de costeo" con
+ * Costo distr. y Costo real en blanco aunque el catálogo ya tuviera el dato. */
 export async function stampProductoEnLinea(env: Env, lineaId: number, productoId: number): Promise<void> {
   const producto = await rowOf(env, 'productos', productoId);
   if (!producto) return;
+  const { cols, nombre } = lineaColsDesdeProducto(producto);
+  await merge(env, 'oportunidades_sub', lineaId, cols, nombre || undefined);
+}
+
+/** La parte pura de `stampProductoEnLinea`: producto del catálogo → columnas de
+ * la línea + nombre. Separada para poder anclarla en tests sin D1. */
+export function lineaColsDesdeProducto(
+  producto: { name: string; cols: Map<string, RawColumn> },
+): { cols: RawColumn[]; nombre: string } {
   const cols: RawColumn[] = [];
   for (const [destino, origen] of Object.entries(LINEA_DESDE_PRODUCTO)) {
     const text = producto.cols.get(origen)?.text?.trim();
@@ -200,8 +223,33 @@ export async function stampProductoEnLinea(env: Env, lineaId: number, productoId
   if (proveedorId) cols.push(mirror('lookup_mm1cs054', String(proveedorId)));
   if (proveedorNombre) cols.push(mirror('lookup_mm1ck0mr', proveedorNombre));
 
-  const nombre = producto.cols.get(PRODUCTO_NOMBRE)?.text?.trim() || producto.name;
-  await merge(env, 'oportunidades_sub', lineaId, cols, nombre || undefined);
+  // Moneda de la línea: la del catálogo, con el shape {index} que Monday
+  // guarda para un status (worker/lib/nativeItems.ts). Si el label no existe en
+  // la metadata, `nativeStatusValue` devuelve el texto suelto — eso dejaría a
+  // la línea fuera de todo filtro por índice, así que en ese caso no se escribe
+  // y manda el espejo del catálogo, que es como funcionaba hasta ahora.
+  const monedaCatalogo = producto.cols.get(PRODUCTO_MONEDA)?.text?.trim();
+  if (monedaCatalogo) {
+    const value = nativeStatusValue('oportunidades_sub', LINEA_MONEDA, monedaCatalogo);
+    if (typeof value === 'object' && value !== null) {
+      cols.push({ id: LINEA_MONEDA, type: 'status', text: monedaCatalogo, value: JSON.stringify(value) });
+    }
+  }
+
+  // Costeo al día: el MISMO snapshot que congela "Mandar a costeo"
+  // (worker/lib/costeoSnapshot.ts) — costo distribuidor, descuento %, gastos %,
+  // IVA, tipo de cambio y precio sugerido — calculado sobre los espejos que se
+  // acaban de copiar arriba, no sobre los de la línea anterior. El Precio de
+  // Venta C/U (numeric_mkzneg3d) NO se toca: es la única columna que decide una
+  // persona (`w: ['admin']`, shared/visibility.ts).
+  //
+  // Sin costo en el catálogo se LIMPIA en vez de dejar lo anterior: cambiar de
+  // producto invalida el costo del producto viejo, y dejarlo puesto es peor que
+  // el aviso "Pendiente de costeo" (que así vuelve a salir solo).
+  const snapshot = computeSnapshot(cols);
+  cols.push(...(snapshot.costo > 0 ? snapshotRawCols(snapshot) : snapshotEmptyCols()));
+
+  return { cols, nombre: producto.cols.get(PRODUCTO_NOMBRE)?.text?.trim() || producto.name };
 }
 
 /** Nombre y razón social del proveedor de un producto — los imprime el PDF de

@@ -17,6 +17,10 @@ import { validarCosteo } from './automations';
 import { submitWrite } from './outbox';
 import { gql, moveItemToGroup, fetchItemWithSubitems, cvText, cvNum, type MondayCol } from './monday';
 import { BOARDS } from '../../shared/boards';
+import {
+  computeSnapshot, snapshotColumnValues, snapshotRawCols,
+  SNAP_NOMBRE, type SnapshotValues,
+} from './costeoSnapshot';
 import { isNativeId } from '../../shared/nativeId';
 import type { RawCol } from './serialize';
 import {
@@ -38,26 +42,9 @@ const SUB_PRECIO_VENTA = 'numeric_mkzneg3d';       // Precio de Venta C/U (lo qu
 // Oportunidad
 const OPP_INSTITUCION = 'lookup_mm1bs976';        // validar_costeo rechaza sin institución
 
-// Snapshot nativo de costeo (Fase 1, plan "salir de Monday" 2026-08-12) — mismos ids
-// que validar_costeo.py, verificados contra shared/column-meta.gen.ts (sección
-// "oportunidades_sub"). SCOL_* = lecturas (lookup/mirror del catálogo/línea); SNAP_* =
-// columnas EDITABLES donde se congela el valor al momento de costear.
-const SCOL_COSTO = 'lookup_mm5ck4b3';            // Costo (auto)
-const SCOL_MONEDA = 'lookup_mm11t8gj';           // Moneda
-const SCOL_DESCUENTO = 'lookup_mm0bdwb5';        // Descuento (auto) — fracción 0-1
-const SCOL_GASTOS = 'lookup_mm0bbz02';           // Gastos % (auto) — fracción 0-1
-const SCOL_PRODUCTO_NOMBRE = 'lookup_mm0x4kda';  // Nombre del Producto (mirror)
-const SCOL_SKU = 'lookup_mkzn7x9a';              // SKU (auto)
-const SNAP_NOMBRE = SUB_PRODUCTO_TXT;            // 'text_mm0bkm1j' — mismo id, doble uso
-const SNAP_SKU = 'text_mm0bxy39';
-const SNAP_COSTO = 'numeric_mm0bph99';
-const SNAP_DESC_PCT = 'numeric_mkzn2q51';
-const SNAP_GAST_PCT = 'numeric_mkzngs9x';
-const SNAP_IVA = 'numeric_mm0cg0bm';
-const SNAP_TC = 'numeric_mm0rvhgs';
-const SNAP_PRECIO = 'numeric_mm2qzzbe';          // "Precio de Venta (formula)" — DISTINTO
-                                                  // de numeric_mkzneg3d (Precio de Venta
-                                                  // C/U, solo-admin, shared/visibility.ts).
+// Snapshot de costeo (Fase 1, plan "salir de Monday" 2026-08-12): ids y fórmula
+// viven en worker/lib/costeoSnapshot.ts desde 2026-08-19 — la Zona Efrain los
+// estampa al elegir el producto, sin pasar por aquí.
 
 // Oportunidad — reject/accept del flujo nativo.
 const OPP_FOLIO = 'pulse_id_mm0qcq0m';
@@ -268,31 +255,6 @@ function checksToErrors(checks: unknown): string[] {
 // env.COSTEO_NATIVE mientras corre en paralelo contra oportunidades reales.
 // ═══════════════════════════════════════════════════════════════════════════
 
-interface SnapshotValues {
-  nombre: string;
-  sku: string;
-  costo: number;
-  descPct: number;
-  gastPct: number;
-  tc: number;
-  precio: number;
-}
-
-/** precio = (1+gastos%)·(costo·(1-desc%))·TC·1.3 — TC=18 si Moneda es USD, 1 si no.
- * Mirror 1:1 de validar_costeo.py's compute_snapshot_values. */
-export function computeSnapshot(cols: MondayCol[]): SnapshotValues {
-  const costo = cvNum(cols, SCOL_COSTO);
-  const descFrac = cvNum(cols, SCOL_DESCUENTO);
-  const gastosFrac = cvNum(cols, SCOL_GASTOS);
-  const tc = cvText(cols, SCOL_MONEDA).toUpperCase() === 'USD' ? 18 : 1;
-  const precio = Math.round((1 + gastosFrac) * (costo * (1 - descFrac)) * tc * 1.3 * 100) / 100;
-  return {
-    nombre: cvText(cols, SCOL_PRODUCTO_NOMBRE),
-    sku: cvText(cols, SCOL_SKU),
-    costo, descPct: Math.round(descFrac * 100), gastPct: Math.round(gastosFrac * 100), tc, precio,
-  };
-}
-
 async function writeSubitemCols(env: Env, subId: string, cols: Record<string, string>): Promise<void> {
   await gql(
     env,
@@ -302,16 +264,7 @@ async function writeSubitemCols(env: Env, subId: string, cols: Record<string, st
 }
 
 function writeSnapshot(env: Env, subId: string, snap: SnapshotValues): Promise<void> {
-  return writeSubitemCols(env, subId, {
-    [SNAP_NOMBRE]: snap.nombre,
-    [SNAP_SKU]: snap.sku,
-    [SNAP_COSTO]: String(snap.costo),
-    [SNAP_DESC_PCT]: String(snap.descPct),
-    [SNAP_GAST_PCT]: String(snap.gastPct),
-    [SNAP_IVA]: '16',
-    [SNAP_TC]: String(snap.tc),
-    [SNAP_PRECIO]: String(snap.precio),
-  });
+  return writeSubitemCols(env, subId, snapshotColumnValues(snap));
 }
 
 interface SubitemCheck {
@@ -474,16 +427,14 @@ async function runCosteoNative(env: Env, itemId: number): Promise<EnviarCosteoRe
  * con otro concurrente). `text` es lo único que le importa a cvNum/cvText
  * (worker/lib/monday.ts) y a todo lo que lee snapshots después; `value` solo
  * necesita ser JSON válido. */
-async function writeNativeLineCols(env: Env, lineId: number, patch: Record<string, { type: string; text: string }>): Promise<void> {
+async function writeNativeLineCols(env: Env, lineId: number, patch: RawCol[]): Promise<void> {
   const row = await env.DB
     .prepare(`SELECT columns FROM items WHERE board_id = ? AND item_id = ?`)
     .bind(BOARDS.oportunidades_sub.id, lineId)
     .first<{ columns: string }>();
   const existing: RawCol[] = row ? JSON.parse(row.columns || '[]') : [];
   const byId = new Map(existing.map(c => [c.id, c]));
-  for (const [id, v] of Object.entries(patch)) {
-    byId.set(id, { id, type: v.type, text: v.text, value: JSON.stringify(v.text) });
-  }
+  for (const col of patch) byId.set(col.id, col);
   await env.DB
     .prepare(`UPDATE items SET columns = ?, synced_at = ? WHERE board_id = ? AND item_id = ?`)
     .bind(JSON.stringify([...byId.values()]), new Date().toISOString(), BOARDS.oportunidades_sub.id, lineId)
@@ -507,17 +458,7 @@ async function runCosteoNativeD1(
     const cols: MondayCol[] = JSON.parse(linea.columns || '[]');
     const etapa = (cols.find(c => c.id === SUB_ETAPA_COSTEO)?.text ?? '').trim();
     if (etapa && etapa !== ETAPA_NO_INICIADO) continue; // ya costeada — no recongelar
-    const snap = computeSnapshot(cols);
-    await writeNativeLineCols(env, linea.item_id, {
-      [SNAP_NOMBRE]: { type: 'text', text: snap.nombre },
-      [SNAP_SKU]: { type: 'text', text: snap.sku },
-      [SNAP_COSTO]: { type: 'numeric', text: String(snap.costo) },
-      [SNAP_DESC_PCT]: { type: 'numeric', text: String(snap.descPct) },
-      [SNAP_GAST_PCT]: { type: 'numeric', text: String(snap.gastPct) },
-      [SNAP_IVA]: { type: 'numeric', text: '16' },
-      [SNAP_TC]: { type: 'numeric', text: String(snap.tc) },
-      [SNAP_PRECIO]: { type: 'numeric', text: String(snap.precio) },
-    });
+    await writeNativeLineCols(env, linea.item_id, snapshotRawCols(computeSnapshot(cols)));
   }
 
   const seq = await nextCosteoSeq(env, itemId);

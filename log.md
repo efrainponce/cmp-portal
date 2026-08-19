@@ -1,5 +1,36 @@
 # Log de commits
 
+## 2026-08-19 (6)
+
+- **Zona Efrain: elegir el producto ya deja la línea COSTEADA.** Efraín
+  (2026-08-19): "en Zona Efrain todo se puede hacer de jalón, entonces cuando
+  seleccionas un producto debe poner al día todo". Antes la línea nativa
+  copiaba los espejos del catálogo (SKU, ficha, colores, tallas, costo *auto*)
+  pero las columnas de costeo REALES —Costo distr. C/U, Desc. %, Gastos %, IVA,
+  Tipo de cambio, precio sugerido— seguían vacías: la grid pintaba "Pendiente
+  de costeo" y Costo real en $0 aunque el catálogo ya tuviera el dato. Se
+  llenaban solo al "Mandar a costeo", que en la zona privada es un ida y vuelta
+  que no existe (la misma persona cotiza, costea y aprueba).
+- **El camino NO nativo no cambia en nada**: el estampado cuelga de
+  `stampProductoEnLinea`, que solo corre bajo `isNativeId`
+  (`worker/lib/outbox.ts`). En el pipeline normal el costeo lo sigue congelando
+  "Mandar a costeo" con Compras de por medio, con los mismos valores de
+  siempre.
+- Fórmula e ids del snapshot salieron de `worker/lib/costeo.ts` a
+  **`worker/lib/costeoSnapshot.ts`** (módulo hoja): `nativeMirrors.ts` no puede
+  importar `costeo.ts` sin cerrar un ciclo (costeo → outbox → nativeMirrors).
+  Es exactamente el mismo snapshot, no una copia paralela.
+- La **moneda de la línea** (`color_mm5s709s`) también sigue al catálogo, con
+  el shape `{index}` de Monday; si el producto nuevo NO trae costo, el costeo
+  se **limpia** en vez de dejar el del producto anterior (y vuelve a salir el
+  aviso "Pendiente de costeo", que es la verdad).
+- El **Precio de Venta C/U** (`numeric_mkzneg3d`) no se toca: es la única
+  columna que decide una persona (`w: ['admin']`). Lo que sí se llena es el
+  precio sugerido, igual que el costeo normal.
+- `worker/lib/nativeMirrors.test.ts` ancla las 4 reglas (costeo estampado en
+  MXN, TC=18 y moneda en USD, limpieza sin costo, y que el Precio de Venta C/U
+  nunca se escriba).
+
 ## 2026-08-19 (5)
 
 - **Los mapas de "Estado del producto" llevaban semanas desfasados de Monday**
