@@ -5,7 +5,8 @@ import { isNativeId } from '../../../../shared/nativeId';
 // los usa EjecucionSection.tsx (mismo agrupado, distinto contenido de tarjeta).
 import { useEffect, useState } from 'react';
 import { type ItemDTO } from '../../../lib/api';
-import { patchItem, reportarTallasIncorrectas, getCotizacionVirtual, type QuoteLineSnapshot } from '../../../lib/apiClient';
+import { patchItem, reportarTallasIncorrectas, getCotizacionVirtual, getItem, type QuoteLineSnapshot } from '../../../lib/apiClient';
+import { TallaBoxesCapture } from './TallaCapture';
 import { useMe } from '../../../lib/useMe';
 import { ConfirmButton } from '../../../components/core/ConfirmButton';
 import { MonoTag } from '../../../components/core/Badges';
@@ -256,8 +257,8 @@ function TallasGrid({ lineas, cotizadoMaps, canEditCantidad, canReport, proyecto
     return (
       <div style={{ marginTop: 14, font: 'var(--text-label)', color: 'var(--ink-quiet)' }}>
         {native
-          ? 'Aún no hay tallas capturadas — captúralas por tallas en la pestaña "Tallas" de la Oportunidad.'
-          : 'Aún no hay tallas importadas en Monday — captura el desglose en el archivo de tallas y pide a Compras importarlo.'}
+          ? 'Aún no hay tallas capturadas — captúralas aquí abajo, producto por producto.'
+          : 'Aún no hay tallas importadas en Monday — captúralas aquí abajo, o hazlo en el archivo de tallas y pide a Compras importarlo.'}
       </div>
     );
   }
@@ -287,6 +288,10 @@ export function ProyectoTallasSection({ state, oppId }: { state: ProyectoState; 
   const me = useMe();
   const canEditCantidad = me?.role === 'vendedor' || me?.role === 'compras' || me?.role === 'admin';
   const [cotizadoMaps, setCotizadoMaps] = useState<CotizadoMaps>(EMPTY_COTIZADO_MAPS);
+  // Líneas de cotización de la Oportunidad — la captura por boxes necesita el
+  // subitemId real de cada línea (worker/lib/proyectoTallas.ts copia de ahí
+  // costo/proveedor/moneda), no la vista virtual del Proyecto.
+  const [oppLineas, setOppLineas] = useState<ItemDTO[]>([]);
   const proyectoId = state.proyecto?.id ?? null;
 
   // Lo cotizado por producto+color viene de la cotización VIRTUAL del
@@ -298,6 +303,15 @@ export function ProyectoTallasSection({ state, oppId }: { state: ProyectoState; 
       .then(d => setCotizadoMaps(cotizadoMapsFrom(d.lines ?? [])))
       .catch(() => setCotizadoMaps(EMPTY_COTIZADO_MAPS));
   }, [proyectoId]);
+
+  useEffect(() => {
+    if (!oppId) { setOppLineas([]); return; }
+    let vivo = true;
+    getItem('oportunidades', oppId)
+      .then(d => { if (vivo) setOppLineas(d.children ?? []); })
+      .catch(() => { if (vivo) setOppLineas([]); });
+    return () => { vivo = false; };
+  }, [oppId]);
 
   if (state.loading) return <Shell hint="Buscando el proyecto ligado…" />;
   if (!state.proyecto) {
@@ -325,6 +339,18 @@ export function ProyectoTallasSection({ state, oppId }: { state: ProyectoState; 
         canReport={canEditCantidad}
         proyectoId={p.id}
         reload={state.reload}
+      />
+      {/* Captura de tallas por boxes DENTRO del Proyecto (Efraín, 2026-08-20:
+          "en zona efrain proyecto necesito dónde capturar las tallas, no me
+          aparece"). Antes solo estaba en la pestaña Tallas de la Oportunidad y
+          el vacío de aquí mandaba para allá. Mismo componente y mismo endpoint
+          — lo que se captura se guarda como subitems del Proyecto. */}
+      <TallaBoxesCapture
+        proyectoId={p.id}
+        products={oppLineas}
+        onSaved={state.reload}
+        titulo="Capturar tallas"
+        hint="Cuántas piezas de cada talla por producto — se guardan como líneas del proyecto. Puedes capturar de a poco: lo que dejes en blanco no se toca."
       />
       <FileList label="Relaciones de tallas (PDF)" files={toR2Files(parseFiles(p.cols[P_TALLAS_PDF]?.text), oppId, 'tallas')} />
     </div>

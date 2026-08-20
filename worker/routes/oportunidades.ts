@@ -1296,7 +1296,10 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     const itemId = Number(c.req.param('id'));
     if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
     const viewer = c.get('viewer');
-    if (viewer.role !== 'vendedor' && viewer.role !== 'admin') return c.json({ error: 'forbidden' }, 403);
+    // Sin gate por rol (Efraín, 2026-08-20: "todos pueden capturar las tallas,
+    // no solo el vendedor") — antes era vendedor|admin y Compras se topaba con
+    // un 403 desde el Proyecto. El candado que queda es el de RENGLÓN: getItem
+    // con scope 'own' abajo, igual que todo endpoint que muta.
 
     const row = await getItem(c.env, 'proyectos', itemId, viewer, 'own');
     if (!row) return c.json({ error: 'not found' }, 404);

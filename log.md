@@ -1,5 +1,31 @@
 # Log de commits
 
+## 2026-08-20 (1)
+
+- **La captura de tallas ahora vive en el Proyecto, no solo en la
+  Oportunidad.** Efraín, sobre un proyecto de la Zona Efrain: "necesito dónde
+  capturar las tallas, no me aparece". La pestaña Tallas del Proyecto solo
+  mostraba el vacío con la instrucción de ir a *otro* drawer ("captúralas en
+  la pestaña Tallas de la Oportunidad") — el camino existía y funcionaba, pero
+  nadie lo encontraba. Ahora las mismas cajitas por producto+talla salen ahí
+  mismo, debajo del desglose.
+- Es **el mismo componente y el mismo endpoint** (`TallaBoxesCapture`, movido
+  de `tabs/TallasTab.tsx` a `proyecto/TallaCapture.tsx` para que los dos
+  lugares lo usen): lo capturado se guarda como subitems del Proyecto
+  (`worker/lib/proyectoTallas.ts`), con costo/proveedor copiados de la línea de
+  cotización. La captura desde la Oportunidad sigue igual.
+- Las líneas se leen de la **Oportunidad ligada** (`getItem('oportunidades')`),
+  no de la cotización virtual: la captura necesita el `subitemId` real de cada
+  línea para copiar costo/moneda/proveedor.
+- **Capturar tallas ya no es solo del vendedor** (Efraín: "todos pueden
+  capturar las tallas, no solo el vendedor"): se quitó el gate por rol de
+  `POST /api/proyectos/:id/tallas-capturar`, que devolvía 403 a Compras. Queda
+  el candado de renglón de siempre — `getItem(..., 'own')`, o sea solo sobre
+  proyectos propios.
+- Pendiente de decisión: **almacén** sigue sin ver las líneas de cotización
+  (`shared/visibility.ts`, grupo V), así que para ese rol la captura no se
+  pinta. Abrirlo implicaría tocar la whitelist, y eso es decisión de Efraín.
+
 ## 2026-08-19 (19)
 
 - **Zona Efrain cotiza de un jalón: "Generar cotización" desde Nueva
