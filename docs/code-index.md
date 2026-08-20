@@ -51,6 +51,7 @@ y `src/lib/estadoProductoBuckets.ts`.
 - [worker/lib/assistantPersonas.ts](worker/lib/assistantPersonas.ts) — Una persona de agente por rol (vendedor/compras/admin/almacen), compartida por ambos canales. Exports: Channel, systemPromptFor.
 - [worker/lib/assistantTools.ts](worker/lib/assistantTools.ts) — Superficie de herramientas del agente Claude compartida por todos los canales. Exports: TOOL_ROLES, TOOLS, toolsFor, runTool.
 - [worker/lib/automations.ts](worker/lib/automations.ts) — Cliente de automaciones cmp-tallas Vercel (trigger, no reimplementar). Exports: AutomationError, AutomationResult, CotizacionResult, validarCosteo.
+- [worker/lib/accionLog.ts](worker/lib/accionLog.ts) — Bitácora de INTENTOS de mutación (`accion_log`): el negativo que ninguna otra fuente guarda (outbox/sync_log/activity_log/ux_event solo cuentan lo que SÍ pasó). Sin muestreo, GET fuera, retención 400 días. Exports: ACCION_RETENTION_DAYS, AccionRow, logAccion, purgeAccionLog.
 - [worker/lib/backup.ts](worker/lib/backup.ts) — Export semanal (cron) del mirror D1 completo a R2 para retención más allá de los 30 días de D1 Time Travel. Exports: backupD1ToR2.
 - [worker/lib/boardAccess.ts](worker/lib/boardAccess.ts) — DAL para role_board_access (tabla D1) — lectura/escritura de accesos por rol. Exports: getBoardAccess, listAllBoardAccess, BoardAccessError, setBoardAccess.
 - [worker/lib/itemBorrado.ts](worker/lib/itemBorrado.ts) — Único lugar del worker que borra un item en Monday: respaldo del renglón en `item_borrado`, de a un id, tope por hora. Exports: BorradoError, ensureItemBorradoTable, borrarItem.
@@ -111,6 +112,7 @@ y `src/lib/estadoProductoBuckets.ts`.
 ### worker/mw/
 
 - [worker/mw/access.ts](worker/mw/access.ts) — Verifica identidad del caller en c.get('email') vía Cloudflare Access. Exports: access.
+- [worker/mw/accionLog.ts](worker/mw/accionLog.ts) — Engancha `accion_log` a cada POST/PATCH/PUT/DELETE de /api/*: status, ms, motivo del rechazo y quién actuó (admin + suplantado). INSERT en waitUntil, nunca agrega latencia ni tumba la ruta. Exports: accionLog.
 - [worker/mw/identity.ts](worker/mw/identity.ts) — Email (de mw/access) → fila D1 → c.get('viewer') con Role + metadata + scope de zona (resuelto una vez por request). Exports: identity.
 
 ### worker/routes/
@@ -268,6 +270,7 @@ y `src/lib/estadoProductoBuckets.ts`.
 - [src/boards/oportunidades/OportunidadesBoard.tsx](src/boards/oportunidades/OportunidadesBoard.tsx) — Orquestador de vistas de Oportunidades (stages + drawer). Exports: OportunidadesBoard.
 - [src/boards/oportunidades/OpportunityDrawer.tsx](src/boards/oportunidades/OpportunityDrawer.tsx) — Drawer compartido fullscreen de detalle + tabs por role. Exports: OpportunityDrawer.
 - [src/boards/oportunidades/ProyectoSection.tsx](src/boards/oportunidades/ProyectoSection.tsx) — Barrel de la sección Proyecto (tabs Tallas, OC, Ejecución): re-exporta de `proyecto/` sin lógica propia. Exports: P_SHEET_LINK, P_OC_CLIENTE, ESTADO_PRODUCTO_COLORS, useProyecto, linkUrl, ProyectoState, ProyectoTallasSection, ProyectoOrdenesSection, EjecucionSection.
+- [src/boards/oportunidades/EtapaAdminSelect.tsx](src/boards/oportunidades/EtapaAdminSelect.tsx) — El chip de etapa como `<select>` para admin (cambio manual de deal_stage, sin disparar automatizaciones). Exports: EtapaAdminSelect.
 - [src/boards/oportunidades/StageBoard.tsx](src/boards/oportunidades/StageBoard.tsx) — Wrapper genérico para boards de etapa (Oportunidades, Costeo, Validación, etc.). Exports: StageBoard.
 - [src/boards/oportunidades/StageBoardList.tsx](src/boards/oportunidades/StageBoardList.tsx) — Lista compartida agrupada por etapa + búsqueda. Exports: StageBoardList.
 

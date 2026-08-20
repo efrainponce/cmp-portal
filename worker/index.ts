@@ -6,6 +6,7 @@ import { Hono } from 'hono';
 import type { Env } from './env';
 import { access } from './mw/access';
 import { identity } from './mw/identity';
+import { accionLog } from './mw/accionLog';
 import { syncRoutes, reconcileAll, deltaSync } from './sync';
 import { BOARDS, type BoardSlug } from '../shared/boards';
 import { waRoutes } from './wa/routes';
@@ -23,6 +24,7 @@ import { flushOutbox } from './lib/outbox';
 import { checkErrorsAndAlert } from './lib/errorAlerts';
 import { backupD1ToR2 } from './lib/backup';
 import { purgeUxEvents } from './lib/telemetry';
+import { purgeAccionLog } from './lib/accionLog';
 import { logSync } from './sync/log';
 import { jsonStatus } from './lib/http';
 
@@ -33,6 +35,11 @@ syncRoutes(app);
 waRoutes(app);
 
 app.use('/api/*', access, identity);
+
+// Bitácora de intentos de escritura (worker/lib/accionLog.ts). Después de
+// identity porque necesita saber quién es, y antes de las rutas para que
+// también atrape lo que ellas rechazan.
+app.use('/api/*', accionLog);
 
 // Responses are scoped per viewer (see dal.ts scopeFor) and, since admin
 // impersonation lets one browser act as several identities in a session,
@@ -118,9 +125,10 @@ export default {
       return;
     }
     if (controller.cron === BACKUP_CRON) {
-      // La poda de ux_event (90 días) se cuelga aquí y no del cron de 15 min:
-      // es un DELETE por rango que no tiene por qué correr 96 veces al día.
-      ctx.waitUntil(Promise.all([backupD1ToR2(env), purgeUxEvents(env)]));
+      // Las podas de ux_event (90 días) y accion_log (400) se cuelgan aquí y
+      // no del cron de 15 min: son DELETE por rango que no tienen por qué
+      // correr 96 veces al día.
+      ctx.waitUntil(Promise.all([backupD1ToR2(env), purgeUxEvents(env), purgeAccionLog(env)]));
       return;
     }
     const slugs = CRON_GROUPS[controller.cron] ?? (Object.keys(BOARDS) as BoardSlug[]);

@@ -10,6 +10,7 @@ import { ConfirmButton } from '../../components/core/ConfirmButton';
 import { IconBack, IconEdit, IconLink } from '../../components/icons';
 import { SyncIndicator } from '../../components/board/SyncIndicator';
 import { StatusBadge } from '../../components/core/Badges';
+import { EtapaAdminSelect } from './EtapaAdminSelect';
 import { chipFor } from '../../components/board/cellHelpers';
 import { useMe } from '../../lib/useMe';
 import {
@@ -143,6 +144,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
   // línea necesita su producto de catálogo confirmado por Compras (Descripción/Tallas
   // — Efraín 2026-07-18). null = cargando; deshabilita el botón.
   const [validacionReady, setValidacionReady] = useState<{ ok: boolean; errors?: string[] } | null>(null);
+  const [cambiandoEtapa, setCambiandoEtapa] = useState(false);
   const [versions, setVersions] = useState<QuoteVersionDTO[]>([]);
   const [showNuevaVersion, setShowNuevaVersion] = useState(false);
   const [duplicatingVersion, setDuplicatingVersion] = useState(false);
@@ -543,6 +545,39 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
     }
   });
 
+  // Cambiar la etapa a mano — solo admin (Efraín, 2026-08-20), sobre una
+  // oportunidad propia/visible como cualquier otro write. Es el escape para
+  // cuando una oportunidad quedó en la etapa equivocada: los botones del flujo
+  // solo aparecen en la etapa exacta que los habilita, así que una que se
+  // adelantó (p. ej. por los botones de Monday.com, que no validan nada) no se
+  // podía regresar desde el portal.
+  //
+  // Escribe deal_stage por el PATCH genérico, igual que Perder/Cancelar/Reabrir
+  // — NO dispara las automatizaciones de cmp-tallas (ni PDFs, ni folio, ni
+  // avisos): mover la etapa a mano es corregir el estado, no rehacer el paso.
+  // Excepción: "Ganada" va por su endpoint, porque ahí la etapa no es lo único
+  // que pasa (se crea el Proyecto) y dejarla a medias sí rompe lo que sigue.
+  const onCambiarEtapa = (idx: string) => { void uxAction('drawer:cambiar-etapa', { boardSlug: 'oportunidades', itemId: Number(id) || undefined, meta: { etapa: idx } }, async () => {
+    setNotice(null);
+    const destino = DEAL_STAGE_LABELS[idx] ?? idx;
+    if (!window.confirm(`¿Cambiar la etapa a "${destino}"?\n\nSe escribe igual en Monday. No genera PDFs ni avisos del flujo.`)) return;
+    setCambiandoEtapa(true);
+    try {
+      const res = idx === '1' ? await ganarOportunidad(id) : await patchItem('oportunidades', id, { deal_stage: destino });
+      if (res.ok) {
+        applyStageOptimistic(idx);
+        setNotice({ kind: 'ok', title: 'Etapa actualizada', lines: [idx === '1' ? 'La etapa pasó a "Ganada" y se creó el Proyecto.' : `La etapa pasó a "${destino}".`] });
+        load();
+      } else {
+        setNotice({ kind: 'error', title: 'No se pudo cambiar la etapa:', lines: [res.error ?? 'Verifica tu conexión.'] });
+      }
+    } catch {
+      setNotice({ kind: 'error', title: 'No se pudo cambiar la etapa:', lines: ['Verifica tu conexión.'] });
+    } finally {
+      setCambiandoEtapa(false);
+    }
+  }); };
+
   if (error) return <div style={{ padding: 32, color: 'var(--ink-quiet)' }}>{error}</div>;
   if (!item) return <div style={{ padding: 32 }}>Cargando…</div>;
 
@@ -580,6 +615,9 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
   // worker/lib/zonas.ts): se apaga TODO lo que escribe. No es cosmético — el
   // server responde 404 a cualquier write sobre una oportunidad ajena.
   const ajena = item.ownedByViewer === false;
+  // La etapa a mano es de admin y solo sobre lo propio/visible: escribir sobre
+  // una oportunidad ajena el server lo rechaza igual (getItem(…, 'own')).
+  const puedeCambiarEtapa = me?.role === 'admin' && !ajena;
   const noLineEdits = readOnlyCosteo || isValidacion || ajena;
   // "+ Nueva versión"/"Restaurar versión": el server las permite en CUALQUIER
   // etapa, incluidas Ganada/Perdida (worker/lib/quoteVersions.ts, Efraín
@@ -693,7 +731,12 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
             {item.cols.deal_stage?.text && (() => {
               const dealStageCol = oppCols.find((c) => c.id === 'deal_stage');
               const { color, tint } = dealStageCol ? chipFor(dealStageCol, item.cols.deal_stage) : { color: 'var(--ink-quiet)', tint: 'var(--bg-sunken)' };
-              return <StatusBadge label={item.cols.deal_stage.text} color={color} tint={tint} />;
+              // Admin: el chip ES el control (EtapaAdminSelect). Los demás lo
+              // ven igual que siempre — la etapa la mueven los botones del
+              // flujo, que sí validan lo que exige cada paso.
+              return puedeCambiarEtapa && stage
+                ? <EtapaAdminSelect stage={stage} color={color} tint={tint} busy={cambiandoEtapa} onChange={onCambiarEtapa} />
+                : <StatusBadge label={item.cols.deal_stage.text} color={color} tint={tint} />;
             })()}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginTop: 4, font: 'var(--text-label)', color: 'var(--ink-tertiary)' }}>

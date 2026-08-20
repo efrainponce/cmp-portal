@@ -1,5 +1,53 @@
 # Log de commits
 
+## 2026-08-20 (2)
+
+- **Bitácora de intentos de escritura (`accion_log`).** Efraín, sobre OPP-0933:
+  "el CEO le dio validar precios a unas oportunidades y no se envió la info a
+  Monday… no veo ningún log". Contestarlo tomó media hora de cruzar cinco
+  fuentes (outbox, sync_log, activity_log, ux_event y los logs del Worker) y
+  ninguna podía sola: **las cinco cuentan lo que SÍ pasó**. Faltaba el negativo
+  —quién pidió qué y se fue con un 403/400/404/500—, que es justo el caso que
+  alguien reporta como "el portal no hizo nada" y no dejaba rastro en ningún
+  lado. Ahora cada POST/PATCH/PUT/DELETE de `/api/*` deja renglón con ruta,
+  status, milisegundos y **el motivo del rechazo tal cual lo devolvió la ruta**.
+- Los GET no entran (son el 99% del tráfico y su latencia ya vive muestreada en
+  `ux_event`; aquí el muestreo lo volvería inútil para auditar a UNA persona en
+  UNA tarde) y el beacon de telemetría tampoco, para que no se registre a sí
+  mismo. El INSERT va en `waitUntil` y todo está envuelto en try/catch: una
+  bitácora jamás debe tumbar la acción que registra. Retención 400 días, podada
+  en el cron diario que ya existía — **sin cron nuevo** (la cuenta está en el
+  tope de 5).
+- Registra a las **dos** personas cuando hay suplantación (`email` = quien
+  actuó, `actua_como` = el suplantado): `ux_event` tira el lote completo en ese
+  caso y `outbox` guarda solo al segundo, así que hoy una acción hecha "viendo
+  como alguien" era indistinguible de una suya. Anclado en
+  `worker/mw/accionLog.test.ts`.
+- Se consulta con `GET /api/admin/acciones` (`email`, `ruta` —subcadena, para
+  pasarle el id de una oportunidad—, `dias`, `solo=errores`). Query desconocida
+  = 400, como el resto de las rutas.
+- **Los 304 dejaron de contarse como error.** `apiFetch` medía el éxito con
+  `res.ok`, que es false para un 304 Not Modified — y el polling de listas va
+  con ETag, así que el camino más rápido y más frecuente del portal ("no cambió
+  nada") se grababa como `error` en `ux_event`: ~2,750 falsos errores diarios
+  en `api:get:boards:slug:items`. Además de ser ruido, ensuciaba la métrica de
+  fricción para el comparativo de feb-2027.
+- **La etapa se puede cambiar a mano, solo admin** (Efraín: "cuando eres admin
+  puedes modificar la etapa directamente desde la oportunidad"). El chip de
+  etapa del drawer ahora es un `<select>` para admin y sigue siendo etiqueta
+  para todos los demás. Hasta ahora la etapa solo se movía con los botones del
+  flujo, y cada uno aparece nada más en la etapa exacta que lo habilita: una
+  oportunidad que se adelantó no se podía regresar desde el portal, había que ir
+  a Monday. Pasó justo con OPP-0933, que llegó a "Costeo Confirmado" y luego a
+  "Cotización" **sin un solo precio** porque los botones de Monday.com no
+  validan nada (el del portal está deshabilitado si ninguna línea tiene Precio
+  de Venta).
+- Escribe `deal_stage` por el PATCH genérico, igual que Perder/Cancelar/Reabrir:
+  **no** dispara las automatizaciones de cmp-tallas (ni PDFs, ni folio, ni
+  avisos) y lo dice en la confirmación — mover la etapa a mano es corregir el
+  estado, no rehacer el paso. Excepción: "Ganada" sigue yéndose por su endpoint,
+  porque ahí también se crea el Proyecto.
+
 ## 2026-08-20 (1)
 
 - **La captura de tallas ahora vive en el Proyecto, no solo en la

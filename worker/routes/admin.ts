@@ -17,6 +17,8 @@ import {
 import { reconcileBoard } from '../sync/reconcile';
 import { backupD1ToR2 } from '../lib/backup';
 import { buildAnalyticsResponse } from '../lib/analytics';
+import { ACCION_RETENTION_DAYS } from '../lib/accionLog';
+import { rejectUnknownQuery } from '../lib/http';
 import type { GroupBy } from '../../shared/analytics';
 
 export function adminRoutes(app: Hono<{ Bindings: Env }>) {
@@ -258,6 +260,46 @@ export function adminRoutes(app: Hono<{ Bindings: Env }>) {
       por: por as GroupBy, desde, hasta,
     });
     return c.json(response);
+  });
+
+  // Bitácora de intentos de escritura (worker/lib/accionLog.ts). Existe para
+  // contestar "¿qué hizo fulano esa tarde y qué le contestó el portal?" con UNA
+  // consulta: el 2026-08-20 esa pregunta —"el CEO validó precios y no llegó a
+  // Monday"— costó media hora de cruzar outbox, sync_log, activity_log,
+  // ux_event y los logs del Worker, porque ninguna de las cinco guarda los
+  // intentos RECHAZADOS.
+  //
+  // Filtros: `email` (quien actuó), `ruta` (subcadena — sirve para pasarle el
+  // id de una oportunidad y ver todo lo que se intentó sobre ella), `dias`
+  // (default 7) y `solo=errores`. Query desconocida = 400 (nunca degradar a
+  // "sin filtro", ver rejectUnknownQuery).
+  app.get('/api/admin/acciones', async c => {
+    if (c.get('viewer').role !== 'admin') return c.json({ error: 'forbidden' }, 403);
+    const queryMala = rejectUnknownQuery(c.req.url, ['email', 'ruta', 'dias', 'solo', 'limite']);
+    if (queryMala) return queryMala;
+
+    const dias = Math.min(Math.max(Number(c.req.query('dias')) || 7, 1), ACCION_RETENTION_DAYS);
+    const limite = Math.min(Math.max(Number(c.req.query('limite')) || 200, 1), 1000);
+    const desde = new Date(Date.now() - dias * 86_400_000).toISOString();
+
+    const where = ['at >= ?'];
+    const binds: (string | number)[] = [desde];
+    const email = c.req.query('email');
+    if (email) {
+      // Cuenta como "de fulano" tanto lo que hizo él como lo que alguien hizo
+      // suplantándolo: las dos cosas salen a Monday a su nombre.
+      where.push('(email = ? OR actua_como = ?)');
+      binds.push(email, email);
+    }
+    const ruta = c.req.query('ruta');
+    if (ruta) { where.push('ruta LIKE ?'); binds.push(`%${ruta}%`); }
+    if (c.req.query('solo') === 'errores') where.push('ok = 0');
+
+    const { results } = await c.env.DB.prepare(
+      `SELECT at, email, actua_como, role, metodo, ruta, status, ok, ms, detalle
+         FROM accion_log WHERE ${where.join(' AND ')} ORDER BY at DESC LIMIT ${limite}`,
+    ).bind(...binds).all().catch(() => ({ results: [] }));
+    return c.json(results ?? []);
   });
 }
 

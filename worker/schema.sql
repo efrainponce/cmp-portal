@@ -577,6 +577,32 @@ CREATE INDEX IF NOT EXISTS idx_ux_user    ON ux_event(user_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_ux_cell    ON ux_event(item_id, column_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_ux_corr    ON ux_event(corr);
 
+-- Bitácora de INTENTOS de mutación del portal (2026-08-20, worker/lib/accionLog.ts
+-- + worker/mw/accionLog.ts). Las otras cuatro fuentes (outbox, sync_log,
+-- activity_log, ux_event) solo cuentan lo que SÍ pasó; ésta guarda el negativo:
+-- quién pidió qué y se fue con un 403/400/404/500, que es justo lo que alguien
+-- reporta como "el portal no hizo nada" y no dejaba rastro en ningún lado.
+-- Nace de OPP-0933: "el CEO le dio validar precios y no se envió a Monday"
+-- (resultó ser un botón de Monday.com, no del portal — pero contestarlo tomó
+-- media hora de arqueología). Sin muestreo: una fila por mutación, GET fuera.
+-- Se crea LAZY en runtime (mismo patrón que ux_event) — está aquí como documentación.
+CREATE TABLE IF NOT EXISTS accion_log (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  at         TEXT    NOT NULL,   -- ISO UTC, reloj del servidor
+  email      TEXT    NOT NULL,   -- quien REALMENTE actuó (el admin, aunque suplante)
+  actua_como TEXT,               -- suplantado, o NULL — ux_event tira el lote entero en ese caso
+  role       TEXT    NOT NULL,   -- rol con el que corrió (el del suplantado, si aplica)
+  metodo     TEXT    NOT NULL,   -- POST|PATCH|PUT|DELETE (los GET no entran)
+  ruta       TEXT    NOT NULL,   -- c.req.path, con los ids adentro
+  status     INTEGER NOT NULL,
+  ok         INTEGER NOT NULL,   -- status < 400
+  ms         INTEGER NOT NULL,
+  detalle    TEXT                -- motivo del rechazo tal cual lo devolvió la ruta (solo en error)
+);
+CREATE INDEX IF NOT EXISTS idx_accion_at    ON accion_log(at);
+CREATE INDEX IF NOT EXISTS idx_accion_email ON accion_log(email, at);
+CREATE INDEX IF NOT EXISTS idx_accion_ok    ON accion_log(ok, at);
+
 -- Comentarios ("updates") de un item NATIVO de Zona Efrain (2026-08-17,
 -- worker/lib/nativeUpdates.ts). Un item con id sintético (shared/nativeId.ts) no
 -- existe en Monday: `create_update` contra él truena y `updates` sale vacío, así que

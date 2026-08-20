@@ -97,7 +97,13 @@ export async function apiFetch(path: string, init?: RequestInit): Promise<Respon
     : await fetch(url, { credentials: 'same-origin', ...init, headers });
   // La petición precargada arrancó antes que este cronómetro (script inline de
   // index.html), así que su latencia saldría absurdamente corta — no se mide.
-  if (!precargada) uxApiLatency(init?.method ?? 'GET', path, performance.now() - t0, res.ok);
+  // `res.ok` NO alcanza para decidir si salió bien: es false para 304 Not
+  // Modified, y el polling de listas va con ETag (src/lib/api.ts), así que el
+  // camino más rápido y más frecuente del portal —"no cambió nada"— se estaba
+  // grabando como `error`. Se descubrió el 2026-08-20 investigando por qué la
+  // lista de oportunidades "fallaba" ~2,750 veces al día: no fallaba una sola
+  // vez. Un 304 es un acuse, no un error.
+  if (!precargada) uxApiLatency(init?.method ?? 'GET', path, performance.now() - t0, res.ok || res.status === 304);
   if (res.status === 401) {
     if (recoverFromAccessSession()) return new Promise<Response>(() => {});
     markSessionExpired();
