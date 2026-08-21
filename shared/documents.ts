@@ -14,6 +14,7 @@
 // así que para esos la firma produce una "Constancia de firma electrónica"
 // aparte que referencia el hash del archivo original.
 import type { Role } from './types';
+import { nombreDescarga } from './nombreArchivo';
 
 export type DocTemplateId = 'solicitud-costeo' | 'cotizacion' | 'validacion-costeo' | 'remision-inventario' | 'constancia-firma';
 
@@ -188,11 +189,15 @@ export interface SignDocumentResponse { ok: boolean; document?: DocumentDTO; err
 
 export interface DocumentsResponse { documents: DocumentDTO[] }
 
-/** Nombre del archivo que descarga el usuario. */
-export function documentFilename(doc: { templateId: DocTemplateId; folio: string | null; id: string }, signed: boolean): string {
-  const base = DOC_TEMPLATES[doc.templateId]?.label.replace(/\s+/g, '-') ?? 'Documento';
-  const ref = doc.folio || doc.id.slice(0, 8);
-  return `${base}-${ref}${signed ? '-firmado' : ''}.pdf`;
+/** Nombre del archivo que descarga el usuario. `itemName` es el `name` del item
+ * fuente en Monday ("OPP-0947 - CONOS TORREON"), que ya trae el folio adelante;
+ * sin él (remisiones de inventario) se cae al folio propio del documento. */
+export function documentFilename(
+  doc: { templateId: DocTemplateId; folio: string | null; id: string }, signed: boolean, itemName?: string | null,
+): string {
+  const etiqueta = `${DOC_TEMPLATES[doc.templateId]?.label ?? 'Documento'}${signed ? ' (firmado)' : ''}`;
+  if (itemName) return nombreDescarga({ item: itemName, etiqueta });
+  return nombreDescarga({ etiqueta: `${etiqueta} ${doc.folio || doc.id.slice(0, 8)}` });
 }
 
 /** Huella corta para mostrar en la UI sin abrumar (los 16 primeros hex). */

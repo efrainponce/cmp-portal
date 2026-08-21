@@ -43,9 +43,9 @@ import { listZoneImages, uploadZoneImage, EmbellImageError } from '../lib/embell
 import { listProposedProducts, addProposedProduct, ProposedProductError } from '../lib/productosPropuestos';
 import { resolveMondayAsset, PROYECTO_DOCUMENTO_COL } from '../lib/portalFiles';
 import { putFile, oportunidadFileKey } from '../lib/r2';
-import { resolveCotizacionPdfUrl, nativeCotizacionPdf, CotizacionPdfError, type PdfKind } from '../lib/cotizacionPdfs';
+import { resolveCotizacionPdfUrl, nativeCotizacionPdf, CotizacionPdfError, ETIQUETA_BY_KIND, type PdfKind } from '../lib/cotizacionPdfs';
 import { refetchItem, refetchItemTree, upsertItem } from '../sync';
-import { jsonStatus } from '../lib/http';
+import { jsonStatus, contentDisposition } from '../lib/http';
 import { contentTypeFor, isGenericType } from '../lib/mime';
 import { canWrite } from '../../shared/visibility';
 import { reserveNativeId } from '../lib/nativeSeq';
@@ -55,6 +55,7 @@ import { createDocument, documentPdf } from '../lib/documents';
 import { generarOcProveedorPdf, OcProveedorPdfError } from '../lib/ocProveedorPdf';
 import { generarCotizacionPreviewPdf, CotizacionPreviewPdfError } from '../lib/cotizacionPreviewPdf';
 import { md5 } from '../lib/canon';
+import { nombreDescarga, extensionDe } from '../../shared/nombreArchivo';
 
 // Comentarios de la OC en el Proyecto (text_mm4c74f8) — es de donde cmp-tallas
 // saca el bloque de comentarios del PDF; el portal lo usa solo como puente para
@@ -91,8 +92,10 @@ const PROYECTO_ACTIONS: Record<string, {
  * /api/oportunidades/:id/cotizacion-pdf/:kind: streamear sin Content-Length
  * cuelga el proxy de Vite en dev). `name` (el key pedido) solo se usa para
  * deducir el Content-Type: Monday manda todo como octet-stream y así el
- * navegador descargaba las imágenes en vez de mostrarlas. */
-async function proxyMondayAsset(env: Env, assetId: number, name: string): Promise<Response> {
+ * navegador descargaba las imágenes en vez de mostrarlas. `disposition` es el
+ * nombre con el que se GUARDA al descargar (shared/nombreArchivo.ts) — el
+ * archivo en Monday no se renombra. */
+async function proxyMondayAsset(env: Env, assetId: number, name: string, disposition?: string): Promise<Response> {
   const urls = await fetchAssetPublicUrls(env, [String(assetId)]);
   const url = urls.get(String(assetId));
   if (!url) return jsonStatus({ error: 'not found' }, 404);
@@ -105,6 +108,7 @@ async function proxyMondayAsset(env: Env, assetId: number, name: string): Promis
     headers: {
       'Content-Type': isGenericType(upstreamType) ? contentTypeFor(name) : upstreamType!,
       'Content-Length': String(bytes.byteLength),
+      ...(disposition ? { 'Content-Disposition': disposition } : {}),
       'Cache-Control': 'private, max-age=60',
     },
   });
@@ -734,14 +738,17 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
           headers: {
             'Content-Type': 'application/pdf',
             'Content-Length': String(nativo.bytes.byteLength),
+            'Content-Disposition': contentDisposition(
+              nombreDescarga({ item: nativo.itemName, etiqueta: ETIQUETA_BY_KIND[kind] }),
+            ),
             'Cache-Control': 'private, max-age=60',
           },
         });
       }
 
-      const url = await resolveCotizacionPdfUrl(c.env, itemId, viewer, kind);
-      if (!url) return c.json({ error: 'not found' }, 404);
-      const upstream = await fetch(url);
+      const pdf = await resolveCotizacionPdfUrl(c.env, itemId, viewer, kind);
+      if (!pdf) return c.json({ error: 'not found' }, 404);
+      const upstream = await fetch(pdf.url);
       if (!upstream.ok) return jsonStatus({ error: 'no se pudo obtener el PDF' }, 502);
       // Buffer en vez de pasar upstream.body como stream — el proxy de Vite en dev
       // se cuelga con una Response de Workers streameada sin Content-Length
@@ -753,6 +760,11 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
         headers: {
           'Content-Type': 'application/pdf',
           'Content-Length': String(bytes.byteLength),
+          // El nombre que ve el usuario al guardarlo; el archivo en Monday
+          // conserva `pdf.filename` intacto (DocuSeal liga por ese nombre).
+          'Content-Disposition': contentDisposition(
+            nombreDescarga({ item: pdf.itemName, etiqueta: ETIQUETA_BY_KIND[kind] }),
+          ),
           'Cache-Control': 'private, max-age=60',
         },
       });
@@ -780,6 +792,18 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     // propia ruta con scoping por fuente (worker/routes/documents.ts).
     if (!key.startsWith('oportunidades/')) return c.json({ error: 'not found' }, 404);
 
+    // Nombre de DESCARGA: el key es `oportunidades/<oppId>/<categoría>/<nombre
+    // original>`, así que el último segmento ya es el nombre real del archivo y
+    // solo le falta el folio adelante. El key en R2 y el nombre en Monday no se
+    // tocan — el tab de OC busca su miniatura por ese nombre (findLatestOcFile)
+    // y DocuSeal liga la firma por el de la cotización.
+    const nombreOriginal = decodeURIComponent(key.split('/').pop() ?? '');
+    const oppId = Number(key.split('/')[1]);
+    const oppRow = Number.isFinite(oppId) ? await getItem(c.env, 'oportunidades', oppId, viewer) : null;
+    const disposition = contentDisposition(nombreDescarga({
+      item: oppRow?.name, etiqueta: nombreOriginal, ext: extensionDe(nombreOriginal),
+    }));
+
     const object = await c.env.FILES.get(key);
     if (object) {
       // El tipo guardado gana, pero si el upload no traía uno (o llegó como
@@ -791,6 +815,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
         headers: {
           'Content-Type': isGenericType(stored) ? contentTypeFor(key) : stored!,
           'Content-Length': String(object.size),
+          'Content-Disposition': disposition,
           'Cache-Control': 'private, max-age=3600',
         },
       });
@@ -801,7 +826,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     try {
       const assetId = await resolveMondayAsset(c.env, key, viewer);
       if (assetId == null) return c.json({ error: 'not found' }, 404);
-      return await proxyMondayAsset(c.env, assetId, key);
+      return await proxyMondayAsset(c.env, assetId, key, disposition);
     } catch {
       return c.json({ error: 'internal error' }, 500);
     }
@@ -926,12 +951,19 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
 
     try {
       const bytes = await generarOcProveedorPdf(c.env, itemId, proveedorId, viewer);
+      // El `name` del Proyecto también empieza con el folio de la Oportunidad
+      // ("OPP-0906 - …"), así que la descarga queda identificada igual que las
+      // de la Oportunidad. Las OC OFICIALES no pasan por aquí: viven en Monday
+      // como `OC_<folio>_<razón social>.pdf` y se bajan por /api/files.
+      const proyecto = await getItem(c.env, 'proyectos', itemId, viewer);
       return new Response(bytes, {
         status: 200,
         headers: {
           'Content-Type': 'application/pdf',
           'Content-Length': String(bytes.length),
-          'Content-Disposition': 'inline; filename="orden-de-compra.pdf"',
+          'Content-Disposition': contentDisposition(
+            nombreDescarga({ item: proyecto?.name, etiqueta: 'Orden de compra (vista previa)' }),
+          ),
           'Cache-Control': 'private, no-store',
         },
       });
@@ -985,12 +1017,15 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
 
     try {
       const bytes = await generarCotizacionPreviewPdf(c.env, itemId, viewer);
+      const opp = await getItem(c.env, 'oportunidades', itemId, viewer);
       return new Response(bytes, {
         status: 200,
         headers: {
           'Content-Type': 'application/pdf',
           'Content-Length': String(bytes.length),
-          'Content-Disposition': 'inline; filename="cotizacion-vista-previa.pdf"',
+          'Content-Disposition': contentDisposition(
+            nombreDescarga({ item: opp?.name, etiqueta: 'Cotización (vista previa)' }),
+          ),
           'Cache-Control': 'private, no-store',
         },
       });

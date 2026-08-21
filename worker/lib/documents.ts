@@ -574,6 +574,17 @@ async function assertSourceVisible(env: Env, row: DocRow, viewer: Identity): Pro
   if (!opp) throw new DocumentError(404, 'not found');
 }
 
+/** `name` de la oportunidad fuente ("OPP-0947 - CONOS TORREON"), para nombrar la
+ * descarga. null para las remisiones de inventario (su fuente es un movimiento,
+ * no una oportunidad) — ahí documentFilename cae a su propio folio. El viewer ya
+ * pasó por assertSourceVisible, así que este getItem no decide permisos. */
+async function nombreDeLaFuente(env: Env, row: DocRow, viewer: Identity): Promise<string | null> {
+  if (row.source_kind === 'movimiento') return null;
+  const oppId = row.source_kind === 'oportunidad' ? Number(row.source_id) : Number(row.source_id.split('/')[1]);
+  if (!Number.isFinite(oppId)) return null;
+  return (await getItem(env, 'oportunidades', oppId, viewer))?.name ?? null;
+}
+
 /** Gate de `DocTemplate.view` (shared/documents.ts): algunas plantillas
  * (validacion-costeo) solo las ve un subconjunto de roles aunque el viewer sí
  * pueda ver la oportunidad fuente — 404, nunca 403, mismo criterio que
@@ -678,7 +689,12 @@ export async function documentPdf(
 ): Promise<{ bytes: Uint8Array; filename: string }> {
   const row = await rowOf(env, docId, viewer);
   const templateId = row.template_id as DocTemplateId;
-  const filename = documentFilename({ templateId, folio: row.folio, id: row.id }, signed);
+  // El nombre de la DESCARGA lleva adelante el de la oportunidad fuente (que ya
+  // trae el folio). Solo afecta cómo se guarda el archivo en la compu de quien
+  // lo baja: el PDF sellado en R2 y su hash no cambian.
+  const filename = documentFilename(
+    { templateId, folio: row.folio, id: row.id }, signed, await nombreDeLaFuente(env, row, viewer),
+  );
 
   if (!signed) {
     const object = await env.FILES.get(baseKey(docId));

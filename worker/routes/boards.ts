@@ -33,7 +33,8 @@ import { cachedFetchUsers } from '../lib/rosterCache';
 import { getBoardAccess } from '../lib/boardAccess';
 import { isZonaPrivadaAdminPermitido } from '../lib/zonas';
 import { refetchItem, refetchItemTree } from '../sync';
-import { jsonStatus, rejectUnknownQuery } from '../lib/http';
+import { jsonStatus, rejectUnknownQuery, contentDisposition } from '../lib/http';
+import { nombreDescarga, extensionDe } from '../../shared/nombreArchivo';
 import { totalesPorOportunidad, totalesVersion } from '../lib/totales';
 import { contentTypeFor } from '../lib/mime';
 import { notifyItemComment } from '../lib/updateNotify';
@@ -688,13 +689,15 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
       // Vite en dev se cuelga con una Response streameada sin Content-Length.
       bytes = await upstream.arrayBuffer();
     }
-    const safeName = name.replace(/["\r\n]/g, '');
+    // Se guarda con el folio del item adelante (shared/nombreArchivo.ts); el
+    // adjunto en Monday conserva su nombre original.
+    const nombre = nombreDescarga({ item: row.name, etiqueta: name, ext: extensionDe(name) });
     return new Response(bytes, {
       status: 200,
       headers: {
         'Content-Type': contentType,
         'Content-Length': String(bytes.byteLength),
-        'Content-Disposition': `${download ? 'attachment' : 'inline'}; filename="${safeName}"`,
+        'Content-Disposition': contentDisposition(nombre, download ? 'attachment' : 'inline'),
         'Cache-Control': 'private, max-age=60',
       },
     });

@@ -30,6 +30,13 @@ const COL_BY_KIND: Record<PdfKind, string> = {
   solicitud_costeo: SOLICITUD_COSTEO_COL, sin_firmar: NO_FIRMADAS_COL, firmada: FIRMADAS_COL,
 };
 
+/** Cómo se llama el archivo que BAJA el usuario (shared/nombreArchivo.ts). No
+ * tiene nada que ver con el nombre con el que el PDF se subió a Monday — ese lo
+ * arma cotizacion.ts y DocuSeal lo usa para ligar la firma a la oportunidad. */
+export const ETIQUETA_BY_KIND: Record<PdfKind, string> = {
+  solicitud_costeo: 'Solicitud de costeo', sin_firmar: 'Cotización sin firmar', firmada: 'Cotización firmada',
+};
+
 /** Carpeta en R2 por tipo de PDF, para una oportunidad NATIVA: ahí no hay
  * assets de Monday que resolver (el item no existe en Monday), los bytes los
  * escribe worker/lib/cotizacion.ts y el nombre queda en el marcador de la
@@ -50,7 +57,7 @@ export function cotizacionR2Key(oppId: number, kind: PdfKind, filename: string):
  * tiene archivo; lanza 404 si el marcador existe pero el objeto no está. */
 export async function nativeCotizacionPdf(
   env: Env, itemId: number, viewer: Identity, kind: PdfKind,
-): Promise<{ bytes: ArrayBuffer; filename: string } | undefined> {
+): Promise<{ bytes: ArrayBuffer; filename: string; itemName: string } | undefined> {
   const row = await getItem(env, 'oportunidades', itemId, viewer);
   if (!row) throw new CotizacionPdfError(404, 'not found');
 
@@ -59,7 +66,7 @@ export async function nativeCotizacionPdf(
   const filename = files[files.length - 1].name;
   const object = await env.FILES.get(cotizacionR2Key(itemId, kind, filename));
   if (!object) throw new CotizacionPdfError(404, 'el PDF no está en R2');
-  return { bytes: await object.arrayBuffer(), filename };
+  return { bytes: await object.arrayBuffer(), filename, itemName: row.name };
 }
 
 // `assetId` solo existe cuando el archivo vive en Monday; en una oportunidad
@@ -78,10 +85,12 @@ function parseFiles(columnsJson: string, colId: string): FileEntry[] {
 }
 
 /** URL firmada (embebible) del último PDF subido a la columna pedida, o undefined
- * si la Oportunidad no tiene ese archivo todavía. */
+ * si la Oportunidad no tiene ese archivo todavía. Devuelve también el `name` de
+ * la oportunidad y el nombre del archivo en Monday: los dos alimentan el nombre
+ * de la DESCARGA (shared/nombreArchivo.ts), ninguno se re-escribe en Monday. */
 export async function resolveCotizacionPdfUrl(
   env: Env, itemId: number, viewer: Identity, kind: PdfKind,
-): Promise<string | undefined> {
+): Promise<{ url: string; filename: string; itemName: string } | undefined> {
   const row = await getItem(env, 'oportunidades', itemId, viewer);
   if (!row) throw new CotizacionPdfError(404, 'not found');
 
@@ -90,6 +99,6 @@ export async function resolveCotizacionPdfUrl(
   // Monday agrega los archivos en orden de subida — el último es el vigente.
   const last = files[files.length - 1];
   if (last.assetId == null) return undefined;   // nativo: ver nativeCotizacionPdf
-  const urls = await fetchAssetPublicUrls(env, [String(last.assetId)]);
-  return urls.get(String(last.assetId));
+  const url = (await fetchAssetPublicUrls(env, [String(last.assetId)])).get(String(last.assetId));
+  return url ? { url, filename: last.name, itemName: row.name } : undefined;
 }

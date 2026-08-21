@@ -1,5 +1,38 @@
 # Log de commits
 
+## 2026-08-21
+
+- **Los archivos se descargan con el número de la oportunidad.** Elizabeth, con
+  el "Guardar como" de Windows abierto: "cuando le demos descargar al documento
+  será que se pueda guardar con el número de la oportunidad". Salía
+  `sin_firmar.pdf` — el navegador estaba usando el último segmento de la URL
+  (`/cotizacion-pdf/sin_firmar`), porque el Worker no mandaba nombre. Ahora sale
+  `OPP-0934 - UNIFORME KEVIN VERGAS - Cotización sin firmar.pdf`.
+- El folio no se busca aparte: el `name` del item de Monday YA lo trae adelante
+  ("OPP-0947 - CONOS-TRAFITAMBOS TORREON"), y el del **Proyecto** también, así
+  que tallas y OC quedan igual de identificadas ("y si está el proyecto igual").
+- **Nada de esto renombra archivos en Monday.** Efraín lo marcó en el momento:
+  "cuidado con las cotizaciones porque usamos el nombre del archivo en DocuSeal
+  para ligarlo a la opp — no vayas a romper eso; es solo al descargar del
+  portal". El nombre bonito vive SOLO en el encabezado `Content-Disposition` de
+  las rutas de LECTURA; los `filename` con los que se sube a Monday
+  (`cotizacion_0934_-_2.pdf` de `cotizacion.ts`, `OC_<folio>_<razón social>.pdf`
+  de `oc.ts`, el de `proyectoTallas.ts`) no se tocaron — igual que el key de R2
+  y el hash de los PDFs firmados. La miniatura "última OC de este proveedor"
+  también sigue encontrando su archivo por el nombre de Monday.
+- Cubre todo lo que se baja del portal: los 3 PDFs de cotización, la vista
+  previa, la hoja de Validación de costeo, los documentos con firma, los
+  adjuntos de comentarios, e `/api/files` (documentación, inventario, tallas,
+  OC oficiales).
+- El nombre lo decide el **server** a propósito: el `filename` del encabezado le
+  gana al atributo `download` del HTML, así que ponerlo en la UI no habría
+  servido. `shared/nombreArchivo.ts` (+ test) quita lo que Windows no acepta,
+  conserva acentos vía `filename*=UTF-8''…`, acota el largo sin comerse la
+  extensión, no le inventa extensión "11" a "INVENTARIO 5.11" y no duplica el
+  folio si el archivo ya venía identificado por cmp-tallas.
+- Verificado contra el Worker local con oportunidades reales: los 6 endpoints
+  devuelven el `Content-Disposition` esperado.
+
 ## 2026-08-20 (3)
 
 - **Las métricas de la cotización, en la lista.** Efraín, con el tablero de

@@ -27,3 +27,19 @@ export function rejectUnknownQuery(url: string, allowed: readonly string[]): Res
     error: `query param no soportado: ${desconocidos.join(', ')}. Esta ruta acepta: ${allowed.join(', ') || '(ninguno)'}`,
   }, 400);
 }
+
+/** Encabezado `Content-Disposition` con nombre de descarga.
+ *
+ * Se queda en `inline` a propósito: la misma URL sirve para la vista previa
+ * embebida (pdf.js) y para el link "Descargar", y `attachment` forzaría bajar
+ * el archivo también al abrirlo. Con `download` en el <a>, el navegador usa el
+ * `filename` de este encabezado — que le gana al atributo `download` del HTML,
+ * por eso el nombre bonito se decide aquí en el server y no en la UI.
+ *
+ * Doble forma por RFC 6266: `filename=` en ASCII para navegadores viejos y
+ * `filename*=UTF-8''…` para que acentos y ñ lleguen enteros.
+ */
+export function contentDisposition(filename: string, tipo: 'inline' | 'attachment' = 'inline'): string {
+  const ascii = filename.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '');
+  return `${tipo}; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
+}

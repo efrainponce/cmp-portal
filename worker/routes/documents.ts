@@ -14,7 +14,7 @@ import {
   createDocument, listDocuments, loadDocument, documentPdf, signDocument,
   signatureImage, DocumentError,
 } from '../lib/documents';
-import { jsonStatus } from '../lib/http';
+import { jsonStatus, contentDisposition } from '../lib/http';
 
 function fail(err: unknown): Response {
   if (err instanceof DocumentError) return jsonStatus({ ok: false, error: err.message }, err.status);
@@ -28,8 +28,9 @@ function pdfResponse(bytes: Uint8Array, filename: string): Response {
     headers: {
       'Content-Type': 'application/pdf',
       'Content-Length': String(bytes.length),
-      // inline: el drawer lo previsualiza con pdfjs sin forzar descarga.
-      'Content-Disposition': `inline; filename="${filename.replace(/[^\w.-]/g, '_')}"`,
+      // inline: el drawer lo previsualiza con pdfjs sin forzar descarga. El
+      // nombre ya viene armado con el de la oportunidad (worker/lib/documents.ts).
+      'Content-Disposition': contentDisposition(filename),
       'Cache-Control': 'private, no-store',
     },
   });
