@@ -46,6 +46,12 @@
 - `POST /api/admin/totales/recalcular` recorre las líneas con la matemática de
   verdad: es el backfill de las líneas NATIVAS de Zona Efrain, que no pasan por
   Monday y por tanto no tienen fórmulas que copiar.
+- **Arreglado el encabezado de columnas** (Efraín, con captura, minutos después
+  de salir): el contenedor de la lista llevaba 16 px de padding arriba y un
+  `sticky` se pega al borde del *padding box*, así que esa franja quedaba POR
+  ENCIMA del encabezado y al hacer scroll se veía media fila deslizándose sobre
+  los títulos. Ahora el padding se lo lleva el encabezado y su fondo es el del
+  lienzo (`--bg`), no un gris propio. Reproducido en local antes de tocarlo.
 
 ## 2026-08-20 (2)
 

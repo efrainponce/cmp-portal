@@ -71,9 +71,15 @@ export function TotalesHeader({ metricas, isMobile }: { metricas: Metrica[]; isM
   return (
     <div
       style={{
-        position: 'sticky', top: 0, zIndex: 2,
+        // El contenedor de la lista NO lleva padding arriba cuando este
+        // encabezado existe: se lo come él (16px), porque un sticky se pega al
+        // borde del padding box y esos 16 px quedaban por ENCIMA del
+        // encabezado — por ahí se asomaba media fila deslizándose, que es el
+        // bug visual que reportó Efraín el 2026-08-20. El fondo es el del
+        // lienzo (--bg), no un gris propio, para que la franja no se note.
+        position: 'sticky', top: 0, zIndex: 3,
         display: 'flex', justifyContent: 'flex-end', gap: 10,
-        padding: '4px 18px 5px', background: 'var(--surface-quiet, #fafafa)',
+        padding: '16px 18px 5px', background: 'var(--bg)',
         borderBottom: '1px solid var(--border-subtle)',
       }}
     >

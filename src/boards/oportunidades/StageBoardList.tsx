@@ -214,6 +214,8 @@ export function StageBoardList({ config, groupColId = 'deal_stage', q, onSearch,
   const totales = data?.totales;
   const metricas = useMemo(() => metricasVisibles(totales, isMobile), [totales, isMobile]);
 
+  const hayHeader = !isMobile && metricas.length > 0;
+
   const groups = useMemo(() => {
     const order = groupColId === 'deal_stage' ? DEAL_STAGE_ORDER : undefined;
     return groupByColumn(items, groupCol, undefined, undefined, order);
@@ -251,7 +253,14 @@ export function StageBoardList({ config, groupColId = 'deal_stage', q, onSearch,
         </div>
       </div>
 
-      <div style={{ overflowY: 'auto', padding: isMobile ? '12px 0 16px' : '16px 0 24px', flex: 1 }}>
+      {/* El padding de arriba se lo lleva TotalesHeader cuando está (es sticky y
+          tiene que llegar hasta el borde, o el contenido se le asoma encima). */}
+      <div
+        style={{
+          overflowY: 'auto', flex: 1,
+          padding: isMobile ? '12px 0 16px' : `${hayHeader ? 0 : 16}px 0 24px`,
+        }}
+      >
         <BoardStatus status={status}>
           <TotalesHeader metricas={metricas} isMobile={isMobile} />
           {groups.length === 0 && (
