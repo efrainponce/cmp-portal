@@ -38,7 +38,19 @@ export const STAGE_BOARDS: Record<StageBoardKey, StageBoardConfig> = {
   // incl. Ganada (Efraín, 2026-08-12 — revierte el excludeStages de
   // 2026-07-20, que ocultaba Seguimiento/Negociación/Ganada/Perdida).
   costeo: { key: 'costeo', title: 'Costeo', subtitleSuffix: '', defaultTab: 'cotizacion' },
-  validacion: { key: 'validacion', title: 'Validación Costeo', subtitleSuffix: ' · validación de precio de venta', stages: ['7', '9'], defaultTab: 'cotizacion' },
+  // De validación EN ADELANTE, no solo ['7','9'] (Efraín, 2026-08-20:
+  // "necesitamos poder ver TODAS las oportunidades después de validación para
+  // que se vea esta info"). El caso que lo destapó: en cuanto una oportunidad
+  // pasaba a Cotización ('6', que en el orden real va justo después de Costeo
+  // Confirmado) desaparecía del board y sus métricas con ella. Quedan fuera
+  // solo las que aún no llegan a validación (Nueva oportunidad, En costeo) y
+  // las cerradas sin venta (Perdida, Cancelada) — Ganada sí entra, es el
+  // desenlace que interesa comparar contra lo costeado.
+  validacion: {
+    key: 'validacion', title: 'Validación Costeo',
+    subtitleSuffix: ' · de validación en adelante',
+    stages: ['7', '9', '6', '0', '3', '8', '1'], defaultTab: 'cotizacion',
+  },
   // El Proyecto (docs/tallas) solo existe una vez GANADA la oportunidad
   // (ProyectoSection.tsx) — filtrar aquí a Ganada en vez de Costeo Confirmado
   // (Efraín, 2026-07-17).

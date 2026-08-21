@@ -1,5 +1,52 @@
 # Log de commits
 
+## 2026-08-20 (3)
+
+- **Las métricas de la cotización, en la lista.** Efraín, con el tablero de
+  Monday a la vista: "en validación de costeo pueden VER las métricas de las
+  cotizaciones súper fácil… por lo pronto solo verlas estaría genial". En Monday
+  esas seis cifras (Costo Total, Subtotal, Total, Utilidad %, Margen Gob,
+  Utilidad Total) son columnas ESPEJO del item padre y **los espejos de dinero
+  llegan vacíos por la API** — por eso el portal nunca las pintó. No se traen:
+  se **calculan**, que fue justo lo que él propuso ("eso lo podemos CALCULAR, de
+  hecho dentro de la cotización ya se calcula").
+- Cada línea guarda sus cinco totales al sincronizarse (columnas `t_*` nuevas en
+  `items`, `worker/lib/lineaTotales.ts`) y la lista los suma por oportunidad.
+  Materializar no fue estética: sumar al vuelo obligaba a un `json_each` sobre
+  el board de líneas completo — **medido contra producción: 803 ms y 441,663
+  filas leídas por consulta**, y la lista la pediría en cada invalidación de
+  ETag. Con las columnas `t_*`: **44 ms y 7,304 filas**. Migración en
+  `worker/migrations/2026-08-20-linea-totales.sql` (aplicada en remoto y local).
+- **Cuadran con Monday**: los cinco montos de OPP-0344, OPP-0857, OPP-0865 y
+  OPP-0909 salen idénticos al tablero. El **porcentaje no**, y es a propósito:
+  la columna de Monday se llama "Utilidad **promedio** (%)" y promedia los
+  renglones (25.101 % en TIZIMIN 2); el portal usa el **ponderado**
+  (utilidad ÷ subtotal = 22.582 %), que es el que ya muestra la fila de totales
+  del tab Cotización y el que no se deja engañar por una línea chiquita con
+  200 % de margen. Verificado renglón por renglón antes de darlo por bueno.
+- **Fuga cerrada antes de salir**: el agregado devolvía los totales de las 608
+  oportunidades del board a un vendedor que solo ve 71 — indexados por id, o
+  sea el subtotal de cotizaciones ajenas por la puerta de atrás. Ahora se filtra
+  por los renglones que el viewer YA recibió (los que scopea `dal.ts`), además
+  del filtro por columna que ya heredaba de `shared/visibility.ts`: un vendedor
+  recibe Subtotal y Total, nunca costo/utilidad/margen.
+- El ETag de la lista incorpora la versión del board de LÍNEAS: sin eso, editar
+  una línea no mueve el board de Oportunidades y los números se quedaban
+  congelados detrás de un 304.
+- **Validación Costeo ahora muestra de validación en adelante**, no solo
+  `['7','9']` (Efraín: "necesitamos poder ver TODAS las oportunidades después de
+  validación para que se vea esta info"). El culpable era la etapa **Cotización
+  ('6')**, que en el orden real de Monday va justo después de Costeo Confirmado:
+  la oportunidad pasaba a cotización y desaparecía del board. Quedan fuera solo
+  Nueva oportunidad / En costeo (aún no llegan) y Perdida / Cancelada.
+- Dinero abreviado ($500K, $1.3M) "para facilitar la lectura" y el semáforo de
+  siempre en Utilidad % y Utilidad Total. En celular caben cuatro —Subtotal,
+  Utilidad %, Utilidad Total, Margen Gob—, en el orden que pidió. `fmtMoney` no
+  cambia: la cotización y los PDFs siguen sin redondear nada.
+- `POST /api/admin/totales/recalcular` recorre las líneas con la matemática de
+  verdad: es el backfill de las líneas NATIVAS de Zona Efrain, que no pasan por
+  Monday y por tanto no tienen fórmulas que copiar.
+
 ## 2026-08-20 (2)
 
 - **Bitácora de intentos de escritura (`accion_log`).** Efraín, sobre OPP-0933:

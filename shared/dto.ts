@@ -28,11 +28,30 @@ export interface ItemDetailDTO extends ItemDTO {
   ownedByViewer?: boolean;
 }
 
+/** Totales de la cotización de UNA oportunidad, sumados de sus líneas vigentes
+ * (worker/lib/totales.ts). Cada cifra viaja solo si el rol puede leer esa
+ * columna en las líneas (shared/visibility.ts): un vendedor recibe Subtotal y
+ * Total, nunca costo/utilidad/margen. `lineas` siempre va — es un conteo, no
+ * dinero. */
+export interface TotalesDTO {
+  lineas: number;
+  costo?: number;
+  subtotal?: number;
+  total?: number;
+  utilidad?: number;
+  /** Ponderada: utilidad / subtotal. Ausente si no hay subtotal capturado. */
+  utilidadPct?: number;
+  margenGob?: number;
+}
+
 export interface ListResponse {
   board: BoardSlug;
   items: ItemDTO[];
   total: number;
   etag: string;                 // aggregate hash — If-None-Match => 304
+  /** itemId -> totales de su cotización. Solo cuando se pide `?totales=1`
+   * (la lista de Oportunidades); ausente en el resto de los boards. */
+  totales?: Record<string, TotalesDTO>;
 }
 
 export interface MeDTO {

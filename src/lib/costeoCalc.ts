@@ -13,6 +13,7 @@
 // instantly, using the exact same math Monday uses.
 import type { ColVal, ItemDTO } from './api';
 import { fmtMoney } from './format';
+import { computeCostChain, computePriceChain } from '../../shared/costeoFormulas';
 
 export const COL = {
   cantidad: 'numeric_mkzm6399',
@@ -41,8 +42,6 @@ export const COL = {
   utilidadPct: 'formula_mkznpw5p',
 } as const;
 
-const pct = (n: number) => n / 100;
-
 export function cellNumber(product: ItemDTO, colId: string): number {
   const v = product.cols[colId]?.value;
   if (typeof v === 'number') return v;
@@ -50,53 +49,11 @@ export function cellNumber(product: ItemDTO, colId: string): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-export interface CostChain {
-  descuento: number;
-  costoReal: number;
-  costoConvertido: number;
-  costoTotalUnit: number;
-  costoTotal: number;
-}
-
-export function computeCostChain(input: {
-  cantidad: number; costoDistr: number; descuentoPct: number;
-  conversion: number; gastosPct: number; embellecimiento: number;
-}): CostChain {
-  const descuento = pct(input.descuentoPct) * input.costoDistr;
-  const costoReal = input.costoDistr - descuento;
-  const costoConvertido = costoReal * input.conversion;
-  const costoTotalUnit = (1 + pct(input.gastosPct)) * costoReal * input.conversion + input.embellecimiento;
-  const costoTotal = input.cantidad * costoTotalUnit;
-  return { descuento, costoReal, costoConvertido, costoTotalUnit, costoTotal };
-}
-
-export interface PriceChain {
-  subtotal: number;
-  iva: number;
-  totalConIva: number;
-  margenGobUnit: number;
-  margenGobTotal: number;
-  diferencia: number;
-  utilidad: number;
-  utilidadTotal: number;
-  utilidadPct: number;
-}
-
-export function computePriceChain(input: {
-  cantidad: number; precio: number; margenGobPct: number;
-  costoTotalUnit: number; ivaPct: number;
-}): PriceChain {
-  const subtotal = input.precio * input.cantidad;
-  const iva = subtotal * pct(input.ivaPct);
-  const totalConIva = subtotal * (1 + pct(input.ivaPct));
-  const margenGobUnit = pct(input.margenGobPct) * input.precio;
-  const margenGobTotal = input.cantidad * margenGobUnit;
-  const diferencia = input.precio - margenGobUnit;
-  const utilidad = diferencia - input.costoTotalUnit;
-  const utilidadTotal = utilidad * input.cantidad;
-  const utilidadPct = subtotal > 0 ? Math.round((utilidadTotal / subtotal) * 10000) / 100 : 0;
-  return { subtotal, iva, totalConIva, margenGobUnit, margenGobTotal, diferencia, utilidad, utilidadTotal, utilidadPct };
-}
+// La matemática vive en shared/costeoFormulas.ts desde 2026-08-20 (el worker
+// la necesita para materializar los totales de cada línea); aquí se re-exporta
+// para no cambiarle el import a media UI.
+export { computeCostChain, computePriceChain } from '../../shared/costeoFormulas';
+export type { CostChain, PriceChain } from '../../shared/costeoFormulas';
 
 const moneyCol = (n: number): ColVal => ({ text: fmtMoney(n), value: n, type: 'formula' });
 const pctCol = (n: number): ColVal => ({ text: `${n}%`, value: n, type: 'formula' });

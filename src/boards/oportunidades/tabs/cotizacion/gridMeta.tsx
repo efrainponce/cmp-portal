@@ -74,11 +74,10 @@ export const PRODUCTO_COLOR_DROPDOWN_COL = 'dropdown_mkztty4b'; // Color del pro
 
 // Rojo <0%, amarillo <20%, verde ≥20% — mismo criterio para una línea o para
 // el total agregado (Efraín, 2026-07-16).
-export function marginColor(pct: number): string {
-  if (pct < 0) return '#ce3048';
-  if (pct < 20) return '#e99729';
-  return '#00b461';
-}
+// Vive en src/lib/format.ts desde 2026-08-20: la lista de oportunidades pinta
+// la Utilidad % con la MISMA escala de color que la grid, y no tiene por qué
+// importar media pestaña de Cotización para lograrlo.
+export { marginColor } from '../../../../lib/format';
 
 // La columna de Monday (SUGERIDO_COL) es un número interno de cmp-tallas que
 // en la práctica se queda en 0 — el portal calcula el sugerido siempre por su

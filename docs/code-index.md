@@ -21,6 +21,7 @@ y `src/lib/estadoProductoBuckets.ts`.
 - [shared/boards.ts](shared/boards.ts) — Registro de boards con IDs introspectionados (API 2024-10). Never fabricate. Exports: BoardSlug, BoardDef, BOARDS, boardById.
 - [shared/column-meta.gen.ts](shared/column-meta.gen.ts) — GENERADO por scripts/introspect-boards.mjs; no leer completo, grepear el id. Exports: COLUMN_META.
 - [shared/createFields.ts](shared/createFields.ts) — Whitelist para CREACIÓN de items (por board, campos obligatorios). Exports: CreateField, CREATE_FIELDS, CREATE_DEFAULTS, isCreatable.
+- [shared/costeoFormulas.ts](shared/costeoFormulas.ts) — La matemática del costeo, pura (1:1 con las fórmulas de Monday); la usan la UI y el worker. Exports: CostChain, computeCostChain, PriceChain, computePriceChain.
 - [shared/dealStages.ts](shared/dealStages.ts) — Etapas canon (labels/order) compartidas por frontend y worker (herramientas agente). Exports: DEAL_STAGE_LABELS, DEAL_STAGE_ORDER, CLOSED_STAGES, stageAtOrAfter, stageKeyForLabel.
 - [shared/dto.ts](shared/dto.ts) — DTOs genéricos scoped por rol (único productor: serialize.ts). Exports: ColVal, ItemDTO, ItemDetailDTO, ListResponse, MeDTO.
 - [shared/embellecimiento.ts](shared/embellecimiento.ts) — Compartido con worker: parse/serialize embellecimiento por zona. Exports: EMBELL_TEMPLATE_KEYS, EmbellZoneKey, EMB_STATUS_COL, EMB_LABEL_CON, EMB_LABEL_SIN.
@@ -95,6 +96,8 @@ y `src/lib/estadoProductoBuckets.ts`.
 - [worker/lib/productosPropuestos.ts](worker/lib/productosPropuestos.ts) — "Proponer nuevo producto" del tab Nuevos productos, nativo en D1 sin board de Monday detrás. Exports: ProposedProductError, ensureProposedProductsTable, listProposedProducts, addProposedProduct.
 - [worker/lib/proyectoCotizacionVirtual.ts](worker/lib/proyectoCotizacionVirtual.ts) — Cotización del Proyecto 100% D1: toma las líneas vigentes de la Oportunidad ligada y aplica encima un log de ajustes propio sin tocar Monday. Exports: ProyectoCotizacionError, ensureProyectoCotizacionTable, applyAjustesVirtuales, getVirtualLines, listCotizacionVirtual, ajustarLineaVirtual.
 - [worker/lib/proyectoTallas.ts](worker/lib/proyectoTallas.ts) — Captura de tallas por boxes del Proyecto (alta rápida de subitems, alterna al flujo de Sheet/automations) y validaciones asociadas (todo cuadra, confirmar, reportar incorrectas). Exports: TallaBoxInput, checkOcCliente, resolveOportunidadId, CosteoEnrichment, pctTextToFraction, identityKey, filterWanted, buildTallaColumns, needsUpdate, capturarTallas, ReportarTallasResult, reportarTallasIncorrectas, TodoCuadraMismatch, TodoCuadraResult, checkTodoCuadra, ConfirmTallasResult, confirmTallasNative.
+- [worker/lib/lineaTotales.ts](worker/lib/lineaTotales.ts) — Totales de UNA línea de cotización, materializados en las columnas t_* al sincronizarla (respaldo local para líneas nativas). Exports: LineaTotales, totalesDeLinea.
+- [worker/lib/totales.ts](worker/lib/totales.ts) — Suma los totales por oportunidad para la lista, filtrando por rol y por lo que el viewer ve. Exports: totalesPorOportunidad, totalesVersion.
 - [worker/lib/quoteVersions.ts](worker/lib/quoteVersions.ts) — Versiones de cotización: vigente siempre es primera subitem, borradores/snapshots para histórico. Exports: QuoteVersionError, listVersions, recordFirstVersion, esDraftVigente.
 - [worker/lib/documents.ts](worker/lib/documents.ts) — Documentos del portal: crea/lista/firma sobre D1+R2, snapshot de datos y portón de integridad SHA-256. Exports: createDocument, listDocuments, documentPdf, signDocument, DocumentError.
 - [worker/lib/pdf/writer.ts](worker/lib/pdf/writer.ts) — Escritor de PDF sin dependencias (Helvetica, líneas, rects, JPEG; texto en WinAnsi octal). Exports: PdfWriter, widthOf, pdfString, jpegInfo, LETTER.
@@ -181,7 +184,7 @@ y `src/lib/estadoProductoBuckets.ts`.
 - [src/lib/costeoCalc.ts](src/lib/costeoCalc.ts) — Fórmulas de costeo para preview local (1:1 con Monday). Exports: COL, cellNumber, CostChain, computeCostChain.
 - [src/lib/dealStages.ts](src/lib/dealStages.ts) — Config de los 6 boards de etapa con nombres + colores. Exports: (re-exports), StageBoardKey, StageBoardConfig, STAGE_BOARDS.
 - [src/lib/embellecimiento.ts](src/lib/embellecimiento.ts) — Re-export de shared/embellecimiento (parse/serialize por zona). Exports: (re-exports).
-- [src/lib/format.ts](src/lib/format.ts) — Helpers de formato compartidos por renderers y indicators. Exports: isMoneyTitle, fmtMoney, fmtSyncAgo.
+- [src/lib/format.ts](src/lib/format.ts) — Helpers de formato compartidos por renderers y indicators. Exports: isMoneyTitle, fmtMoney, marginColor, fmtMoneyShort, fmtSyncAgo.
 - [src/lib/groupBy.ts](src/lib/groupBy.ts) — Agrupa items por valor de columna status/dropdown (con labels). Exports: ColumnGroup, groupByColumn.
 - [src/lib/analyticsApi.ts](src/lib/analyticsApi.ts) — Cliente + hook del tablero de Análisis. Sin polling a propósito (la consulta barre todo el mirror): refresco manual. Exports: PeriodoDias, PERIODOS, getAnalytics, UseAnalyticsResult, useAnalytics.
 - [src/lib/anunciosApi.ts](src/lib/anunciosApi.ts) — Cliente + hook de Anuncios: store a nivel módulo (un solo poll ETag de 60s para pantalla y badge del sidebar). Exports: crearAnuncio, editarAnuncio, archivarAnuncio, borrarAnuncio, marcarAnuncioVisto, UseAnunciosResult, useAnuncios.
@@ -272,6 +275,7 @@ y `src/lib/estadoProductoBuckets.ts`.
 - [src/boards/oportunidades/ProyectoSection.tsx](src/boards/oportunidades/ProyectoSection.tsx) — Barrel de la sección Proyecto (tabs Tallas, OC, Ejecución): re-exporta de `proyecto/` sin lógica propia. Exports: P_SHEET_LINK, P_OC_CLIENTE, ESTADO_PRODUCTO_COLORS, useProyecto, linkUrl, ProyectoState, ProyectoTallasSection, ProyectoOrdenesSection, EjecucionSection.
 - [src/boards/oportunidades/EtapaAdminSelect.tsx](src/boards/oportunidades/EtapaAdminSelect.tsx) — El chip de etapa como `<select>` para admin (cambio manual de deal_stage, sin disparar automatizaciones). Exports: EtapaAdminSelect.
 - [src/boards/oportunidades/StageBoard.tsx](src/boards/oportunidades/StageBoard.tsx) — Wrapper genérico para boards de etapa (Oportunidades, Costeo, Validación, etc.). Exports: StageBoard.
+- [src/boards/oportunidades/TotalesCells.tsx](src/boards/oportunidades/TotalesCells.tsx) — Métricas de la cotización en el renglón de la lista (dinero abreviado + semáforo de utilidad). Exports: METRICAS, metricasVisibles, TotalesHeader, TotalesCells, TotalesChips.
 - [src/boards/oportunidades/StageBoardList.tsx](src/boards/oportunidades/StageBoardList.tsx) — Lista compartida agrupada por etapa + búsqueda. Exports: StageBoardList.
 
 ### src/boards/oportunidades/proyecto/

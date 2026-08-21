@@ -21,6 +21,8 @@ import { PersonPair } from '../../components/core/PersonAvatar';
 import { DEAL_STAGE_LABELS, DEAL_STAGE_ORDER, type StageBoardConfig } from '../../lib/dealStages';
 import { useSavedView } from '../../lib/useSavedView';
 import { useIsMobile } from '../../lib/useIsMobile';
+import { TotalesCells, TotalesChips, TotalesHeader, metricasVisibles } from './TotalesCells';
+import type { TotalesDTO } from '../../../shared/dto';
 
 /** Mirror columns fan in one value per subitem, so `text` can be a long
  * comma-joined repeat (e.g. "Listo, Listo, Listo"). Collapse to the
@@ -140,7 +142,10 @@ export function StageBoardList({ config, groupColId = 'deal_stage', q, onSearch,
     () => (LIST_COLS.includes(groupColId as typeof LIST_COLS[number]) ? LIST_COLS : [...LIST_COLS, groupColId]),
     [groupColId],
   );
-  const { status, data } = usePoll('oportunidades', q, pollCols);
+  // `true` = pide también las métricas de la cotización por oportunidad
+  // (?totales=1). Van en TODOS los boards de etapa (Efraín, 2026-08-20): el
+  // worker recorta por rol, así que un vendedor solo recibe Subtotal y Total.
+  const { status, data } = usePoll('oportunidades', q, pollCols, true);
 
   // Avisa UNA vez que ya hay datos en pantalla. El wrapper lo usa para
   // precargar el drawer: antes de esto la lista no compite con nada.
@@ -206,6 +211,9 @@ export function StageBoardList({ config, groupColId = 'deal_stage', q, onSearch,
   const hasActiveFilters = vendedorFilter !== ALL_VALUE || comprasFilter !== ALL_VALUE || etapaFilter !== ALL_VALUE;
   const clearFilters = clearSavedFilters;
 
+  const totales = data?.totales;
+  const metricas = useMemo(() => metricasVisibles(totales, isMobile), [totales, isMobile]);
+
   const groups = useMemo(() => {
     const order = groupColId === 'deal_stage' ? DEAL_STAGE_ORDER : undefined;
     return groupByColumn(items, groupCol, undefined, undefined, order);
@@ -245,6 +253,7 @@ export function StageBoardList({ config, groupColId = 'deal_stage', q, onSearch,
 
       <div style={{ overflowY: 'auto', padding: isMobile ? '12px 0 16px' : '16px 0 24px', flex: 1 }}>
         <BoardStatus status={status}>
+          <TotalesHeader metricas={metricas} isMobile={isMobile} />
           {groups.length === 0 && (
             <div style={{ padding: 24, font: 'var(--text-label)', color: 'var(--ink-quiet)' }}>Sin oportunidades.</div>
           )}
@@ -256,7 +265,10 @@ export function StageBoardList({ config, groupColId = 'deal_stage', q, onSearch,
               {g.items.map((item) => (
                 // onOpen (no una arrow nueva por renglón): Row está memoizado y
                 // una closure distinta en cada render le rompería la memo.
-                <Row key={item.id} item={item} etapaCosteoCol={etapaCosteoCol} viewerNombre={viewerNombre} onOpen={onOpen} />
+                <Row
+                  key={item.id} item={item} etapaCosteoCol={etapaCosteoCol} viewerNombre={viewerNombre}
+                  onOpen={onOpen} totales={totales?.[item.id]} metricas={metricas}
+                />
               ))}
             </GroupCard>
           ))}
@@ -272,8 +284,11 @@ export function StageBoardList({ config, groupColId = 'deal_stage', q, onSearch,
  * las máquinas lentas. Con `items` memoizado arriba, los objetos `item`
  * conservan identidad entre polls y esta comparación por props corta el
  * re-render de raíz. */
-const Row = memo(function Row({ item, etapaCosteoCol, viewerNombre, onOpen }: {
+const Row = memo(function Row({ item, etapaCosteoCol, viewerNombre, onOpen, totales, metricas }: {
   item: ItemDTO; etapaCosteoCol?: ReturnType<typeof colForBoard>[number]; viewerNombre: string | undefined; onOpen: (id: string) => void;
+  /** Ausente = la oportunidad no tiene líneas todavía (o el rol no ve ninguna
+   * de las métricas): las celdas se pintan en "—" para no romper la columna. */
+  totales?: TotalesDTO; metricas: ReturnType<typeof metricasVisibles>;
 }) {
   const isMobile = useIsMobile();
   const onClick = () => onOpen(item.id);
@@ -301,6 +316,7 @@ const Row = memo(function Row({ item, etapaCosteoCol, viewerNombre, onOpen }: {
           <MonoTag>{folio}</MonoTag>
         </div>
         <div style={{ font: 'var(--text-label)', color: 'var(--ink-tertiary)' }}>{institucion}</div>
+        <TotalesChips totales={totales} metricas={metricas} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 2 }}>
           <PersonPair vendedor={vendedor} compras={compras} vendedorSecondary={vendedorSecondary} />
           {etapaCosteoVal?.text && (() => {
@@ -335,6 +351,7 @@ const Row = memo(function Row({ item, etapaCosteoCol, viewerNombre, onOpen }: {
           return <StatusBadge label={dedupeMirrorText(etapaCosteoVal.text)} color={color} tint={tint} />;
         })()}
         <MonoTag>{folio}</MonoTag>
+        <TotalesCells totales={totales} metricas={metricas} />
         <div style={{ font: 'var(--text-caption)', color: 'var(--ink-faint)', width: 70, textAlign: 'right' }}>
           {item.mondayUpdatedAt ? fmtSyncAgo(item.mondayUpdatedAt) : '—'}
         </div>

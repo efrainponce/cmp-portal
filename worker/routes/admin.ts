@@ -19,6 +19,8 @@ import { backupD1ToR2 } from '../lib/backup';
 import { buildAnalyticsResponse } from '../lib/analytics';
 import { ACCION_RETENTION_DAYS } from '../lib/accionLog';
 import { rejectUnknownQuery } from '../lib/http';
+import { totalesDeLinea } from '../lib/lineaTotales';
+import type { RawColumn } from '../lib/canon';
 import type { GroupBy } from '../../shared/analytics';
 
 export function adminRoutes(app: Hono<{ Bindings: Env }>) {
@@ -215,6 +217,36 @@ export function adminRoutes(app: Hono<{ Bindings: Env }>) {
       const detail = err instanceof Error ? err.message : String(err);
       return c.json({ error: `sync failed: ${detail}` }, 502);
     }
+  });
+
+  // Recalcula los totales materializados de TODAS las líneas de cotización
+  // (columnas t_* de `items`, worker/lib/lineaTotales.ts). El sync ya los
+  // mantiene al día línea por línea; esto es para el arranque (backfill) y
+  // para las líneas NATIVAS de Zona Efrain, que no pasan por Monday y por
+  // tanto no tienen fórmulas que copiar — el UPDATE de la migración las deja
+  // en cero y solo esta pasada, que corre la matemática de verdad, las llena.
+  app.post('/api/admin/totales/recalcular', async c => {
+    if (c.get('viewer').role !== 'admin') return c.json({ error: 'forbidden' }, 403);
+    const res = await c.env.DB
+      .prepare('SELECT item_id, columns FROM items WHERE board_id = ?')
+      .bind(BOARDS.oportunidades_sub.id)
+      .all<{ item_id: number; columns: string }>();
+    const filas = res.results ?? [];
+
+    // De a 50 por batch: son ~3.6k líneas y un solo batch gigante se sale del
+    // presupuesto de la invocación.
+    let escritas = 0;
+    for (let i = 0; i < filas.length; i += 50) {
+      const lote = filas.slice(i, i + 50).map(f => {
+        const t = totalesDeLinea(JSON.parse(f.columns) as RawColumn[]);
+        return c.env.DB
+          .prepare('UPDATE items SET t_costo=?, t_subtotal=?, t_total=?, t_utilidad=?, t_margen_gob=? WHERE board_id=? AND item_id=?')
+          .bind(t.costo, t.subtotal, t.total, t.utilidad, t.margenGob, BOARDS.oportunidades_sub.id, f.item_id);
+      });
+      await c.env.DB.batch(lote);
+      escritas += lote.length;
+    }
+    return c.json({ ok: true, lineas: escritas });
   });
 
   // Dispara el respaldo de D1 a R2 sin esperar al cron. El respaldo llevaba

@@ -10,6 +10,16 @@ CREATE TABLE IF NOT EXISTS items (
   synced_at      TEXT NOT NULL,
   content_hash   TEXT NOT NULL DEFAULT '',
   columns        TEXT NOT NULL,
+  -- Totales de la LÍNEA de cotización, materializados al sincronizarla
+  -- (worker/lib/lineaTotales.ts). Solo se llenan en el board de subitems de
+  -- Oportunidades; NULL en todo lo demás. Existen para que sumar por
+  -- oportunidad sea un SUM por índice y no un json_each sobre el board entero
+  -- (medido: 803 ms / 441k filas leídas por consulta) — worker/lib/totales.ts.
+  t_costo        REAL,
+  t_subtotal     REAL,
+  t_total        REAL,
+  t_utilidad     REAL,
+  t_margen_gob   REAL,
   PRIMARY KEY (board_id, item_id)
 );
 CREATE INDEX IF NOT EXISTS idx_items_parent ON items(parent_item_id);

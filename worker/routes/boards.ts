@@ -34,6 +34,7 @@ import { getBoardAccess } from '../lib/boardAccess';
 import { isZonaPrivadaAdminPermitido } from '../lib/zonas';
 import { refetchItem, refetchItemTree } from '../sync';
 import { jsonStatus, rejectUnknownQuery } from '../lib/http';
+import { totalesPorOportunidad, totalesVersion } from '../lib/totales';
 import { contentTypeFor } from '../lib/mime';
 import { notifyItemComment } from '../lib/updateNotify';
 import { markUpdatesSeen, seenByFor } from '../lib/updateSeen';
@@ -234,10 +235,15 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
     // lista devuelve el board completo, y quien la usa para decidir sobre qué
     // items actuar (borrar, por ejemplo) se llevaría todo. Ver el porqué en
     // worker/lib/http.ts.
-    const queryMala = rejectUnknownQuery(c.req.url, ['q', 'cols']);
+    const queryMala = rejectUnknownQuery(c.req.url, ['q', 'cols', 'totales']);
     if (queryMala) return queryMala;
     const viewer = c.get('viewer');
     const q = c.req.query('q');
+
+    // ?totales=1 — la lista de etapas pinta las métricas de la cotización
+    // (Costo, Subtotal, Total, Utilidad, Margen Gob) por oportunidad. Solo
+    // tiene sentido en Oportunidades: en cualquier otro board se ignora.
+    const conTotales = c.req.query('totales') === '1' && slug === 'oportunidades';
 
     // ?cols=a,b,c — el cliente declara qué columnas va a pintar y el resto no
     // viaja. El board Oportunidades trae ~34 columnas por item y la lista pinta
@@ -258,8 +264,12 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
 
     // La proyección entra en el ETag: si no, un cliente que pide 8 columnas y
     // otro que pide todas comparten llave y el 304 le sirve a uno la forma del
-    // otro (se quedaría sin columnas, o con la lista vieja).
-    const etag = await etagFor(c.env, slug, viewer, colsParam);
+    // otro (se quedaría sin columnas, o con la lista vieja). Los totales suman
+    // otro board (las líneas), así que su versión también entra: editar una
+    // línea no mueve el board de Oportunidades y sin esto los números se
+    // quedarían congelados detrás de un 304.
+    const variante = conTotales ? `${colsParam ?? ''}|t${await totalesVersion(c.env)}` : colsParam;
+    const etag = await etagFor(c.env, slug, viewer, variante);
     c.header('ETag', etag);
     if (c.req.header('If-None-Match') === etag) return c.body(null, 304);
 
@@ -269,6 +279,13 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
     ]);
     const items = rows.map(r => toItemDTO(r, slug, viewer.role, pending.has(r.item_id), only));
     const body: ListResponse = { board: slug, items, total: items.length, etag };
+    // Después del 304: el agregado solo corre cuando de verdad hay respuesta
+    // nueva que mandar.
+    // Solo de las oportunidades que este viewer YA recibió: `rows` viene
+    // scopeado por dal.ts y el agregado no repite ese filtro por su cuenta.
+    if (conTotales) {
+      body.totales = await totalesPorOportunidad(c.env, viewer.role, new Set(rows.map(r => r.item_id)));
+    }
     return c.json(body);
   });
 
