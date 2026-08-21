@@ -52,6 +52,15 @@
   ENCIMA del encabezado y al hacer scroll se veía media fila deslizándose sobre
   los títulos. Ahora el padding se lo lleva el encabezado y su fondo es el del
   lienzo (`--bg`), no un gris propio. Reproducido en local antes de tocarlo.
+- **Y las columnas no cuadraban** (Efraín, otra captura, "fix urgente"): dos
+  causas encimadas. Las celdas iban sueltas en el renglón, así que heredaban su
+  `gap` de 16 px mientras el encabezado usaba 10 — 6 px de deriva por columna,
+  36 al final; y el encabezado vive FUERA de las GroupCards, que meten 24 px de
+  margen y 1 px de borde que nadie estaba descontando. Ahora las celdas van en
+  su propio bloque con gaps constantes compartidos y el encabezado copia la
+  geometría de la tarjeta. Se comprueba con **`node scripts/verificar-alineacion.mjs`**,
+  que MIDE el DOM (título vs número, columna por columna) y sale con código 1 si
+  algo no cuadra — este bug salió dos veces por revisarlo a ojo en una captura.
 
 ## 2026-08-20 (2)
 

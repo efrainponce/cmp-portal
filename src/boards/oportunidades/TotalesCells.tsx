@@ -34,6 +34,21 @@ export const METRICAS: Metrica[] = [
 // 2026-08-20): lo primero que se busca en el teléfono es cuánto deja el trato.
 const MOVIL: MetricaKey[] = ['subtotal', 'utilidadPct', 'utilidad', 'margenGob'];
 
+/** Separación entre celdas de métricas, y separación del bloque contra lo que
+ * sigue (la columna "hace X"). Las dos tienen que ser IDÉNTICAS en el
+ * encabezado y en el renglón o las columnas dejan de cuadrar — el renglón usa
+ * gap 16 entre sus piezas (StageBoardList), así que ese es el de afuera. */
+const GAP_METRICAS = 10;
+const GAP_RENGLON = 16;
+
+/** Geometría del renglón, que el encabezado tiene que copiar para caer justo
+ * encima: el margen y el borde de la GroupCard que lo envuelve
+ * (src/components/layout/GroupCard.tsx) más el padding lateral del renglón
+ * (StageBoardList). Si alguno de los tres cambia allá, cámbialo aquí. */
+const GROUPCARD_MARGEN = 24;
+const GROUPCARD_BORDE = 1;
+const PADDING_RENGLON = 18;
+
 /** Qué métricas llegaron de verdad: el worker recorta las que el rol no puede
  * leer (un vendedor no recibe costo/utilidad/margen), así que la lista se
  * arma con lo que hay en vez de pintar seis columnas de guiones. Se calcula
@@ -78,23 +93,33 @@ export function TotalesHeader({ metricas, isMobile }: { metricas: Metrica[]; isM
         // bug visual que reportó Efraín el 2026-08-20. El fondo es el del
         // lienzo (--bg), no un gris propio, para que la franja no se note.
         position: 'sticky', top: 0, zIndex: 3,
-        display: 'flex', justifyContent: 'flex-end', gap: 10,
-        padding: '16px 18px 5px', background: 'var(--bg)',
+        display: 'flex', justifyContent: 'flex-end', alignItems: 'center',
+        gap: GAP_RENGLON,
+        // Los renglones NO empiezan en el borde del contenedor: viven dentro de
+        // una GroupCard con 24 px de margen y 1 px de borde. Sin descontar esos
+        // 25 px, cada título quedaba 25 px a la derecha de su columna aunque el
+        // padding de 18 px coincidiera (Efraín, 2026-08-20). Se mide con
+        // scripts/verificar-alineacion.mjs, no a ojo.
+        margin: `0 ${GROUPCARD_MARGEN}px`,
+        padding: `16px ${GROUPCARD_BORDE + PADDING_RENGLON}px 5px`,
+        background: 'var(--bg)',
         borderBottom: '1px solid var(--border-subtle)',
       }}
     >
-      {metricas.map(m => (
-        <div
-          key={m.key}
-          title={m.titulo}
-          style={{
-            width: m.width, textAlign: 'right', font: 'var(--text-caption)',
-            color: 'var(--ink-quiet)', letterSpacing: '.02em',
-          }}
-        >
-          {m.label}
-        </div>
-      ))}
+      <div style={{ display: 'flex', gap: GAP_METRICAS }}>
+        {metricas.map(m => (
+          <div
+            key={m.key}
+            title={m.titulo}
+            style={{
+              width: m.width, textAlign: 'right', font: 'var(--text-caption)',
+              color: 'var(--ink-quiet)', letterSpacing: '.02em',
+            }}
+          >
+            {m.label}
+          </div>
+        ))}
+      </div>
       {/* Mismo hueco que la columna "actualizado hace X" del renglón, para que
           las etiquetas caigan exactamente sobre sus números. */}
       <div style={{ width: 70, flex: 'none' }} />
@@ -104,8 +129,13 @@ export function TotalesHeader({ metricas, isMobile }: { metricas: Metrica[]; isM
 
 export function TotalesCells({ totales, metricas }: { totales: TotalesDTO | undefined; metricas: Metrica[] }) {
   if (metricas.length === 0) return null;
+  // Las celdas van en su PROPIO contenedor, no sueltas en el renglón: sueltas
+  // heredaban el gap de 16 px del renglón mientras el encabezado usaba 10, y
+  // esos 6 px por columna corrían los números casi 40 px a la izquierda de su
+  // título (Efraín, 2026-08-20: "no cuadran las columnas"). Ahora el gap entre
+  // celdas y el gap contra la fecha son los mismos constantes en los dos lados.
   return (
-    <>
+    <div style={{ display: 'flex', gap: GAP_METRICAS, flex: 'none' }}>
       {metricas.map(m => {
         const { texto, color } = textoDe(m, totales);
         return (
@@ -124,7 +154,7 @@ export function TotalesCells({ totales, metricas }: { totales: TotalesDTO | unde
           </div>
         );
       })}
-    </>
+    </div>
   );
 }
 
