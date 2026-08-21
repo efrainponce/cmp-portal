@@ -2,6 +2,37 @@
 
 ## 2026-08-21
 
+- **PAM y EMY ya ven la Zona Efrain.** Efraín: "necesito que les des acceso a
+  EMY y a PAM a zona efrain como Elisa". Entran a la whitelist por correo de
+  `worker/lib/zonas.ts`: `compras@` (Pamela Ricalde, admin) y `cotizaciones4@`
+  (Emily Martínez, compras).
+- Lo que lo destapó fue **OPP-0946 - LICITACIÓN OAXACA**. Se creó desde un
+  formulario de Monday a las 13:14 con Pamela como Vendedor y como Responsable
+  compras, y llegó al mirror 4.6 s después. A las **14:17 le cambiaron el
+  Vendedor a "Efrain Ponce"** y en ese instante desapareció del portal para
+  ella: es miembro de la zona privada y PAM no estaba en la whitelist. Siguió
+  siendo la Responsable compras —el selector `comprador` de `notify.ts` no
+  filtra por zona, solo `role:admin`—, así que a las 14:30 le llegó la
+  notificación de una oportunidad que ya no podía abrir y se fue a trabajarla a
+  Monday.
+- Aparte, su queja de las **13:40** era otra cosa: en ese momento la
+  oportunidad todavía era suya. El encabezado de su captura decía "actualizado
+  hace 25 min" y eso solo se pinta cuando el server SÍ devolvió renglones
+  (`SyncIndicator` pone "sin datos de actualización" con la lista vacía), así
+  que el 0 se lo hizo un **filtro guardado** de `useSavedView` — Compras o
+  Estado, los dos que su captura corta. Sin relación con permisos.
+- **EMY no queda igual que Elisa y está anotado en el código:** la whitelist
+  solo levanta la excepción de "admin ve todo" (`hiddenOwnerIdsFor` ni mira a
+  los no-admins). Con rol `compras` su lectura la sigue acotando
+  `comprasScopeFor`, así que el tab Zona Efrain le muestra las oportunidades
+  donde ella es la Responsable compras — hoy 15 de 75. Para verla completa
+  tendría que ser admin; esa decisión no se tomó sola.
+- Efecto secundario correcto: `idPrestadoBloqueado` (`worker/routes/admin.ts`)
+  ahora también rechaza prestar los monday_user_id de PAM y de EMY con "Actuar
+  en Monday como" — ver ellas la zona ya no es heredable por préstamo de id.
+- Anclado en `worker/lib/zonas.test.ts`: los dos correos nuevos dentro, y el
+  resto de Compras (`cotizaciones5@`) y el resto de admins (`webcmp@`) fuera.
+
 - **Los archivos se descargan con el número de la oportunidad.** Elizabeth, con
   el "Guardar como" de Windows abierto: "cuando le demos descargar al documento
   será que se pueda guardar con el número de la oportunidad". Salía

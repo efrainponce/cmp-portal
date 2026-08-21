@@ -16,8 +16,19 @@ describe('whitelist de la zona privada', () => {
     ]) expect(isZonaPrivadaAdminPermitido(email)).toBe(true);
   });
 
+  // Efraín, 2026-08-21: "dales acceso a EMY y a PAM como Elisa". PAM es admin,
+  // así que la whitelist le basta; EMY es de compras y su lectura la sigue
+  // acotando comprasScopeFor — ver el comentario en zonas.ts.
+  it('PAM y EMY entraron el 2026-08-21', () => {
+    expect(isZonaPrivadaAdminPermitido('compras@mexicanadeproteccion.com')).toBe(true);
+    expect(isZonaPrivadaAdminPermitido('cotizaciones4@mexicanadeproteccion.com')).toBe(true);
+  });
+
   it('cualquier otro correo queda fuera, aunque sea admin', () => {
     expect(isZonaPrivadaAdminPermitido('otro.admin@mexicanadeproteccion.com')).toBe(false);
+    // El resto de Compras NO entró: solo EMY (cotizaciones4@).
+    expect(isZonaPrivadaAdminPermitido('cotizaciones5@mexicanadeproteccion.com')).toBe(false);
+    expect(isZonaPrivadaAdminPermitido('webcmp@mexicanadeproteccion.com')).toBe(false);
     expect(isZonaPrivadaAdminPermitido(null)).toBe(false);
     expect(isZonaPrivadaAdminPermitido('')).toBe(false);
   });

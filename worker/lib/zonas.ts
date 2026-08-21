@@ -15,16 +15,30 @@ import type { BoardSlug } from '../../shared/boards';
 
 // Zona privada "Efrain" (Efraín, 2026-08-12): caso especial, NO un mecanismo
 // genérico de "zona privada" — solo esta zona por nombre queda oculta a todo
-// admin salvo los dos de abajo. Sus miembros viven en zona_miembros como
+// admin salvo la whitelist de abajo. Sus miembros viven en zona_miembros como
 // cualquier otra zona (son las personas dueñas de las filas que se ocultan);
 // lo especial es a quién SÍ se le muestra pese a ser admin. Antes de esto
 // "admin: everything, always" (worker/lib/dal.ts) no tenía excepciones — esta
 // es la única, y solo alcanza a Oportunidades/Proyectos.
 const ZONA_PRIVADA_NOMBRE = 'Efrain';
-// Las MISMAS tres personas de siempre (Efraín, 2026-08-12), ahora por CORREO y
-// no por monday_user_id: el CEO (sus dos correos, un solo id de Monday) + Elisa
+// Arrancó con tres personas (Efraín, 2026-08-12), por CORREO y no por
+// monday_user_id: el CEO (sus dos correos, un solo id de Monday) + Elisa
 // Vallado + Efrain Ponce Salinas (hijo del CEO, mantiene el portal — pidió
 // verla él mismo por si hay errores; también sus dos correos).
+//
+// 2026-08-21 entran dos más, "con el mismo acceso que Elisa" (Efraín): Pamela
+// Ricalde "PAM" (compras@, admin) y Emily Martínez "EMY" (cotizaciones4@,
+// compras). Lo que lo destapó: OPP-0946 cambió de Vendedor a Efrain Ponce y
+// desapareció del portal para PAM, que seguía siendo la Responsable compras
+// —hasta le llegaban sus notificaciones, ver notify.ts— y se fue a trabajarla
+// a Monday.
+//
+// OJO con EMY: esta whitelist solo levanta la excepción de "admin ve todo"
+// (hiddenOwnerIdsFor ni mira a los no-admins). Con rol 'compras' su lectura la
+// sigue acotando comprasScopeFor —solo las oportunidades donde ELLA es la
+// Responsable compras—, así que el tab Zona Efrain le enseña un subconjunto,
+// no la zona entera. Para que la vea completa como Elisa tendría que ser
+// admin: es otra decisión y no se toma sola.
 //
 // Por qué el correo y no el id (2026-08-18): "Actuar en Monday como"
 // (worker/routes/admin.ts) presta un monday_user_id a un usuario nuevo, y con
@@ -37,6 +51,8 @@ const ZONA_PRIVADA_ADMINS_PERMITIDOS = new Set<string>([
   'administracion@mexicanadeproteccion.com',
   'salinasefrain@mexicanadeproteccion.com',
   'efrain.ponces@gmail.com',
+  'compras@mexicanadeproteccion.com',        // Pamela Ricalde "PAM" — admin
+  'cotizaciones4@mexicanadeproteccion.com',  // Emily Martínez "EMY" — compras
 ]);
 export const ZONA_PRIVADA_BOARDS: ReadonlySet<BoardSlug> =
   new Set<BoardSlug>(['oportunidades', 'oportunidades_sub', 'proyectos', 'proyectos_sub']);
@@ -129,8 +145,8 @@ export async function zonaPrivadaMemberIds(env: Env): Promise<number[]> {
 }
 
 /** monday_user_ids que ESTE viewer admin no debe ver (worker/lib/dal.ts los
- * excluye de scopeFor/etagFor). [] para todo no-admin y para los dos admins
- * permitidos — la mayoría de los requests, así que no le pega a D1 sin
+ * excluye de scopeFor/etagFor). [] para todo no-admin y para los admins de la
+ * whitelist — la mayoría de los requests, así que no le pega a D1 sin
  * necesidad. */
 export async function hiddenOwnerIdsFor(env: Env, viewer: Identity): Promise<number[]> {
   if (viewer.role !== 'admin' || isZonaPrivadaAdminPermitido(viewer.email)) return [];
