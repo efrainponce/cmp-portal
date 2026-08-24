@@ -134,6 +134,10 @@ export function describeResult(action: ProyectoAction, res: Record<string, unkno
         const folios = foliosDe(res);
         return { kind: 'ok', text: `Orden generada por el portal${folios ? `: ${folios}` : ''}. Sin firma electrónica — se firma a mano sobre el PDF.` };
       }
+      case 'generar-oc-portal-imagenes': {
+        const folios = foliosDe(res);
+        return { kind: 'ok', text: `Orden con imágenes generada${folios ? `: ${folios}` : ''}. Una ficha por producto con su foto; los productos sin foto salen con el recuadro gris.` };
+      }
     }
   }
   if (res.skipped) return { kind: 'warn', text: String(res.reason ?? 'No había nada que procesar.') };

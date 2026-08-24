@@ -347,7 +347,7 @@ export async function generarOcNativeD1(
  * atrás — una OC que sale con el costo viejo es una OC mal mandada. */
 export async function generarOcPortal(
   env: Env, viewer: Identity, proyectoId: number,
-  opts: { onlyProveedor?: string; metodoPago?: string; condPago?: string } = {},
+  opts: { onlyProveedor?: string; metodoPago?: string; condPago?: string; conImagenes?: boolean } = {},
 ): Promise<GenerarOcResult> {
   if (!(await ownsItem(env, 'proyectos', proyectoId, viewer))) return { ok: false, reason: 'not found', ordenes: [] };
 
@@ -380,6 +380,7 @@ export async function generarOcPortal(
 
       const pdfBytes = await generarOcProveedorPdf(env, proyectoId, group.proveedorId, viewer, {
         folioOrden, metodoPago: opts.metodoPago, condPago: opts.condPago,
+        conImagenes: opts.conImagenes,
       });
       const safeRZ = (group.proveedorRZ || group.proveedorNombre).replace(/[^\w\- ]/g, '_').slice(0, 40).trim();
       // Mismo patrón de nombre que cmp-tallas: es de donde el tab saca la

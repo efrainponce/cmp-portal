@@ -519,10 +519,55 @@ export async function getProyectoOportunidad(proyectoId: string): Promise<string
   return body.oportunidadId;
 }
 
+/** Foto de producto de la OC con imágenes (worker/lib/ocImagenes.ts). Vive por
+ * SKU y se reusa en todas las órdenes — no es del proyecto ni de la línea. */
+export interface OcImagenDTO {
+  sku: string;
+  origen: 'airtable' | 'subida';
+  contentType: string;
+  bytes: number;
+  updatedAt: string;
+  updatedBy: string;
+}
+
+/** Estado de la foto de varios SKUs. No sale a Airtable: solo dice qué hay
+ * guardado (jalar del catálogo es explícito, `restablecerOcImagen`). */
+export async function listOcImagenes(skus: string[]): Promise<OcImagenDTO[]> {
+  if (skus.length === 0) return [];
+  const res = await apiFetch(`/oc-imagenes?skus=${encodeURIComponent(skus.join(','))}`);
+  if (!res.ok) return [];
+  const body: { imagenes: OcImagenDTO[] } = await res.json();
+  return body.imagenes ?? [];
+}
+
+/** URL de la miniatura. `v` la refresca tras subir una foto nueva: el key de R2
+ * cambia pero la URL del portal no, y el navegador se quedaría con la vieja. */
+export function ocImagenUrl(sku: string, v?: string): string {
+  return `/api/oc-imagenes/${encodeURIComponent(sku)}/foto${v ? `?v=${encodeURIComponent(v)}` : ''}`;
+}
+
+export async function uploadOcImagen(sku: string, file: File): Promise<OcImagenDTO> {
+  const res = await apiFetch(`/oc-imagenes/${encodeURIComponent(sku)}/foto`, {
+    method: 'PUT', body: file,
+  });
+  const body: { imagen?: OcImagenDTO; error?: string } = await res.json();
+  if (!res.ok || !body.imagen) throw new Error(body.error ?? 'no se pudo subir la imagen');
+  return body.imagen;
+}
+
+/** "Usar la del catálogo": re-jala la de Airtable y pisa la subida. */
+export async function restablecerOcImagen(sku: string): Promise<OcImagenDTO> {
+  const res = await apiFetch(`/oc-imagenes/${encodeURIComponent(sku)}/restablecer`, { method: 'POST' });
+  const body: { imagen?: OcImagenDTO; error?: string } = await res.json();
+  if (!res.ok || !body.imagen) throw new Error(body.error ?? 'el catálogo no tiene foto de este producto');
+  return body.imagen;
+}
+
 export type ProyectoAction =
   | 'tallas-regenerar' | 'tallas-confirmar' | 'tallas-importar'
-  | 'generar-oc'          // cmp-tallas/Eledo + firmas DocuSeal
-  | 'generar-oc-portal';  // motor propio del portal, sin firma electrónica
+  | 'generar-oc'                    // cmp-tallas/Eledo + firmas DocuSeal
+  | 'generar-oc-portal'             // motor propio del portal, sin firma electrónica
+  | 'generar-oc-portal-imagenes';   // la misma, con ficha y foto por producto
 
 /** Acciones de cmp-tallas sobre el Proyecto (tallas y órdenes de compra).
  * `onlyProveedor` (solo 'generar-oc'): genera la OC de un solo proveedor en vez

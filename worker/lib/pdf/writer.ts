@@ -1,6 +1,8 @@
 // Escritor de PDF mínimo, sin dependencias (2026-07-25). Suficiente para los
 // documentos que genera el portal: texto Helvetica/Helvetica-Bold, líneas,
-// rectángulos y JPEG embebido (la firma trazada en el canvas). NO parsea PDFs
+// rectángulos e imágenes embebidas — JPEG directo (la firma trazada en el
+// canvas) y PNG vía worker/lib/pdf/png.ts, que lo convierte a muestras crudas
+// porque el PDF no sabe leer PNG (2026-08-24, OC con imágenes). NO parsea PDFs
 // —solo los escribe— y por eso los documentos firmados se re-renderizan desde
 // los datos en vez de estamparse sobre un PDF ajeno (ver worker/lib/documents.ts).
 //
@@ -10,6 +12,8 @@
 //
 // Coordenadas de la API: origen ARRIBA-IZQUIERDA en puntos (1/72"), más cómodo
 // para layout; internamente se traducen al sistema de PDF (origen abajo).
+
+import type { PdfImageData } from './png';
 
 export type FontName = 'H' | 'HB'; // Helvetica / Helvetica-Bold
 
@@ -124,10 +128,21 @@ export function jpegInfo(bytes: Uint8Array): JpegInfo | null {
   return null;
 }
 
+/** JPEG crudo → imagen embebible (el PDF lee JPEG tal cual, con /DCTDecode).
+ * Null si los bytes no son un JPEG usable. */
+export function jpegImage(bytes: Uint8Array): PdfImageData | null {
+  const info = jpegInfo(bytes);
+  if (!info) return null;
+  const colorSpace = info.components === 1 ? 'DeviceGray'
+    : info.components === 4 ? 'DeviceCMYK'
+    : 'DeviceRGB';
+  return { width: info.width, height: info.height, colorSpace, filter: 'DCTDecode', bytes };
+}
+
 // ── Writer ────────────────────────────────────────────────────────────────────
 interface TextOpts { size?: number; font?: FontName; color?: string }
 interface RectOpts { fill?: string; stroke?: string; lineWidth?: number }
-interface ImageEntry { name: string; bytes: Uint8Array; info: JpegInfo }
+interface ImageEntry { name: string; img: PdfImageData }
 
 export class PdfWriter {
   readonly width: number;
@@ -189,12 +204,14 @@ export class PdfWriter {
     this.pages[page].push(ops.join(' '));
   }
 
-  /** Dibuja un JPEG. Devuelve false (sin dibujar nada) si los bytes no son JPEG. */
-  image(page: number, bytes: Uint8Array, x: number, y: number, w: number, h: number): boolean {
-    const info = jpegInfo(bytes);
-    if (!info) return false;
+  /** Dibuja una imagen. Acepta bytes JPEG crudos (compatibilidad: así la usan
+   * el logo y la firma) o una imagen ya decodificada — `pngToPdfImage` para PNG.
+   * Devuelve false, sin dibujar nada, si no hay imagen usable. */
+  image(page: number, img: Uint8Array | PdfImageData, x: number, y: number, w: number, h: number): boolean {
+    const entry = img instanceof Uint8Array ? jpegImage(img) : img;
+    if (!entry) return false;
     const name = `Im${this.images.length + 1}`;
-    this.images.push({ name, bytes, info });
+    this.images.push({ name, img: entry });
     this.pages[page].push(
       `q ${fmt(w)} 0 0 ${fmt(h)} ${fmt(x)} ${fmt(this.height - y - h)} cm /${name} Do Q`,
     );
@@ -240,12 +257,12 @@ export class PdfWriter {
     obj(FONT_H, '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>');
     obj(FONT_HB, '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>');
 
-    this.images.forEach((img, i) => {
-      const cs = img.info.components === 1 ? '/DeviceGray' : img.info.components === 4 ? '/DeviceCMYK' : '/DeviceRGB';
+    this.images.forEach((entry, i) => {
+      const { img } = entry;
       streamObj(
         imgStart + i,
-        `/Type /XObject /Subtype /Image /Width ${img.info.width} /Height ${img.info.height} ` +
-        `/ColorSpace ${cs} /BitsPerComponent 8 /Filter /DCTDecode`,
+        `/Type /XObject /Subtype /Image /Width ${img.width} /Height ${img.height} ` +
+        `/ColorSpace /${img.colorSpace} /BitsPerComponent 8 /Filter /${img.filter}`,
         img.bytes,
       );
     });
@@ -253,7 +270,7 @@ export class PdfWriter {
     this.pages.forEach((ops, i) => streamObj(contentStart + i, '', ops.join('\n')));
 
     const xobjects = this.images.length
-      ? ` /XObject << ${this.images.map((img, i) => `/${img.name} ${imgStart + i} 0 R`).join(' ')} >>`
+      ? ` /XObject << ${this.images.map((entry, i) => `/${entry.name} ${imgStart + i} 0 R`).join(' ')} >>`
       : '';
     this.pages.forEach((_, i) => {
       obj(

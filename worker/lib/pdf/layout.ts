@@ -3,6 +3,7 @@
 // parten las tablas largas repitiendo su header. Las plantillas
 // (worker/lib/pdf/templates.ts) solo producen bloques — no tocan coordenadas.
 import { PdfWriter, LETTER, widthOf, type FontName } from './writer';
+import type { PdfImageData } from './png';
 
 const MARGIN = 48;
 const HEADER_BOTTOM = 96;   // primera línea base disponible del contenido
@@ -46,7 +47,24 @@ export type Block =
   | { kind: 'divider' }
   | { kind: 'spacer'; height: number }
   | { kind: 'note'; text: string }
-  | { kind: 'signature'; label: string; name: string; detail: string[]; image?: Uint8Array };
+  | { kind: 'signature'; label: string; name: string; detail: string[]; image?: Uint8Array }
+  /** Ficha de producto de MEDIA HOJA carta: foto grande a la izquierda y datos
+   * + tallas a la derecha (Efraín, 2026-08-24). Existe porque el mismo SKU
+   * puede llegar con variantes que el texto no distingue —un chaleco de broches
+   * y uno de velcro comparten modelo— y el proveedor necesita VER cuál es. Dos
+   * fichas por página, siempre completas: la ficha nunca se parte a la mitad. */
+  | {
+      kind: 'productCard';
+      titulo: string;
+      /** Etiqueta/valor cortos (SKU, color, unidad…) arriba de las tallas. */
+      datos: [string, string][];
+      tallas: { talla: string; cantidad: string }[];
+      /** Renglones de cierre (totales, precio unitario) al pie de la ficha. */
+      pie: string[];
+      /** Null/ausente ⇒ placeholder gris "Sin imagen" (Efraín, 2026-08-24): la
+       * OC sale igual aunque el producto no tenga foto todavía. */
+      imagen?: PdfImageData | null;
+    };
 
 export interface DocumentMeta {
   /** Título que va en el encabezado de todas las páginas. */
@@ -336,6 +354,126 @@ function drawSignature(pdf: PdfWriter, cur: Cursor, m: Metrics, block: Extract<B
   cur.y += height + 8;
 }
 
+// ── Ficha de producto (media hoja) ────────────────────────────────────────────
+/** Alto de la ficha: la mitad EXACTA del área de contenido, para que entren dos
+ * por página sin dejar una huérfana. 792 - 96 (encabezado) - 44 (pie) = 652. */
+const CARD_HEIGHT = 318;
+const CARD_GAP = 8;
+/** Ancho de la caja de foto: ~3.7" de los 7.2" de contenido. El resto es la
+ * columna de datos. */
+const CARD_IMAGE_WIDTH = 268;
+const CARD_PAD = 8;
+
+/** Cuántas tallas caben en UNA ficha. Sale de la geometría de arriba en el peor
+ * caso (título de dos renglones): la columna de tallas mide ~131pt útiles a 13pt
+ * por renglón = 10 por sub-columna, y son dos sub-columnas.
+ *
+ * La plantilla PARTE el producto en fichas de este tamaño en vez de recortar:
+ * una OC a la que le faltan tallas es una OC mal surtida, y el "+N más" que
+ * salía antes era justo la clase de recorte silencioso que nadie revisa. */
+export const PRODUCT_CARD_TALLAS_MAX = 20;
+
+/** Encaja la imagen dentro de la caja SIN deformarla y la centra. El proveedor
+ * compara la foto contra lo que va a fabricar: estirarla sería peor que no
+ * ponerla. */
+function fitBox(
+  img: PdfImageData, box: { x: number; y: number; w: number; h: number },
+): { x: number; y: number; w: number; h: number } {
+  const scale = Math.min(box.w / img.width, box.h / img.height);
+  const w = img.width * scale;
+  const h = img.height * scale;
+  return { x: box.x + (box.w - w) / 2, y: box.y + (box.h - h) / 2, w, h };
+}
+
+function drawProductCard(
+  pdf: PdfWriter, cur: Cursor, m: Metrics, block: Extract<Block, { kind: 'productCard' }>,
+): void {
+  cur.ensure(CARD_HEIGHT);
+  const top = cur.y - 8;
+  pdf.rect(cur.page, m.contentLeft, top, m.contentWidth, CARD_HEIGHT, { stroke: RULE });
+
+  // ── Foto (o placeholder) ──
+  const imgBox = {
+    x: m.contentLeft + CARD_PAD,
+    y: top + CARD_PAD,
+    w: CARD_IMAGE_WIDTH,
+    h: CARD_HEIGHT - CARD_PAD * 2,
+  };
+  pdf.rect(cur.page, imgBox.x, imgBox.y, imgBox.w, imgBox.h, { fill: '#f1f3f6', stroke: RULE });
+  const drawn = block.imagen
+    ? (() => { const f = fitBox(block.imagen, imgBox); return pdf.image(cur.page, block.imagen, f.x, f.y, f.w, f.h); })()
+    : false;
+  if (!drawn) {
+    pdf.textAligned(
+      cur.page, 'SIN IMAGEN', imgBox.y + imgBox.h / 2,
+      { left: imgBox.x, right: imgBox.x + imgBox.w }, 'center',
+      { size: 9, font: 'HB', color: INK_FAINT },
+    );
+  }
+
+  // ── Columna de datos ──
+  const colLeft = imgBox.x + imgBox.w + 14;
+  const colRight = m.contentRight - CARD_PAD;
+  const colWidth = colRight - colLeft;
+  let y = top + 22;
+
+  for (const line of wrapText(block.titulo, colWidth, 13, 'HB').slice(0, 2)) {
+    pdf.text(cur.page, colLeft, y, line, { size: 13, font: 'HB', color: INK });
+    y += 16;
+  }
+  y += 4;
+
+  for (const [label, value] of block.datos) {
+    pdf.text(cur.page, colLeft, y, ellipsize(label.toUpperCase(), colWidth, 7, 'HB'), { size: 7, font: 'HB', color: INK_FAINT });
+    pdf.text(cur.page, colLeft, y + 11, ellipsize(value || '—', colWidth, 9.5), { size: 9.5, color: INK });
+    y += 24;
+  }
+
+  // ── Tallas ──
+  const pieHeight = block.pie.length * 12 + 6;
+  const tallasTop = y + 6;
+  const tallasBottom = top + CARD_HEIGHT - CARD_PAD - pieHeight;
+  pdf.line(cur.page, colLeft, tallasTop - 8, colRight, tallasTop - 8, { color: RULE, width: 0.6 });
+
+  const rowH = 13;
+  const available = Math.max(0, tallasBottom - tallasTop - rowH);
+  const perColumn = Math.max(1, Math.floor(available / rowH));
+  // Dos sub-columnas antes que recortar: una OC de 20 tallas es normal y la
+  // lista completa es justo lo que el proveedor tiene que surtir.
+  const columns = block.tallas.length > perColumn ? 2 : 1;
+  const capacity = perColumn * columns;
+  const shown = block.tallas.slice(0, block.tallas.length > capacity ? capacity - 1 : capacity);
+  const subWidth = colWidth / columns;
+
+  for (let c = 0; c < columns; c++) {
+    const x = colLeft + c * subWidth;
+    const box = { left: x, right: x + subWidth - 8 };
+    pdf.text(cur.page, x, tallasTop, 'TALLA', { size: 7, font: 'HB', color: INK_FAINT });
+    pdf.textAligned(cur.page, 'CANT.', tallasTop, box, 'right', { size: 7, font: 'HB', color: INK_FAINT });
+    let ty = tallasTop + rowH;
+    for (const t of shown.slice(c * perColumn, (c + 1) * perColumn)) {
+      pdf.text(cur.page, x, ty, ellipsize(t.talla, subWidth - 40, 9), { size: 9, color: INK });
+      pdf.textAligned(cur.page, t.cantidad, ty, box, 'right', { size: 9, font: 'HB', color: INK });
+      ty += rowH;
+    }
+  }
+  if (shown.length < block.tallas.length) {
+    pdf.text(
+      cur.page, colLeft + (columns - 1) * subWidth, tallasTop + rowH * (perColumn + 1),
+      `+${block.tallas.length - shown.length} tallas más`, { size: 8, color: INK_SOFT },
+    );
+  }
+
+  // ── Pie de la ficha ──
+  let py = top + CARD_HEIGHT - CARD_PAD - pieHeight + 10;
+  for (const line of block.pie) {
+    pdf.text(cur.page, colLeft, py, ellipsize(line, colWidth, 9, 'HB'), { size: 9, font: 'HB', color: INK });
+    py += 12;
+  }
+
+  cur.y += CARD_HEIGHT + CARD_GAP;
+}
+
 function drawChrome(pdf: PdfWriter, m: Metrics, meta: DocumentMeta): void {
   const total = pdf.pageCount;
   for (let page = 0; page < total; page++) {
@@ -382,6 +520,7 @@ export function renderDocument(meta: DocumentMeta, blocks: Block[]): Uint8Array 
         break;
       case 'note': drawNote(pdf, cur, m, block.text); break;
       case 'signature': drawSignature(pdf, cur, m, block); break;
+      case 'productCard': drawProductCard(pdf, cur, m, block); break;
     }
   }
 

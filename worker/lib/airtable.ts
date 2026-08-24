@@ -31,10 +31,15 @@ const AIRTABLE_TALLAS_PORTAL_FIELD = 'fldaxxCo1hD26cb7d'; // "Tallas Portal"
 const PRODUCTO_TALLAS_COL = 'text_mm5v6jhj';
 const PRODUCTO_AIRTABLE_ID_COL = 'text_mkzmgvc7';
 
-/** URL de la imagen "Imagen producto" (thumbnail completo) de un record de
- * Airtable, o '' si no hay API key, no hay recordId, el record no tiene imagen,
- * o la call falla — nunca lanza. */
-export async function fetchAirtableImageUrl(env: Env, recordId: string): Promise<string> {
+/** URL de la imagen "Imagen producto" de un record de Airtable, o '' si no hay
+ * API key, no hay recordId, el record no tiene imagen, o la call falla — nunca
+ * lanza. `size` elige el thumbnail: 'full' (default, hasta 3000px) es el que
+ * usa la cotización de Eledo; 'large' (~500px) lo pide la OC con imágenes
+ * (worker/lib/ocImagenes.ts), que embebe los bytes en el PDF y no quiere cargar
+ * 3000px para imprimir 3.7 pulgadas. */
+export async function fetchAirtableImageUrl(
+  env: Env, recordId: string, size: 'large' | 'full' = 'full',
+): Promise<string> {
   const apiKey = env.AIRTABLE_API_KEY?.trim();
   if (!apiKey || !recordId) return '';
 
@@ -45,9 +50,14 @@ export async function fetchAirtableImageUrl(env: Env, recordId: string): Promise
     });
     if (!res.ok) return '';
     const data = (await res.json()) as {
-      fields?: { 'Imagen producto'?: { thumbnails?: { full?: { url?: string } } }[] };
+      fields?: {
+        'Imagen producto'?: { thumbnails?: { large?: { url?: string }; full?: { url?: string } } }[];
+      };
     };
-    return data.fields?.['Imagen producto']?.[0]?.thumbnails?.full?.url ?? '';
+    const thumbs = data.fields?.['Imagen producto']?.[0]?.thumbnails;
+    // Si el thumbnail pedido no existe (Airtable no siempre genera `large`), se
+    // cae al otro antes que devolver vacío.
+    return (size === 'large' ? thumbs?.large?.url ?? thumbs?.full?.url : thumbs?.full?.url ?? thumbs?.large?.url) ?? '';
   } catch {
     return '';
   }

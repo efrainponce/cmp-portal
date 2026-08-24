@@ -1,5 +1,65 @@
 # Log de commits
 
+## 2026-08-24
+
+- **OC con imágenes: una ficha de media hoja por producto, con su foto.**
+  Efraín: "necesitamos hacer una orden de compra más avanzada donde se pueda
+  poner la imagen del producto en GRANDE porque a veces los mismos SKUs pueden
+  tener unas diferencias, por ejemplo un chaleco puede ser con broches y otro
+  con velcro". El problema no es de números sino de identidad: el proveedor no
+  tiene cómo saber cuál variante le tocaba. Botón **"Generar OC con imágenes"**
+  al lado del de siempre, y "Ver OC" ahora alterna Normal / Con imágenes en la
+  vista previa (importa poder verla antes: generar consume folio).
+- Es la MISMA orden — mismo folio, mismos totales, mismas 3 firmas, misma
+  subida a Monday y a R2. Solo cambia la presentación:
+  `worker/lib/pdf/ordenCompraProveedorImagenes.ts`, plantilla **aparte** de
+  `ordenCompraProveedor.ts` (esa es el template de referencia que copian
+  solicitud-costeo y cotizacionPreview; meterle otro layout por dentro
+  arriesgaba tres documentos para arreglar uno).
+- Layout que pidió Efraín: media hoja por producto (2 por página), foto a la
+  izquierda ~3.7×4.2", datos y tallas a la derecha. Agrupa **por producto**, no
+  por línea: las 10 tallas de un SKU van en una sola ficha en vez de repetir la
+  foto 10 veces. Los embellecimientos no llevan ficha (no son un artículo del
+  catálogo) — van en su tabla compacta al final, como siempre.
+- **Un producto con más de 20 tallas se parte en varias fichas ("Apex Pant
+  (1 de 2)"), no se recorta.** La primera versión ponía "+4 tallas más" al pie
+  y eso es una OC mal surtida esperando a pasar: la lista de tallas ES el
+  pedido. Anclado en `ordenCompraProveedorImagenes.test.ts` — la suma de tallas
+  impresas tiene que ser exactamente la del pedido.
+- **El motor de PDF aprendió PNG** (`worker/lib/pdf/png.ts`, sin dependencias).
+  Nació embebiendo solo JPEG (la firma del canvas), pero media el catálogo de
+  Airtable son PNG y la OC habría salido con huecos justo en los productos que
+  motivan la función. Workers trae `DecompressionStream`/`CompressionStream`
+  nativos: se infla el IDAT, se deshacen los 5 filtros por scanline, se tira el
+  alfa **sobre blanco** (el PDF va a papel) y se re-comprime como
+  `/FlateDecode`. Fuera de alcance a propósito → `null` → placeholder gris:
+  entrelazado Adam7, profundidad ≠ 8 bits y > 4 MP (presupuesto de CPU).
+- **La foto vive por SKU, no por proyecto ni por línea** (`worker/lib/
+  ocImagenes.ts`, tabla `oc_imagen` + R2): "estaría genial poder guardarla y
+  volverla a usar". Default = "Imagen producto" del catálogo de Airtable, que se
+  **copia a R2** — las URLs de attachment de Airtable expiran a las pocas horas,
+  así que guardar la liga daría OCs con huecos a los dos días. Se pide el
+  thumbnail `large` (~500px) y no el `full` (hasta 3000px): imprime de sobra a
+  3.7 pulgadas y no infla el PDF. Una foto subida desde el portal le gana al
+  catálogo, y "Del catálogo" la devuelve.
+- Las líneas del Proyecto **no traen el id de Airtable** (`oportunidades_sub` sí
+  lo tiene espejado, `proyectos_sub` no), así que se resuelve SKU → item del
+  catálogo en el mirror → `text_mkzmgvc7`. El LIKE acota y la verificación real
+  es parseando: solo con LIKE, un SKU que es prefijo de otro daría la foto
+  equivocada.
+- Nada de esto toca Monday: la foto es un objeto de R2 del portal, así que **no
+  le aplican las guardas de `archivoBorrado.ts`** (esas son para columnas `file`,
+  que sí son 1-1 con Monday). Reemplazar una foto tampoco borra la anterior —
+  el objeto es direccionable por su sha256 y se queda; basura barata en R2 antes
+  que un borrado que nadie pidió. El tipo se decide por la **firma de los bytes**
+  (no por el Content-Type): un WEBP renombrado a .jpg se rechaza en la subida en
+  vez de aparecer como recuadro gris sin explicación.
+- Tope de 10 fotos jaladas de Airtable por generación de PDF (presupuesto de
+  subrequests): el resto queda para la siguiente corrida, ya con las anteriores
+  en caché. Verificado renderizando el PDF real con pdf.js: foto con alfa sobre
+  blanco, placeholder gris, dos fichas por página y las 25 tallas completas.
+
+
 ## 2026-08-21
 
 - **PAM y EMY ya ven la Zona Efrain.** Efraín: "necesito que les des acceso a

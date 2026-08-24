@@ -14,11 +14,12 @@
 // (worker/lib/activityLog.ts, PORTAL_WRITE_COLUMNS — el activity log de
 // Monday atribuiría todo al dueño del token): el reloj de cada línea muestra
 // su historial, y el tab "Actividad" del Proyecto el del proyecto completo.
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import {
   proyectoAction, patchItem, deleteProyectoLinea, getActivity, getOcNotas, saveOcNota,
+  listOcImagenes, ocImagenUrl, uploadOcImagen, restablecerOcImagen,
   usePoll, SOLO_NOMBRE,
-  type ActivityEntryDTO, type ItemDetailDTO, type ItemDTO,
+  type ActivityEntryDTO, type ItemDetailDTO, type ItemDTO, type OcImagenDTO,
 } from '../../../lib/api';
 import { useMe } from '../../../lib/useMe';
 import { ConfirmButton } from '../../../components/core/ConfirmButton';
@@ -443,8 +444,12 @@ function OcThumb({ file }: { file: { url: string; name: string } | undefined }) 
  * "Generar OC (portal)", al lado. */
 function NativeOcButton({ proyectoId, proveedorId }: { proyectoId: string; proveedorId: string | null }) {
   const [preview, setPreview] = useState(false);
+  // La vista previa alterna entre las dos formas del MISMO documento. Importa
+  // que se pueda ver antes de emitir: "Generar OC" consume folio, y darse
+  // cuenta ahí de que un producto salió sin foto ya cuesta una orden quemada.
+  const [conImagenes, setConImagenes] = useState(false);
   if (!proveedorId) return null;
-  const url = `/api/proyectos/${proyectoId}/oc-nativa/${proveedorId}/pdf`;
+  const url = `/api/proyectos/${proyectoId}/oc-nativa/${proveedorId}/pdf${conImagenes ? '?imagenes=1' : ''}`;
   return (
     <>
       <Button variant="secondary" onClick={() => setPreview(true)} title="Vista previa de esta OC con el motor del portal — no consume folio ni guarda nada">
@@ -452,8 +457,12 @@ function NativeOcButton({ proyectoId, proveedorId }: { proyectoId: string; prove
       </Button>
       {preview && (
         <Modal title="Orden de compra — portal" onClose={() => setPreview(false)} width={760}>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+            <Button variant={conImagenes ? 'secondary' : 'primary'} onClick={() => setConImagenes(false)}>Normal</Button>
+            <Button variant={conImagenes ? 'primary' : 'secondary'} onClick={() => setConImagenes(true)}>Con imágenes</Button>
+          </div>
           <Suspense fallback={<div style={{ font: 'var(--text-label)', color: 'var(--ink-quiet)' }}>Generando…</div>}>
-            <PdfCanvasPreview url={url} maxWidth={712} />
+            <PdfCanvasPreview key={url} url={url} maxWidth={712} />
           </Suspense>
           <a href={url} download style={{ display: 'inline-block', marginTop: 12, font: 'var(--text-label)', color: 'var(--accent)' }}>
             Descargar
@@ -516,6 +525,138 @@ function NotaProveedor({ proyectoId, proveedorId, inicial }: {
   );
 }
 
+/** Fotos de los productos de esta OC — una por SKU (Efraín, 2026-08-24: "solo
+ * POR PRODUCTO"). La foto se guarda por producto y se reusa en las órdenes
+ * siguientes, así que subirla una vez alcanza; el catálogo de Airtable es el
+ * default y "Del catálogo" vuelve a él.
+ *
+ * Solo se pinta la tira: la que jala de Airtable sola es la generación del PDF
+ * (worker/lib/ocImagenes.ts). Aquí un SKU sin foto se muestra vacío en vez de
+ * salir a la red por cada producto cada vez que alguien abre el tab. */
+function FotosProducto({ productos }: { productos: { sku: string; nombre: string }[] }) {
+  const [estado, setEstado] = useState<Record<string, OcImagenDTO>>({});
+  const [cargando, setCargando] = useState(true);
+  const [msg, setMsg] = useState('');
+  const skus = productos.map(p => p.sku).join(',');
+
+  useEffect(() => {
+    let vivo = true;
+    setCargando(true);
+    listOcImagenes(skus.split(',').filter(Boolean))
+      .then(lista => {
+        if (!vivo) return;
+        setEstado(Object.fromEntries(lista.map(i => [i.sku.toUpperCase(), i])));
+      })
+      .finally(() => { if (vivo) setCargando(false); });
+    return () => { vivo = false; };
+  }, [skus]);
+
+  if (productos.length === 0) return null;
+
+  const guardar = (sku: string, meta: OcImagenDTO) =>
+    setEstado(prev => ({ ...prev, [sku.toUpperCase()]: meta }));
+
+  return (
+    <div style={{ flex: '1 1 100%' }}>
+      <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)', marginBottom: 6 }}>
+        Fotos de la OC con imágenes — una por producto, se reusa en las siguientes órdenes
+        {msg ? <span style={{ marginLeft: 8, color: 'var(--status-perdida)' }}>{msg}</span> : null}
+      </div>
+      <div style={{ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 4 }}>
+        {productos.map(p => (
+          <FotoProducto
+            key={p.sku}
+            producto={p}
+            meta={estado[p.sku.toUpperCase()]}
+            cargando={cargando}
+            onCambio={meta => { setMsg(''); guardar(p.sku, meta); }}
+            onError={setMsg}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function FotoProducto({ producto, meta, cargando, onCambio, onError }: {
+  producto: { sku: string; nombre: string };
+  meta?: OcImagenDTO;
+  cargando: boolean;
+  onCambio: (meta: OcImagenDTO) => void;
+  onError: (msg: string) => void;
+}) {
+  const input = useRef<HTMLInputElement>(null);
+  const [ocupado, setOcupado] = useState(false);
+  // La URL de la miniatura no cambia al reemplazar la foto (el key de R2 sí),
+  // así que se le cuelga la fecha de actualización para saltarse el caché.
+  const src = meta ? ocImagenUrl(producto.sku, meta.updatedAt) : '';
+
+  const correr = async (fn: () => Promise<OcImagenDTO>) => {
+    setOcupado(true);
+    try { onCambio(await fn()); }
+    catch (err) { onError(err instanceof Error ? err.message : 'No se pudo actualizar la foto.'); }
+    finally { setOcupado(false); }
+  };
+
+  return (
+    <div style={{
+      width: 132, flexShrink: 0, border: '1px solid var(--border)',
+      borderRadius: 'var(--radius-md)', padding: 6, background: 'var(--bg-sunken)',
+    }}>
+      <div style={{
+        height: 96, borderRadius: 'var(--radius-sm)', background: '#fff',
+        border: '1px solid var(--border-subtle)', display: 'flex',
+        alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+      }}>
+        {src
+          ? <img src={src} alt={producto.nombre} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+          : <span style={{ font: 'var(--text-caption)', color: 'var(--ink-quiet)' }}>
+              {cargando ? '…' : 'Sin foto'}
+            </span>}
+      </div>
+      <div title={producto.nombre} style={{
+        font: 'var(--text-caption)', color: 'var(--ink)', marginTop: 4,
+        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+      }}>
+        {producto.nombre}
+      </div>
+      <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)' }}>
+        {producto.sku}{meta ? ` · ${meta.origen === 'subida' ? 'subida' : 'catálogo'}` : ''}
+      </div>
+      <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+        <button
+          type="button"
+          disabled={ocupado}
+          onClick={() => input.current?.click()}
+          style={{ font: 'var(--text-caption)', color: 'var(--accent)', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+        >
+          {meta ? 'Cambiar' : 'Subir'}
+        </button>
+        <button
+          type="button"
+          disabled={ocupado}
+          title="Vuelve a jalar la foto del catálogo de Airtable"
+          onClick={() => correr(() => restablecerOcImagen(producto.sku))}
+          style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+        >
+          Del catálogo
+        </button>
+      </div>
+      <input
+        ref={input}
+        type="file"
+        accept="image/jpeg,image/png"
+        hidden
+        onChange={e => {
+          const file = e.target.files?.[0];
+          e.target.value = '';
+          if (file) void correr(() => uploadOcImagen(producto.sku, file));
+        }}
+      />
+    </div>
+  );
+}
+
 /** Tarjeta de un proveedor: sus líneas + botón "Generar OC" acotado a él
  * (only_proveedor) — resultado local con el mismo contrato que ProyectoActionBar.
  * Método/Condiciones de pago son overrides SOLO de esta OC (WhatsApp 2026-08-04:
@@ -539,9 +680,21 @@ function ProveedorCard({ group, proyecto, oppId, reload, canEdit, activity, nota
   }, 0);
   const monedaOc = group.lineas.map(r => r.cols[S_MONEDA]?.text).find(Boolean) ?? '';
   const ocFiles = toR2Files(parseFiles(proyecto.cols[P_OC_PDF]?.text), oppId, 'oc');
+  // Un renglón por PRODUCTO (no por línea): la OC con imágenes junta las tallas
+  // de un mismo SKU en una sola ficha, así que la foto también es una sola.
+  const productos = useMemo(() => {
+    const vistos = new Map<string, { sku: string; nombre: string }>();
+    for (const l of group.lineas) {
+      const sku = (l.cols[S_SKU]?.text ?? '').trim();
+      if (!sku) continue;
+      const key = sku.toUpperCase();
+      if (!vistos.has(key)) vistos.set(key, { sku, nombre: l.cols[S_PRODUCTO]?.text || l.name || sku });
+    }
+    return [...vistos.values()];
+  }, [group.lineas]);
   const ocFile = findLatestOcFile(ocFiles, [group.nombre, group.nombreItem]);
 
-  const correr = (accion: 'generar-oc' | 'generar-oc-portal') => async () => {
+  const correr = (accion: 'generar-oc' | 'generar-oc-portal' | 'generar-oc-portal-imagenes') => async () => {
     setOutcome(null);
     try {
       const res = await proyectoAction(proyecto.id, accion, {
@@ -559,6 +712,7 @@ function ProveedorCard({ group, proyecto, oppId, reload, canEdit, activity, nota
   // portal (folio + PDF nativo, SIN firmas — Efraín, 2026-08-19) y el de
   // siempre, que pasa por cmp-tallas/Eledo y manda las 3 firmas de DocuSeal.
   const onGenerarPortal = correr('generar-oc-portal');
+  const onGenerarImagenes = correr('generar-oc-portal-imagenes');
   const onGenerar = correr('generar-oc');
 
   return (
@@ -585,6 +739,16 @@ function ProveedorCard({ group, proyecto, oppId, reload, canEdit, activity, nota
               ? 'Asigna un proveedor a estas líneas primero'
               : 'Emite la OC con el motor del portal: toma folio y la guarda en el Proyecto. Sin firma electrónica — se firma a mano.'}
             onConfirm={onGenerarPortal}
+          />
+          <ConfirmButton
+            label="Generar OC con imágenes"
+            confirmLabel="¿Emitir la OC con foto por producto? Sin firmas"
+            busyLabel="Generando OC…"
+            disabled={!group.proveedorId}
+            title={!group.proveedorId
+              ? 'Asigna un proveedor a estas líneas primero'
+              : 'La misma OC del portal pero con una ficha de media hoja por producto, con su foto — para que el proveedor vea cuál variante es'}
+            onConfirm={onGenerarImagenes}
           />
           <ConfirmButton
             label="Generar OC (Monday)"
@@ -615,6 +779,7 @@ function ProveedorCard({ group, proyecto, oppId, reload, canEdit, activity, nota
           {group.proveedorId && (
             <NotaProveedor proyectoId={proyecto.id} proveedorId={group.proveedorId} inicial={nota} />
           )}
+          <FotosProducto productos={productos} />
         </div>
       )}
       <div style={{ overflowX: 'auto' }}>

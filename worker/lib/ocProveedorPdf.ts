@@ -11,6 +11,8 @@ import { getItem, childrenOf } from './dal';
 import { toItemDTO } from './serialize';
 import type { ItemDTO } from '../../shared/dto';
 import { buildOrdenCompraProveedorPdf, type OcProveedorLinea } from './pdf/ordenCompraProveedor';
+import { buildOrdenCompraProveedorImagenesPdf } from './pdf/ordenCompraProveedorImagenes';
+import { cargarImagenesParaPdf } from './ocImagenes';
 import { getOcNota } from './ocNotas';
 
 export class OcProveedorPdfError extends Error {
@@ -65,6 +67,11 @@ export interface OcProveedorPdfOpts {
   folioOrden?: string;
   metodoPago?: string;
   condPago?: string;
+  /** Ficha de media hoja con la foto del producto en vez de la tabla de líneas
+   * (Efraín, 2026-08-24). Es la MISMA orden —mismos totales, mismo folio,
+   * mismas firmas—, presentada de otra forma: el proveedor necesita VER cuál de
+   * las variantes del SKU le tocaba. */
+  conImagenes?: boolean;
 }
 
 export async function generarOcProveedorPdf(
@@ -106,7 +113,7 @@ export async function generarOcProveedorPdf(
 
   const notaProveedor = await getOcNota(env, proyectoId, proveedorId);
 
-  return buildOrdenCompraProveedorPdf({
+  const comun = {
     folioOrden: opts.folioOrden || '',
     folioProyecto: proyecto.cols[P_FOLIO]?.text || '',
     folioOpp: proyecto.cols[P_FOLIO_OPP]?.text || '',
@@ -122,5 +129,14 @@ export async function generarOcProveedorPdf(
     elaboradoNombre: proyecto.cols[P_COMPRADOR]?.text || '',
     revisadoNombre: REVISADO_NOMBRE,
     autorizadoNombre: AUTORIZADO_NOMBRE,
-  });
+  };
+
+  if (!opts.conImagenes) return buildOrdenCompraProveedorPdf(comun);
+
+  // Solo las líneas de producto piden foto: los embellecimientos no tienen
+  // ficha (van en su tabla al final) y pedir su SKU dispararía búsquedas de
+  // catálogo que nunca van a encontrar nada.
+  const skus = lineas.filter(l => !l.zona).map(l => l.sku).filter(Boolean);
+  const imagenes = await cargarImagenesParaPdf(env, skus);
+  return buildOrdenCompraProveedorImagenesPdf({ ...comun, imagenes });
 }

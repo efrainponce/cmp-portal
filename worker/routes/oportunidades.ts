@@ -25,6 +25,10 @@ import { listCotizacionVirtual, ajustarLineaVirtual, ProyectoCotizacionError } f
 import { capturarTallas, reportarTallasIncorrectas, checkOcCliente, confirmTallasNative, confirmTallasNativeD1 } from '../lib/proyectoTallas';
 import { generarOcNative, generarOcNativeD1, generarOcPortal } from '../lib/oc';
 import { getOcNota, getOcNotas, setOcNota, OC_NOTA_MAX } from '../lib/ocNotas';
+import {
+  listarImagenes, leerImagen, guardarImagenSubida, restablecerDesdeAirtable,
+  isSkuUsable, skuKey, OC_IMAGEN_MAX_BYTES, OcImagenError,
+} from '../lib/ocImagenes';
 import { listEstadoHistorial } from '../lib/estadoProducto';
 import { recordDirectChanges } from '../lib/activityLog';
 import { listProductoResumen, upsertProductoResumen } from '../lib/productoResumen';
@@ -45,7 +49,7 @@ import { resolveMondayAsset, PROYECTO_DOCUMENTO_COL } from '../lib/portalFiles';
 import { putFile, oportunidadFileKey } from '../lib/r2';
 import { resolveCotizacionPdfUrl, nativeCotizacionPdf, CotizacionPdfError, ETIQUETA_BY_KIND, type PdfKind } from '../lib/cotizacionPdfs';
 import { refetchItem, refetchItemTree, upsertItem } from '../sync';
-import { jsonStatus, contentDisposition } from '../lib/http';
+import { jsonStatus, contentDisposition, rejectUnknownQuery } from '../lib/http';
 import { contentTypeFor, isGenericType } from '../lib/mime';
 import { canWrite } from '../../shared/visibility';
 import { reserveNativeId } from '../lib/nativeSeq';
@@ -85,6 +89,11 @@ const PROYECTO_ACTIONS: Record<string, {
   // electrónica (Efraín, 2026-08-19). No tiene camino en cmp-tallas — se
   // despacha abajo, con el viewer, porque escribe a nombre de quien la genera.
   'generar-oc-portal': { roles: ['compras', 'admin'] },
+  // Misma orden que 'generar-oc-portal' (mismo folio, mismos totales, mismas
+  // firmas) pero con la ficha de media hoja y la foto del producto — para
+  // proveedores donde el SKU no basta para saber qué fabricar (Efraín,
+  // 2026-08-24).
+  'generar-oc-portal-imagenes': { roles: ['compras', 'admin'] },
 };
 
 /** Fallback de /api/files para assetIds aún no migrados a R2 — resuelve el
@@ -948,9 +957,15 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     const proveedorId = c.req.param('proveedorId');
     const viewer = c.get('viewer');
     if (viewer.role !== 'compras' && viewer.role !== 'admin') return jsonStatus({ error: 'forbidden' }, 403);
+    // `imagenes=1` = la variante con ficha de producto y foto grande. Se declara
+    // aquí para que un parámetro mal escrito NO caiga en silencio a la OC normal
+    // (worker/lib/http.ts).
+    const badQuery = rejectUnknownQuery(c.req.url, ['imagenes']);
+    if (badQuery) return badQuery;
+    const conImagenes = c.req.query('imagenes') === '1';
 
     try {
-      const bytes = await generarOcProveedorPdf(c.env, itemId, proveedorId, viewer);
+      const bytes = await generarOcProveedorPdf(c.env, itemId, proveedorId, viewer, { conImagenes });
       // El `name` del Proyecto también empieza con el folio de la Oportunidad
       // ("OPP-0906 - …"), así que la descarga queda identificada igual que las
       // de la Oportunidad. Las OC OFICIALES no pasan por aquí: viven en Monday
@@ -969,6 +984,77 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       });
     } catch (err) {
       if (err instanceof OcProveedorPdfError) return jsonStatus({ error: err.message }, err.status);
+      return jsonStatus({ error: 'internal error' }, 500);
+    }
+  });
+
+  // ── Foto de producto de la OC con imágenes (worker/lib/ocImagenes.ts) ──────
+  // Viven por SKU y no por proyecto: la foto de un producto se reusa en todas
+  // las OC ("estaría genial poder guardarla y volverla a usar", Efraín
+  // 2026-08-24). Mismo gate de rol que el tab de órdenes.
+  function gateCompras(c: Context<{ Bindings: Env }>): Identity | null {
+    const viewer = c.get('viewer');
+    return viewer.role === 'compras' || viewer.role === 'admin' ? viewer : null;
+  }
+
+  /** Estado de la foto de varios SKUs, para pintar las miniaturas del tab. Solo
+   * lee lo guardado — no sale a Airtable (eso lo pide "Usar la del catálogo" o
+   * lo hace sola la generación del PDF). */
+  app.get('/api/oc-imagenes', async c => {
+    if (!gateCompras(c)) return jsonStatus({ error: 'forbidden' }, 403);
+    const bad = rejectUnknownQuery(c.req.url, ['skus']);
+    if (bad) return bad;
+    const skus = (c.req.query('skus') ?? '').split(',').map(s => s.trim()).filter(Boolean).slice(0, 200);
+    if (skus.length === 0) return c.json({ imagenes: [] });
+    return c.json({ imagenes: await listarImagenes(c.env, skus) });
+  });
+
+  app.get('/api/oc-imagenes/:sku/foto', async c => {
+    if (!gateCompras(c)) return jsonStatus({ error: 'forbidden' }, 403);
+    const sku = c.req.param('sku');
+    if (!isSkuUsable(sku)) return jsonStatus({ error: 'SKU inválido' }, 400);
+    const img = await leerImagen(c.env, sku);
+    if (!img) return jsonStatus({ error: 'sin imagen' }, 404);
+    return new Response(img.bytes, {
+      status: 200,
+      headers: {
+        'Content-Type': img.contentType,
+        'Content-Length': String(img.bytes.length),
+        // Privada y sin caché compartido: la sirve el portal detrás de Access.
+        'Cache-Control': 'private, max-age=60',
+      },
+    });
+  });
+
+  /** Sube la foto de UN producto. Cuerpo = los bytes crudos del archivo; el
+   * tipo se decide por la firma de los bytes, no por el Content-Type. */
+  app.put('/api/oc-imagenes/:sku/foto', async c => {
+    const viewer = gateCompras(c);
+    if (!viewer) return jsonStatus({ error: 'forbidden' }, 403);
+    const sku = c.req.param('sku');
+    if (!isSkuUsable(sku)) return jsonStatus({ error: 'SKU inválido' }, 400);
+    const buf = await c.req.arrayBuffer();
+    if (buf.byteLength > OC_IMAGEN_MAX_BYTES) return jsonStatus({ error: 'la imagen pasa de 5 MB' }, 413);
+    try {
+      const meta = await guardarImagenSubida(c.env, sku, new Uint8Array(buf), viewer.email);
+      return c.json({ imagen: meta });
+    } catch (err) {
+      if (err instanceof OcImagenError) return jsonStatus({ error: err.message }, err.status);
+      return jsonStatus({ error: 'internal error' }, 500);
+    }
+  });
+
+  /** "Usar la del catálogo": re-jala la foto de Airtable y pisa la subida. */
+  app.post('/api/oc-imagenes/:sku/restablecer', async c => {
+    if (!gateCompras(c)) return jsonStatus({ error: 'forbidden' }, 403);
+    const sku = c.req.param('sku');
+    if (!isSkuUsable(sku)) return jsonStatus({ error: 'SKU inválido' }, 400);
+    try {
+      const meta = await restablecerDesdeAirtable(c.env, sku);
+      if (!meta) return jsonStatus({ error: 'el catálogo no tiene foto para ' + skuKey(sku) }, 404);
+      return c.json({ imagen: meta });
+    } catch (err) {
+      if (err instanceof OcImagenError) return jsonStatus({ error: err.message }, err.status);
       return jsonStatus({ error: 'internal error' }, 500);
     }
   });
@@ -1578,8 +1664,10 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       // corre en paralelo contra Proyectos reales antes de cortar el cable.
       // "tallas-regenerar"/"tallas-importar" siguen en cmp-tallas (dependen del
       // Sheet, que esta fase retiró — Efraín, 2026-08-12).
-      const result = actionKey === 'generar-oc-portal'
-        ? await generarOcPortal(c.env, viewer, itemId, opts)
+      const result = actionKey === 'generar-oc-portal' || actionKey === 'generar-oc-portal-imagenes'
+        ? await generarOcPortal(c.env, viewer, itemId, {
+            ...opts, conImagenes: actionKey === 'generar-oc-portal-imagenes',
+          })
         : actionKey === 'tallas-confirmar' && isNativeId(itemId)
         ? await confirmTallasNativeD1(c.env, c.executionCtx, viewer, itemId)
         : actionKey === 'tallas-confirmar' && c.env.TALLAS_NATIVE === '1'
