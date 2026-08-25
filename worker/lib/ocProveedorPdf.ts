@@ -13,6 +13,7 @@ import type { ItemDTO } from '../../shared/dto';
 import { buildOrdenCompraProveedorPdf, type OcProveedorLinea } from './pdf/ordenCompraProveedor';
 import { buildOrdenCompraProveedorImagenesPdf } from './pdf/ordenCompraProveedorImagenes';
 import { cargarImagenesParaPdf } from './ocImagenes';
+import { cargarExtrasParaPdf, type ExtraParaPdf } from './proyectoImagenes';
 import type { PdfImageData } from './pdf/png';
 import { getOcNota } from './ocNotas';
 
@@ -85,6 +86,9 @@ export interface OcProveedorPdfOpts {
 export interface OcProveedorPreparada {
   comun: Omit<Parameters<typeof buildOrdenCompraProveedorPdf>[0], 'sinCostos'>;
   imagenes: Map<string, PdfImageData>;
+  /** Imágenes que se subieron para ESTE proyecto (worker/lib/proyectoImagenes.ts):
+   * una ficha por imagen, además de la del catálogo. */
+  extras: Map<string, ExtraParaPdf[]>;
   conImagenes: boolean;
 }
 
@@ -92,7 +96,7 @@ export interface OcProveedorPreparada {
 export function renderOcProveedor(prep: OcProveedorPreparada, sinCostos: boolean): Uint8Array {
   const input = { ...prep.comun, sinCostos };
   return prep.conImagenes
-    ? buildOrdenCompraProveedorImagenesPdf({ ...input, imagenes: prep.imagenes })
+    ? buildOrdenCompraProveedorImagenesPdf({ ...input, imagenes: prep.imagenes, extras: prep.extras })
     : buildOrdenCompraProveedorPdf(input);
 }
 
@@ -156,11 +160,19 @@ export async function prepararOcProveedor(
   // Solo las líneas de producto piden foto: los embellecimientos no tienen
   // ficha (van en la tabla de la orden) y pedir su SKU dispararía búsquedas de
   // catálogo que nunca van a encontrar nada.
+  const skusDeProducto = lineas.filter(l => !l.zona).map(l => l.sku).filter(Boolean);
   const imagenes = opts.conImagenes
-    ? await cargarImagenesParaPdf(env, lineas.filter(l => !l.zona).map(l => l.sku).filter(Boolean))
+    ? await cargarImagenesParaPdf(env, skusDeProducto)
     : new Map<string, PdfImageData>();
+  // Las del proyecto se leen en la misma pasada que la del catálogo, por lo
+  // mismo que existe `prepararOcProveedor`: de una orden salen DOS copias (con
+  // y sin costos) y decodificar cada PNG dos veces es CPU que el Worker tiene
+  // contado.
+  const extras = opts.conImagenes
+    ? await cargarExtrasParaPdf(env, proyectoId, skusDeProducto)
+    : new Map<string, ExtraParaPdf[]>();
 
-  return { comun, imagenes, conImagenes: !!opts.conImagenes };
+  return { comun, imagenes, extras, conImagenes: !!opts.conImagenes };
 }
 
 /** Una sola copia — el camino de la vista previa. */

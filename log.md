@@ -1,5 +1,38 @@
 # Log de commits
 
+## 2026-08-25 (7)
+
+- **Agregar imágenes a un producto para la OC** (Efraín: "puedes poder AGREGAR
+  imágenes a un producto, así como las imágenes de embellecimientos o renders"
+  … "y que salga en la OC con imágenes" … "es solo por proyecto, no es para
+  todo"). En la tira de fotos del tab Órdenes de compra, cada producto estrena
+  **"+ Imagen"**: se suben renders, la muestra aprobada o el detalle del
+  bordado, y quedan como miniaturas con ✕ para quitarlas.
+- **Viven en el PROYECTO, no en el SKU.** La foto del catálogo (Airtable) sigue
+  siendo la principal y se hereda a todas las OC; estas no: el render del
+  bordado de ESTE cliente no tiene por qué aparecer en la orden del siguiente.
+- **En el PDF cada imagen se lleva su propia ficha de media hoja**, con la foto
+  grande y el título "Producto — imagen 2 de 3" (Efraín eligió esto sobre una
+  tira de miniaturas: para eso se sube un render, para que el proveedor lo VEA).
+  Esas fichas no repiten tallas ni totales — el pedido ya va en la ficha de
+  arriba y repetirlo se leería como el doble. La numeración cuenta solo las
+  imágenes que el proveedor ve: sin foto de catálogo, dos extras son "1 de 2".
+- Bytes en R2 y registro en D1, nada en Monday. Tope de 6 por producto (cada una
+  es media hoja), 5 MB, y el tipo se decide por la FIRMA de los bytes — un
+  .webp renombrado a .jpg saldría como hueco gris sin explicación. Quitar una
+  puede hacerlo quien la subió o un admin.
+- **Bug encontrado en la prueba y corregido antes de subir:** el key de R2 salía
+  del sha de la imagen, así que la MISMA foto subida dos veces compartía objeto
+  y borrar una dejaba a la otra sin bytes (miniatura rota, hueco en el PDF). El
+  key ahora es único por fila, y el borrado además comprueba que ninguna otra
+  fila referencie el objeto antes de tirarlo.
+- Ajuste al motor de PDF: una ficha sin tallas ya no dibuja el encabezado
+  "TALLA / CANT." vacío — se leía como un dato que se hubiera perdido.
+- Probado end-to-end en local: permisos (vendedor 403), archivo que no es imagen,
+  query param desconocido, tope de 6, borrado por autor y por admin, y la OC
+  real generada y revisada página por página (5 hojas, las fichas extra con su
+  foto grande). La OC sin imágenes sale idéntica a antes.
+
 ## 2026-08-25 (6)
 
 - **"Cambiar producto…" con todas sus letras** (Efraín, viendo la tabla: "no se

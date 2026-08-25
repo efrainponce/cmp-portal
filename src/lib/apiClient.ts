@@ -8,7 +8,8 @@ import type {
   ListResponse, MeDTO, MentionUserDTO, MondayUserDTO, ProyectoActionResponse, ProyectoResponse,
   QuoteLineSnapshot, QuoteVersionDTO, QuoteVersionsResponse, SetInstitucionRequest, SetInstitucionResponse,
   TallaBoxInput, CapturarTallasResponse, CambiarProductoLineasRequest, CambiarProductoLineasResponse,
-  CambioProductoDTO, CambiosProductoResponse, EstadoHistorialEntryDTO, EstadoHistorialResponse,
+  CambioProductoDTO, CambiosProductoResponse, ProyectoImagenDTO, ProyectoImagenesResponse,
+  EstadoHistorialEntryDTO, EstadoHistorialResponse,
   ProductoResumenDTO, ProductoResumenResponse, ProductoGeneroResponse,
   UpdateAttachmentDTO, UpdateDTO, VendedorDTO, WriteResponse, ZonaDTO,
 } from '../../shared/dto';
@@ -24,7 +25,7 @@ export type {
   ActivityEntryDTO,
   AjusteDTO, BoardAccessDTO, BoardSlug, ColMeta, ColVal, CostoDivergenciaDTO, CotizacionVirtualDTO, IdentityDTO, ItemDTO, ItemDetailDTO, ListResponse, MeDTO, MentionUserDTO,
   MondayUserDTO, ProposedProductDTO, QuoteLineSnapshot, QuoteVersionDTO, TallaBoxInput, CapturarTallasResponse,
-  CambiarProductoLineasRequest, CambiarProductoLineasResponse, CambioProductoDTO,
+  CambiarProductoLineasRequest, CambiarProductoLineasResponse, CambioProductoDTO, ProyectoImagenDTO,
   EstadoHistorialEntryDTO, ProductoResumenDTO,
   UpdateAttachmentDTO, UpdateDTO, VendedorDTO, ZonaDTO,
 };
@@ -582,6 +583,39 @@ export async function uploadOcImagen(sku: string, file: File): Promise<OcImagenD
   const body: { imagen?: OcImagenDTO; error?: string } = await res.json();
   if (!res.ok || !body.imagen) throw new Error(body.error ?? 'no se pudo subir la imagen');
   return body.imagen;
+}
+
+/** Imágenes extra de un producto DENTRO de un proyecto (renders, muestras, el
+ * detalle del bordado) — worker/lib/proyectoImagenes.ts. Distintas de la foto
+ * por SKU del catálogo: estas no se heredan a la OC de otro cliente. Cada una
+ * sale como su propia ficha en la OC con imágenes. */
+export async function listProyectoImagenes(proyectoId: string): Promise<ProyectoImagenDTO[]> {
+  const res = await apiFetch(`/proyectos/${proyectoId}/imagenes`);
+  if (!res.ok) return [];
+  const body: ProyectoImagenesResponse = await res.json();
+  return body.imagenes ?? [];
+}
+
+export function proyectoImagenUrl(proyectoId: string, imagenId: string): string {
+  return `/api/proyectos/${proyectoId}/imagenes/${imagenId}`;
+}
+
+export async function uploadProyectoImagen(
+  proyectoId: string, sku: string, file: File,
+): Promise<ProyectoImagenDTO> {
+  const q = `?sku=${encodeURIComponent(sku)}&nombre=${encodeURIComponent(file.name)}`;
+  const res = await apiFetch(`/proyectos/${proyectoId}/imagenes${q}`, { method: 'POST', body: file });
+  const body: { imagen?: ProyectoImagenDTO; error?: string } = await res.json();
+  if (!res.ok || !body.imagen) throw new Error(body.error ?? 'no se pudo subir la imagen');
+  return body.imagen;
+}
+
+export async function deleteProyectoImagen(proyectoId: string, imagenId: string): Promise<void> {
+  const res = await apiFetch(`/proyectos/${proyectoId}/imagenes/${imagenId}`, { method: 'DELETE' });
+  if (!res.ok) {
+    const body: { error?: string } = await res.json().catch(() => ({}));
+    throw new Error(body.error ?? 'no se pudo quitar la imagen');
+  }
 }
 
 /** "Usar la del catálogo": re-jala la de Airtable y pisa la subida. */

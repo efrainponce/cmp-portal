@@ -5,6 +5,7 @@ import { describe, it, expect } from 'vitest';
 import { agruparPorProducto, construirFichas, buildOrdenCompraProveedorImagenesPdf } from './ordenCompraProveedorImagenes';
 import { PRODUCT_CARD_TALLAS_MAX } from './layout';
 import type { OcProveedorLinea } from './ordenCompraProveedor';
+import type { PdfImageData } from './png';
 
 function linea(p: Partial<OcProveedorLinea>): OcProveedorLinea {
   return {
@@ -101,6 +102,49 @@ describe('construirFichas', () => {
   it('sin foto para el SKU, la ficha va con imagen nula (placeholder gris)', () => {
     const fichas = construirFichas(agruparPorProducto([linea({})]), new Map());
     expect(fichas[0].imagen).toBeNull();
+  });
+});
+
+// Renders/muestras que alguien subió para ESTE proyecto
+// (worker/lib/proyectoImagenes.ts, Efraín 2026-08-25). Van como ficha propia
+// con la foto grande: mostrarlas de miniatura anularía el motivo de subirlas.
+describe('imágenes extra del proyecto', () => {
+  const img = (n: number): PdfImageData => ({
+    width: n, height: n, colorSpace: 'DeviceRGB', filter: 'DCTDecode', bytes: new Uint8Array([n]),
+  });
+  const extras = new Map([['74434', [
+    { nombre: 'Render bordado frente', imagen: img(1) },
+    { nombre: 'Muestra aprobada', imagen: img(2) },
+  ]]]);
+
+  it('cada imagen extra se lleva su propia ficha, después de la de tallas', () => {
+    const grupos = agruparPorProducto([linea({ talla: 'L' })]);
+    const fichas = construirFichas(grupos, new Map([['74434', img(9)]]), false, extras);
+    expect(fichas).toHaveLength(3);
+    expect(fichas[0].tallas).toHaveLength(1);          // la de siempre, con el pedido
+    expect(fichas[1].titulo).toBe('Apex Pant — imagen 2 de 3');
+    expect(fichas[2].titulo).toBe('Apex Pant — imagen 3 de 3');
+  });
+
+  it('las fichas extra NO repiten tallas ni totales: el pedido ya está arriba', () => {
+    const fichas = construirFichas(agruparPorProducto([linea({ talla: 'L', cantidad: 7 })]),
+      new Map([['74434', img(9)]]), false, extras);
+    expect(fichas[1].tallas).toEqual([]);
+    expect(fichas[1].pie.join(' ')).not.toContain('7');
+    expect(fichas[1].datos).toContainEqual(['Referencia', 'Render bordado frente']);
+  });
+
+  it('sin foto de catálogo, la numeración cuenta solo lo que el proveedor ve', () => {
+    // La ficha de tallas sale con placeholder gris, así que las imágenes
+    // visibles son 2, no 3 — decir "imagen 2 de 3" sobre dos fotos confunde.
+    const fichas = construirFichas(agruparPorProducto([linea({ talla: 'L' })]), new Map(), false, extras);
+    expect(fichas[1].titulo).toBe('Apex Pant — imagen 1 de 2');
+    expect(fichas[2].titulo).toBe('Apex Pant — imagen 2 de 2');
+  });
+
+  it('un SKU sin imágenes del proyecto sale exactamente como antes', () => {
+    const fichas = construirFichas(agruparPorProducto([linea({ sku: '71391', talla: 'L' })]), new Map(), false, extras);
+    expect(fichas).toHaveLength(1);
   });
 });
 

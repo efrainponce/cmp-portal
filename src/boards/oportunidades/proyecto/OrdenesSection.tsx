@@ -18,8 +18,10 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import {
   proyectoAction, patchItem, deleteProyectoLinea, getActivity, getOcNotas, saveOcNota,
   listOcImagenes, ocImagenUrl, uploadOcImagen, restablecerOcImagen, listOcDeProyecto,
-  getCambiosProducto, usePoll, SOLO_NOMBRE,
-  type ActivityEntryDTO, type CambioProductoDTO, type ItemDetailDTO, type ItemDTO, type OcImagenDTO, type OcEmitidaDTO,
+  getCambiosProducto, listProyectoImagenes, proyectoImagenUrl, uploadProyectoImagen, deleteProyectoImagen,
+  usePoll, SOLO_NOMBRE,
+  type ActivityEntryDTO, type CambioProductoDTO, type ItemDetailDTO, type ItemDTO, type OcImagenDTO,
+  type OcEmitidaDTO, type ProyectoImagenDTO,
 } from '../../../lib/api';
 import { useMe } from '../../../lib/useMe';
 import { ConfirmButton } from '../../../components/core/ConfirmButton';
@@ -672,11 +674,22 @@ function NotaProveedor({ proyectoId, proveedorId, inicial }: {
  * Solo se pinta la tira: la que jala de Airtable sola es la generación del PDF
  * (worker/lib/ocImagenes.ts). Aquí un SKU sin foto se muestra vacío en vez de
  * salir a la red por cada producto cada vez que alguien abre el tab. */
-function FotosProducto({ productos }: { productos: { sku: string; nombre: string }[] }) {
+function FotosProducto({ productos, proyectoId }: {
+  productos: { sku: string; nombre: string }[]; proyectoId: string;
+}) {
   const [estado, setEstado] = useState<Record<string, OcImagenDTO>>({});
   const [cargando, setCargando] = useState(true);
   const [msg, setMsg] = useState('');
+  // Imágenes extra de ESTE proyecto (renders, muestras) — una ficha propia cada
+  // una en la OC con imágenes (worker/lib/proyectoImagenes.ts).
+  const [extras, setExtras] = useState<ProyectoImagenDTO[]>([]);
   const skus = productos.map(p => p.sku).join(',');
+
+  useEffect(() => {
+    let vivo = true;
+    listProyectoImagenes(proyectoId).then(l => { if (vivo) setExtras(l); }).catch(() => { /* la tira sale sin extras */ });
+    return () => { vivo = false; };
+  }, [proyectoId]);
 
   useEffect(() => {
     let vivo = true;
@@ -701,7 +714,8 @@ function FotosProducto({ productos }: { productos: { sku: string; nombre: string
   return (
     <div style={{ flex: '1 1 100%' }}>
       <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)', marginBottom: 6 }}>
-        Fotos de la OC con imágenes — salen del catálogo; súbelas solo si la variante es distinta
+        Fotos de la OC con imágenes — la principal sale del catálogo; con “+ Imagen” agregas renders o
+        muestras de ESTE proyecto, y cada una lleva su propia ficha en el PDF
         {msg ? <span style={{ marginLeft: 8, color: 'var(--status-perdida)' }}>{msg}</span> : null}
       </div>
       <div style={{ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 4 }}>
@@ -709,9 +723,12 @@ function FotosProducto({ productos }: { productos: { sku: string; nombre: string
           <FotoProducto
             key={p.sku}
             producto={p}
+            proyectoId={proyectoId}
             meta={estado[p.sku.toUpperCase()]}
+            extras={extras.filter(x => x.sku === p.sku.trim().toUpperCase())}
             cargando={cargando}
             onCambio={meta => { setMsg(''); guardar(p.sku, meta); }}
+            onExtras={setExtras}
             onError={setMsg}
           />
         ))}
@@ -720,14 +737,19 @@ function FotosProducto({ productos }: { productos: { sku: string; nombre: string
   );
 }
 
-function FotoProducto({ producto, meta, cargando, onCambio, onError }: {
+function FotoProducto({ producto, proyectoId, meta, extras, cargando, onCambio, onExtras, onError }: {
   producto: { sku: string; nombre: string };
+  proyectoId: string;
   meta?: OcImagenDTO;
+  /** Imágenes de este proyecto para este producto (además de la del catálogo). */
+  extras: ProyectoImagenDTO[];
   cargando: boolean;
   onCambio: (meta: OcImagenDTO) => void;
+  onExtras: (todas: ProyectoImagenDTO[]) => void;
   onError: (msg: string) => void;
 }) {
   const input = useRef<HTMLInputElement>(null);
+  const inputExtra = useRef<HTMLInputElement>(null);
   const [ocupado, setOcupado] = useState(false);
   // La URL de la miniatura no cambia al reemplazar la foto (el key de R2 sí),
   // así que se le cuelga la fecha de actualización para saltarse el caché.
@@ -738,6 +760,19 @@ function FotoProducto({ producto, meta, cargando, onCambio, onError }: {
     try { onCambio(await fn()); }
     catch (err) { onError(err instanceof Error ? err.message : 'No se pudo actualizar la foto.'); }
     finally { setOcupado(false); }
+  };
+
+  // Las extras se recargan enteras del server tras subir o quitar: la lista
+  // vive a nivel de la tira (una sola llamada para todos los productos) y así
+  // no hay dos verdades sobre qué imágenes tiene el proyecto.
+  const correrExtra = async (fn: () => Promise<unknown>) => {
+    setOcupado(true);
+    try {
+      await fn();
+      onExtras(await listProyectoImagenes(proyectoId));
+    } catch (err) {
+      onError(err instanceof Error ? err.message : 'No se pudo actualizar la imagen.');
+    } finally { setOcupado(false); }
   };
 
   return (
@@ -786,6 +821,59 @@ function FotoProducto({ producto, meta, cargando, onCambio, onError }: {
           {meta?.origen === 'subida' ? 'Del catálogo' : 'Reintentar'}
         </button>
       </div>
+      {/* Renders / muestras de ESTE proyecto: cada una sale como su propia
+          ficha de media hoja en la OC con imágenes (Efraín, 2026-08-25). */}
+      {extras.length > 0 && (
+        <div style={{ display: 'flex', gap: 4, marginTop: 6, flexWrap: 'wrap' }}>
+          {extras.map(x => (
+            <div key={x.id} style={{ position: 'relative' }}>
+              <img
+                src={proyectoImagenUrl(proyectoId, x.id)}
+                alt={x.nombre}
+                title={`${x.nombre} — la subió ${x.subidaPor}`}
+                style={{
+                  width: 38, height: 38, objectFit: 'cover', borderRadius: 'var(--radius-sm)',
+                  border: '1px solid var(--border-subtle)', background: '#fff', display: 'block',
+                }}
+              />
+              <span
+                onClick={ocupado ? undefined : () => { if (window.confirm(`¿Quitar "${x.nombre}" de la OC?`)) void correrExtra(() => deleteProyectoImagen(proyectoId, x.id)); }}
+                title="Quitar esta imagen de la OC"
+                style={{
+                  position: 'absolute', top: -5, right: -5, width: 15, height: 15, lineHeight: '13px',
+                  textAlign: 'center', borderRadius: '50%', background: 'var(--bg-raised)',
+                  border: '1px solid var(--border)', font: 'var(--text-caption)',
+                  color: 'var(--status-perdida)', cursor: 'pointer', userSelect: 'none',
+                }}
+              >
+                ×
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+      <div style={{ marginTop: 4 }}>
+        <button
+          type="button"
+          disabled={ocupado}
+          title="Agrega un render, una muestra o el detalle del bordado — sale como una ficha más en la OC con imágenes, solo en este proyecto"
+          onClick={() => inputExtra.current?.click()}
+          style={{ font: 'var(--text-caption)', color: 'var(--accent)', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+        >
+          + Imagen{extras.length > 0 ? ` (${extras.length})` : ''}
+        </button>
+      </div>
+      <input
+        ref={inputExtra}
+        type="file"
+        accept="image/jpeg,image/png"
+        hidden
+        onChange={e => {
+          const file = e.target.files?.[0];
+          e.target.value = '';
+          if (file) void correrExtra(() => uploadProyectoImagen(proyectoId, producto.sku, file));
+        }}
+      />
       <input
         ref={input}
         type="file"
@@ -936,7 +1024,7 @@ function ProveedorCard({ group, proyecto, oppId, reload, canEdit, activity, nota
           {group.proveedorId && (
             <NotaProveedor proyectoId={proyecto.id} proveedorId={group.proveedorId} inicial={nota} />
           )}
-          <FotosProducto productos={productos} />
+          <FotosProducto productos={productos} proyectoId={proyecto.id} />
         </div>
       )}
       <div style={{ overflowX: 'auto' }}>

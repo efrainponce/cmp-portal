@@ -33,6 +33,11 @@ export interface OcProveedorImagenesPdfInput extends OcProveedorPdfInput {
   /** Foto por SKU (llave ya canónica, `skuKey` de worker/lib/ocImagenes.ts).
    * Un SKU ausente sale con el placeholder gris, no con error. */
   imagenes: Map<string, PdfImageData>;
+  /** Imágenes que alguien subió para ESTE proyecto (renders, la muestra
+   * aprobada, el detalle del bordado) — worker/lib/proyectoImagenes.ts, Efraín
+   * 2026-08-25. Cada una se lleva su PROPIA ficha, con la foto grande: para eso
+   * se sube un render, para que el proveedor lo vea. */
+  extras?: Map<string, { nombre: string; imagen: PdfImageData }[]>;
 }
 
 /** Una ficha del documento: todas las líneas de un mismo producto juntas. */
@@ -110,6 +115,7 @@ export function agruparPorProducto(lineas: OcProveedorLinea[]): ProductoGrupo[] 
  * pasar. Exportada para poder anclar justo eso en test. */
 export function construirFichas(
   grupos: ProductoGrupo[], imagenes: Map<string, PdfImageData>, sinCostos = false,
+  extras: Map<string, { nombre: string; imagen: PdfImageData }[]> = new Map(),
 ): Extract<Block, { kind: 'productCard' }>[] {
   return grupos.flatMap(g => {
     const partes: { talla: string; cantidad: string }[][] = [];
@@ -120,7 +126,7 @@ export function construirFichas(
     const nombre = g.producto || g.sku || '—';
     const imagen = imagenes.get((g.sku || '').trim().toUpperCase()) ?? null;
 
-    return partes.map((tallas, i) => ({
+    const fichasDeTallas = partes.map((tallas, i) => ({
       kind: 'productCard' as const,
       titulo: partes.length > 1 ? `${nombre} (${i + 1} de ${partes.length})` : nombre,
       datos: [
@@ -146,11 +152,35 @@ export function construirFichas(
         : ['Continúa en la ficha siguiente', ''],
       imagen,
     }));
+
+    // Una ficha por imagen extra del proyecto, después de las de tallas. No
+    // repiten tallas ni totales a propósito: el pedido ya está en las de
+    // arriba, y repetirlo se leería como si fuera el doble (mismo criterio que
+    // el pie de las partes). Solo llevan la foto grande y de qué producto es.
+    const extrasDelSku = extras.get((g.sku || '').trim().toUpperCase()) ?? [];
+    // El total que se numera incluye la foto del catálogo cuando la hay: para
+    // quien recibe la OC, "imagen 2 de 3" cuenta lo que ve, no de dónde salió.
+    const total = extrasDelSku.length + (imagen ? 1 : 0);
+    const fichasExtra = extrasDelSku.map((extra, i) => ({
+      kind: 'productCard' as const,
+      titulo: `${nombre} — imagen ${i + 1 + (imagen ? 1 : 0)} de ${total}`,
+      datos: [
+        ['SKU / Modelo', g.sku || '—'],
+        ['Color', g.colores.join(', ') || '—'],
+        ['Referencia', extra.nombre],
+      ] as [string, string][],
+      tallas: [],
+      pie: ['Imagen de referencia de esta orden', ''],
+      imagen: extra.imagen,
+    }));
+
+    return [...fichasDeTallas, ...fichasExtra];
   });
 }
 
 export function buildOrdenCompraProveedorImagenesPdf(input: OcProveedorImagenesPdfInput): Uint8Array {
-  const fichas = construirFichas(agruparPorProducto(input.lineas), input.imagenes, !!input.sinCostos);
+  const fichas = construirFichas(
+    agruparPorProducto(input.lineas), input.imagenes, !!input.sinCostos, input.extras);
 
   const blocks: Block[] = [
     // La orden básica, íntegra: tabla de líneas, totales, notas y firmas.

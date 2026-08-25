@@ -441,9 +441,22 @@ function drawProductCard(
   }
 
   // ── Tallas ──
+  // Una ficha SIN tallas es legítima: las imágenes extra de un producto
+  // (worker/lib/proyectoImagenes.ts) no repiten el pedido, que ya va en la
+  // ficha de arriba. Ahí la tabla se omite entera — un encabezado
+  // "TALLA / CANT." sobre nada se lee como un dato que se perdió.
   const pieHeight = block.pie.length * 12 + 6;
   const tallasTop = y + 6;
   const tallasBottom = top + CARD_HEIGHT - CARD_PAD - pieHeight;
+  if (block.tallas.length === 0) {
+    let pyVacio = top + CARD_HEIGHT - CARD_PAD - pieHeight + 10;
+    for (const line of block.pie) {
+      pdf.text(cur.page, colLeft, pyVacio, ellipsize(line, colWidth, 9, 'HB'), { size: 9, font: 'HB', color: INK });
+      pyVacio += 12;
+    }
+    cur.y += CARD_HEIGHT + CARD_GAP;
+    return;
+  }
   pdf.line(cur.page, colLeft, tallasTop - 8, colRight, tallasTop - 8, { color: RULE, width: 0.6 });
 
   const rowH = 13;

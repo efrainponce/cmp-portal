@@ -8,7 +8,7 @@ import type { Identity } from '../../shared/types';
 import { BOARDS, type BoardSlug } from '../../shared/boards';
 import { isNativeId } from '../../shared/nativeId';
 import { stageAtOrAfter, stageKeyForLabel } from '../../shared/dealStages';
-import type { AjustarLineaRequest, AjustarLineaResponse, CotizacionVirtualDTO, DuplicarOportunidadRequest, DuplicarOportunidadResponse, DuplicarVersionResponse, ItemDetailDTO, QuoteVersionsResponse, TallaBoxInput, CapturarTallasResponse, CambiarProductoLineasRequest, CambiarProductoLineasResponse, CambiosProductoResponse, EstadoHistorialResponse, ProductoResumenResponse, ProductoGeneroResponse } from '../../shared/dto';
+import type { AjustarLineaRequest, AjustarLineaResponse, CotizacionVirtualDTO, DuplicarOportunidadRequest, DuplicarOportunidadResponse, DuplicarVersionResponse, ItemDetailDTO, QuoteVersionsResponse, TallaBoxInput, CapturarTallasResponse, CambiarProductoLineasRequest, CambiarProductoLineasResponse, CambiosProductoResponse, ProyectoImagenesResponse, EstadoHistorialResponse, ProductoResumenResponse, ProductoGeneroResponse } from '../../shared/dto';
 import type { ProposedProductsResponse, AddProposedProductResponse } from '../../shared/productosPropuestos';
 import { getItem, childrenOf, pendingItemIds, proyectoForOportunidad, linkedItemId, PROYECTO_OPP_REL } from '../lib/dal';
 import { toItemDTO } from '../lib/serialize';
@@ -24,6 +24,10 @@ import { ajustarLinea, AjusteLineaError } from '../lib/lineaAjustes';
 import { listCotizacionVirtual, ajustarLineaVirtual, ProyectoCotizacionError } from '../lib/proyectoCotizacionVirtual';
 import { capturarTallas, reportarTallasIncorrectas, checkOcCliente, confirmTallasNative, confirmTallasNativeD1 } from '../lib/proyectoTallas';
 import { cambiarProductoLineas, listCambiosProducto, CambiarProductoError } from '../lib/proyectoLineaProducto';
+import {
+  agregarImagen, listarImagenesProyecto, leerImagenProyecto, borrarImagenProyecto,
+  IMAGEN_MAX_BYTES, ProyectoImagenError,
+} from '../lib/proyectoImagenes';
 import { generarOcNative, generarOcNativeD1, generarOcPortal } from '../lib/oc';
 import { getOcNota, getOcNotas, setOcNota, OC_NOTA_MAX } from '../lib/ocNotas';
 import { listarOc, getOc, type OcEstado } from '../lib/ocLedger';
@@ -1396,6 +1400,89 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
   // se capturó sigue siendo el bueno (Efraín, 2026-08-25). Toda la lógica y sus
   // guardas viven en worker/lib/proyectoLineaProducto.ts; aquí solo el wiring.
   // Igual que /lineas, va ANTES del wildcard /api/proyectos/:id/:action.
+  // Imágenes extra de un producto DENTRO de este proyecto — renders del
+  // embellecimiento, la muestra aprobada, el color exacto que se negoció aquí
+  // (Efraín, 2026-08-25). Cada una sale como su propia ficha en la OC con
+  // imágenes. Van antes del wildcard /api/proyectos/:id/:action, igual que
+  // /lineas. Toda la lógica en worker/lib/proyectoImagenes.ts.
+  app.get('/api/proyectos/:id/imagenes', async c => {
+    const itemId = Number(c.req.param('id'));
+    if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
+    const bad = rejectUnknownQuery(c.req.url, []);
+    if (bad) return bad;
+    const viewer = c.get('viewer');
+    if (viewer.role !== 'compras' && viewer.role !== 'admin') return c.json({ error: 'forbidden' }, 403);
+    const row = await getItem(c.env, 'proyectos', itemId, viewer);
+    if (!row) return c.json({ error: 'not found' }, 404);
+    const response: ProyectoImagenesResponse = { imagenes: await listarImagenesProyecto(c.env, itemId) };
+    return c.json(response);
+  });
+
+  /** Sube una imagen más para un producto. Cuerpo = los bytes crudos (mismo
+   * patrón que PUT /api/oc-imagenes/:sku/foto); el tipo se decide por la firma
+   * de los bytes, no por el Content-Type que mandó el navegador. */
+  app.post('/api/proyectos/:id/imagenes', async c => {
+    const itemId = Number(c.req.param('id'));
+    if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
+    const bad = rejectUnknownQuery(c.req.url, ['sku', 'nombre']);
+    if (bad) return bad;
+    const viewer = c.get('viewer');
+    if (viewer.role !== 'compras' && viewer.role !== 'admin') return c.json({ error: 'forbidden' }, 403);
+    // scope 'own': subir es escribir, y un líder de zona solo LEE lo de su equipo.
+    const row = await getItem(c.env, 'proyectos', itemId, viewer, 'own');
+    if (!row) return c.json({ error: 'not found' }, 404);
+
+    const sku = c.req.query('sku') ?? '';
+    const buf = await c.req.arrayBuffer();
+    if (buf.byteLength > IMAGEN_MAX_BYTES) return jsonStatus({ error: 'la imagen pasa de 5 MB' }, 413);
+    try {
+      const imagen = await agregarImagen(
+        c.env, itemId, sku, new Uint8Array(buf), c.req.query('nombre') ?? '', viewer.email);
+      return c.json({ imagen });
+    } catch (err) {
+      if (err instanceof ProyectoImagenError) return jsonStatus({ error: err.message }, err.status);
+      return jsonStatus({ error: 'internal error' }, 500);
+    }
+  });
+
+  app.get('/api/proyectos/:id/imagenes/:imagenId', async c => {
+    const itemId = Number(c.req.param('id'));
+    const imagenId = Number(c.req.param('imagenId'));
+    if (!Number.isFinite(itemId) || !Number.isFinite(imagenId)) return c.json({ error: 'not found' }, 404);
+    const viewer = c.get('viewer');
+    if (viewer.role !== 'compras' && viewer.role !== 'admin') return c.json({ error: 'forbidden' }, 403);
+    const row = await getItem(c.env, 'proyectos', itemId, viewer);
+    if (!row) return c.json({ error: 'not found' }, 404);
+    const img = await leerImagenProyecto(c.env, itemId, imagenId);
+    if (!img) return jsonStatus({ error: 'sin imagen' }, 404);
+    return new Response(img.bytes as BodyInit, {
+      status: 200,
+      headers: {
+        'Content-Type': img.contentType,
+        'Content-Length': String(img.bytes.length),
+        // Privada: la sirve el portal detrás de Access, como la foto del catálogo.
+        'Cache-Control': 'private, max-age=60',
+      },
+    });
+  });
+
+  app.delete('/api/proyectos/:id/imagenes/:imagenId', async c => {
+    const itemId = Number(c.req.param('id'));
+    const imagenId = Number(c.req.param('imagenId'));
+    if (!Number.isFinite(itemId) || !Number.isFinite(imagenId)) return c.json({ error: 'not found' }, 404);
+    const viewer = c.get('viewer');
+    if (viewer.role !== 'compras' && viewer.role !== 'admin') return c.json({ error: 'forbidden' }, 403);
+    const row = await getItem(c.env, 'proyectos', itemId, viewer, 'own');
+    if (!row) return c.json({ error: 'not found' }, 404);
+    try {
+      await borrarImagenProyecto(c.env, itemId, imagenId, viewer.email, viewer.role === 'admin');
+      return c.json({ ok: true });
+    } catch (err) {
+      if (err instanceof ProyectoImagenError) return jsonStatus({ ok: false, error: err.message }, err.status);
+      return jsonStatus({ ok: false, error: 'internal error' }, 500);
+    }
+  });
+
   // La marca visible de "esta línea ya no es el producto cotizado" que pinta la
   // tabla de OC — mismo espíritu que los pills de versión de la cotización.
   app.get('/api/proyectos/:id/cambios-producto', async c => {

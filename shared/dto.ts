@@ -336,6 +336,28 @@ export interface CambiosProductoResponse {
   cambios: CambioProductoDTO[];
 }
 
+// Imágenes EXTRA de un producto dentro de UN proyecto, para la OC con imágenes
+// (worker/lib/proyectoImagenes.ts, Efraín 2026-08-25: "poder AGREGAR imágenes a
+// un producto, así como las imágenes de embellecimientos o renders" … "es solo
+// por proyecto, no es para todo"). Distintas de la foto por SKU del catálogo
+// (`OcImagenDTO`), que sí se reusa en todas las OC: un render del bordado de
+// ESTE cliente no tiene por qué salir en la orden del siguiente. Cada una se
+// lleva su propia ficha de media hoja en el PDF.
+export interface ProyectoImagenDTO {
+  id: string;
+  sku: string;
+  /** Etiqueta que se imprime bajo el título de su ficha ("Render frente"). */
+  nombre: string;
+  contentType: string;
+  bytes: number;
+  subidaPor: string;
+  subidaEn: string;
+}
+
+export interface ProyectoImagenesResponse {
+  imagenes: ProyectoImagenDTO[];
+}
+
 // GET /api/proyectos/:id/estado-historial — timeline de "Estado del producto" por
 // línea (tab Ejecución), worker/lib/estadoProducto.ts. changedBy null = cambio hecho
 // directo en Monday (webhook/reconcile), sin autor conocido del lado del portal.
