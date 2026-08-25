@@ -47,7 +47,7 @@ import { toNativeColumns, insertNativeSubitem, stampNativeFileMarker } from '../
 import { insertSeguimiento } from '../lib/home';
 import { listZoneImages, uploadZoneImage, EmbellImageError } from '../lib/embellecimientoImagenes';
 import { listProposedProducts, addProposedProduct, ProposedProductError } from '../lib/productosPropuestos';
-import { resolveMondayAsset, PROYECTO_DOCUMENTO_COL } from '../lib/portalFiles';
+import { resolveMondayAsset, keyLegado, PROYECTO_DOCUMENTO_COL } from '../lib/portalFiles';
 import { putFile, oportunidadFileKey } from '../lib/r2';
 import { resolveCotizacionPdfUrl, nativeCotizacionPdf, CotizacionPdfError, ETIQUETA_BY_KIND, type PdfKind } from '../lib/cotizacionPdfs';
 import { refetchItem, refetchItemTree, upsertItem } from '../sync';
@@ -813,14 +813,22 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     // solo le falta el folio adelante. El key en R2 y el nombre en Monday no se
     // tocan — el tab de OC busca su miniatura por ese nombre (findLatestOcFile)
     // y DocuSeal liga la firma por el de la cotización.
-    const nombreOriginal = decodeURIComponent(key.split('/').pop() ?? '');
+    // Sin el prefijo de assetId: es un detalle del key, no parte del nombre que
+    // la persona debe ver al descargar.
+    const nombreOriginal = decodeURIComponent((keyLegado(key) ?? key).split('/').pop() ?? '');
     const oppId = Number(key.split('/')[1]);
     const oppRow = Number.isFinite(oppId) ? await getItem(c.env, 'oportunidades', oppId, viewer) : null;
     const disposition = contentDisposition(nombreDescarga({
       item: oppRow?.name, etiqueta: nombreOriginal, ext: extensionDe(nombreOriginal),
     }));
 
-    const object = await c.env.FILES.get(key);
+    // Los archivos subidos ANTES del prefijo de assetId (2026-08-25) viven en el
+    // key sin él. Se prueba SIEMPRE el key pedido primero y el legado después:
+    // al revés, un archivo que de verdad se llame "2026-08 informe.pdf" serviría
+    // el equivocado.
+    const legado = keyLegado(key);
+    const object = await c.env.FILES.get(key)
+      ?? (legado ? await c.env.FILES.get(legado) : null);
     if (object) {
       // El tipo guardado gana, pero si el upload no traía uno (o llegó como
       // octet-stream) se deduce de la extensión — si no, el navegador descarga
@@ -840,7 +848,10 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     // El mapa key→columna de Monday vive en worker/lib/portalFiles.ts, para que
     // documents.ts pueda leer los mismos bytes al sellarlos (2026-07-25).
     try {
-      const assetId = await resolveMondayAsset(c.env, key, viewer);
+      // El nombre real es el que empata contra la columna de Monday, así que si
+      // el key traía prefijo hay que probar también sin él.
+      const assetId = await resolveMondayAsset(c.env, key, viewer)
+        ?? (legado ? await resolveMondayAsset(c.env, legado, viewer) : null);
       if (assetId == null) return c.json({ error: 'not found' }, 404);
       return await proxyMondayAsset(c.env, assetId, key, disposition);
     } catch {
