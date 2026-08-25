@@ -1,5 +1,14 @@
 # Log de commits
 
+## 2026-08-25 (6)
+
+- **"Cambiar producto…" con todas sus letras** (Efraín, viendo la tabla: "no se
+  entiende el icono 🔁, pon editar o algo así"). El enlace va bajo el nombre del
+  producto —donde está lo que cambia— y no en la columna de acciones: esa mide
+  0.5fr para cuatro botones y no le cabe texto. La celda de arriba sigue
+  sirviendo para corregir cómo se LEE el producto en el PDF; el enlace es para
+  cambiar DE producto.
+
 ## 2026-08-25 (5)
 
 - **"Cambiar producto" en la tabla de Órdenes de compra** (Efraín: "a veces

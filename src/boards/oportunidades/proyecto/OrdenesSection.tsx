@@ -428,6 +428,24 @@ function ProveedorLineaRow({ l, proyectoId, canEdit, historial, cambio, lineasEn
               vea de un golpe que este renglón ya no es lo que se cotizó
               (Efraín, 2026-08-25). El detalle del antes va en el title. */}
           {cambio && <ChipCambio cambio={cambio} />}
+          {/* Con todas sus letras y no un icono en la columna de acciones
+              (Efraín, 2026-08-25: "no se entiende el icono 🔁, pon editar o
+              algo así"). Va aquí, bajo el nombre, porque es lo que cambia y
+              porque en la columna de acciones —0.5fr para cuatro botones— no
+              cabe texto. La celda de arriba sigue sirviendo para corregir cómo
+              se LEE el producto en el PDF; esto es cambiar DE producto. */}
+          {canEdit && (
+            <div
+              onClick={() => setCambiarProducto(true)}
+              title="Surtir otro producto (y otro proveedor) conservando las tallas ya capturadas"
+              style={{
+                marginTop: 3, font: 'var(--text-caption)', color: 'var(--accent)',
+                cursor: 'pointer', width: 'fit-content',
+              }}
+            >
+              Cambiar producto…
+            </div>
+          )}
         </div>
         <div style={CELL_STYLE}>{l.cols[S_SKU]?.text || '—'}</div>
         {canEdit
@@ -457,15 +475,6 @@ function ProveedorLineaRow({ l, proyectoId, canEdit, historial, cambio, lineasEn
           : <div style={CELL_STYLE}>{val(S_ENTREGA_PROV) || '—'}</div>}
         <div style={{ display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
           <span onClick={() => setVerHistorial(true)} title="Ver quién cambió qué en esta línea" style={ICON_BTN_STYLE}>🕐</span>
-          {canEdit && (
-            <span
-              onClick={() => setCambiarProducto(true)}
-              title="Cambiar el producto (y su proveedor) conservando las tallas — falta de inventario"
-              style={ICON_BTN_STYLE}
-            >
-              🔁
-            </span>
-          )}
           {canEdit && <span onClick={() => setMover(true)} title="Mover esta línea a otro proveedor" style={ICON_BTN_STYLE}>⇄</span>}
           {canEdit && (
             <span
