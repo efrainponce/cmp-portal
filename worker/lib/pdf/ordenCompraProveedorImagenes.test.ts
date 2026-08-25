@@ -104,6 +104,50 @@ describe('construirFichas', () => {
   });
 });
 
+describe('sin costos', () => {
+  const base = {
+    folioOrden: 'OC-225', folioProyecto: 'PRY-1', folioOpp: 'OPP-0906',
+    nombreProyecto: 'Uniformes', proveedor: '5.11', proveedorRazonSocial: '5.11 Tactical',
+    comprador: 'Compras', fecha: '24/08/2026', metodoPago: 'TRANSFERENCIA',
+    condicionesPago: '50/50', notas: '', elaboradoNombre: 'A', revisadoNombre: 'B', autorizadoNombre: 'C',
+  };
+  const lineas = [linea({ talla: 'L', cantidad: 7, precio: 1234.5, descuento: 0.18 })];
+  const texto = (sinCostos: boolean) => new TextDecoder('latin1').decode(
+    buildOrdenCompraProveedorImagenesPdf({ ...base, lineas, sinCostos, imagenes: new Map() }),
+  );
+
+  it('la copia con costos SÍ trae los importes', () => {
+    const t = texto(false);
+    expect(t).toContain('1,234.50');
+    expect(t).toContain('IVA');
+  });
+
+  it('la copia sin costos no trae precio, importe, IVA ni total', () => {
+    const t = texto(true);
+    expect(t).not.toContain('1,234.50');
+    expect(t).not.toContain('IVA');
+    expect(t).not.toContain('letras');
+  });
+
+  it('sin costos conserva lo que sí necesita quien surte', () => {
+    const t = texto(true);
+    expect(t).toContain('TRANSFERENCIA');       // términos de pago: no son dinero
+    expect(t).toContain('UNIDADES');
+    expect(t).toContain('SIN COSTOS');          // la copia va marcada
+  });
+
+  it('el pie de la ficha pierde el dinero pero mantiene su alto', () => {
+    const grupos = agruparPorProducto(lineas);
+    const con = construirFichas(grupos, new Map(), false);
+    const sin = construirFichas(grupos, new Map(), true);
+    expect(con[0].pie[0]).toContain('c/u');
+    expect(sin[0].pie[0]).not.toContain('$');
+    expect(sin[0].pie[0]).toContain('talla');
+    // El alto del pie decide cuántas tallas caben: no puede cambiar entre copias.
+    expect(sin[0].pie).toHaveLength(con[0].pie.length);
+  });
+});
+
 describe('buildOrdenCompraProveedorImagenesPdf', () => {
   const base = {
     folioOrden: 'OC-225', folioProyecto: 'PRY-1', folioOpp: 'OPP-0906',

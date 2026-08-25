@@ -960,12 +960,16 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     // `imagenes=1` = la variante con ficha de producto y foto grande. Se declara
     // aquí para que un parámetro mal escrito NO caiga en silencio a la OC normal
     // (worker/lib/http.ts).
-    const badQuery = rejectUnknownQuery(c.req.url, ['imagenes']);
+    // `sinCostos=1` = la copia sin precios de la MISMA orden (para surtido o
+    // recepción). Los dos se declaran aquí para que un parámetro mal escrito NO
+    // caiga en silencio a la OC con costos (worker/lib/http.ts).
+    const badQuery = rejectUnknownQuery(c.req.url, ['imagenes', 'sinCostos']);
     if (badQuery) return badQuery;
     const conImagenes = c.req.query('imagenes') === '1';
+    const sinCostos = c.req.query('sinCostos') === '1';
 
     try {
-      const bytes = await generarOcProveedorPdf(c.env, itemId, proveedorId, viewer, { conImagenes });
+      const bytes = await generarOcProveedorPdf(c.env, itemId, proveedorId, viewer, { conImagenes, sinCostos });
       // El `name` del Proyecto también empieza con el folio de la Oportunidad
       // ("OPP-0906 - …"), así que la descarga queda identificada igual que las
       // de la Oportunidad. Las OC OFICIALES no pasan por aquí: viven en Monday
@@ -977,7 +981,12 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
           'Content-Type': 'application/pdf',
           'Content-Length': String(bytes.length),
           'Content-Disposition': contentDisposition(
-            nombreDescarga({ item: proyecto?.name, etiqueta: 'Orden de compra (vista previa)' }),
+            nombreDescarga({
+              item: proyecto?.name,
+              etiqueta: sinCostos
+                ? 'Orden de compra sin costos (vista previa)'
+                : 'Orden de compra (vista previa)',
+            }),
           ),
           'Cache-Control': 'private, no-store',
         },

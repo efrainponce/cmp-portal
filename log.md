@@ -54,6 +54,24 @@
   que un borrado que nadie pidió. El tipo se decide por la **firma de los bytes**
   (no por el Content-Type): un WEBP renombrado a .jpg se rechaza en la subida en
   vez de aparecer como recuadro gris sin explicación.
+- **La orden básica va PRIMERO; las fichas son un ANEXO** (Efraín, mismo día:
+  "si necesita la orden de compra básica al principio, las imágenes son como
+  anexo"). El PDF arranca con la OC de siempre —tabla de líneas, totales, notas
+  y las tres firmas— y el anexo entra en página aparte. No es cosmético: la
+  tabla es el documento que rige y las fotos son referencia; el anexo lo dice
+  impreso. Para que las dos versiones no se separen con el tiempo, la de
+  imágenes REUSA los bloques de la normal (`buildOcProveedorBlocks`, extraído de
+  `ordenCompraProveedor.ts` sin cambiar su salida) en vez de copiarlos. Bloque
+  `pageBreak` nuevo en el motor de layout.
+- **Copia SIN COSTOS de la misma orden** (Efraín, mismo día). Se caen precio,
+  descuento, moneda, subtotal, IVA, total e importe en letras; quedan producto,
+  talla, cantidad, términos de pago, notas y firmas. La tabla se reparte el
+  ancho que dejan las 4 columnas de dinero, así que los nombres largos ya no se
+  parten. Va marcada impresa ("COPIA SIN COSTOS") porque las dos copias de una
+  misma orden se van a cruzar en algún escritorio y de lejos se ven idénticas.
+  Aplica a las dos versiones (normal y con imágenes); en la vista previa es una
+  casilla. El pie de la ficha pierde el dinero pero conserva su ALTO —ese alto
+  decide cuántas tallas caben, y no puede cambiar entre copias—, anclado en test.
 - Tope de 10 fotos jaladas de Airtable por generación de PDF (presupuesto de
   subrequests): el resto queda para la siguiente corrida, ya con las anteriores
   en caché. Verificado renderizando el PDF real con pdf.js: foto con alfa sobre

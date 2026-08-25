@@ -72,6 +72,9 @@ export interface OcProveedorPdfOpts {
    * mismas firmas—, presentada de otra forma: el proveedor necesita VER cuál de
    * las variantes del SKU le tocaba. */
   conImagenes?: boolean;
+  /** Copia sin precios de la MISMA orden (Efraín, 2026-08-24) — ver
+   * `sinCostos` en worker/lib/pdf/ordenCompraProveedor.ts. */
+  sinCostos?: boolean;
 }
 
 export async function generarOcProveedorPdf(
@@ -129,6 +132,7 @@ export async function generarOcProveedorPdf(
     elaboradoNombre: proyecto.cols[P_COMPRADOR]?.text || '',
     revisadoNombre: REVISADO_NOMBRE,
     autorizadoNombre: AUTORIZADO_NOMBRE,
+    sinCostos: !!opts.sinCostos,
   };
 
   if (!opts.conImagenes) return buildOrdenCompraProveedorPdf(comun);

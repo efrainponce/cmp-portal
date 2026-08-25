@@ -46,6 +46,10 @@ export type Block =
     }
   | { kind: 'divider' }
   | { kind: 'spacer'; height: number }
+  /** Corta a página nueva. Lo pide el anexo de fichas de la OC con imágenes:
+   * un anexo que arranca a media hoja, debajo de las firmas, no se lee como
+   * anexo. No hace nada si la página actual va vacía (no deja hojas en blanco). */
+  | { kind: 'pageBreak' }
   | { kind: 'note'; text: string }
   | { kind: 'signature'; label: string; name: string; detail: string[]; image?: Uint8Array }
   /** Ficha de producto de MEDIA HOJA carta: foto grande a la izquierda y datos
@@ -172,6 +176,13 @@ class Cursor {
   constructor(private readonly pdf: PdfWriter, private readonly m: Metrics) {
     this.page = pdf.addPage();
     this.y = m.headerBottom;
+  }
+
+  /** Corta a página nueva salvo que la actual esté recién abierta. */
+  newPage(): void {
+    if (this.y <= this.m.headerBottom) return;
+    this.page = this.pdf.addPage();
+    this.y = this.m.headerBottom;
   }
 
   /** Asegura `height` puntos disponibles; abre página si no. Devuelve true si saltó. */
@@ -518,6 +529,7 @@ export function renderDocument(meta: DocumentMeta, blocks: Block[]): Uint8Array 
       case 'spacer':
         if (!cur.ensure(block.height)) cur.y += block.height;
         break;
+      case 'pageBreak': cur.newPage(); break;
       case 'note': drawNote(pdf, cur, m, block.text); break;
       case 'signature': drawSignature(pdf, cur, m, block); break;
       case 'productCard': drawProductCard(pdf, cur, m, block); break;

@@ -50,6 +50,13 @@ export interface OcProveedorPdfInput {
    * se imprime tal cual en la OC. Vacío = el bloque no se dibuja. */
   notas: string;
   lineas: OcProveedorLinea[];
+  /** Copia SIN DINERO de la misma orden (Efraín, 2026-08-24). Se cae todo lo
+   * comercial —precio, descuento, moneda, subtotales, IVA, total, importe en
+   * letras— y quedan producto, talla, cantidad, notas y firmas. Para lo que hoy
+   * se manda por fuera: el proveedor que solo tiene que surtir, o quien recibe
+   * la mercancía y no debe ver lo que costó. Misma orden, mismo folio: es una
+   * VISTA, no otro documento. */
+  sinCostos?: boolean;
   elaboradoNombre: string;
   revisadoNombre: string;
   autorizadoNombre: string;
@@ -71,10 +78,17 @@ function firmaBlock(label: string, nombre: string): Extract<Block, { kind: 'sign
   return { kind: 'signature', label, name: nombre || '—', detail: [] };
 }
 
-export function buildOrdenCompraProveedorPdf(input: OcProveedorPdfInput): Uint8Array {
+/** Los bloques del documento, sin renderizar. Se extrajo (2026-08-24) para que
+ * la OC CON IMÁGENES arranque con esta misma orden básica y le cuelgue el anexo
+ * de fichas al final (Efraín: "si necesita la orden de compra básica al
+ * principio, las imágenes son como anexo"). Reusarlos —en vez de copiarlos— es
+ * lo que garantiza que las dos versiones no se separen con el tiempo. */
+export function buildOcProveedorBlocks(input: OcProveedorPdfInput): Block[] {
   const moneda = input.lineas[0]?.moneda || 'MXN';
   const monto = input.lineas.reduce((s, l) => s + l.cantidad * l.precio * (1 - l.descuento), 0);
   const totalUnidades = input.lineas.reduce((s, l) => s + l.cantidad, 0);
+
+  const sinCostos = !!input.sinCostos;
 
   const blocks: Block[] = [
     {
@@ -91,33 +105,61 @@ export function buildOrdenCompraProveedorPdf(input: OcProveedorPdfInput): Uint8A
       ],
     },
     { kind: 'divider' },
+    // Marca visible: las dos copias de una misma orden se van a cruzar en algún
+    // escritorio, y de lejos se ven idénticas. Sin este renglón, la copia sin
+    // costos se lee como una OC a la que "se le borraron" los precios.
+    ...(sinCostos
+      ? [{
+          kind: 'note',
+          text: 'COPIA SIN COSTOS — no incluye precios, descuentos ni importes. Los montos de esta orden viven en la copia con costos.',
+        } as Block]
+      : []),
+    // Sin costos la tabla se reparte el ancho que dejan las 4 columnas de dinero
+    // (Moneda incluida: una moneda sin importe no dice nada) — así no queda una
+    // franja vacía a la derecha que se lea como "aquí falta algo".
     {
       kind: 'wrapTable',
       wrapCols: [0, 1],
-      columns: [
-        { header: 'Producto', width: 0.20 },
-        { header: 'Zona/Tipo', width: 0.11 },
-        { header: 'Modelo', width: 0.08 },
-        { header: 'Talla', width: 0.06 },
-        { header: 'Unidad', width: 0.07 },
-        { header: 'Moneda', width: 0.06 },
-        { header: 'Cant.', width: 0.08, align: 'right' },
-        { header: 'Precio', width: 0.10, align: 'right' },
-        { header: 'Desc.', width: 0.06, align: 'right' },
-        { header: 'Subtotal', width: 0.18, align: 'right' },
-      ],
-      rows: input.lineas.map(l => [
-        l.producto,
-        l.zona,
-        [l.sku, l.color].filter(Boolean).join(', '),
-        l.talla,
-        l.unidad,
-        l.moneda,
-        String(l.cantidad),
-        fmtMoney(l.precio, l.moneda),
-        l.descuento > 0 ? `${Math.round(l.descuento * 100)}%` : '0%',
-        fmtMoney(l.cantidad * l.precio * (1 - l.descuento), l.moneda),
-      ]),
+      columns: sinCostos
+        ? [
+            { header: 'Producto', width: 0.38 },
+            { header: 'Zona/Tipo', width: 0.20 },
+            { header: 'Modelo', width: 0.16 },
+            { header: 'Talla', width: 0.11 },
+            { header: 'Unidad', width: 0.08 },
+            { header: 'Cant.', width: 0.07, align: 'right' },
+          ]
+        : [
+            { header: 'Producto', width: 0.20 },
+            { header: 'Zona/Tipo', width: 0.11 },
+            { header: 'Modelo', width: 0.08 },
+            { header: 'Talla', width: 0.06 },
+            { header: 'Unidad', width: 0.07 },
+            { header: 'Moneda', width: 0.06 },
+            { header: 'Cant.', width: 0.08, align: 'right' },
+            { header: 'Precio', width: 0.10, align: 'right' },
+            { header: 'Desc.', width: 0.06, align: 'right' },
+            { header: 'Subtotal', width: 0.18, align: 'right' },
+          ],
+      rows: input.lineas.map(l => {
+        const identidad = [
+          l.producto,
+          l.zona,
+          [l.sku, l.color].filter(Boolean).join(', '),
+          l.talla,
+          l.unidad,
+        ];
+        return sinCostos
+          ? [...identidad, String(l.cantidad)]
+          : [
+              ...identidad,
+              l.moneda,
+              String(l.cantidad),
+              fmtMoney(l.precio, l.moneda),
+              l.descuento > 0 ? `${Math.round(l.descuento * 100)}%` : '0%',
+              fmtMoney(l.cantidad * l.precio * (1 - l.descuento), l.moneda),
+            ];
+      }),
       headerFill: CMP_ORANGE,
       headerTextColor: '#ffffff',
     },
@@ -129,16 +171,27 @@ export function buildOrdenCompraProveedorPdf(input: OcProveedorPdfInput): Uint8A
     {
       kind: 'kv',
       columns: 2,
-      rows: [
-        ['Método de pago', input.metodoPago || '—'],
-        ['Subtotal', fmtMoney(monto, moneda)],
-        ['Condiciones de pago', input.condicionesPago || '—'],
-        ['IVA (16%)', fmtMoney(monto * 0.16, moneda)],
-        ['Unidades', fmtNumMx(totalUnidades)],
-        ['Total', fmtMoney(monto * 1.16, moneda)],
-      ],
+      // Los términos de pago se quedan aunque no haya importes: son condiciones
+      // de la orden, no dinero — y el proveedor necesita saber cuándo le pagan.
+      rows: sinCostos
+        ? [
+            ['Método de pago', input.metodoPago || '—'],
+            ['Unidades', fmtNumMx(totalUnidades)],
+            ['Condiciones de pago', input.condicionesPago || '—'],
+            ['Partidas', fmtNumMx(input.lineas.length)],
+          ]
+        : [
+            ['Método de pago', input.metodoPago || '—'],
+            ['Subtotal', fmtMoney(monto, moneda)],
+            ['Condiciones de pago', input.condicionesPago || '—'],
+            ['IVA (16%)', fmtMoney(monto * 0.16, moneda)],
+            ['Unidades', fmtNumMx(totalUnidades)],
+            ['Total', fmtMoney(monto * 1.16, moneda)],
+          ],
     },
-    { kind: 'text', text: `Importe con IVA en letras: ${importeEnLetras(monto * 1.16, moneda)}`, size: 9, bold: true },
+    ...(sinCostos
+      ? []
+      : [{ kind: 'text', text: `Importe con IVA en letras: ${importeEnLetras(monto * 1.16, moneda)}`, size: 9, bold: true } as Block]),
     // Notas al proveedor — arriba de las firmas a propósito: es parte de lo que
     // se está firmando, no un pie de página (Efraín, 2026-08-19).
     ...(input.notas.trim()
@@ -154,7 +207,13 @@ export function buildOrdenCompraProveedorPdf(input: OcProveedorPdfInput): Uint8A
     firmaBlock('Autorizado por', input.autorizadoNombre),
   ];
 
-  const meta: DocumentMeta = {
+  return blocks;
+}
+
+/** Metadatos del documento (encabezado/pie). Compartidos con la versión con
+ * imágenes: es la misma orden, tiene que verse igual arriba. */
+export function ocProveedorMeta(input: OcProveedorPdfInput): DocumentMeta {
+  return {
     title: 'Orden de Compra a Proveedor',
     subtitle: input.nombreProyecto,
     docId: input.folioOrden || `${input.folioProyecto}-${input.proveedor}`,
@@ -162,6 +221,8 @@ export function buildOrdenCompraProveedorPdf(input: OcProveedorPdfInput): Uint8A
     logo: base64ToBytes(LOGO_JPG_BASE64),
     hideGeneratedByLine: true,
   };
+}
 
-  return renderDocument(meta, blocks);
+export function buildOrdenCompraProveedorPdf(input: OcProveedorPdfInput): Uint8Array {
+  return renderDocument(ocProveedorMeta(input), buildOcProveedorBlocks(input));
 }

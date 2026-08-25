@@ -448,8 +448,12 @@ function NativeOcButton({ proyectoId, proveedorId }: { proyectoId: string; prove
   // que se pueda ver antes de emitir: "Generar OC" consume folio, y darse
   // cuenta ahí de que un producto salió sin foto ya cuesta una orden quemada.
   const [conImagenes, setConImagenes] = useState(false);
+  // Copia sin precios de la MISMA orden: para mandarle al proveedor que solo
+  // surte, o a quien recibe la mercancía (Efraín, 2026-08-24).
+  const [sinCostos, setSinCostos] = useState(false);
   if (!proveedorId) return null;
-  const url = `/api/proyectos/${proyectoId}/oc-nativa/${proveedorId}/pdf${conImagenes ? '?imagenes=1' : ''}`;
+  const query = [conImagenes ? 'imagenes=1' : '', sinCostos ? 'sinCostos=1' : ''].filter(Boolean).join('&');
+  const url = `/api/proyectos/${proyectoId}/oc-nativa/${proveedorId}/pdf${query ? `?${query}` : ''}`;
   return (
     <>
       <Button variant="secondary" onClick={() => setPreview(true)} title="Vista previa de esta OC con el motor del portal — no consume folio ni guarda nada">
@@ -457,9 +461,16 @@ function NativeOcButton({ proyectoId, proveedorId }: { proyectoId: string; prove
       </Button>
       {preview && (
         <Modal title="Orden de compra — portal" onClose={() => setPreview(false)} width={760}>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 10, alignItems: 'center', flexWrap: 'wrap' }}>
             <Button variant={conImagenes ? 'secondary' : 'primary'} onClick={() => setConImagenes(false)}>Normal</Button>
             <Button variant={conImagenes ? 'primary' : 'secondary'} onClick={() => setConImagenes(true)}>Con imágenes</Button>
+            <label
+              title="La misma orden sin precios, descuentos ni importes — para surtido o recepción"
+              style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 8, font: 'var(--text-label)', color: 'var(--ink-secondary)', cursor: 'pointer' }}
+            >
+              <input type="checkbox" checked={sinCostos} onChange={e => setSinCostos(e.target.checked)} />
+              Sin costos
+            </label>
           </div>
           <Suspense fallback={<div style={{ font: 'var(--text-label)', color: 'var(--ink-quiet)' }}>Generando…</div>}>
             <PdfCanvasPreview key={url} url={url} maxWidth={712} />
