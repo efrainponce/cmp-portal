@@ -57,6 +57,9 @@ export class OcImagenError extends Error {
 
 export interface OcImagenMeta {
   sku: string;
+  /** 'ok' = hay foto. 'sin-foto' = ya se buscó en el catálogo y no hay
+   * (se guarda para no volver a preguntar en cada apertura del tab). */
+  estado: 'ok' | 'sin-foto';
   origen: 'airtable' | 'subida';
   contentType: string;
   bytes: number;
@@ -78,6 +81,12 @@ async function ensureTable(env: Env): Promise<void> {
     updated_at   TEXT NOT NULL,
     updated_by   TEXT NOT NULL
   )`).run();
+  // `estado` separa "el catálogo NO tiene foto de este producto" de "todavía no
+  // se ha buscado". Sin esa marca, cada vez que alguien abre el tab se le vuelve
+  // a preguntar a Airtable por los mismos productos sin foto — para siempre.
+  try {
+    await env.DB.prepare(`ALTER TABLE oc_imagen ADD COLUMN estado TEXT NOT NULL DEFAULT 'ok'`).run();
+  } catch { /* ya existe */ }
   tableReady = true;
 }
 
@@ -112,6 +121,18 @@ export function sniffTipo(bytes: Uint8Array): 'image/jpeg' | 'image/png' | null 
   return null;
 }
 
+/** Deja constancia de que el catálogo NO tiene foto de este SKU. */
+async function marcarSinFoto(env: Env, sku: string): Promise<OcImagenMeta> {
+  await ensureTable(env);
+  const at = new Date().toISOString();
+  await env.DB.prepare(
+    `INSERT INTO oc_imagen (sku, r2_key, content_type, origen, sha256, bytes, updated_at, updated_by, estado)
+     VALUES (?, '', '', 'airtable', '', 0, ?, 'airtable', 'sin-foto')
+     ON CONFLICT(sku) DO UPDATE SET estado = 'sin-foto', updated_at = excluded.updated_at`,
+  ).bind(skuKey(sku), at).run();
+  return { sku: skuKey(sku), estado: 'sin-foto', origen: 'airtable', contentType: '', bytes: 0, updatedAt: at, updatedBy: 'airtable' };
+}
+
 async function upsert(
   env: Env, sku: string, bytes: Uint8Array, contentType: string,
   origen: 'airtable' | 'subida', email: string,
@@ -127,12 +148,12 @@ async function upsert(
      ON CONFLICT(sku) DO UPDATE SET
        r2_key = excluded.r2_key, content_type = excluded.content_type,
        origen = excluded.origen, sha256 = excluded.sha256, bytes = excluded.bytes,
-       updated_at = excluded.updated_at, updated_by = excluded.updated_by`,
+       updated_at = excluded.updated_at, updated_by = excluded.updated_by, estado = 'ok'`,
   ).bind(skuKey(sku), key, contentType, origen, sha, bytes.length, at, email).run();
-  return { sku: skuKey(sku), origen, contentType, bytes: bytes.length, updatedAt: at, updatedBy: email };
+  return { sku: skuKey(sku), estado: 'ok', origen, contentType, bytes: bytes.length, updatedAt: at, updatedBy: email };
 }
 
-interface Registro { sku: string; r2_key: string; content_type: string; origen: string; bytes: number; updated_at: string; updated_by: string }
+interface Registro { sku: string; r2_key: string; content_type: string; origen: string; bytes: number; updated_at: string; updated_by: string; estado: string }
 
 async function registrosDe(env: Env, skus: string[]): Promise<Map<string, Registro>> {
   await ensureTable(env);
@@ -143,7 +164,7 @@ async function registrosDe(env: Env, skus: string[]): Promise<Map<string, Regist
   for (let i = 0; i < keys.length; i += 50) {
     const chunk = keys.slice(i, i + 50);
     const { results } = await env.DB.prepare(
-      `SELECT sku, r2_key, content_type, origen, bytes, updated_at, updated_by
+      `SELECT sku, r2_key, content_type, origen, bytes, updated_at, updated_by, estado
          FROM oc_imagen WHERE sku IN (${chunk.map(() => '?').join(',')})`,
     ).bind(...chunk).all<Registro>();
     for (const r of results ?? []) out.set(r.sku, r);
@@ -175,24 +196,37 @@ async function airtableIdDeSku(env: Env, sku: string): Promise<string> {
 /** Baja la foto del catálogo de Airtable y la deja en R2. Devuelve null —sin
  * lanzar— si el producto no tiene record, no tiene imagen, o Airtable falla:
  * misma degradación silenciosa que la cotización (worker/lib/airtable.ts). */
-export async function jalarDeAirtable(env: Env, sku: string): Promise<OcImagenMeta | null> {
+export async function jalarDeAirtable(
+  env: Env, sku: string,
+  /** Deja la marca "el catálogo no tiene foto" cuando no encuentra nada, para
+   * no volver a preguntar en cada apertura del tab. **Solo debe usarse con SKUs
+   * que aún no tienen fila**: la marca pisa la fila existente, y sobre un
+   * producto con foto SUBIDA eso la borraría. Por eso "Del catálogo"
+   * (`restablecerDesdeAirtable`) la deja en false. */
+  marcarFaltante = false,
+): Promise<OcImagenMeta | null> {
+  const sinFoto = () => (marcarFaltante ? marcarSinFoto(env, sku) : null);
   const airtableId = await airtableIdDeSku(env, sku);
-  if (!airtableId) return null;
+  // Sin record de Airtable el catálogo no puede tener foto.
+  if (!airtableId) return sinFoto();
   // `large` y no `full`: el thumbnail grande de Airtable ronda los 500px, que a
   // 3.7 pulgadas de ancho imprime de sobra, y el `full` puede traer 3000px que
   // solo inflan el PDF y el CPU de descompresión.
   const url = await fetchAirtableImageUrl(env, airtableId, 'large');
-  if (!url) return null;
+  if (!url) return sinFoto();
 
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
     if (!res.ok) return null;
     const bytes = new Uint8Array(await res.arrayBuffer());
-    if (bytes.length === 0 || bytes.length > OC_IMAGEN_MAX_BYTES) return null;
+    if (bytes.length === 0 || bytes.length > OC_IMAGEN_MAX_BYTES) return sinFoto();
     const tipo = sniffTipo(bytes);
-    if (!tipo) return null;
+    // WEBP y demás: el motor de PDF no los sabe embeber, así que para esta
+    // función es lo mismo que no tener foto. Se marca para no reintentar.
+    if (!tipo) return sinFoto();
     return await upsert(env, sku, bytes, tipo, 'airtable', 'airtable');
   } catch {
+    // Fallo de red: NO se marca — la próxima vez se vuelve a intentar.
     return null;
   }
 }
@@ -210,10 +244,12 @@ export async function guardarImagenSubida(
   return upsert(env, sku, bytes, tipo, 'subida', email);
 }
 
-/** Vuelve a la foto del catálogo: re-jala de Airtable y pisa la subida. */
+/** Vuelve a la foto del catálogo: re-jala de Airtable y pisa la subida. Si el
+ * catálogo no tiene foto devuelve null SIN tocar nada — perder la foto que
+ * alguien subió porque el catálogo está vacío sería el peor resultado posible. */
 export async function restablecerDesdeAirtable(env: Env, sku: string): Promise<OcImagenMeta | null> {
   if (!isSkuUsable(sku)) throw new OcImagenError(400, 'SKU inválido');
-  return jalarDeAirtable(env, sku);
+  return jalarDeAirtable(env, sku, false);
 }
 
 /** Estado de la foto de cada SKU, para pintar las miniaturas del tab. No baja
@@ -222,6 +258,7 @@ export async function listarImagenes(env: Env, skus: string[]): Promise<OcImagen
   const registros = await registrosDe(env, skus);
   return [...registros.values()].map(r => ({
     sku: r.sku,
+    estado: r.estado === 'sin-foto' ? 'sin-foto' : 'ok',
     origen: r.origen === 'subida' ? 'subida' : 'airtable',
     contentType: r.content_type,
     bytes: r.bytes,
@@ -236,7 +273,7 @@ export async function leerImagen(
 ): Promise<{ bytes: Uint8Array; contentType: string } | null> {
   const registros = await registrosDe(env, [sku]);
   const reg = registros.get(skuKey(sku));
-  if (!reg) return null;
+  if (!reg || !reg.r2_key) return null;
   const obj = await env.FILES.get(reg.r2_key);
   if (!obj) return null;
   return { bytes: new Uint8Array(await obj.arrayBuffer()), contentType: reg.content_type };
@@ -247,6 +284,29 @@ export async function leerImagen(
 async function aPdfImage(bytes: Uint8Array, contentType: string): Promise<PdfImageData | null> {
   if (contentType === 'image/png' || isPng(bytes)) return pngToPdfImage(bytes);
   return jpegImage(bytes);
+}
+
+/** Cuántas fotos se jalan de Airtable al abrir el tab. En paralelo, así que el
+ * tope también acota los subrequests del Worker (cada una son 2: el record y la
+ * imagen). Lo que no alcance queda para la siguiente apertura o para el PDF. */
+const MAX_AIRTABLE_AL_ABRIR = 8;
+
+/** Deja listas las fotos del catálogo para estos SKUs y devuelve el estado de
+ * todos. Es lo que hace que la foto del catálogo sea el DEFAULT (Efraín,
+ * 2026-08-25: "esto tiene que ser POR DEFECTO del catálogo") en vez de algo que
+ * alguien tenga que pedir con un botón.
+ *
+ * Solo sale a Airtable por los que NUNCA se han buscado: un producto ya
+ * cacheado, o ya marcado como "el catálogo no tiene foto", no se vuelve a
+ * consultar. Por eso el costo es de una vez por producto, no por apertura. */
+export async function sincronizarImagenes(env: Env, skus: string[]): Promise<OcImagenMeta[]> {
+  const unicos = [...new Set(skus.map(skuKey).filter(Boolean))];
+  const registros = await registrosDe(env, unicos);
+  const faltantes = unicos.filter(s => !registros.has(s)).slice(0, MAX_AIRTABLE_AL_ABRIR);
+  if (faltantes.length > 0) {
+    await Promise.all(faltantes.map(sku => jalarDeAirtable(env, sku, true).catch(() => null)));
+  }
+  return listarImagenes(env, unicos);
 }
 
 /** Fotos listas para el PDF, por SKU. Lo que ya está en R2 se lee; lo que falta
@@ -261,7 +321,7 @@ export async function cargarImagenesParaPdf(
 
   const faltantes = unicos.filter(s => !registros.has(s)).slice(0, MAX_AIRTABLE_POR_CORRIDA);
   for (const sku of faltantes) {
-    const meta = await jalarDeAirtable(env, sku);
+    const meta = await jalarDeAirtable(env, sku, true);
     if (meta) {
       const nuevos = await registrosDe(env, [sku]);
       const reg = nuevos.get(sku);
@@ -271,6 +331,7 @@ export async function cargarImagenesParaPdf(
 
   const out = new Map<string, PdfImageData>();
   for (const [sku, reg] of registros) {
+    if (!reg.r2_key) continue; // marca de "el catálogo no tiene foto"
     const obj = await env.FILES.get(reg.r2_key);
     if (!obj) continue;
     const img = await aPdfImage(new Uint8Array(await obj.arrayBuffer()), reg.content_type);

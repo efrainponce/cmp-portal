@@ -547,6 +547,9 @@ export async function listOcDeProyecto(proyectoId: string): Promise<OcEmitidaDTO
  * SKU y se reusa en todas las órdenes — no es del proyecto ni de la línea. */
 export interface OcImagenDTO {
   sku: string;
+  /** 'sin-foto' = ya se buscó en el catálogo y no hay. Distinto de "todavía no
+   * se ha buscado", que es simplemente no tener fila. */
+  estado: 'ok' | 'sin-foto';
   origen: 'airtable' | 'subida';
   contentType: string;
   bytes: number;
@@ -556,9 +559,9 @@ export interface OcImagenDTO {
 
 /** Estado de la foto de varios SKUs. No sale a Airtable: solo dice qué hay
  * guardado (jalar del catálogo es explícito, `restablecerOcImagen`). */
-export async function listOcImagenes(skus: string[]): Promise<OcImagenDTO[]> {
+export async function listOcImagenes(skus: string[], sync = false): Promise<OcImagenDTO[]> {
   if (skus.length === 0) return [];
-  const res = await apiFetch(`/oc-imagenes?skus=${encodeURIComponent(skus.join(','))}`);
+  const res = await apiFetch(`/oc-imagenes?skus=${encodeURIComponent(skus.join(','))}${sync ? '&sync=1' : ''}`);
   if (!res.ok) return [];
   const body: { imagenes: OcImagenDTO[] } = await res.json();
   return body.imagenes ?? [];

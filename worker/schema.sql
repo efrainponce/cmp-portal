@@ -483,6 +483,23 @@ CREATE TABLE IF NOT EXISTS oc_folios (
   seq  INTEGER NOT NULL DEFAULT 0
 );
 
+-- Foto de producto de la OC con imágenes (2026-08-24, worker/lib/ocImagenes.ts).
+-- Por SKU, se reusa en todas las órdenes. Default = catálogo de Airtable,
+-- copiado a R2 porque sus URLs expiran; una foto subida desde el portal le gana.
+-- `estado='sin-foto'` marca "ya se buscó en el catálogo y no hay", para no
+-- volver a preguntarle a Airtable en cada apertura del tab. Lazy en runtime.
+CREATE TABLE IF NOT EXISTS oc_imagen (
+  sku          TEXT PRIMARY KEY,
+  r2_key       TEXT NOT NULL,      -- '' en las marcas de sin-foto
+  content_type TEXT NOT NULL,
+  origen       TEXT NOT NULL,      -- airtable | subida
+  sha256       TEXT NOT NULL,
+  bytes        INTEGER NOT NULL,
+  updated_at   TEXT NOT NULL,
+  updated_by   TEXT NOT NULL,
+  estado       TEXT NOT NULL DEFAULT 'ok'   -- ok | sin-foto
+);
+
 -- Bitácora de archivos (2026-08-25, worker/lib/archivoLog.ts). Append-only.
 -- NO es un índice de qué archivos existen —eso sigue siendo Monday + R2, que
 -- son 1-1 con el portal— sino la historia de quién hizo qué. Nace porque había

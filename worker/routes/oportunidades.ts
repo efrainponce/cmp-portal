@@ -28,7 +28,7 @@ import { getOcNota, getOcNotas, setOcNota, OC_NOTA_MAX } from '../lib/ocNotas';
 import { listarOc, getOc, type OcEstado } from '../lib/ocLedger';
 import { registrarArchivo, historialArchivos } from '../lib/archivoLog';
 import {
-  listarImagenes, leerImagen, guardarImagenSubida, restablecerDesdeAirtable,
+  listarImagenes, sincronizarImagenes, leerImagen, guardarImagenSubida, restablecerDesdeAirtable,
   isSkuUsable, skuKey, OC_IMAGEN_MAX_BYTES, OcImagenError,
 } from '../lib/ocImagenes';
 import { listEstadoHistorial } from '../lib/estadoProducto';
@@ -1081,11 +1081,17 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
    * lo hace sola la generación del PDF). */
   app.get('/api/oc-imagenes', async c => {
     if (!gateCompras(c)) return jsonStatus({ error: 'forbidden' }, 403);
-    const bad = rejectUnknownQuery(c.req.url, ['skus']);
+    const bad = rejectUnknownQuery(c.req.url, ['skus', 'sync']);
     if (bad) return bad;
     const skus = (c.req.query('skus') ?? '').split(',').map(s => s.trim()).filter(Boolean).slice(0, 200);
     if (skus.length === 0) return c.json({ imagenes: [] });
-    return c.json({ imagenes: await listarImagenes(c.env, skus) });
+    // `sync=1`: además de leer lo guardado, jala del catálogo lo que nunca se
+    // ha buscado. Es lo que hace que la foto de Airtable sea el default al abrir
+    // el tab. Solo pega a Airtable la PRIMERA vez de cada producto.
+    const imagenes = c.req.query('sync') === '1'
+      ? await sincronizarImagenes(c.env, skus)
+      : await listarImagenes(c.env, skus);
+    return c.json({ imagenes });
   });
 
   app.get('/api/oc-imagenes/:sku/foto', async c => {
@@ -1130,7 +1136,9 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     if (!isSkuUsable(sku)) return jsonStatus({ error: 'SKU inválido' }, 400);
     try {
       const meta = await restablecerDesdeAirtable(c.env, sku);
-      if (!meta) return jsonStatus({ error: 'el catálogo no tiene foto para ' + skuKey(sku) }, 404);
+      // null = el catálogo no tiene foto de este producto. No se toca lo que ya
+      // hubiera guardado: si alguien había subido una, se conserva.
+      if (!meta) return jsonStatus({ error: `El catálogo no tiene foto de ${skuKey(sku)}. Si ya habías subido una, se conserva.` }, 404);
       return c.json({ imagen: meta });
     } catch (err) {
       if (err instanceof OcImagenError) return jsonStatus({ error: err.message }, err.status);

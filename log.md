@@ -1,5 +1,27 @@
 # Log de commits
 
+## 2026-08-25 (4)
+
+- **La foto del catálogo ahora es el DEFAULT** (Efraín, viendo la tira de fotos
+  en "Sin foto": "esto tiene que ser POR DEFECTO del catálogo"). Antes el tab
+  solo leía lo guardado y había que pedir la foto con el botón "Del catálogo";
+  se hizo así para no pegarle a Airtable en cada apertura, pero el resultado era
+  que la tira mostraba "Sin foto" de productos que SÍ tienen foto en el
+  catálogo. Ahora `?sync=1` jala al abrir, en paralelo y con tope de 8.
+- Lo que hace que eso no sea caro: **`estado='sin-foto'`**. Un producto que ya
+  se buscó y no tiene foto en el catálogo queda marcado, así que no se le vuelve
+  a preguntar a Airtable nunca. El costo es de una vez por producto, no por
+  apertura. Un fallo de RED no marca —se reintenta— porque marcar ahí sería
+  confundir "no hay foto" con "Airtable estaba caído".
+- **Guarda importante:** esa marca PISA la fila existente, así que solo se
+  escribe sobre SKUs que aún no tienen una. "Del catálogo" sobre un producto sin
+  foto en Airtable habría BORRADO la que alguien subió — ahora devuelve 404 sin
+  tocar nada y lo dice ("si ya habías subido una, se conserva"). Anclado en test.
+- La tira distingue los tres estados de verdad: la foto, "Buscando…" y "El
+  catálogo no tiene foto". El botón dice "Del catálogo" solo cuando hay una
+  subida que descartar; si no, dice "Reintentar".
+
+
 ## 2026-08-25 (3)
 
 - **El key de R2 lleva el assetId de Monday al frente** (`oportunidades/<opp>/

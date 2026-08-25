@@ -40,3 +40,22 @@ describe('sniffTipo', () => {
     expect(sniffTipo(new Uint8Array([]))).toBeNull();
   });
 });
+
+describe('marca de "el catálogo no tiene foto"', () => {
+  // Es lo que evita volver a preguntarle a Airtable por los mismos productos
+  // cada vez que alguien abre el tab. La regla delicada: esa marca PISA la fila
+  // existente, así que solo puede escribirse sobre SKUs que aún no tienen una —
+  // sobre un producto con foto subida, la borraría.
+  it('restablecer NO marca (protege la foto subida)', async () => {
+    const { jalarDeAirtable, restablecerDesdeAirtable } = await import('./ocImagenes');
+    // Sin AIRTABLE_API_KEY el cliente degrada en silencio y no encuentra nada:
+    // el caso exacto donde la marca haría daño.
+    const env = {
+      AIRTABLE_API_KEY: '',
+      DB: { prepare: () => ({ bind: () => ({ all: async () => ({ results: [] }), run: async () => ({}), first: async () => null }), run: async () => ({}), first: async () => null }) },
+    } as never;
+    // marcarFaltante=false ⇒ null, sin escribir.
+    await expect(restablecerDesdeAirtable(env, 'ABC123')).resolves.toBeNull();
+    await expect(jalarDeAirtable(env, 'ABC123', false)).resolves.toBeNull();
+  });
+});

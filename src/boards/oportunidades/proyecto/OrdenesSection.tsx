@@ -599,7 +599,10 @@ function FotosProducto({ productos }: { productos: { sku: string; nombre: string
   useEffect(() => {
     let vivo = true;
     setCargando(true);
-    listOcImagenes(skus.split(',').filter(Boolean))
+    // `sync`: jala del catálogo lo que nunca se ha buscado, para que la foto de
+    // Airtable sea el DEFAULT en vez de algo que haya que pedir con un botón
+    // (Efraín, 2026-08-25). Solo pega a Airtable la primera vez de cada producto.
+    listOcImagenes(skus.split(',').filter(Boolean), true)
       .then(lista => {
         if (!vivo) return;
         setEstado(Object.fromEntries(lista.map(i => [i.sku.toUpperCase(), i])));
@@ -616,7 +619,7 @@ function FotosProducto({ productos }: { productos: { sku: string; nombre: string
   return (
     <div style={{ flex: '1 1 100%' }}>
       <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)', marginBottom: 6 }}>
-        Fotos de la OC con imágenes — una por producto, se reusa en las siguientes órdenes
+        Fotos de la OC con imágenes — salen del catálogo; súbelas solo si la variante es distinta
         {msg ? <span style={{ marginLeft: 8, color: 'var(--status-perdida)' }}>{msg}</span> : null}
       </div>
       <div style={{ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 4 }}>
@@ -646,7 +649,7 @@ function FotoProducto({ producto, meta, cargando, onCambio, onError }: {
   const [ocupado, setOcupado] = useState(false);
   // La URL de la miniatura no cambia al reemplazar la foto (el key de R2 sí),
   // así que se le cuelga la fecha de actualización para saltarse el caché.
-  const src = meta ? ocImagenUrl(producto.sku, meta.updatedAt) : '';
+  const src = meta && meta.estado === 'ok' ? ocImagenUrl(producto.sku, meta.updatedAt) : '';
 
   const correr = async (fn: () => Promise<OcImagenDTO>) => {
     setOcupado(true);
@@ -667,8 +670,8 @@ function FotoProducto({ producto, meta, cargando, onCambio, onError }: {
       }}>
         {src
           ? <img src={src} alt={producto.nombre} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
-          : <span style={{ font: 'var(--text-caption)', color: 'var(--ink-quiet)' }}>
-              {cargando ? '…' : 'Sin foto'}
+          : <span style={{ font: 'var(--text-caption)', color: 'var(--ink-quiet)', textAlign: 'center', padding: '0 6px' }}>
+              {cargando ? 'Buscando…' : meta?.estado === 'sin-foto' ? 'El catálogo no tiene foto' : 'Sin foto'}
             </span>}
       </div>
       <div title={producto.nombre} style={{
@@ -678,7 +681,7 @@ function FotoProducto({ producto, meta, cargando, onCambio, onError }: {
         {producto.nombre}
       </div>
       <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)' }}>
-        {producto.sku}{meta ? ` · ${meta.origen === 'subida' ? 'subida' : 'catálogo'}` : ''}
+        {producto.sku}{meta?.estado === 'ok' ? ` · ${meta.origen === 'subida' ? 'subida' : 'catálogo'}` : ''}
       </div>
       <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
         <button
@@ -692,11 +695,13 @@ function FotoProducto({ producto, meta, cargando, onCambio, onError }: {
         <button
           type="button"
           disabled={ocupado}
-          title="Vuelve a jalar la foto del catálogo de Airtable"
+          title={meta?.origen === 'subida'
+            ? 'Descarta la foto subida y vuelve a la del catálogo'
+            : 'Vuelve a buscar la foto en el catálogo de Airtable'}
           onClick={() => correr(() => restablecerOcImagen(producto.sku))}
           style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
         >
-          Del catálogo
+          {meta?.origen === 'subida' ? 'Del catálogo' : 'Reintentar'}
         </button>
       </div>
       <input
