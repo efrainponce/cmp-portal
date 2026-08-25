@@ -136,7 +136,7 @@ export function describeResult(action: ProyectoAction, res: Record<string, unkno
       }
       case 'generar-oc-portal-imagenes': {
         const folios = foliosDe(res);
-        return { kind: 'ok', text: `Orden con imágenes generada${folios ? `: ${folios}` : ''}. Una ficha por producto con su foto; los productos sin foto salen con el recuadro gris.` };
+        return { kind: 'ok', text: `Orden con imágenes generada${folios ? `: ${folios}` : ''}. La orden va primero y las fichas con foto como anexo. Se guardaron DOS copias del mismo folio: con costos y sin costos.` };
       }
     }
   }

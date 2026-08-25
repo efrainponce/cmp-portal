@@ -4,7 +4,7 @@
 // cmp-tallas api/generate_oc.py.
 import { describe, it, expect } from 'vitest';
 import type { MondayCol, MondayItem } from './monday';
-import { groupSubitemsByProveedor, groupTotals, buildEledoOcFile, type ProveedorGroup } from './oc';
+import { groupSubitemsByProveedor, groupTotals, buildEledoOcFile, type ProveedorGroup, nombreArchivoOc } from './oc';
 
 const SUB_PRODUCTO = 'text_mm0hs17x';
 const SUB_MONEDA = 'text_mm1gdsvg';
@@ -100,5 +100,24 @@ describe('buildEledoOcFile', () => {
     expect(file.NombreElaborado).toBe('A');
     expect(file.NombreRevisado).toBe('B');
     expect(file.NombreAutorizado).toBe('C');
+  });
+});
+
+describe('nombreArchivoOc', () => {
+  it('pasa los acentos a ASCII en vez de perderlos', () => {
+    // "México" con `\w` a secas quedaba "M_xico" y el tab ya no reconocía de
+    // quién era la orden (findLatestOcFile compara contra el nombre real).
+    expect(nombreArchivoOc('OC-226', '5.11 Tactical de México SA De CV'))
+      .toBe('OC_OC-226_5_11 Tactical de Mexico SA De CV.pdf');
+  });
+
+  it('la copia sin costos lleva el MISMO folio y el sufijo al final', () => {
+    expect(nombreArchivoOc('OC-226', 'ABRAHAM FARID', true)).toBe('OC_OC-226_ABRAHAM FARID_SIN-COSTOS.pdf');
+  });
+
+  it('recorta razones sociales larguísimas sin dejar el nombre a medias', () => {
+    const n = nombreArchivoOc('OC-1', 'A'.repeat(80));
+    expect(n.endsWith('.pdf')).toBe(true);
+    expect(n.length).toBeLessThan(60);
   });
 });

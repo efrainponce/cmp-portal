@@ -13,6 +13,7 @@ import type { ItemDTO } from '../../shared/dto';
 import { buildOrdenCompraProveedorPdf, type OcProveedorLinea } from './pdf/ordenCompraProveedor';
 import { buildOrdenCompraProveedorImagenesPdf } from './pdf/ordenCompraProveedorImagenes';
 import { cargarImagenesParaPdf } from './ocImagenes';
+import type { PdfImageData } from './pdf/png';
 import { getOcNota } from './ocNotas';
 
 export class OcProveedorPdfError extends Error {
@@ -77,10 +78,28 @@ export interface OcProveedorPdfOpts {
   sinCostos?: boolean;
 }
 
-export async function generarOcProveedorPdf(
+/** Todo lo que necesita el PDF, leído UNA vez. Existe porque de una misma orden
+ * salen dos copias (con y sin costos) y, con imágenes, repetir la lectura
+ * significaría volver a bajar de R2 y volver a decodificar cada PNG — el doble
+ * de CPU en un Worker que lo tiene contado. */
+export interface OcProveedorPreparada {
+  comun: Omit<Parameters<typeof buildOrdenCompraProveedorPdf>[0], 'sinCostos'>;
+  imagenes: Map<string, PdfImageData>;
+  conImagenes: boolean;
+}
+
+/** Renderiza una copia de una orden ya preparada. `sinCostos` decide cuál. */
+export function renderOcProveedor(prep: OcProveedorPreparada, sinCostos: boolean): Uint8Array {
+  const input = { ...prep.comun, sinCostos };
+  return prep.conImagenes
+    ? buildOrdenCompraProveedorImagenesPdf({ ...input, imagenes: prep.imagenes })
+    : buildOrdenCompraProveedorPdf(input);
+}
+
+export async function prepararOcProveedor(
   env: Env, proyectoId: number, proveedorId: string, viewer: Identity,
   opts: OcProveedorPdfOpts = {},
-): Promise<Uint8Array> {
+): Promise<OcProveedorPreparada> {
   const row = await getItem(env, 'proyectos', proyectoId, viewer);
   if (!row) throw new OcProveedorPdfError(404, 'proyecto no encontrado');
 
@@ -132,15 +151,23 @@ export async function generarOcProveedorPdf(
     elaboradoNombre: proyecto.cols[P_COMPRADOR]?.text || '',
     revisadoNombre: REVISADO_NOMBRE,
     autorizadoNombre: AUTORIZADO_NOMBRE,
-    sinCostos: !!opts.sinCostos,
   };
 
-  if (!opts.conImagenes) return buildOrdenCompraProveedorPdf(comun);
-
   // Solo las líneas de producto piden foto: los embellecimientos no tienen
-  // ficha (van en su tabla al final) y pedir su SKU dispararía búsquedas de
+  // ficha (van en la tabla de la orden) y pedir su SKU dispararía búsquedas de
   // catálogo que nunca van a encontrar nada.
-  const skus = lineas.filter(l => !l.zona).map(l => l.sku).filter(Boolean);
-  const imagenes = await cargarImagenesParaPdf(env, skus);
-  return buildOrdenCompraProveedorImagenesPdf({ ...comun, imagenes });
+  const imagenes = opts.conImagenes
+    ? await cargarImagenesParaPdf(env, lineas.filter(l => !l.zona).map(l => l.sku).filter(Boolean))
+    : new Map<string, PdfImageData>();
+
+  return { comun, imagenes, conImagenes: !!opts.conImagenes };
+}
+
+/** Una sola copia — el camino de la vista previa. */
+export async function generarOcProveedorPdf(
+  env: Env, proyectoId: number, proveedorId: string, viewer: Identity,
+  opts: OcProveedorPdfOpts = {},
+): Promise<Uint8Array> {
+  const prep = await prepararOcProveedor(env, proyectoId, proveedorId, viewer, opts);
+  return renderOcProveedor(prep, !!opts.sinCostos);
 }

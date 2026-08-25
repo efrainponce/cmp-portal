@@ -20,7 +20,7 @@ import { isNativeId } from '../../shared/nativeId';
 import { BOARDS } from '../../shared/boards';
 import { mergeNativeCols } from './nativeMirrors';
 import { oportunidadFileKey, putFile } from './r2';
-import { generarOcProveedorPdf } from './ocProveedorPdf';
+import { generarOcProveedorPdf, prepararOcProveedor, renderOcProveedor } from './ocProveedorPdf';
 import { refetchItemTree } from '../sync';
 import { getOcNota } from './ocNotas';
 
@@ -238,6 +238,27 @@ async function nextOcFolio(env: Env): Promise<string> {
   return `OC-${row?.seq ?? 1}`;
 }
 
+/** Nombre del PDF de una OC emitida POR EL PORTAL.
+ *
+ * Los acentos se pasan a ASCII ANTES de sanear: `\w` no incluye "é", así que el
+ * saneo la convertía en "_" y "México" quedaba "M_xico". El tab identifica de
+ * quién es cada OC por el nombre del archivo (`findLatestOcFile`, no hay id que
+ * ligue archivo y proveedor), así que esa letra perdida dejaba la tarjeta sin
+ * miniatura — bug viejo, encontrado al escribir el test de las dos copias
+ * (2026-08-25).
+ *
+ * OJO: `generarOcNative` (el flujo Eledo + DocuSeal) arma su nombre APARTE y a
+ * mano, y NO debe usar esta función: ahí el filename viaja a DocuSeal y es su
+ * llave (ver docs/documentos-firma.md). */
+export function nombreArchivoOc(folio: string, razonSocial: string, sinCostos = false): string {
+  const safe = razonSocial
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\w\- ]/g, '_')
+    .slice(0, 40)
+    .trim();
+  return `OC_${folio}_${safe}${sinCostos ? '_SIN-COSTOS' : ''}.pdf`;
+}
+
 export interface OrdenResult {
   proveedorId: string;
   proveedorNombre: string;
@@ -245,6 +266,8 @@ export interface OrdenResult {
   monto?: number;
   moneda?: string;
   pdfUrl?: string;
+  /** Copia sin precios de la MISMA orden (solo la versión con imágenes). */
+  pdfSinCostosUrl?: string;
   docusealId?: string;
   error?: string;
 }
@@ -313,8 +336,7 @@ export async function generarOcNativeD1(
       orden.folioOrden = folioOrden;
 
       const pdfBytes = await generarOcProveedorPdf(env, proyectoId, group.proveedorId, viewer);
-      const safeRZ = (group.proveedorRZ || group.proveedorNombre).replace(/[^\w\- ]/g, '_').slice(0, 40).trim();
-      const filename = `OC_${folioOrden}_${safeRZ}.pdf`;
+      const filename = nombreArchivoOc(folioOrden, group.proveedorRZ || group.proveedorNombre);
 
       if (oppId != null) {
         const key = oportunidadFileKey(oppId, 'oc', filename);
@@ -378,27 +400,52 @@ export async function generarOcPortal(
       const folioOrden = await nextOcFolio(env);
       orden.folioOrden = folioOrden;
 
-      const pdfBytes = await generarOcProveedorPdf(env, proyectoId, group.proveedorId, viewer, {
+      // Una sola preparación para las dos copias: con imágenes, volver a
+      // prepararla significaría bajar de R2 y decodificar cada PNG otra vez.
+      const prep = await prepararOcProveedor(env, proyectoId, group.proveedorId, viewer, {
         folioOrden, metodoPago: opts.metodoPago, condPago: opts.condPago,
         conImagenes: opts.conImagenes,
       });
-      const safeRZ = (group.proveedorRZ || group.proveedorNombre).replace(/[^\w\- ]/g, '_').slice(0, 40).trim();
+
       // Mismo patrón de nombre que cmp-tallas: es de donde el tab saca la
-      // miniatura de "última OC de este proveedor" (findLatestOcFile).
-      const filename = `OC_${folioOrden}_${safeRZ}.pdf`;
+      // miniatura de "última OC de este proveedor" (findLatestOcFile). El sufijo
+      // _SIN-COSTOS de la segunda copia queda FUERA de ese match a propósito:
+      // la miniatura tiene que seguir siendo la orden con costos.
+      const razonSocial = group.proveedorRZ || group.proveedorNombre;
+      const filename = nombreArchivoOc(folioOrden, razonSocial);
 
-      // Copia en R2 con el key que ya usa el tab (toR2Files) — sirve la OC sin
-      // depender del link firmado de Monday, y es la única copia si el Proyecto
-      // es nativo (Zona Efrain), donde no hay columna a la cual subir.
-      if (oppId != null) {
-        const key = oportunidadFileKey(oppId, 'oc', filename);
-        await putFile(env, key, new Blob([pdfBytes], { type: 'application/pdf' }));
-        orden.pdfUrl = `/api/files/${key}`;
-      }
+      /** Guarda una copia en R2 (y en Monday si el Proyecto no es nativo).
+       * Devuelve la URL con la que el portal la sirve. */
+      const guardar = async (bytes: Uint8Array, nombre: string): Promise<string | undefined> => {
+        let url: string | undefined;
+        // Copia en R2 con el key que ya usa el tab (toR2Files) — sirve la OC sin
+        // depender del link firmado de Monday, y es la única copia si el Proyecto
+        // es nativo (Zona Efrain), donde no hay columna a la cual subir.
+        if (oppId != null) {
+          const key = oportunidadFileKey(oppId, 'oc', nombre);
+          await putFile(env, key, new Blob([bytes], { type: 'application/pdf' }));
+          url = `/api/files/${key}`;
+        }
+        if (!nativo) {
+          const upload = await addFileToColumn(env, proyectoId, PROYECTO_OC_PDF, new Blob([bytes], { type: 'application/pdf' }), nombre);
+          url = url ?? upload.publicUrl;
+        }
+        return url;
+      };
 
-      if (!nativo) {
-        const upload = await addFileToColumn(env, proyectoId, PROYECTO_OC_PDF, new Blob([pdfBytes], { type: 'application/pdf' }), filename);
-        orden.pdfUrl = orden.pdfUrl ?? upload.publicUrl;
+      orden.pdfUrl = await guardar(renderOcProveedor(prep, false), filename);
+
+      // La copia SIN COSTOS sale con el MISMO folio: es la misma orden para otro
+      // público (quien surte o quien recibe), no otra orden (Efraín, 2026-08-24).
+      // Solo con imágenes, que es donde se pidió — la OC de texto no cambia.
+      if (opts.conImagenes) {
+        const nombreSinCostos = nombreArchivoOc(folioOrden, razonSocial, true);
+        try {
+          orden.pdfSinCostosUrl = await guardar(renderOcProveedor(prep, true), nombreSinCostos);
+        } catch {
+          // Best-effort: la orden ya quedó emitida y guardada. Perder la copia
+          // sin costos no vale deshacer un folio que el ledger ya consumió.
+        }
       }
     } catch (err) {
       orden.error = String(err);
@@ -488,6 +535,9 @@ export async function generarOcNative(
         metodoPago, condPago, comentarios, products: group.lines, monto, moneda,
       }));
 
+      // A mano y NO con `nombreArchivoOc`: este filename viaja a DocuSeal y es
+      // su llave (docs/documentos-firma.md, memoria de nombres de archivo).
+      // Cambiarlo aquí rompería las firmas en vuelo.
       const safeRZ = (group.proveedorRZ || group.proveedorNombre).replace(/[^\w\- ]/g, '_').slice(0, 40).trim();
       const filename = `OC_${folioOrden}_${safeRZ}.pdf`;
       const upload = await addFileToColumn(env, proyectoId, PROYECTO_OC_PDF, new Blob([pdfBytes], { type: 'application/pdf' }), filename);

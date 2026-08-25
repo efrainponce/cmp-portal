@@ -1,5 +1,34 @@
 # Log de commits
 
+## 2026-08-25
+
+- **Al emitir la OC con imágenes salen DOS copias del MISMO folio**: la de
+  costos y la copia sin costos (Efraín eligió esto sobre dejarlo como vista
+  previa). Es un pedido, no dos: un solo folio del ledger, las dos guardadas en
+  el Proyecto. La vista previa no servía para mandarla porque el folio se asigna
+  al emitir — una copia sin referencia a la orden no le sirve al proveedor.
+- Las dos salen de UNA sola preparación (`prepararOcProveedor` +
+  `renderOcProveedor`): volver a armarla significaría bajar de R2 y decodificar
+  cada PNG otra vez, el doble de CPU en un Worker que lo tiene contado. La copia
+  sin costos va en `try` aparte — la orden ya quedó emitida y perderla no vale
+  deshacer un folio que el ledger ya consumió. Verificado: el PDF con costos
+  sale byte por byte idéntico al de antes del refactor.
+- En el tab, junto a la miniatura de la OC aparece un link **"Sin costos"**, y
+  solo si es del MISMO folio que la orden que se está mostrando: la copia de una
+  OC anterior llevaría cantidades viejas.
+- **Bug viejo que destapó el test:** el portal saneaba la razón social al
+  nombrar el archivo (`\w` convierte "é" en "_", así que "México" quedaba
+  "M_xico") pero la buscaba SIN sanear, y como el nombre del archivo es lo único
+  que liga la OC con su proveedor (`findLatestOcFile`, no hay id), la tarjeta se
+  quedaba sin miniatura para toda OC emitida por el portal con acento o punto en
+  el nombre. Ahora los acentos pasan a ASCII antes de sanear
+  (`nombreArchivoOc`) y el lado que compara colapsa la puntuación. Las OC de
+  cmp-tallas siempre casaron porque suben el nombre crudo.
+- `generarOcNative` (Eledo + DocuSeal) NO usa el helper nuevo y se quedó con su
+  nombre a mano, anotado en el código: ahí el filename viaja a DocuSeal y es su
+  llave — cambiarlo rompería las firmas en vuelo.
+
+
 ## 2026-08-24
 
 - **OC con imágenes: una ficha de media hoja por producto, con su foto.**

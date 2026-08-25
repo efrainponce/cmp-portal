@@ -77,7 +77,18 @@ function groupByProveedor(lineas: ItemDTO[]): ProveedorGroup[] {
 }
 
 function normalizeProveedorNombre(s: string): string {
-  return s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+  return s
+    .normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+    // Todo lo que no es letra ni número colapsa a un espacio. Sin esto, una OC
+    // emitida POR EL PORTAL nunca casaba con su proveedor: `safeRZ`
+    // (worker/lib/oc.ts) cambia lo que no es \w por "_" al nombrar el archivo,
+    // así que "5.11 Tactical de México" se guarda como "5_11 Tactical de
+    // M_xico" y se comparaba contra el nombre con punto y acento — la tarjeta
+    // se quedaba sin miniatura y nadie sabía por qué (bug viejo, visto al
+    // escribir el test de las dos copias, 2026-08-25). Las de cmp-tallas sí
+    // casaban porque suben el nombre crudo.
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
 }
 
 /** Empareja el PDF de OC más reciente de un proveedor por nombre de archivo:
@@ -89,15 +100,37 @@ function normalizeProveedorNombre(s: string): string {
  * crudo como candidatos porque `ProveedorGroup.nombre` prioriza la razón
  * social, que puede no ser el texto que cmp-tallas usó. El arreglo conserva
  * orden de subida, así que el último match es el más reciente. */
-function findLatestOcFile(files: { url: string; name: string }[], candidatos: string[]): { url: string; name: string } | undefined {
+/** `OC_<folio>_<razón social>.pdf`, con `_SIN-COSTOS` opcional al final: desde
+ * 2026-08-24 la OC con imágenes emite DOS copias de la misma orden, con el
+ * mismo folio. La razón social viene saneada con `_` (safeRZ en
+ * worker/lib/oc.ts), por eso el grupo es perezoso: el sufijo tiene que
+ * separarse del nombre, no confundirse con él. */
+const OC_FILE_RE = /^OC_([^_]+)_(.+?)(_SIN-COSTOS)?\.pdf$/i;
+
+/** Última OC de este proveedor, en sus dos copias. La miniatura sigue siendo la
+ * orden CON costos; la copia sin costos se ofrece como link aparte. */
+export function findLatestOcFile(
+  files: { url: string; name: string }[], candidatos: string[],
+): { conCostos?: { url: string; name: string }; sinCostos?: { url: string; name: string } } {
   const wanted = candidatos.filter(Boolean).map(normalizeProveedorNombre);
-  if (wanted.length === 0) return undefined;
-  let latest: { url: string; name: string } | undefined;
+  if (wanted.length === 0) return {};
+  let conCostos: { url: string; name: string } | undefined;
+  let sinCostos: { url: string; name: string } | undefined;
+  let folioDeLaUltima = '';
   for (const f of files) {
-    const m = /^OC_[^_]+_(.+)\.pdf$/i.exec(f.name);
-    if (m && wanted.includes(normalizeProveedorNombre(m[1]))) latest = f;
+    const m = OC_FILE_RE.exec(f.name);
+    if (!m || !wanted.includes(normalizeProveedorNombre(m[2]))) continue;
+    if (m[3]) { sinCostos = f; continue; }
+    conCostos = f;
+    folioDeLaUltima = m[1];
   }
-  return latest;
+  // Solo se ofrece la copia sin costos si es la de la MISMA orden que se está
+  // mostrando: la de una OC anterior llevaría cantidades viejas.
+  if (sinCostos && folioDeLaUltima) {
+    const m = OC_FILE_RE.exec(sinCostos.name);
+    if (!m || m[1] !== folioDeLaUltima) sinCostos = undefined;
+  }
+  return { conCostos, sinCostos };
 }
 
 // 11 columnas en el ancho del drawer (~856px útiles con maxWidth 920): las de
@@ -703,7 +736,7 @@ function ProveedorCard({ group, proyecto, oppId, reload, canEdit, activity, nota
     }
     return [...vistos.values()];
   }, [group.lineas]);
-  const ocFile = findLatestOcFile(ocFiles, [group.nombre, group.nombreItem]);
+  const { conCostos: ocFile, sinCostos: ocFileSinCostos } = findLatestOcFile(ocFiles, [group.nombre, group.nombreItem]);
 
   const correr = (accion: 'generar-oc' | 'generar-oc-portal' | 'generar-oc-portal-imagenes') => async () => {
     setOutcome(null);
@@ -731,6 +764,16 @@ function ProveedorCard({ group, proyecto, oppId, reload, canEdit, activity, nota
       <div style={{ padding: '12px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', borderBottom: '1px solid var(--border-subtle)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <OcThumb file={ocFile} />
+          {ocFileSinCostos && (
+            <a
+              href={ocFileSinCostos.url}
+              download
+              title="Copia de esta misma orden sin precios — para surtido o recepción"
+              style={{ font: 'var(--text-caption)', color: 'var(--accent)', whiteSpace: 'nowrap' }}
+            >
+              Sin costos
+            </a>
+          )}
           <div>
             <div style={{ font: 'var(--text-body-strong)', color: 'var(--ink)' }}>{group.nombre}</div>
             <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)' }}>
