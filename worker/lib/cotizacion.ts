@@ -21,6 +21,7 @@ import { DEAL_STAGE_LABELS } from '../../shared/dealStages';
 import { renderEledoPdf, ELEDO_TEMPLATE_COTIZACION } from './eledo';
 import { createDocuSealSubmission } from './docuseal';
 import { fetchAirtableImageUrl } from './airtable';
+import { registrarArchivo } from './archivoLog';
 import { importeEnLetras } from './importeEnLetras';
 import { getOrCreateDriveFolder, oportunidadRootFolderName, uploadPdfToDrive } from './drive';
 import { submitWrite } from './outbox';
@@ -444,6 +445,11 @@ export async function generarCotizacionNative(env: Env, itemId: number, viewer: 
   // subir a Monday ni que firmar). Mismo criterio que generate_cotizacion.py.
   const pdfCP = await renderEledoPdf(env, ELEDO_TEMPLATE_COTIZACION, buildEledoFile({ ...baseArgs, conPrecio: true }));
   const uploadCP = await addFileToColumn(env, itemId, OPP_FILE_CON_PRECIO, new Blob([pdfCP], { type: 'application/pdf' }), filenameCP);
+  await registrarArchivo(env, {
+    acto: 'genera', categoria: 'cotizacion', nombre: filenameCP,
+    boardId: BOARDS.oportunidades.id, itemId, colId: OPP_FILE_CON_PRECIO,
+    bytes: pdfCP.length, porEmail: viewer.email, origen: 'cmp-tallas',
+  });
 
   // Fase 5 "salir de Monday" (2026-08-13): depositar el PDF con precio en
   // "10. COT FINAL" de la carpeta de Drive de la Oportunidad — best-effort,
@@ -473,6 +479,11 @@ export async function generarCotizacionNative(env: Env, itemId: number, viewer: 
   try {
     const pdfSP = await renderEledoPdf(env, ELEDO_TEMPLATE_COTIZACION, buildEledoFile({ ...baseArgs, conPrecio: false }));
     const uploadSP = await addFileToColumn(env, itemId, OPP_FILE_SIN_PRECIO, new Blob([pdfSP], { type: 'application/pdf' }), filenameSP);
+    await registrarArchivo(env, {
+      acto: 'genera', categoria: 'solicitud-costeo', nombre: filenameSP,
+      boardId: BOARDS.oportunidades.id, itemId, colId: OPP_FILE_SIN_PRECIO,
+      bytes: pdfSP.length, porEmail: viewer.email, origen: 'cmp-tallas',
+    });
     pdfSinPrecioUrl = uploadSP.publicUrl;
   } catch { /* non-fatal */ }
 

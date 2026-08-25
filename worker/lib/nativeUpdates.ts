@@ -15,6 +15,7 @@
 // es INTEGER — con un UUID habría que tocar las cuatro cosas. Mismo piso que
 // los items nativos (shared/nativeId.ts): 12 dígitos, sin patrón.
 import type { Env } from '../env';
+import { registrarArchivo } from './archivoLog';
 import { createUpdate, fetchUpdates, type MentionInput, type MondayUpdate, type MondayUpdateAsset } from './monday';
 import { isNativeId, NATIVE_ID_FLOOR } from '../../shared/nativeId';
 import { putFile } from './r2';
@@ -150,6 +151,12 @@ export async function attachToNativeUpdate(
   const ext = (file.name.split('.').pop() ?? '').toLowerCase();
   const key = `native-updates/${updateId}/${assetId}/${file.name}`;
   await putFile(env, key, file);
+  await registrarArchivo(env, {
+    // Sin autor: esta función no recibe al viewer — el update al que se adjunta
+    // sí guarda quién lo escribió (native_updates.author_email).
+    acto: 'sube', categoria: 'update', nombre: file.name,
+    r2Key: key, bytes: file.size,
+  });
 
   const list = parseAttachments(row.attachments);
   list.push({ id: assetId, name: file.name, ext, key });

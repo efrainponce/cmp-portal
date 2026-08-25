@@ -31,6 +31,7 @@
 // Column ids de docs/monday-column-map.md / column-meta.gen.ts — nunca fabricar.
 import type { ExecutionContext } from 'hono';
 import type { Env } from '../env';
+import { registrarArchivo } from './archivoLog';
 import type { Identity, MirrorItem } from '../../shared/types';
 import { BOARDS } from '../../shared/boards';
 import { DEAL_STAGE_LABELS, DUPLICAR_ETAPAS_VALIDAS } from '../../shared/dealStages';
@@ -169,6 +170,10 @@ async function copyFiles(env: Env, sourceCols: Map<string, RawCol>, colId: strin
       if (!res.ok) continue;
       const blob = await res.blob();
       await addFileToColumn(env, targetId, colId, blob, f.name);
+      await registrarArchivo(env, {
+        acto: 'copia', categoria: 'copia-oportunidad', nombre: f.name,
+        boardId: BOARDS.oportunidades.id, itemId: targetId, colId, bytes: blob.size,
+      });
     } catch {
       // archivo individual falla -> se omite, el resto sigue
     }

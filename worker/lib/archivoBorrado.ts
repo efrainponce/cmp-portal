@@ -28,6 +28,7 @@
 // Items NATIVOS (Zona Efrain, ids >= 900000000000): no existen en Monday, así
 // que solo se reescribe el marcador de D1 (worker/lib/nativeItems.ts).
 import type { Env } from '../env';
+import { registrarArchivo, autorDeArchivo } from './archivoLog';
 import type { Identity, Role } from '../../shared/types';
 import type { BoardSlug } from '../../shared/boards';
 import { BOARDS } from '../../shared/boards';
@@ -99,14 +100,17 @@ export async function ensureArchivoTables(env: Env): Promise<void> {
  * ya ocurrió y no se debe tumbar — el costo es que el archivo queda "sin dueño"
  * (ver `puedeBorrarArchivo`). */
 export async function registrarSubida(
-  env: Env, boardId: number, itemId: number, colId: string, ref: ArchivoRef, byEmail?: string,
+  env: Env, boardId: number, itemId: number, colId: string, ref: ArchivoRef,
+  byEmail?: string, categoria = 'documento',
 ): Promise<void> {
-  await ensureArchivoTables(env);
-  await env.DB.prepare(
-    `INSERT INTO archivo_subido (board_id, item_id, col_id, asset_id, nombre, by_email, at)
-     VALUES (?,?,?,?,?,?,?)
-     ON CONFLICT(board_id, item_id, col_id, asset_id, nombre) DO UPDATE SET by_email = excluded.by_email, at = excluded.at`,
-  ).bind(boardId, itemId, colId, ref.assetId, ref.nombre, byEmail ?? null, new Date().toISOString()).run();
+  // Desde 2026-08-25 escribe en la bitácora general (worker/lib/archivoLog.ts)
+  // en vez de en `archivo_subido`, que queda como legado de solo lectura: esa
+  // tabla junta 3 filas de toda la historia porque solo 2 de ~30 rutas que
+  // escriben archivos la llamaban.
+  await registrarArchivo(env, {
+    acto: 'sube', categoria, nombre: ref.nombre,
+    boardId, itemId, colId, assetId: ref.assetId || null, porEmail: byEmail ?? null,
+  });
 }
 
 /** Correo de quien subió el archivo, o null si no hay registro (archivo previo
@@ -114,6 +118,12 @@ export async function registrarSubida(
 export async function subidoPor(
   env: Env, boardId: number, itemId: number, colId: string, ref: ArchivoRef,
 ): Promise<string | null> {
+  // Primero la bitácora nueva; si no sabe, las 3 filas de `archivo_subido` que
+  // quedaron de antes (no se migraron: son 3, y perderlas cambiaría quién puede
+  // borrar ESOS archivos).
+  const enBitacora = await autorDeArchivo(env, boardId, itemId, colId, ref);
+  if (enBitacora) return enBitacora;
+
   await ensureArchivoTables(env);
   const row = await env.DB.prepare(
     `SELECT by_email FROM archivo_subido
@@ -256,6 +266,12 @@ export async function borrarArchivoDeColumna(env: Env, opts: {
         f: quedan.map(f => ({ assetId: String(f.assetId), name: f.nombre, fileType: 'asset' })),
       });
   }
+
+  await registrarArchivo(env, {
+    acto: 'borra', categoria, nombre: archivo.nombre,
+    boardId, itemId, colId, assetId: archivo.assetId || null,
+    r2Key: respaldo, porEmail: viewer.email,
+  });
 
   return { nombre: archivo.nombre, respaldo };
 }

@@ -32,6 +32,8 @@
 // mostrarla en VersionChips.
 import type { ExecutionContext } from 'hono';
 import type { Env } from '../env';
+import { registrarArchivo } from './archivoLog';
+import { BOARDS } from '../../shared/boards';
 import type { Identity, MirrorItem } from '../../shared/types';
 import type { AjusteDTO, AjustarLineaRequest, CostoDivergenciaDTO } from '../../shared/dto';
 import { getItem } from './dal';
@@ -119,6 +121,10 @@ async function copyEmbellecimientoImage(env: Env, sourceCols: Map<string, RawCol
       if (!res.ok) continue;
       const blob = await res.blob();
       await addFileToColumn(env, newSubitemId, SUB_FILE, blob, f.name);
+      await registrarArchivo(env, {
+        acto: 'copia', categoria: 'copia-linea', nombre: f.name,
+        boardId: BOARDS.oportunidades_sub.id, itemId: newSubitemId, colId: SUB_FILE, bytes: blob.size,
+      });
     } catch {
       // imagen individual falla -> se omite, el resto de la línea sigue
     }

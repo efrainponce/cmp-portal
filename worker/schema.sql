@@ -483,6 +483,56 @@ CREATE TABLE IF NOT EXISTS oc_folios (
   seq  INTEGER NOT NULL DEFAULT 0
 );
 
+-- Bitácora de archivos (2026-08-25, worker/lib/archivoLog.ts). Append-only.
+-- NO es un índice de qué archivos existen —eso sigue siendo Monday + R2, que
+-- son 1-1 con el portal— sino la historia de quién hizo qué. Nace porque había
+-- ~30 puntos del código que escriben archivos y solo 2 registraban algo: con 3
+-- filas en toda la base, la regla "lo borra solo quien lo subió" nunca aplicaba.
+CREATE TABLE IF NOT EXISTS archivo_evento (
+  id        INTEGER PRIMARY KEY AUTOINCREMENT,
+  acto      TEXT NOT NULL,          -- genera | sube | copia | borra
+  categoria TEXT NOT NULL,          -- oc | cotizacion | tallas | embellecimiento | ...
+  nombre    TEXT NOT NULL,
+  board_id  INTEGER,
+  item_id   INTEGER,
+  col_id    TEXT,
+  asset_id  INTEGER,
+  r2_key    TEXT,
+  bytes     INTEGER,
+  por_email TEXT,
+  origen    TEXT NOT NULL DEFAULT 'portal',   -- portal | cmp-tallas | monday
+  at        TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_archivo_evento_item ON archivo_evento (item_id, at DESC);
+CREATE INDEX IF NOT EXISTS idx_archivo_evento_at ON archivo_evento (at DESC);
+
+-- Ledger de Órdenes de Compra emitidas por el portal (2026-08-25,
+-- worker/lib/ocLedger.ts). `oc_folios` de arriba solo cuenta; esta tabla dice
+-- QUÉ es cada folio. Se escribe ANTES de generar el PDF (estado 'reservada'),
+-- así un folio que se quema por un error queda documentado como 'fallida' en
+-- vez de desaparecer — el día que nació había 235 folios consumidos, 219
+-- reconstruibles desde nombres de archivo y 16 sin ningún rastro. NO es un
+-- índice de archivos: la verdad de qué existe sigue siendo Monday + R2.
+CREATE TABLE IF NOT EXISTS oc_emitida (
+  folio              TEXT PRIMARY KEY,
+  proyecto_id        INTEGER NOT NULL,
+  proveedor_id       TEXT,
+  proveedor          TEXT NOT NULL,
+  oportunidad_id     INTEGER,
+  monto              REAL,
+  moneda             TEXT,
+  archivo            TEXT,
+  archivo_sin_costos TEXT,
+  con_imagenes       INTEGER NOT NULL DEFAULT 0,
+  motor              TEXT NOT NULL,   -- portal | nativo-d1 | eledo | backfill
+  estado             TEXT NOT NULL,   -- reservada | emitida | fallida | sin-rastro
+  error              TEXT,
+  emitida_por        TEXT,
+  emitida_at         TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_oc_emitida_proyecto ON oc_emitida (proyecto_id);
+CREATE INDEX IF NOT EXISTS idx_oc_emitida_at ON oc_emitida (emitida_at DESC);
+
 -- Carpeta de Drive de una Oportunidad (Fase 5, plan "salir de Monday",
 -- 2026-08-13, worker/lib/drive.ts getOrCreateDriveFolder) — cache de la carpeta
 -- raíz + las 12 subcarpetas de licitación creadas en Drive, para que Fases 2-4

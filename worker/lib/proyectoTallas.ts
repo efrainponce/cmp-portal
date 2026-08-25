@@ -5,6 +5,7 @@
 // reemplaza, solo da una alta rápida alternativa.
 import type { ExecutionContext } from 'hono';
 import type { Env } from '../env';
+import { registrarArchivo } from './archivoLog';
 import type { Identity, MirrorItem } from '../../shared/types';
 import type { TallaBoxInput, CapturarTallasResponse } from '../../shared/dto';
 import { postUpdate } from './nativeUpdates';
@@ -685,6 +686,10 @@ export async function confirmTallasNative(env: Env, viewer: Identity, proyectoId
   );
 
   const upload = await addFileToColumn(env, proyectoId, PROYECTO_PDF_TALLAS, new Blob([pdfBytes], { type: 'application/pdf' }), filename);
+  await registrarArchivo(env, {
+    acto: 'genera', categoria: 'tallas', nombre: filename, boardId: BOARDS.proyectos.id,
+    itemId: proyectoId, colId: PROYECTO_PDF_TALLAS, bytes: pdfBytes.length, porEmail: viewer.email,
+  });
 
   // Fase 5 "salir de Monday" (2026-08-13): depositar en "09. RELACION DE
   // TALLAS" de la carpeta de Drive de la Oportunidad ligada — best-effort.

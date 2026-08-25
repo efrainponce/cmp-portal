@@ -1,5 +1,42 @@
 # Log de commits
 
+## 2026-08-25 (2)
+
+- **Ledger de OC en D1** (`worker/lib/ocLedger.ts`). El contador iba en 230 y el
+  espejo llegaba a OC-235, pero no existía UNA fila que dijera qué es cada
+  folio: 219 se podían reconstruir escarbando nombres de archivo y **16 no
+  dejaban rastro de ningún tipo**. El portal ya era dueño de la numeración y no
+  del significado — la peor mitad.
+- La regla que lo hace servir: **la fila se escribe ANTES de generar el PDF**,
+  en la misma operación que asigna el folio. Si truena después, queda en estado
+  'fallida' en vez de desaparecer. Un folio quemado en silencio es justo lo que
+  dejó esos 16 huecos. Los tres caminos que emiten (portal, nativo-d1 de Zona
+  Efrain, y Eledo+DocuSeal) registran.
+- `POST /api/admin/oc/backfill` siembra las viejas desde el espejo, idempotente.
+  Los huecos entran explícitos como 'sin-rastro': el backfill **no adivina** si
+  fueron fallas, archivos borrados o del ledger viejo en Sheets de cmp-tallas.
+  Lectura en `GET /api/oc` y `GET /api/oc/:folio` (compras/admin).
+- **Bitácora de archivos** (`worker/lib/archivoLog.ts`), a partir de "¿de hecho
+  de todos los archivos?". Había ~30 puntos del código que escriben archivos y
+  exactamente **2** registraban algo: 3 filas en `archivo_subido` de toda la
+  historia. Consecuencia viva: `puedeBorrarArchivo` deja pasar a cualquiera
+  cuando no hay registro de quién subió —fallback deliberado para archivos
+  viejos— y sin registros ESE era el caso normal, así que la regla "lo borra
+  solo quien lo subió" era letra muerta. Ahora registran OC (las dos copias),
+  cotización, solicitud de costeo, hoja de costeo, tallas, embellecimientos,
+  inventario, logística, updates nativos, productos propuestos, las copias entre
+  items (duplicar/ganar/dividir línea) y los borrados.
+- **Lo que la bitácora NO es, a propósito: un índice de qué archivos existen.**
+  Esa verdad sigue siendo Monday + R2. Una tabla que afirme que un archivo
+  existe cuando Monday ya no lo tiene es la falla del 2026-08-19 otra vez. Es
+  historia, no inventario, y nunca se consulta para decidir si algo existe.
+- Es best-effort y **nunca lanza**: una OC que no se emite por no poder loggear
+  sería peor que perder el registro. Anclado en test.
+- `registrarSubida` ahora escribe en la bitácora; `archivo_subido` queda de solo
+  lectura y `subidoPor` la sigue consultando como respaldo — son 3 filas y
+  migrarlas cambiaría quién puede borrar ESOS archivos.
+
+
 ## 2026-08-25
 
 - **Al emitir la OC con imágenes salen DOS copias del MISMO folio**: la de

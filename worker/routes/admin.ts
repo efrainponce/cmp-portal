@@ -20,6 +20,11 @@ import { buildAnalyticsResponse } from '../lib/analytics';
 import { ACCION_RETENTION_DAYS } from '../lib/accionLog';
 import { rejectUnknownQuery } from '../lib/http';
 import { totalesDeLinea } from '../lib/lineaTotales';
+import { backfillOcLedger } from '../lib/ocLedger';
+
+/** Columna de OCs del Proyecto (file_mm0hj9pn) — la misma que llena
+ * worker/lib/oc.ts; es de donde el backfill reconstruye los folios viejos. */
+const PROYECTO_OC_PDF_COL = 'file_mm0hj9pn';
 import type { RawColumn } from '../lib/canon';
 import type { GroupBy } from '../../shared/analytics';
 
@@ -216,6 +221,21 @@ export function adminRoutes(app: Hono<{ Bindings: Env }>) {
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
       return c.json({ error: `sync failed: ${detail}` }, 502);
+    }
+  });
+
+  // Siembra el ledger de OC con lo que se pueda reconstruir del espejo
+  // (worker/lib/ocLedger.ts). Idempotente: no pisa filas existentes, así que
+  // correrlo dos veces no duplica ni sobreescribe una orden ya registrada.
+  app.post('/api/admin/oc/backfill', async c => {
+    if (c.get('viewer').role !== 'admin') return c.json({ error: 'forbidden' }, 403);
+    const seq = await c.env.DB.prepare('SELECT seq FROM oc_folios WHERE id = 1').first<{ seq: number }>();
+    try {
+      const resumen = await backfillOcLedger(c.env, BOARDS.proyectos.id, PROYECTO_OC_PDF_COL, seq?.seq ?? 0);
+      return c.json({ ok: true, ...resumen });
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      return c.json({ error: `backfill failed: ${detail}` }, 500);
     }
   });
 

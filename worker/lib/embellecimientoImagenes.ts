@@ -4,6 +4,7 @@
 // "<Zona>__<nombre original>" filename prefix rather than needing 8 columns.
 import type { ExecutionContext } from 'hono';
 import type { Env } from '../env';
+import { registrarArchivo } from './archivoLog';
 import type { Identity } from '../../shared/types';
 import { getItem } from './dal';
 import { canWrite } from '../../shared/visibility';
@@ -106,6 +107,11 @@ export async function uploadZoneImage(
   }
 
   const asset = await addFileToColumn(env, itemId, COL, file, `${zone}${SEP}${filename}`);
+  await registrarArchivo(env, {
+    acto: 'sube', categoria: 'embellecimiento', nombre: `${zone}${SEP}${filename}`,
+    boardId: BOARDS.oportunidades.id, itemId, colId: COL, assetId: Number(asset.id) || null,
+    bytes: file.size, porEmail: viewer.email,
+  });
   ctx.waitUntil(refetchItem(env, BOARDS.oportunidades_sub.id, itemId));
 
   if (row.parent_item_id != null) {

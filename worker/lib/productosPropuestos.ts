@@ -4,6 +4,7 @@
 // encajan en ninguna columna existente y CLAUDE.md prohíbe inventar ids de
 // columna. Tabla lazy (mismo patrón que ensureDocumentTables).
 import type { Env } from '../env';
+import { registrarArchivo } from './archivoLog';
 import type { Identity } from '../../shared/types';
 import type { ProposedProductDTO } from '../../shared/productosPropuestos';
 import { isNativeId } from '../../shared/nativeId';
@@ -169,6 +170,11 @@ export async function addProposedProduct(
   if (file) {
     imageKey = oportunidadFileKey(itemId, 'productos-propuestos', `${id}-${file.name}`);
     await putFile(env, imageKey, file);
+    await registrarArchivo(env, {
+      acto: 'sube', categoria: 'producto-propuesto', nombre: file.name,
+      boardId: BOARDS.oportunidades.id, itemId, r2Key: imageKey,
+      bytes: file.size, porEmail: viewer.email,
+    });
   }
   const cleanDescripcion = descripcion.trim();
   const createdAt = new Date().toISOString();

@@ -21,6 +21,8 @@ import { BOARDS } from '../../shared/boards';
 import { mergeNativeCols } from './nativeMirrors';
 import { oportunidadFileKey, putFile } from './r2';
 import { generarOcProveedorPdf, prepararOcProveedor, renderOcProveedor } from './ocProveedorPdf';
+import { registrarReserva, cerrarOc, fallarOc } from './ocLedger';
+import { registrarArchivo } from './archivoLog';
 import { refetchItemTree } from '../sync';
 import { getOcNota } from './ocNotas';
 
@@ -334,6 +336,13 @@ export async function generarOcNativeD1(
 
       const folioOrden = await nextOcFolio(env);
       orden.folioOrden = folioOrden;
+      // El ledger se escribe ANTES de generar: si esto truena, el folio queda
+      // documentado como 'fallida' en vez de perderse (worker/lib/ocLedger.ts).
+      await registrarReserva(env, folioOrden, {
+        proyectoId, proveedorId: group.proveedorId,
+        proveedor: group.proveedorRZ || group.proveedorNombre,
+        oportunidadId: oppId, motor: 'nativo-d1', porEmail: viewer.email,
+      });
 
       const pdfBytes = await generarOcProveedorPdf(env, proyectoId, group.proveedorId, viewer);
       const filename = nombreArchivoOc(folioOrden, group.proveedorRZ || group.proveedorNombre);
@@ -343,8 +352,15 @@ export async function generarOcNativeD1(
         await putFile(env, key, new Blob([pdfBytes], { type: 'application/pdf' }));
         orden.pdfUrl = `/api/files/${key}`;
       }
+      await registrarArchivo(env, {
+        acto: 'genera', categoria: 'oc', nombre: filename, boardId: BOARDS.proyectos.id,
+        itemId: proyectoId, r2Key: oppId != null ? oportunidadFileKey(oppId, 'oc', filename) : null,
+        bytes: pdfBytes.length, porEmail: viewer.email,
+      });
+      await cerrarOc(env, folioOrden, { archivo: filename, monto, moneda });
     } catch (err) {
       orden.error = String(err);
+      if (orden.folioOrden) await fallarOc(env, orden.folioOrden, String(err)).catch(() => {});
     }
     ordenes.push(orden);
   }
@@ -399,6 +415,11 @@ export async function generarOcPortal(
 
       const folioOrden = await nextOcFolio(env);
       orden.folioOrden = folioOrden;
+      await registrarReserva(env, folioOrden, {
+        proyectoId, proveedorId: group.proveedorId,
+        proveedor: group.proveedorRZ || group.proveedorNombre,
+        oportunidadId: oppId, motor: 'portal', porEmail: viewer.email,
+      });
 
       // Una sola preparación para las dos copias: con imágenes, volver a
       // prepararla significaría bajar de R2 y decodificar cada PNG otra vez.
@@ -430,6 +451,13 @@ export async function generarOcPortal(
           const upload = await addFileToColumn(env, proyectoId, PROYECTO_OC_PDF, new Blob([bytes], { type: 'application/pdf' }), nombre);
           url = url ?? upload.publicUrl;
         }
+        await registrarArchivo(env, {
+          acto: 'genera',
+          categoria: nombre.includes('_SIN-COSTOS') ? 'oc-sin-costos' : 'oc',
+          nombre, boardId: BOARDS.proyectos.id, itemId: proyectoId, colId: nativo ? null : PROYECTO_OC_PDF,
+          r2Key: oppId != null ? oportunidadFileKey(oppId, 'oc', nombre) : null,
+          bytes: bytes.length, porEmail: viewer.email,
+        });
         return url;
       };
 
@@ -447,8 +475,15 @@ export async function generarOcPortal(
           // sin costos no vale deshacer un folio que el ledger ya consumió.
         }
       }
+
+      await cerrarOc(env, folioOrden, {
+        archivo: filename,
+        archivoSinCostos: orden.pdfSinCostosUrl ? nombreArchivoOc(folioOrden, razonSocial, true) : undefined,
+        monto, moneda, conImagenes: opts.conImagenes,
+      });
     } catch (err) {
       orden.error = String(err);
+      if (orden.folioOrden) await fallarOc(env, orden.folioOrden, String(err)).catch(() => {});
     }
     ordenes.push(orden);
   }
@@ -527,6 +562,14 @@ export async function generarOcNative(
       const folioOrden = await nextOcFolio(env);
       orden.folioOrden = folioOrden;
 
+      await registrarReserva(env, folioOrden, {
+        proyectoId, proveedorId: group.proveedorId,
+        proveedor: group.proveedorRZ || group.proveedorNombre,
+        // Este flujo trabaja con el FOLIO de la oportunidad (texto), no con su
+        // item id: el ledger la deja en null y se liga por proyecto.
+        oportunidadId: null, motor: 'eledo', porEmail: viewer.email,
+      });
+
       const comentarios = (await getOcNota(env, proyectoId, group.proveedorId)) || comentariosProyecto;
 
       const pdfBytes = await renderEledoPdf(env, ELEDO_TEMPLATE_OC, buildEledoOcFile({
@@ -542,6 +585,11 @@ export async function generarOcNative(
       const filename = `OC_${folioOrden}_${safeRZ}.pdf`;
       const upload = await addFileToColumn(env, proyectoId, PROYECTO_OC_PDF, new Blob([pdfBytes], { type: 'application/pdf' }), filename);
       orden.pdfUrl = upload.publicUrl;
+      await registrarArchivo(env, {
+        acto: 'genera', categoria: 'oc', nombre: filename, boardId: BOARDS.proyectos.id,
+        itemId: proyectoId, colId: PROYECTO_OC_PDF, bytes: pdfBytes.length,
+        porEmail: viewer.email, origen: 'cmp-tallas',
+      });
 
       if (ocDriveFolderId) {
         try { await uploadPdfToDrive(env, ocDriveFolderId, filename, pdfBytes); } catch { /* best-effort */ }
@@ -561,8 +609,10 @@ export async function generarOcNative(
       } catch (err) {
         orden.docusealId = `ERROR: ${String(err)}`;
       }
+      await cerrarOc(env, folioOrden, { archivo: filename, monto, moneda });
     } catch (err) {
       orden.error = String(err);
+      if (orden.folioOrden) await fallarOc(env, orden.folioOrden, String(err)).catch(() => {});
     }
     ordenes.push(orden);
   }

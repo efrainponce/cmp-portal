@@ -5,7 +5,7 @@
 import type { Context, Hono } from 'hono';
 import type { Env } from '../env';
 import type { Identity } from '../../shared/types';
-import { BOARDS } from '../../shared/boards';
+import { BOARDS, type BoardSlug } from '../../shared/boards';
 import { isNativeId } from '../../shared/nativeId';
 import { stageAtOrAfter, stageKeyForLabel } from '../../shared/dealStages';
 import type { AjustarLineaRequest, AjustarLineaResponse, CotizacionVirtualDTO, DuplicarOportunidadRequest, DuplicarOportunidadResponse, DuplicarVersionResponse, ItemDetailDTO, QuoteVersionsResponse, TallaBoxInput, CapturarTallasResponse, EstadoHistorialResponse, ProductoResumenResponse, ProductoGeneroResponse } from '../../shared/dto';
@@ -25,6 +25,8 @@ import { listCotizacionVirtual, ajustarLineaVirtual, ProyectoCotizacionError } f
 import { capturarTallas, reportarTallasIncorrectas, checkOcCliente, confirmTallasNative, confirmTallasNativeD1 } from '../lib/proyectoTallas';
 import { generarOcNative, generarOcNativeD1, generarOcPortal } from '../lib/oc';
 import { getOcNota, getOcNotas, setOcNota, OC_NOTA_MAX } from '../lib/ocNotas';
+import { listarOc, getOc, type OcEstado } from '../lib/ocLedger';
+import { registrarArchivo, historialArchivos } from '../lib/archivoLog';
 import {
   listarImagenes, leerImagen, guardarImagenSubida, restablecerDesdeAirtable,
   isSkuUsable, skuKey, OC_IMAGEN_MAX_BYTES, OcImagenError,
@@ -170,6 +172,11 @@ async function generarSolicitudCosteo(
       const { bytes } = await documentPdf(c.env, doc.id, viewer, false);
       const filename = `costeo_${folioCosteo.replace(/[^\w.-]+/g, '_')}.pdf`;
       await addFileToColumn(c.env, itemId, OPP_FILE_COSTEO, new Blob([bytes], { type: 'application/pdf' }), filename);
+      await registrarArchivo(c.env, {
+        acto: 'genera', categoria: 'costeo', nombre: filename,
+        boardId: BOARDS.oportunidades.id, itemId, colId: OPP_FILE_COSTEO,
+        bytes: bytes.length, porEmail: viewer.email,
+      });
     }
   } catch (err) {
     console.log('[solicitud-costeo] ' + String(err));
@@ -921,6 +928,12 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
 
     const key = oportunidadFileKey(itemId, 'inventario', file.name);
     await putFile(c.env, key, file);
+    await registrarArchivo(c.env, {
+      acto: 'sube', categoria: 'inventario', nombre: file.name,
+      boardId: BOARDS.oportunidades.id, itemId, colId: 'file_mm0hpefr',
+      assetId: Number(asset.id) || null, r2Key: key, bytes: file.size,
+      porEmail: c.get('viewer').email,
+    });
     return c.json({ ok: true, id: asset.id, name: asset.name, url: `/api/files/${key}` });
   });
 
@@ -995,6 +1008,52 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       if (err instanceof OcProveedorPdfError) return jsonStatus({ error: err.message }, err.status);
       return jsonStatus({ error: 'internal error' }, 500);
     }
+  });
+
+  // Historial de archivos de un item (worker/lib/archivoLog.ts). Es HISTORIA,
+  // no inventario: lo que existe hoy se lee de Monday/R2 como siempre. Gateado
+  // por el scope de LECTURA del item — quien puede ver la oportunidad puede ver
+  // qué pasó con sus archivos.
+  app.get('/api/archivos/:slug/:itemId', async c => {
+    const slug = c.req.param('slug') as BoardSlug;
+    if (!(slug in BOARDS)) return jsonStatus({ error: 'board desconocido' }, 400);
+    const itemId = Number(c.req.param('itemId'));
+    if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
+    const viewer = c.get('viewer');
+    const row = await getItem(c.env, slug, itemId, viewer);
+    if (!row) return c.json({ error: 'not found' }, 404);
+    const bad = rejectUnknownQuery(c.req.url, ['limit']);
+    if (bad) return bad;
+    const limit = Number(c.req.query('limit'));
+    return c.json({ eventos: await historialArchivos(c.env, itemId, Number.isFinite(limit) ? limit : 100) });
+  });
+
+  // Ledger de órdenes de compra (worker/lib/ocLedger.ts) — qué es cada folio.
+  // Antes de esto había 235 folios consumidos y ninguna fila que dijera qué
+  // eran; 16 no dejaban rastro ni en los nombres de archivo.
+  app.get('/api/oc', async c => {
+    const viewer = c.get('viewer');
+    if (viewer.role !== 'compras' && viewer.role !== 'admin') return jsonStatus({ error: 'forbidden' }, 403);
+    const bad = rejectUnknownQuery(c.req.url, ['proyecto', 'proveedor', 'estado', 'limit']);
+    if (bad) return bad;
+    const proyecto = Number(c.req.query('proyecto'));
+    const limit = Number(c.req.query('limit'));
+    return c.json({
+      ordenes: await listarOc(c.env, {
+        proyectoId: Number.isFinite(proyecto) && proyecto > 0 ? proyecto : undefined,
+        proveedorId: c.req.query('proveedor') || undefined,
+        estado: (c.req.query('estado') as OcEstado) || undefined,
+        limit: Number.isFinite(limit) ? limit : undefined,
+      }),
+    });
+  });
+
+  app.get('/api/oc/:folio', async c => {
+    const viewer = c.get('viewer');
+    if (viewer.role !== 'compras' && viewer.role !== 'admin') return jsonStatus({ error: 'forbidden' }, 403);
+    const orden = await getOc(c.env, c.req.param('folio').toUpperCase());
+    if (!orden) return jsonStatus({ error: 'folio no registrado' }, 404);
+    return c.json({ orden });
   });
 
   // ── Foto de producto de la OC con imágenes (worker/lib/ocImagenes.ts) ──────
@@ -1610,11 +1669,21 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       const key = oportunidadFileKey(oppId, `logistica/${itemId}/${field}`, file.name);
       await putFile(c.env, key, file);
       await stampNativeFileMarker(c.env, 'proyectos_sub', itemId, colId, file.name);
+      await registrarArchivo(c.env, {
+        acto: 'sube', categoria: `logistica/${field}`, nombre: file.name,
+        boardId: BOARDS.proyectos_sub.id, itemId, colId, r2Key: key,
+        bytes: file.size, porEmail: viewer.email,
+      });
       return c.json({ ok: true, id: `native-${itemId}-${field}`, name: file.name, url: `/api/files/${key}` });
     }
 
     const asset = await addFileToColumn(c.env, itemId, colId, file, file.name);
     c.executionCtx.waitUntil(refetchItem(c.env, BOARDS.proyectos_sub.id, itemId));
+    await registrarArchivo(c.env, {
+      acto: 'sube', categoria: `logistica/${field}`, nombre: file.name,
+      boardId: BOARDS.proyectos_sub.id, itemId, colId, assetId: Number(asset.id) || null,
+      bytes: file.size, porEmail: viewer.email,
+    });
 
     if (oppId != null) {
       const key = oportunidadFileKey(oppId, `logistica/${itemId}/${field}`, file.name);

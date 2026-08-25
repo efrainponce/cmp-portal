@@ -9,6 +9,7 @@
 // Proyecto nuevo, mismos grupos, mismo link bidireccional.
 import type { ExecutionContext } from 'hono';
 import type { Env } from '../env';
+import { registrarArchivo } from './archivoLog';
 import type { Identity, MirrorItem } from '../../shared/types';
 import { BOARDS } from '../../shared/boards';
 import { isNativeId } from '../../shared/nativeId';
@@ -89,6 +90,10 @@ async function copyFiles(env: Env, sourceCols: Map<string, RawCol>, sourceColId:
       if (!res.ok) continue;
       const blob = await res.blob();
       await addFileToColumn(env, targetItemId, targetColId, blob, f.name);
+      await registrarArchivo(env, {
+        acto: 'copia', categoria: 'copia-ganada', nombre: f.name,
+        boardId: BOARDS.oportunidades.id, itemId: targetItemId, colId: targetColId, bytes: blob.size,
+      });
     } catch {
       // un archivo falla -> se omite, el resto sigue (mismo criterio que duplicateOportunidad.ts)
     }
