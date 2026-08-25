@@ -155,7 +155,10 @@ export interface CosteoEnrichment {
  * 0-1 (buildTallaColumns/oc.ts, mismo contrato que el Python real
  * import_tallas.py línea 374: `descuento_raw * 0.01`) — sin este ×0.01 aquí,
  * "18" se leía como 1800% y generate_oc.py calculaba subtotales negativos
- * (encontrado en la prueba end-to-end nativa de Fases 1-4, 2026-08-13). */
+ * (encontrado en la prueba end-to-end nativa de Fases 1-4, 2026-08-13).
+ * La misma conversión, del lado de la UI del portal (donde se teclea el % a
+ * mano), vive en shared/descuento.ts — si cambia la convención de la columna,
+ * los dos lados se mueven juntos. */
 export function pctTextToFraction(text: string | undefined): string | undefined {
   if (!text) return undefined;
   const n = Number(text);

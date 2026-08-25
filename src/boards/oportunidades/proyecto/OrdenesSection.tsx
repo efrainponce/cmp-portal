@@ -6,9 +6,12 @@
 // partir de productos que puede que no estén en la cotización"): cantidad,
 // costo, moneda, descuento y fecha de entrega se guardan inline contra la
 // línea del Proyecto en Monday (PATCH /api/boards/proyectos_sub/items/:id →
-// outbox), la línea se puede mover de proveedor o borrar, y "+ Agregar
-// producto" levanta una línea que nunca estuvo en la cotización — con
-// proveedor nuevo, eso abre una tarjeta (= una OC) nueva.
+// outbox), la línea se puede mover de proveedor o borrar, y el alta manual
+// levanta una línea que nunca estuvo en la cotización. Ese alta tiene DOS
+// entradas (Efraín, 2026-08-25): "+ Agregar línea a este proveedor" al pie de
+// cada tarjeta, que llega con el proveedor puesto, y "+ Agregar producto (otro
+// proveedor)" arriba del tab, que sirve para levantar una tarjeta (= una OC)
+// de un proveedor que todavía no tiene ninguna línea.
 //
 // Cada cambio queda en el log de actividad CON EL USUARIO REAL del portal
 // (worker/lib/activityLog.ts, PORTAL_WRITE_COLUMNS — el activity log de
@@ -30,6 +33,7 @@ import { StatusBadge } from '../../../components/core/Badges';
 import { Modal } from '../../../components/core/Modal';
 import { SearchInput } from '../../../components/forms/SearchInput';
 import { AgregarLineaModal } from '../../proyectos/AgregarLineaModal';
+import { pctToFraccion, fraccionToPct, fraccionNum } from '../../../../shared/descuento';
 import { CambiarProductoModal } from './CambiarProductoModal';
 import { fmtMoney } from '../../../lib/format';
 import { PdfIcon } from '../tabs/cotizacion/CotizacionPdfRow';
@@ -399,6 +403,10 @@ function ProveedorLineaRow({ l, proyectoId, canEdit, historial, cambio, lineasEn
     setOverrides(p => ({ ...p, [colId]: v }));
     onChanged();
   };
+  // El Descuento se teclea en % pero la columna guarda FRACCIÓN 0-1, que es lo
+  // que el PDF de la OC lee (shared/descuento.ts): sin esto un "10" se
+  // guardaba crudo y la orden salía con importes negativos.
+  const saveDescuento = async (v: string) => save(S_DESCUENTO)(pctToFraccion(v));
 
   const estado = l.cols[S_ESTADO]?.text;
   const estadoColor = estado ? ESTADO_PRODUCTO_COLORS[estado] : undefined;
@@ -459,7 +467,12 @@ function ProveedorLineaRow({ l, proyectoId, canEdit, historial, cambio, lineasEn
             <EditableCell value={val(S_CANTIDAD)} onSave={save(S_CANTIDAD)} align="right" type="number" placeholder="0" />
             <EditableCell value={costoRaw} onSave={save(S_COSTO)} align="right" type="number" placeholder="Sin costo" title="Costo que se le paga al proveedor — va en el PDF de la OC" />
             <EditableCell value={moneda} onSave={save(S_MONEDA)} placeholder="MXN" />
-            <EditableCell value={val(S_DESCUENTO)} onSave={save(S_DESCUENTO)} align="right" type="number" suffix="%" />
+            <EditableCell
+              value={fraccionToPct(val(S_DESCUENTO))}
+              onSave={saveDescuento}
+              align="right" type="number" suffix="%"
+              title="En porcentaje: 18 = 18%"
+            />
           </>
         ) : (
           <>
@@ -468,7 +481,7 @@ function ProveedorLineaRow({ l, proyectoId, canEdit, historial, cambio, lineasEn
               {Number.isFinite(costo) && costo > 0 ? fmtMoney(costo) : '—'}
             </div>
             <div style={CELL_STYLE}>{moneda || '—'}</div>
-            <div style={{ ...CELL_STYLE, textAlign: 'right' }}>{val(S_DESCUENTO) ? `${val(S_DESCUENTO)}%` : '—'}</div>
+            <div style={{ ...CELL_STYLE, textAlign: 'right' }}>{val(S_DESCUENTO) ? `${fraccionToPct(val(S_DESCUENTO))}%` : '—'}</div>
           </>
         )}
         <div>{estado && estadoColor ? <StatusBadge label={estado} color={estadoColor} tint={estadoColor + '22'} /> : <span style={{ ...CELL_STYLE, color: 'var(--ink-quiet)' }}>—</span>}</div>
@@ -900,6 +913,12 @@ function ProveedorCard({ group, proyecto, oppId, reload, canEdit, activity, nota
   cambios: Map<string, CambioProductoDTO>; tamGrupo: Map<string, number>;
 }) {
   const [outcome, setOutcome] = useState<ActionOutcome | null>(null);
+  // Alta manual DESDE la tarjeta, con este proveedor ya puesto (Efraín,
+  // 2026-08-25): el botón del tab queda arriba, suelto del listado, y estando
+  // parado en la OC de un proveedor no se ve — hay que subir y volver a
+  // buscarlo. El de arriba se queda para levantar un proveedor que todavía no
+  // tiene ninguna línea.
+  const [agregarLinea, setAgregarLinea] = useState(false);
   const [metodoPago, setMetodoPago] = useState(proyecto.cols[P_METODO_PAGO]?.text ?? '');
   const [condPago, setCondPago] = useState(proyecto.cols[P_COND_PAGO]?.text ?? '');
   const cantidadTotal = group.lineas.reduce((s, r) => s + (Number(r.cols[S_CANTIDAD]?.text?.replace(/,/g, '')) || 0), 0);
@@ -908,8 +927,10 @@ function ProveedorCard({ group, proyecto, oppId, reload, canEdit, activity, nota
   const montoTotal = group.lineas.reduce((s, r) => {
     const cant = Number(r.cols[S_CANTIDAD]?.text?.replace(/,/g, '')) || 0;
     const costo = Number(r.cols[S_COSTO]?.text?.replace(/,/g, '')) || 0;
-    const desc = Number(r.cols[S_DESCUENTO]?.text?.replace(/,/g, '')) || 0;
-    return s + cant * costo * (1 - desc / 100);
+    // Fracción 0-1, igual que el PDF (worker/lib/pdf/ordenCompraProveedor.ts):
+    // antes se dividía entre 100 otra vez y el total no cuadraba con la OC.
+    const desc = fraccionNum(r.cols[S_DESCUENTO]?.text);
+    return s + cant * costo * (1 - desc);
   }, 0);
   const monedaOc = group.lineas.map(r => r.cols[S_MONEDA]?.text).find(Boolean) ?? '';
   const ocFiles = toR2Files(parseFiles(proyecto.cols[P_OC_PDF]?.text), oppId, 'oc');
@@ -1046,6 +1067,25 @@ function ProveedorCard({ group, proyecto, oppId, reload, canEdit, activity, nota
           ))}
         </div>
       </div>
+      {canEdit && group.proveedorId && (
+        <div style={{ padding: '8px 12px 12px' }}>
+          <div
+            onClick={() => setAgregarLinea(true)}
+            title={`Un producto o servicio que no venía en la cotización — aplicación, maquila, flete — para la OC de ${group.nombre}`}
+            style={{ font: 'var(--text-label)', color: 'var(--accent)', cursor: 'pointer', width: 'fit-content' }}
+          >
+            + Agregar línea a este proveedor
+          </div>
+        </div>
+      )}
+      {agregarLinea && group.proveedorId && (
+        <AgregarLineaModal
+          proyectoId={proyecto.id}
+          proveedorInicial={{ id: group.proveedorId, name: group.nombre }}
+          onClose={() => setAgregarLinea(false)}
+          onCreated={reload}
+        />
+      )}
       {outcome && (
         <div style={{ margin: '0 14px 12px', padding: '8px 12px', borderRadius: 'var(--radius-lg)', border: `1px solid ${OUTCOME_COLOR[outcome.kind]}`, background: 'var(--bg-raised)', font: 'var(--text-label)', color: 'var(--ink-secondary)' }}>
           {outcome.text}
@@ -1123,13 +1163,17 @@ export function ProyectoOrdenesSection({ state, oppId }: { state: ProyectoState;
     <div style={{ marginTop: 16 }}>
       <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)', marginBottom: 10 }}>
         Proyecto {p.name} — una OC por proveedor, con firmas Elaborado → Revisado → Autorizado (DocuSeal).
-        {canCompras && ' Producto, color, cantidad, costo, moneda, descuento y entrega se editan aquí mismo (clic en la celda) y se guardan en Monday.'}
+        {canCompras && ' Producto, color, cantidad, costo, moneda, descuento y entrega se editan aquí mismo (clic en la celda) y se guardan en Monday. Lo que no venía en la cotización (aplicación, maquila, flete) se agrega con el "+ Agregar línea" de la tarjeta del proveedor.'}
       </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <ProyectoActionBar proyecto={p} reload={state.reload} actions={['generar-oc']} />
         {canCompras && (
-          <Button variant="secondary" onClick={() => setAgregar(true)}>
-            + Agregar producto
+          <Button
+            variant="secondary"
+            onClick={() => setAgregar(true)}
+            title="Para un proveedor que todavía no tiene líneas — se le abre su propia tarjeta. Si el proveedor ya está abajo, usa el '+ Agregar línea' de su tarjeta."
+          >
+            + Agregar producto (otro proveedor)
           </Button>
         )}
       </div>

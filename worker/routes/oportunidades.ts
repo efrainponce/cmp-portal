@@ -1540,6 +1540,10 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     // nada" nace completa, sin tener que editar la línea inmediatamente después
     // — son las mismas columnas que el PDF de la OC lee (worker/lib/ocProveedorPdf.ts).
     if (body.costo !== undefined && Number.isFinite(body.costo)) subitemCols.numeric_mm1dj4fp = body.costo;
+    // `descuento` viaja como FRACCIÓN 0-1, que es el valor que la columna
+    // guarda y el PDF lee; el porcentaje que se teclea lo convierte la UI
+    // (shared/descuento.ts) — igual que la edición inline, que pasa por el
+    // PATCH genérico de /api/boards y escribe el valor de columna tal cual.
     if (body.descuento !== undefined && Number.isFinite(body.descuento)) subitemCols.numeric_mm1dmsaz = body.descuento;
     if (body.moneda?.trim()) subitemCols.text_mm1gdsvg = body.moneda.trim();
 

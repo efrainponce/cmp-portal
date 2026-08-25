@@ -24,6 +24,7 @@ import {
 } from '../../../lib/api';
 import { PRODUCTO_SKU_COL } from '../../../lib/productSearch';
 import { fmtMoney } from '../../../lib/format';
+import { pctToFraccion } from '../../../../shared/descuento';
 
 // Productos (18395657591) — ya viajan en el catálogo de la cotización
 // (CATALOGO_COLS en src/lib/productSearch.ts), no hay que pedirlas aparte.
@@ -114,7 +115,9 @@ export function CambiarProductoModal({
       productoId: Number(nuevo.id),
       proveedorId: proveedorIdDelBody(),
       costo: costo.trim() ? Number(costo) : undefined,
-      descuento: descuento.trim() ? Number(descuento) : undefined,
+      // % tecleado → fracción 0-1, que es lo que guarda la columna y lee el
+      // PDF de la OC (shared/descuento.ts).
+      descuento: descuento.trim() ? Number(pctToFraccion(descuento)) : undefined,
       moneda: moneda.trim() || undefined,
       confirmado,
     });

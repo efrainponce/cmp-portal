@@ -1,5 +1,46 @@
 # Log de commits
 
+## 2026-08-25 (8)
+
+- **"+ Agregar línea" en cada tarjeta de proveedor** (Efraín: "a veces a un
+  proveedor le podemos pedir aplicación o cosas similares que no aparecen en la
+  cotización … necesitamos poder crear POR proyecto nuevas líneas de proveedores
+  que no estén en la cotización"). El alta manual ya existía desde el 2026-08-18,
+  pero su único botón vivía hasta arriba del tab, suelto del listado: parado en
+  la OC de un proveedor no se veía por ningún lado ("No sé dónde dices que se
+  puede agregar un producto" … "aaaaah ya vi es hasta arriba"). Ahora cada
+  tarjeta lo ofrece al pie de sus líneas y el modal abre con ese proveedor ya
+  puesto — no hay que subir y volver a buscarlo.
+- El botón de arriba se queda, con su papel explícito: **"+ Agregar producto
+  (otro proveedor)"**, para levantar la tarjeta (= la OC) de un proveedor que
+  todavía no tiene ninguna línea (Efraín: "y dejar agregar producto hasta arriba
+  para un proveedor nuevo").
+- El campo se llama ahora **Producto o concepto** y dice en el ejemplo que es
+  texto libre: lo que se agrega a mano casi nunca es una prenda del catálogo,
+  es una aplicación, una maquila o un flete. La talla, el color y el SKU
+  siguen siendo opcionales y el PDF de la OC ya los toleraba vacíos.
+- **Bug encontrado en el camino y corregido: el Descuento tenía dos
+  convenciones.** La columna del Proyecto guarda una FRACCIÓN 0-1 (así la
+  escribe la importación de tallas y así la lee el PDF: `1 - descuento`), pero
+  el alta manual y la edición inline la etiquetaban "Desc. %" y guardaban lo
+  tecleado en crudo. Un "10" capturado a mano llegaba a la columna como 10 y la
+  OC salía con **importes negativos**; al revés, una línea importada con 18% se
+  veía en el grid como "0.18%" y el total de la tarjeta no cuadraba con el PDF.
+  Es el mismo error que ya se había pagado en la prueba end-to-end del
+  2026-08-13, colado por los formularios.
+- La conversión vive ahora en un solo lugar, `shared/descuento.ts` (la UI habla
+  en % entero, la columna guarda fracción), y la usan el grid, el alta manual y
+  "Cambiar producto". Va en la capa UI a propósito: la edición inline pasa por
+  el PATCH genérico de `/api/boards`, que escribe el valor de columna tal cual y
+  no sabe de porcentajes. Anclado en `shared/descuento.test.ts`.
+- Revisadas las líneas ya capturadas en producción: 739 traen fracción correcta
+  y **las 14 con el valor crudo están todas en los dos proyectos de prueba E2E**
+  (OPP-0838 y OPP-0840) — ninguna OC real de un proveedor salió con el importe
+  mal. No hay datos que corregir.
+- Un descuento mal capturado no se corrige en silencio: un 10 guardado se
+  muestra como "1000%", que es exactamente lo que el PDF va a calcular. Verlo es
+  el punto.
+
 ## 2026-08-25 (7)
 
 - **Agregar imágenes a un producto para la OC** (Efraín: "puedes poder AGREGAR
