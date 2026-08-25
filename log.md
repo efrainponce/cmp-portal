@@ -32,6 +32,12 @@
   historia, no inventario, y nunca se consulta para decidir si algo existe.
 - Es best-effort y **nunca lanza**: una OC que no se emite por no poder loggear
   sería peor que perder el registro. Anclado en test.
+- Dos correcciones que salieron de sus propios tests, ya con el backfill
+  corrido en prod: el nombre del archivo se guardaba URL-encodeado
+  ("ATHLETIC%20FOOTWEAR") y dejaba de coincidir con el archivo real; y un '%'
+  suelto en un nombre lanzaba URIError, lo que habría abortado la siembra
+  COMPLETA de las 235 por un solo nombre raro. Las filas ya sembradas se
+  reconstruyeron.
 - `registrarSubida` ahora escribe en la bitácora; `archivo_subido` queda de solo
   lectura y `subidoPor` la sigue consultando como respaldo — son 3 filas y
   migrarlas cambiaría quién puede borrar ESOS archivos.

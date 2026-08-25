@@ -45,6 +45,18 @@ describe('ocDeColumna', () => {
     expect(r.map(o => o.folio)).toEqual(['OC-1', 'OC-2', 'OC-3']);
   });
 
+  it('decodifica el nombre del archivo — la columna trae URLs, no nombres', () => {
+    // Sin esto el ledger guarda "%20" y deja de coincidir con el archivo real.
+    const r = ocDeColumna('https://x/OC_OC-235_ATHLETIC%20FOOTWEAR.pdf');
+    expect(r[0].archivo).toBe('OC_OC-235_ATHLETIC FOOTWEAR.pdf');
+    expect(r[0].proveedor).toBe('ATHLETIC FOOTWEAR');
+  });
+
+  it('un nombre con % inválido no tumba el backfill', () => {
+    const r = ocDeColumna('https://x/OC_OC-9_100%OK.pdf');
+    expect(r[0].folio).toBe('OC-9');
+  });
+
   it('ignora lo que no es una OC', () => {
     expect(ocDeColumna('x/COTIZACION_C-12_Cliente.pdf,y/tallas.pdf')).toEqual([]);
     expect(ocDeColumna('')).toEqual([]);

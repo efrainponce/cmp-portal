@@ -174,6 +174,13 @@ const OC_ARCHIVO_RE = /OC_(OC-\d+)_(.+?)(_SIN-COSTOS)?\.pdf/gi;
 
 export interface ArchivoDeOc { folio: string; proveedor: string; archivo: string; sinCostos: boolean }
 
+/** decodeURIComponent que no truena: un '%' suelto en un nombre de archivo
+ * lanza URIError, y en el backfill eso abortaba la siembra COMPLETA de 235
+ * órdenes por un solo nombre raro (visto en test, 2026-08-25). */
+function decode(s: string): string {
+  try { return decodeURIComponent(s); } catch { return s; }
+}
+
 /** Saca las OC mencionadas en el texto de una columna de archivos. Pura. */
 export function ocDeColumna(texto: string): ArchivoDeOc[] {
   const out: ArchivoDeOc[] = [];
@@ -182,8 +189,12 @@ export function ocDeColumna(texto: string): ArchivoDeOc[] {
   while ((m = re.exec(texto)) !== null) {
     out.push({
       folio: m[1].toUpperCase(),
-      proveedor: decodeURIComponent(m[2]).replace(/_/g, ' ').trim(),
-      archivo: m[0].split('/').pop() ?? m[0],
+      proveedor: decode(m[2]).replace(/_/g, ' ').trim(),
+      // El texto de la columna es una lista de URLs, así que el nombre viene
+      // encodeado: sin decodificar, el ledger guardaría
+      // "OC_OC-235_ATHLETIC%20FOOTWEAR.pdf" y dejaría de coincidir con el
+      // archivo real.
+      archivo: decode(m[0].split('/').pop() ?? m[0]),
       sinCostos: !!m[3],
     });
   }
