@@ -149,7 +149,10 @@ export async function listarOc(env: Env, opts: ListarOcOpts = {}): Promise<OcEmi
   const limit = Math.min(Math.max(opts.limit ?? 100, 1), 500);
   const { results } = await env.DB.prepare(
     `SELECT * FROM oc_emitida ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
-     ORDER BY emitida_at DESC LIMIT ?`,
+     -- Desempate por número de folio: las 235 filas del backfill comparten
+     -- fecha (nadie sabe cuándo se emitieron), y sin esto la lista sale en
+     -- orden arbitrario.
+     ORDER BY emitida_at DESC, CAST(SUBSTR(folio, 4) AS INTEGER) DESC LIMIT ?`,
   ).bind(...binds, limit).all<OcEmitidaRow>();
   return results ?? [];
 }
