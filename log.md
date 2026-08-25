@@ -1,5 +1,37 @@
 # Log de commits
 
+## 2026-08-25 (3)
+
+- **El key de R2 lleva el assetId de Monday al frente** (`oportunidades/<opp>/
+  <categoria>/<assetId>-<nombre>`). Sin él, dos archivos DISTINTOS con el mismo
+  nombre en la misma categoría eran el mismo objeto en R2: Monday guardaba los
+  dos y el portal se quedaba con uno, en silencio. En producción hay **146
+  nombres repetidos dentro de una misma columna, 61 en columnas que el portal
+  espeja así**. No es teórico: el comentario de `parseFiles` en DocumentacionTab
+  ya decía que el assetId "es lo único que distingue dos archivos con el MISMO
+  nombre — el caso que originó quitar (la misma OC subida dos veces)".
+- Acotado a propósito a lo que suben PERSONAS (inventario, documento del
+  Proyecto, guías de Logística), que es donde dos archivos distintos sí pueden
+  llamarse igual. Los documentos GENERADOS (cotización, tallas, OC) se quedan
+  sin prefijo: su nombre lleva folio y regenerarlos con el mismo nombre es un
+  reemplazo, no un archivo nuevo. Además el key de una cotización es su
+  identidad para la firma electrónica (`sourceId`) — cambiarlo desligaría las
+  constancias. Hoy hay 0 firmas ligadas a un key, así que el momento de moverlo
+  era ahora.
+- Nada se migra: los archivos viejos siguen en su key sin prefijo y `keyLegado`
+  los rescata al leer, probando SIEMPRE el key original primero (un archivo que
+  de verdad se llame "2026-08 informe.pdf" también matchea el patrón). Detrás
+  sigue el respaldo que ya existía: los bytes vivos de Monday.
+- **La OC ya no se busca parseando el nombre del archivo.** `findLatestOcFile`
+  pregunta al ledger, que trae el nombre exacto que se emitió; el parseo queda
+  de respaldo para las 217 órdenes anteriores al ledger (no tienen
+  proveedor_id). Deducir el proveedor del nombre es de donde salió el bug de los
+  acentos de esta mañana.
+- El ID nuevo que se consideró para el nombre VISIBLE se descartó: para las OC
+  el folio ya es ese ID, el nombre lo recibe el proveedor, y en el flujo de
+  DocuSeal es llave. El problema estaba en el key interno, no en el nombre.
+
+
 ## 2026-08-25 (2)
 
 - **Ledger de OC en D1** (`worker/lib/ocLedger.ts`). El contador iba en 230 y el

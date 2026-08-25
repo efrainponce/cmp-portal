@@ -17,9 +17,9 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import {
   proyectoAction, patchItem, deleteProyectoLinea, getActivity, getOcNotas, saveOcNota,
-  listOcImagenes, ocImagenUrl, uploadOcImagen, restablecerOcImagen,
+  listOcImagenes, ocImagenUrl, uploadOcImagen, restablecerOcImagen, listOcDeProyecto,
   usePoll, SOLO_NOMBRE,
-  type ActivityEntryDTO, type ItemDetailDTO, type ItemDTO, type OcImagenDTO,
+  type ActivityEntryDTO, type ItemDetailDTO, type ItemDTO, type OcImagenDTO, type OcEmitidaDTO,
 } from '../../../lib/api';
 import { useMe } from '../../../lib/useMe';
 import { ConfirmButton } from '../../../components/core/ConfirmButton';
@@ -111,7 +111,20 @@ const OC_FILE_RE = /^OC_([^_]+)_(.+?)(_SIN-COSTOS)?\.pdf$/i;
  * orden CON costos; la copia sin costos se ofrece como link aparte. */
 export function findLatestOcFile(
   files: { url: string; name: string }[], candidatos: string[],
+  /** Órdenes del ledger de ESTE proveedor (worker/lib/ocLedger.ts). Cuando las
+   * hay, mandan: traen el nombre exacto del archivo que se emitió, así que no
+   * hay que deducir de quién es una OC leyendo su nombre — que es de donde
+   * salió el bug de los acentos del 2026-08-25. Las 217 órdenes anteriores al
+   * ledger no tienen proveedor_id, y para esas se sigue usando el nombre. */
+  delLedger: { archivo: string | null; archivo_sin_costos: string | null }[] = [],
 ): { conCostos?: { url: string; name: string }; sinCostos?: { url: string; name: string } } {
+  const ultima = delLedger[0];
+  if (ultima?.archivo) {
+    const porNombre = (n: string | null) => (n ? files.find(f => f.name === n) : undefined);
+    const conCostos = porNombre(ultima.archivo);
+    if (conCostos) return { conCostos, sinCostos: porNombre(ultima.archivo_sin_costos) };
+  }
+
   const wanted = candidatos.filter(Boolean).map(normalizeProveedorNombre);
   if (wanted.length === 0) return {};
   let conCostos: { url: string; name: string } | undefined;
@@ -706,9 +719,9 @@ function FotoProducto({ producto, meta, cargando, onCambio, onError }: {
  * Método/Condiciones de pago son overrides SOLO de esta OC (WhatsApp 2026-08-04:
  * antes el default del Proyecto se aplicaba igual a todos los proveedores) —
  * prellenados con el default, no se guardan de vuelta a Monday. */
-function ProveedorCard({ group, proyecto, oppId, reload, canEdit, activity, nota }: {
+function ProveedorCard({ group, proyecto, oppId, reload, canEdit, activity, nota, ordenes }: {
   group: ProveedorGroup; proyecto: ItemDetailDTO; oppId: string | null; reload: () => void;
-  canEdit: boolean; activity: ActivityEntryDTO[]; nota: string;
+  canEdit: boolean; activity: ActivityEntryDTO[]; nota: string; ordenes: OcEmitidaDTO[];
 }) {
   const [outcome, setOutcome] = useState<ActionOutcome | null>(null);
   const [metodoPago, setMetodoPago] = useState(proyecto.cols[P_METODO_PAGO]?.text ?? '');
@@ -736,7 +749,9 @@ function ProveedorCard({ group, proyecto, oppId, reload, canEdit, activity, nota
     }
     return [...vistos.values()];
   }, [group.lineas]);
-  const { conCostos: ocFile, sinCostos: ocFileSinCostos } = findLatestOcFile(ocFiles, [group.nombre, group.nombreItem]);
+  const { conCostos: ocFile, sinCostos: ocFileSinCostos } = findLatestOcFile(
+    ocFiles, [group.nombre, group.nombreItem], ordenes,
+  );
 
   const correr = (accion: 'generar-oc' | 'generar-oc-portal' | 'generar-oc-portal-imagenes') => async () => {
     setOutcome(null);
@@ -864,9 +879,10 @@ function ProveedorCard({ group, proyecto, oppId, reload, canEdit, activity, nota
 
 /** Grid de líneas del proyecto agrupadas por proveedor — el equivalente por-proveedor
  * de la tab Cotización, para la tab Órdenes de compra. */
-function ProveedorGrid({ lineas, proyecto, oppId, reload, canEdit, activity, notas }: {
+function ProveedorGrid({ lineas, proyecto, oppId, reload, canEdit, activity, notas, ordenes }: {
   lineas: ItemDTO[]; proyecto: ItemDetailDTO; oppId: string | null; reload: () => void;
   canEdit: boolean; activity: ActivityEntryDTO[]; notas: Record<string, string>;
+  ordenes: OcEmitidaDTO[];
 }) {
   const grupos = groupByProveedor(lineas);
   return (
@@ -876,6 +892,7 @@ function ProveedorGrid({ lineas, proyecto, oppId, reload, canEdit, activity, not
           key={g.key} group={g} proyecto={proyecto} oppId={oppId} reload={reload}
           canEdit={canEdit} activity={activity}
           nota={g.proveedorId ? (notas[g.proveedorId] ?? '') : ''}
+          ordenes={ordenes.filter(o => o.proveedor_id && o.proveedor_id === g.proveedorId)}
         />
       ))}
     </div>
@@ -893,6 +910,9 @@ export function ProyectoOrdenesSection({ state, oppId }: { state: ProyectoState;
   // Notas al proveedor de TODAS las OC del proyecto, en una sola llamada —
   // cada tarjeta toma la suya por id de proveedor.
   const [notas, setNotas] = useState<Record<string, string>>({});
+  // Órdenes registradas del Proyecto: dicen de qué proveedor es cada PDF sin
+  // deducirlo del nombre del archivo (worker/lib/ocLedger.ts).
+  const [ordenes, setOrdenes] = useState<OcEmitidaDTO[]>([]);
   // `nonce` y no el largo de children: editar un costo no cambia el número de
   // líneas, y sin esto el reloj seguía mostrando "sin cambios" justo después
   // de guardar (visto en la prueba local 2026-08-18).
@@ -904,6 +924,7 @@ export function ProyectoOrdenesSection({ state, oppId }: { state: ProyectoState;
     if (!proyectoId || !canCompras) return;
     getActivity('proyectos', proyectoId).then(setActivity).catch(() => setActivity([]));
     getOcNotas(proyectoId).then(setNotas).catch(() => setNotas({}));
+    listOcDeProyecto(proyectoId).then(setOrdenes).catch(() => setOrdenes([]));
   }, [proyectoId, canCompras, nonce]);
   const onChanged = () => { state.reload(); setNonce(n => n + 1); };
 
@@ -929,7 +950,7 @@ export function ProyectoOrdenesSection({ state, oppId }: { state: ProyectoState;
       </div>
       {canCompras ? (
         lineas.length > 0
-          ? <ProveedorGrid lineas={lineas} proyecto={p} oppId={oppId} reload={onChanged} canEdit activity={activity} notas={notas} />
+          ? <ProveedorGrid lineas={lineas} proyecto={p} oppId={oppId} reload={onChanged} canEdit activity={activity} notas={notas} ordenes={ordenes} />
           : (
             <div style={{ marginTop: 14, font: 'var(--text-label)', color: 'var(--ink-quiet)' }}>
               Aún no hay líneas en el proyecto — importa las tallas primero, o agrega un producto a mano con el botón de arriba.

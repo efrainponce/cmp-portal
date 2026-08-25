@@ -95,11 +95,16 @@ export function linkUrl(item: ItemDetailDTO, colId: string): string {
   return m ? m[0] : '';
 }
 
-export function parseFiles(text?: string): { url: string; name: string }[] {
+/** La URL de Monday trae su propio id de asset justo antes del nombre
+ * (`…/resources/<assetId>/<nombre>`). Se extrae porque el key de R2 lo lleva al
+ * frente desde el 2026-08-25: sin él, dos archivos con el mismo nombre en la
+ * misma categoría eran el mismo objeto (worker/lib/r2.ts). */
+export function parseFiles(text?: string): { url: string; name: string; assetId?: string }[] {
   if (!text) return [];
   return text.split(',').map(s => s.trim()).filter(Boolean).map(url => ({
     url,
     name: decodeURIComponent(url.split('/').pop() || url),
+    assetId: /\/resources\/(\d+)\//.exec(url)?.[1],
   }));
 }
 
@@ -107,9 +112,24 @@ export function parseFiles(text?: string): { url: string; name: string }[] {
  * viven en el Proyecto, así que el oppId no es directo (viene del lookup
  * inverso getProyectoOportunidad y puede tardar en resolver o venir null).
  * Sin oppId se deja la URL firmada de Monday que ya trae el mirror. */
-export function toR2Files(files: { url: string; name: string }[], oppId: string | null, categoria: string): { url: string; name: string }[] {
+/** Categorías cuyo key lleva el assetId al frente (worker/lib/r2.ts): las que
+ * suben PERSONAS, donde dos archivos distintos sí pueden llamarse igual (dos
+ * fotos "IMG_0001.jpg"). Los documentos GENERADOS —cotización, tallas, OC— se
+ * quedan sin prefijo a propósito: su nombre lleva folio, y volver a generarlos
+ * con el mismo nombre es un reemplazo, no un archivo nuevo. */
+function llevaAssetId(categoria: string): boolean {
+  return categoria === 'inventario' || categoria === 'documento' || categoria.startsWith('logistica/');
+}
+
+export function toR2Files(
+  files: { url: string; name: string; assetId?: string }[], oppId: string | null, categoria: string,
+): { url: string; name: string; assetId?: string }[] {
   if (!oppId) return files;
-  return files.map(f => ({ ...f, url: `/api/files/oportunidades/${oppId}/${categoria}/${encodeURIComponent(f.name)}` }));
+  const prefijo = (f: { assetId?: string }) => (llevaAssetId(categoria) && f.assetId ? `${f.assetId}-` : '');
+  return files.map(f => ({
+    ...f,
+    url: `/api/files/oportunidades/${oppId}/${categoria}/${prefijo(f)}${encodeURIComponent(f.name)}`,
+  }));
 }
 
 export interface ActionOutcome { kind: 'ok' | 'warn' | 'error'; text: string }

@@ -11,6 +11,35 @@ const PROVEEDOR = ['5.11 Tactical de México SA De CV'];
 // nombre del archivo.
 const RZ = '5_11 Tactical de Mexico SA De CV';
 
+describe('findLatestOcFile con el ledger', () => {
+  // Con el ledger no hace falta adivinar de quién es la OC leyendo su nombre —
+  // que es exactamente de donde salió el bug de los acentos.
+  const led = (archivo: string, sin: string | null = null) => ({ archivo, archivo_sin_costos: sin });
+
+  it('el ledger manda sobre el parseo del nombre', () => {
+    const r = findLatestOcFile(
+      [f('OC_OC-100_VIEJO.pdf'), f('OC_OC-500_Nombre Que Nadie Adivina.pdf')],
+      ['no empata con nada'],
+      [led('OC_OC-500_Nombre Que Nadie Adivina.pdf')],
+    );
+    expect(r.conCostos?.name).toBe('OC_OC-500_Nombre Que Nadie Adivina.pdf');
+  });
+
+  it('trae la copia sin costos exacta que registró la orden', () => {
+    const r = findLatestOcFile(
+      [f('OC_OC-500_X.pdf'), f('OC_OC-500_X_SIN-COSTOS.pdf')], [],
+      [led('OC_OC-500_X.pdf', 'OC_OC-500_X_SIN-COSTOS.pdf')],
+    );
+    expect(r.sinCostos?.name).toBe('OC_OC-500_X_SIN-COSTOS.pdf');
+  });
+
+  it('si el ledger apunta a un archivo que ya no está, cae al nombre', () => {
+    // Pasa con las 217 órdenes anteriores al ledger y si alguien borra el PDF.
+    const r = findLatestOcFile([f(`OC_OC-226_${RZ}.pdf`)], PROVEEDOR, [led('OC_OC-999_BORRADA.pdf')]);
+    expect(r.conCostos?.name).toBe(`OC_OC-226_${RZ}.pdf`);
+  });
+});
+
 describe('findLatestOcFile', () => {
   it('la miniatura es la copia CON costos, no la de sin costos', () => {
     const r = findLatestOcFile([f(`OC_OC-226_${RZ}.pdf`), f(`OC_OC-226_${RZ}_SIN-COSTOS.pdf`)], PROVEEDOR);

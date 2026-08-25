@@ -926,7 +926,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     const asset = await addFileToColumn(c.env, itemId, 'file_mm0hpefr', file, file.name);
     c.executionCtx.waitUntil(refetchItem(c.env, BOARDS.oportunidades.id, itemId));
 
-    const key = oportunidadFileKey(itemId, 'inventario', file.name);
+    const key = oportunidadFileKey(itemId, 'inventario', file.name, asset.id);
     await putFile(c.env, key, file);
     await registrarArchivo(c.env, {
       acto: 'sube', categoria: 'inventario', nombre: file.name,
@@ -1578,7 +1578,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     // proyecto aún no está ligado (caso raro), se queda solo en Monday.
     const oppId = linkedItemId(row, PROYECTO_OPP_REL);
     if (oppId != null) {
-      const key = oportunidadFileKey(oppId, 'documento', file.name);
+      const key = oportunidadFileKey(oppId, 'documento', file.name, asset.id);
       await putFile(c.env, key, file);
       return c.json({ ok: true, id: asset.id, name: asset.name, url: `/api/files/${key}` });
     }
@@ -1686,7 +1686,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     });
 
     if (oppId != null) {
-      const key = oportunidadFileKey(oppId, `logistica/${itemId}/${field}`, file.name);
+      const key = oportunidadFileKey(oppId, `logistica/${itemId}/${field}`, file.name, asset.id);
       await putFile(c.env, key, file);
       return c.json({ ok: true, id: asset.id, name: asset.name, url: `/api/files/${key}` });
     }

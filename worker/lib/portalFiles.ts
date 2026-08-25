@@ -51,6 +51,19 @@ function safeDecode(value: string): string {
   try { return decodeURIComponent(value); } catch { return value; }
 }
 
+/** El mismo key como se guardaba ANTES del prefijo de assetId (2026-08-25), o
+ * null si no lo trae. Sirve para leer los archivos viejos sin migrar nada.
+ *
+ * Ojo con el falso positivo: un archivo que de verdad se llame
+ * "2026-08 informe.pdf" también matchea, y por eso el llamador prueba SIEMPRE
+ * el key original primero y este después — nunca al revés. */
+export function keyLegado(key: string): string | null {
+  const corte = key.lastIndexOf('/');
+  const base = key.slice(corte + 1);
+  const m = /^(\d+)-(.+)$/.exec(base);
+  return m ? key.slice(0, corte + 1) + m[2] : null;
+}
+
 /** Forma canónica de un key de archivo: sin escapar, como se guarda en R2 y
  * como se ve bien impreso en una constancia. Se aplica en la frontera (crear y
  * listar documentos) para que el mismo archivo tenga un solo source_id. */
@@ -141,14 +154,22 @@ export async function readPortalFile(
 ): Promise<{ bytes: Uint8Array; contentType: string } | null> {
   // R2 guarda el nombre SIN escapar (ver oportunidadFileKey), así que si el key
   // llegó codificado se prueba también su forma decodificada.
-  const object = await env.FILES.get(key) ?? await env.FILES.get(safeDecode(key));
+  const legado = keyLegado(key);
+  const object = await env.FILES.get(key)
+    ?? await env.FILES.get(safeDecode(key))
+    // Archivos subidos antes del prefijo de assetId: viven en el key sin él.
+    ?? (legado ? await env.FILES.get(legado) ?? await env.FILES.get(safeDecode(legado)) : null);
   if (object) {
     return {
       bytes: new Uint8Array(await object.arrayBuffer()),
       contentType: object.httpMetadata?.contentType ?? 'application/octet-stream',
     };
   }
-  const assetId = await resolveMondayAsset(env, key, viewer);
+  // Último recurso: los bytes vivos de Monday. Se prueba el key tal cual y
+  // después sin el prefijo, porque el nombre real es el que empata contra la
+  // columna.
+  const assetId = await resolveMondayAsset(env, key, viewer)
+    ?? (legado ? await resolveMondayAsset(env, legado, viewer) : null);
   if (assetId == null) return null;
   return await fetchAssetBytes(env, assetId);
 }

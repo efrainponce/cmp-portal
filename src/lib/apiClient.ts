@@ -519,6 +519,30 @@ export async function getProyectoOportunidad(proyectoId: string): Promise<string
   return body.oportunidadId;
 }
 
+/** Una orden del ledger de OC (worker/lib/ocLedger.ts). */
+export interface OcEmitidaDTO {
+  folio: string;
+  proyecto_id: number;
+  proveedor_id: string | null;
+  proveedor: string;
+  archivo: string | null;
+  archivo_sin_costos: string | null;
+  con_imagenes: number;
+  motor: string;
+  estado: string;
+  emitida_por: string | null;
+  emitida_at: string;
+}
+
+/** Órdenes registradas de un Proyecto. Es lo que permite saber de QUÉ proveedor
+ * es cada PDF sin adivinarlo del nombre del archivo. */
+export async function listOcDeProyecto(proyectoId: string): Promise<OcEmitidaDTO[]> {
+  const res = await apiFetch(`/oc?proyecto=${encodeURIComponent(proyectoId)}&limit=200`);
+  if (!res.ok) return [];
+  const body: { ordenes: OcEmitidaDTO[] } = await res.json();
+  return body.ordenes ?? [];
+}
+
 /** Foto de producto de la OC con imágenes (worker/lib/ocImagenes.ts). Vive por
  * SKU y se reusa en todas las órdenes — no es del proyecto ni de la línea. */
 export interface OcImagenDTO {

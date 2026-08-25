@@ -62,7 +62,15 @@ export function inventarioFiles(item: ItemDetailDTO): DocFile[] {
  * Oportunidad, así que el key usa item.id directo, sin lookup de Proyecto. */
 function toR2Files(files: DocFile[], oppId: string, categoria: string): DocFile[] {
   return files.map((f) => {
-    const key = `oportunidades/${oppId}/${categoria}/${encodeURIComponent(f.name)}`;
+    // El assetId va al frente del nombre SOLO en las categorías que suben
+    // personas (worker/lib/r2.ts, 2026-08-25): ahí dos archivos distintos sí
+    // pueden llamarse igual y hasta entonces compartían objeto en R2. Las
+    // cotizaciones y solicitudes son GENERADAS: su nombre lleva folio y
+    // regenerarlas con el mismo nombre es un reemplazo. Además su key es la
+    // identidad del archivo para la firma electrónica (`sourceId` de
+    // FileSignature) — cambiarlo desligaría las constancias ya asentadas.
+    const prefijo = categoria === 'inventario' && f.assetId ? `${f.assetId}-` : '';
+    const key = `oportunidades/${oppId}/${categoria}/${prefijo}${encodeURIComponent(f.name)}`;
     return { ...f, key, url: `/api/files/${key}` };
   });
 }

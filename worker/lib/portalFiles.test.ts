@@ -3,7 +3,7 @@
 // como lo armó el frontend, con encodeURIComponent). Al sellar una cotización
 // para firmarla eso rompió la búsqueda del asset en el mirror — de ahí estos tests.
 import { describe, it, expect } from 'vitest';
-import { normalizeFileKey, isKnownFileCategory, OPP_FILE_COLS, PROYECTO_FILE_COLS } from './portalFiles';
+import { keyLegado, normalizeFileKey, isKnownFileCategory, OPP_FILE_COLS, PROYECTO_FILE_COLS } from './portalFiles';
 
 describe('normalizeFileKey', () => {
   it('desescapa acentos y espacios del nombre de archivo', () => {
@@ -36,5 +36,23 @@ describe('categorías de archivo', () => {
     const ids = [...Object.values(OPP_FILE_COLS), ...Object.values(PROYECTO_FILE_COLS)];
     expect(new Set(ids).size).toBe(ids.length);
     for (const id of ids) expect(id).toMatch(/^file_/);
+  });
+});
+
+describe('keyLegado', () => {
+  it('quita el assetId para poder leer los archivos de antes del prefijo', () => {
+    expect(keyLegado('oportunidades/123/inventario/98765-foto.jpg'))
+      .toBe('oportunidades/123/inventario/foto.jpg');
+  });
+
+  it('null cuando el key no trae prefijo (nada que rescatar)', () => {
+    expect(keyLegado('oportunidades/123/inventario/foto.jpg')).toBeNull();
+  });
+
+  it('un nombre que EMPIEZA con dígitos y guion también matchea', () => {
+    // Falso positivo aceptado: por eso el llamador prueba SIEMPRE el key
+    // original primero y este después — al revés serviría el archivo equivocado.
+    expect(keyLegado('oportunidades/1/documento/2026-08 informe.pdf'))
+      .toBe('oportunidades/1/documento/08 informe.pdf');
   });
 });
