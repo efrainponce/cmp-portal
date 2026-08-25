@@ -18,8 +18,8 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import {
   proyectoAction, patchItem, deleteProyectoLinea, getActivity, getOcNotas, saveOcNota,
   listOcImagenes, ocImagenUrl, uploadOcImagen, restablecerOcImagen, listOcDeProyecto,
-  usePoll, SOLO_NOMBRE,
-  type ActivityEntryDTO, type ItemDetailDTO, type ItemDTO, type OcImagenDTO, type OcEmitidaDTO,
+  getCambiosProducto, usePoll, SOLO_NOMBRE,
+  type ActivityEntryDTO, type CambioProductoDTO, type ItemDetailDTO, type ItemDTO, type OcImagenDTO, type OcEmitidaDTO,
 } from '../../../lib/api';
 import { useMe } from '../../../lib/useMe';
 import { ConfirmButton } from '../../../components/core/ConfirmButton';
@@ -28,6 +28,7 @@ import { StatusBadge } from '../../../components/core/Badges';
 import { Modal } from '../../../components/core/Modal';
 import { SearchInput } from '../../../components/forms/SearchInput';
 import { AgregarLineaModal } from '../../proyectos/AgregarLineaModal';
+import { CambiarProductoModal } from './CambiarProductoModal';
 import { fmtMoney } from '../../../lib/format';
 import { PdfIcon } from '../tabs/cotizacion/CotizacionPdfRow';
 import {
@@ -74,6 +75,24 @@ function groupByProveedor(lineas: ItemDTO[]): ProveedorGroup[] {
   }
   return [...groups.values()].sort((a, b) =>
     a.key === 'sin-proveedor' ? 1 : b.key === 'sin-proveedor' ? -1 : a.nombre.localeCompare(b.nombre));
+}
+
+/** Cuántas líneas (tallas) comparte cada producto+color en TODO el proyecto —
+ * no solo en la tarjeta del proveedor: "Cambiar producto" actúa sobre el grupo
+ * completo, así que el modal tiene que poder decir cuántas son. Misma llave
+ * normalizada que groupByProductoColor del tab Tallas. */
+export function tamanoDeGrupos(lineas: ItemDTO[]): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const l of lineas) {
+    const k = claveGrupo(l.cols[S_PRODUCTO]?.text || l.name, l.cols[S_COLOR]?.text || '');
+    out.set(k, (out.get(k) ?? 0) + 1);
+  }
+  return out;
+}
+
+export function claveGrupo(producto: string, color: string): string {
+  const n = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase().replace(/\s+/g, ' ');
+  return `${n(producto)}|${n(color)}`;
 }
 
 function normalizeProveedorNombre(s: string): string {
@@ -329,13 +348,38 @@ function MoverProveedorModal({ lineaId, onClose, onMoved }: {
   );
 }
 
+/** "Producto cambiado" — la línea se surtió con otro producto que el cotizado.
+ * Hover = de dónde salió, quién y cuándo (el respaldo real del cambio). */
+function ChipCambio({ cambio }: { cambio: CambioProductoDTO }) {
+  const fecha = new Date(cambio.fecha);
+  const detalle = `Antes: ${cambio.productoAntes}${cambio.skuAntes ? ` (SKU ${cambio.skuAntes})` : ''}`
+    + `${cambio.proveedorAntes ? ` — proveedor ${cambio.proveedorAntes}` : ''}.`
+    + `${cambio.proveedorDespues ? ` Ahora: ${cambio.proveedorDespues}.` : ''}`
+    + ` Cambiado por ${cambio.por}${Number.isNaN(fecha.getTime()) ? '' : ` el ${fecha.toLocaleDateString('es-MX')}`}.`
+    + ' Las tallas no se movieron; la cotización sigue con el producto original.';
+  return (
+    <div
+      title={detalle}
+      style={{
+        display: 'inline-block', marginTop: 3, padding: '1px 6px', borderRadius: 'var(--radius-md)',
+        font: 'var(--text-caption)', color: 'var(--status-esperando-oc, var(--ink-secondary))',
+        border: '1px solid var(--border)', background: 'var(--bg-raised)', cursor: 'help',
+      }}
+    >
+      Producto cambiado
+    </div>
+  );
+}
+
 const ICON_BTN_STYLE = {
   cursor: 'pointer', font: 'var(--text-caption)', color: 'var(--ink-tertiary)',
   padding: '2px 4px', borderRadius: 'var(--radius-md)', userSelect: 'none',
 } as const;
 
-function ProveedorLineaRow({ l, proyectoId, canEdit, historial, onChanged }: {
-  l: ItemDTO; proyectoId: string; canEdit: boolean; historial: ActivityEntryDTO[]; onChanged: () => void;
+function ProveedorLineaRow({ l, proyectoId, canEdit, historial, cambio, lineasEnGrupo, onChanged }: {
+  l: ItemDTO; proyectoId: string; canEdit: boolean; historial: ActivityEntryDTO[];
+  /** Marca "esta línea ya no es el producto cotizado" (worker/lib/proyectoLineaProducto.ts). */
+  cambio?: CambioProductoDTO; lineasEnGrupo: number; onChanged: () => void;
 }) {
   // Overrides locales: el espejo D1 tarda en confirmar el write a Monday, así
   // que la celda muestra lo recién guardado en vez de regresar al valor viejo
@@ -343,6 +387,7 @@ function ProveedorLineaRow({ l, proyectoId, canEdit, historial, onChanged }: {
   const [overrides, setOverrides] = useState<Record<string, string>>({});
   const [verHistorial, setVerHistorial] = useState(false);
   const [mover, setMover] = useState(false);
+  const [cambiarProducto, setCambiarProducto] = useState(false);
   const [borrando, setBorrando] = useState(false);
   const [errorBorrar, setErrorBorrar] = useState<string | null>(null);
 
@@ -375,9 +420,15 @@ function ProveedorLineaRow({ l, proyectoId, canEdit, historial, onChanged }: {
         {/* Producto y Color se corrigen aquí antes de mandar la OC (Efraín,
             2026-08-19) — son justo lo que el proveedor lee en el documento.
             Talla no: cuadra contra el desglose de tallas. */}
-        {canEdit
-          ? <EditableCell value={val(S_PRODUCTO) || l.name} onSave={save(S_PRODUCTO)} wrap placeholder="Sin producto" title="Producto tal como saldrá impreso en la OC" />
-          : <div style={{ ...CELL_STYLE, color: 'var(--ink)', minWidth: 0, overflowWrap: 'anywhere' }}>{nombreLinea}</div>}
+        <div style={{ minWidth: 0 }}>
+          {canEdit
+            ? <EditableCell value={val(S_PRODUCTO) || l.name} onSave={save(S_PRODUCTO)} wrap placeholder="Sin producto" title="Producto tal como saldrá impreso en la OC" />
+            : <div style={{ ...CELL_STYLE, color: 'var(--ink)', minWidth: 0, overflowWrap: 'anywhere' }}>{nombreLinea}</div>}
+          {/* Igual que los pills 'Editada'/'Dividida' de la cotización: que se
+              vea de un golpe que este renglón ya no es lo que se cotizó
+              (Efraín, 2026-08-25). El detalle del antes va en el title. */}
+          {cambio && <ChipCambio cambio={cambio} />}
+        </div>
         <div style={CELL_STYLE}>{l.cols[S_SKU]?.text || '—'}</div>
         {canEdit
           ? <EditableCell value={val(S_COLOR)} onSave={save(S_COLOR)} wrap placeholder="Sin color" title="Color tal como saldrá impreso en la OC" />
@@ -406,6 +457,15 @@ function ProveedorLineaRow({ l, proyectoId, canEdit, historial, onChanged }: {
           : <div style={CELL_STYLE}>{val(S_ENTREGA_PROV) || '—'}</div>}
         <div style={{ display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
           <span onClick={() => setVerHistorial(true)} title="Ver quién cambió qué en esta línea" style={ICON_BTN_STYLE}>🕐</span>
+          {canEdit && (
+            <span
+              onClick={() => setCambiarProducto(true)}
+              title="Cambiar el producto (y su proveedor) conservando las tallas — falta de inventario"
+              style={ICON_BTN_STYLE}
+            >
+              🔁
+            </span>
+          )}
           {canEdit && <span onClick={() => setMover(true)} title="Mover esta línea a otro proveedor" style={ICON_BTN_STYLE}>⇄</span>}
           {canEdit && (
             <span
@@ -423,6 +483,19 @@ function ProveedorLineaRow({ l, proyectoId, canEdit, historial, onChanged }: {
       )}
       {verHistorial && <LineaHistorial entries={historial} titulo={nombreLinea} onClose={() => setVerHistorial(false)} />}
       {mover && <MoverProveedorModal lineaId={l.id} onClose={() => setMover(false)} onMoved={onChanged} />}
+      {cambiarProducto && (
+        <CambiarProductoModal
+          proyectoId={proyectoId}
+          productoActual={l.cols[S_PRODUCTO]?.text || l.name}
+          colorActual={l.cols[S_COLOR]?.text || ''}
+          proveedorActual={l.cols[S_PROVEEDOR_RAZON]?.text || l.cols[S_PROVEEDOR]?.text || ''}
+          lineaId={l.id}
+          talla={l.cols[S_TALLA]?.text || ''}
+          lineasEnGrupo={lineasEnGrupo}
+          onClose={() => setCambiarProducto(false)}
+          onDone={onChanged}
+        />
+      )}
     </div>
   );
 }
@@ -724,9 +797,10 @@ function FotoProducto({ producto, meta, cargando, onCambio, onError }: {
  * Método/Condiciones de pago son overrides SOLO de esta OC (WhatsApp 2026-08-04:
  * antes el default del Proyecto se aplicaba igual a todos los proveedores) —
  * prellenados con el default, no se guardan de vuelta a Monday. */
-function ProveedorCard({ group, proyecto, oppId, reload, canEdit, activity, nota, ordenes }: {
+function ProveedorCard({ group, proyecto, oppId, reload, canEdit, activity, nota, ordenes, cambios, tamGrupo }: {
   group: ProveedorGroup; proyecto: ItemDetailDTO; oppId: string | null; reload: () => void;
   canEdit: boolean; activity: ActivityEntryDTO[]; nota: string; ordenes: OcEmitidaDTO[];
+  cambios: Map<string, CambioProductoDTO>; tamGrupo: Map<string, number>;
 }) {
   const [outcome, setOutcome] = useState<ActionOutcome | null>(null);
   const [metodoPago, setMetodoPago] = useState(proyecto.cols[P_METODO_PAGO]?.text ?? '');
@@ -868,6 +942,8 @@ function ProveedorCard({ group, proyecto, oppId, reload, canEdit, activity, nota
               proyectoId={proyecto.id}
               canEdit={canEdit}
               historial={activity.filter(e => e.itemId === l.id)}
+              cambio={cambios.get(l.id)}
+              lineasEnGrupo={tamGrupo.get(claveGrupo(l.cols[S_PRODUCTO]?.text || l.name, l.cols[S_COLOR]?.text || '')) ?? 1}
               onChanged={reload}
             />
           ))}
@@ -884,18 +960,22 @@ function ProveedorCard({ group, proyecto, oppId, reload, canEdit, activity, nota
 
 /** Grid de líneas del proyecto agrupadas por proveedor — el equivalente por-proveedor
  * de la tab Cotización, para la tab Órdenes de compra. */
-function ProveedorGrid({ lineas, proyecto, oppId, reload, canEdit, activity, notas, ordenes }: {
+function ProveedorGrid({ lineas, proyecto, oppId, reload, canEdit, activity, notas, ordenes, cambios }: {
   lineas: ItemDTO[]; proyecto: ItemDetailDTO; oppId: string | null; reload: () => void;
   canEdit: boolean; activity: ActivityEntryDTO[]; notas: Record<string, string>;
-  ordenes: OcEmitidaDTO[];
+  ordenes: OcEmitidaDTO[]; cambios: CambioProductoDTO[];
 }) {
   const grupos = groupByProveedor(lineas);
+  // Sobre TODAS las líneas del proyecto, no las de la tarjeta: el grupo
+  // producto+color puede estar repartido entre proveedores.
+  const tamGrupo = tamanoDeGrupos(lineas);
+  const porLinea = new Map(cambios.map(c => [c.lineaId, c]));
   return (
     <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
       {grupos.map(g => (
         <ProveedorCard
           key={g.key} group={g} proyecto={proyecto} oppId={oppId} reload={reload}
-          canEdit={canEdit} activity={activity}
+          canEdit={canEdit} activity={activity} cambios={porLinea} tamGrupo={tamGrupo}
           nota={g.proveedorId ? (notas[g.proveedorId] ?? '') : ''}
           ordenes={ordenes.filter(o => o.proveedor_id && o.proveedor_id === g.proveedorId)}
         />
@@ -918,6 +998,8 @@ export function ProyectoOrdenesSection({ state, oppId }: { state: ProyectoState;
   // Órdenes registradas del Proyecto: dicen de qué proveedor es cada PDF sin
   // deducirlo del nombre del archivo (worker/lib/ocLedger.ts).
   const [ordenes, setOrdenes] = useState<OcEmitidaDTO[]>([]);
+  // Qué líneas se surtieron con otro producto — la marca visible de la tabla.
+  const [cambios, setCambios] = useState<CambioProductoDTO[]>([]);
   // `nonce` y no el largo de children: editar un costo no cambia el número de
   // líneas, y sin esto el reloj seguía mostrando "sin cambios" justo después
   // de guardar (visto en la prueba local 2026-08-18).
@@ -930,6 +1012,7 @@ export function ProyectoOrdenesSection({ state, oppId }: { state: ProyectoState;
     getActivity('proyectos', proyectoId).then(setActivity).catch(() => setActivity([]));
     getOcNotas(proyectoId).then(setNotas).catch(() => setNotas({}));
     listOcDeProyecto(proyectoId).then(setOrdenes).catch(() => setOrdenes([]));
+    getCambiosProducto(proyectoId).then(setCambios).catch(() => setCambios([]));
   }, [proyectoId, canCompras, nonce]);
   const onChanged = () => { state.reload(); setNonce(n => n + 1); };
 
@@ -955,7 +1038,7 @@ export function ProyectoOrdenesSection({ state, oppId }: { state: ProyectoState;
       </div>
       {canCompras ? (
         lineas.length > 0
-          ? <ProveedorGrid lineas={lineas} proyecto={p} oppId={oppId} reload={onChanged} canEdit activity={activity} notas={notas} ordenes={ordenes} />
+          ? <ProveedorGrid lineas={lineas} proyecto={p} oppId={oppId} reload={onChanged} canEdit activity={activity} notas={notas} ordenes={ordenes} cambios={cambios} />
           : (
             <div style={{ marginTop: 14, font: 'var(--text-label)', color: 'var(--ink-quiet)' }}>
               Aún no hay líneas en el proyecto — importa las tallas primero, o agrega un producto a mano con el botón de arriba.

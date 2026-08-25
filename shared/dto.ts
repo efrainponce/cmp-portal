@@ -270,6 +270,72 @@ export interface CapturarTallasResponse {
   omitted: number;
 }
 
+// POST /api/proyectos/:id/lineas/cambiar-producto — "Cambiar producto" en la
+// tabla de Órdenes de compra (worker/lib/proyectoLineaProducto.ts, Efraín
+// 2026-08-25): por falta de inventario se surte OTRO producto con OTRO
+// proveedor y las tallas ya capturadas SIGUEN SIENDO CORRECTAS. Reescribe
+// producto/SKU/proveedor sobre las líneas que ya existen — talla y cantidad no
+// se tocan — y la Oportunidad/cotización se quedan como están (decisión de
+// Efraín: el cliente cotizó lo que cotizó).
+export interface CambiarProductoLineasRequest {
+  /** El grupo se identifica por lo que la línea trae HOY, no por ids: el worker
+   * resuelve las líneas contra los hijos reales del Proyecto. */
+  productoActual: string;
+  colorActual?: string;
+  /** Solo esa talla; sin esto, todas las del grupo producto+color. */
+  soloLineaId?: number;
+  /** Item del catálogo de Productos — de ahí salen nombre y SKU (nunca tecleados). */
+  productoId: number;
+  /** undefined = conservar el proveedor de cada línea; '' = quitarlo (sale de
+   * toda OC); un id = ese proveedor. */
+  proveedorId?: string;
+  color?: string;
+  costo?: number;
+  descuento?: number;
+  moneda?: string;
+  /** El usuario ya vio los avisos (la OC anterior ya salió) y aun así confirmó. */
+  confirmado?: boolean;
+}
+
+export interface CambiarProductoLineasResponse {
+  ok: boolean;
+  error?: string;
+  /** 200 con ok:false — hay que confirmar antes de aplicar, no es un error. */
+  requiereConfirmacion?: boolean;
+  avisos?: string[];
+  /** Líneas que caen en el grupo (las que se van a cambiar). */
+  lineas?: number;
+  cambiadas?: number;
+  productoNuevo?: string;
+  skuNuevo?: string;
+  proveedorNuevo?: string;
+}
+
+// GET /api/proyectos/:id/cambios-producto — la marca visible de que una línea
+// de la OC ya no es el producto que se cotizó (Efraín, 2026-08-25: "agrega info
+// que diga que se cambió el producto, así como le hacemos en cotizaciones",
+// donde la línea ajustada se rotula 'Editada'/'Dividida'). Sale del mismo
+// respaldo que guarda el cambio, así que el "antes" es el real, no una
+// reconstrucción.
+export interface CambioProductoDTO {
+  lineaId: string;
+  productoAntes: string;
+  skuAntes?: string;
+  proveedorAntes?: string;
+  productoDespues: string;
+  skuDespues?: string;
+  proveedorDespues?: string;
+  /** Quién y cuándo — el mismo dato que el reloj de historial de la línea. */
+  por: string;
+  fecha: string;
+}
+
+export interface CambiosProductoResponse {
+  /** Uno por línea: el ÚLTIMO cambio de cada una (si cambió dos veces, el
+   * "antes" que importa es el original — ver worker/lib/proyectoLineaProducto.ts). */
+  cambios: CambioProductoDTO[];
+}
+
 // GET /api/proyectos/:id/estado-historial — timeline de "Estado del producto" por
 // línea (tab Ejecución), worker/lib/estadoProducto.ts. changedBy null = cambio hecho
 // directo en Monday (webhook/reconcile), sin autor conocido del lado del portal.

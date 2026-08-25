@@ -7,7 +7,8 @@ import type {
   BoardAccessDTO, ColMeta, ColVal, CostoDivergenciaDTO, CotizacionVirtualDTO, CreateResponse, DuplicarOportunidadRequest, DuplicarOportunidadResponse, DuplicarVersionResponse, EnviarCosteoResponse, IdentityDTO, ItemDTO, ItemDetailDTO,
   ListResponse, MeDTO, MentionUserDTO, MondayUserDTO, ProyectoActionResponse, ProyectoResponse,
   QuoteLineSnapshot, QuoteVersionDTO, QuoteVersionsResponse, SetInstitucionRequest, SetInstitucionResponse,
-  TallaBoxInput, CapturarTallasResponse, EstadoHistorialEntryDTO, EstadoHistorialResponse,
+  TallaBoxInput, CapturarTallasResponse, CambiarProductoLineasRequest, CambiarProductoLineasResponse,
+  CambioProductoDTO, CambiosProductoResponse, EstadoHistorialEntryDTO, EstadoHistorialResponse,
   ProductoResumenDTO, ProductoResumenResponse, ProductoGeneroResponse,
   UpdateAttachmentDTO, UpdateDTO, VendedorDTO, WriteResponse, ZonaDTO,
 } from '../../shared/dto';
@@ -23,6 +24,7 @@ export type {
   ActivityEntryDTO,
   AjusteDTO, BoardAccessDTO, BoardSlug, ColMeta, ColVal, CostoDivergenciaDTO, CotizacionVirtualDTO, IdentityDTO, ItemDTO, ItemDetailDTO, ListResponse, MeDTO, MentionUserDTO,
   MondayUserDTO, ProposedProductDTO, QuoteLineSnapshot, QuoteVersionDTO, TallaBoxInput, CapturarTallasResponse,
+  CambiarProductoLineasRequest, CambiarProductoLineasResponse, CambioProductoDTO,
   EstadoHistorialEntryDTO, ProductoResumenDTO,
   UpdateAttachmentDTO, UpdateDTO, VendedorDTO, ZonaDTO,
 };
@@ -690,6 +692,31 @@ export async function uploadLogisticaArchivo(
   const body = await res.json();
   if (!res.ok) return { ok: false, error: body.error ?? 'No se pudo subir el archivo.' };
   return body;
+}
+
+/** Cambiar el producto (y su proveedor) de una línea de la OC conservando las
+ * tallas — falta de inventario (worker/lib/proyectoLineaProducto.ts). El
+ * servidor puede responder `requiereConfirmacion` con avisos: no es un error,
+ * es "la OC anterior ya salió, ¿aun así?". No toca la Oportunidad. */
+export async function cambiarProductoLineas(
+  proyectoId: string, input: CambiarProductoLineasRequest,
+): Promise<CambiarProductoLineasResponse> {
+  const res = await apiFetch(`/proyectos/${proyectoId}/lineas/cambiar-producto`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  const body = await res.json() as CambiarProductoLineasResponse;
+  if (!res.ok) return { ok: false, error: body.error ?? 'No se pudo cambiar el producto.' };
+  return body;
+}
+
+/** Marca "esta línea ya no es el producto cotizado" por línea del Proyecto. */
+export async function getCambiosProducto(proyectoId: string): Promise<CambioProductoDTO[]> {
+  const res = await apiFetch(`/proyectos/${proyectoId}/cambios-producto`);
+  if (!res.ok) return [];
+  const body = await res.json() as CambiosProductoResponse;
+  return body.cambios ?? [];
 }
 
 export interface ProyectoLineaInput {

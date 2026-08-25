@@ -283,4 +283,42 @@ export async function proveedorPorId(
   };
 }
 
+// ── Línea del Proyecto (proyectos_sub) ← Proveedor ────────────────────────────
+const PROY_SUB_PROVEEDOR_REL = 'board_relation_mm1cfgv5';
+const PROY_SUB_PROVEEDOR_RZ = 'lookup_mm1d2y9b';      // espejo: Proveedor → Razón Social
+const PROY_SUB_PROVEEDOR_CORREO = 'lookup_mm2145g';   // espejo: Proveedor → correo
+const PROVEEDOR_CORREO = 'email_mm21c4ng';
+
+/** Proveedor de una línea de Proyecto NATIVA: el `board_relation` ya lo escribió
+ * el write path, pero en nativo nadie llena su `text` (el NOMBRE, que es de
+ * donde la tarjeta de la OC saca su título — sin esto decía "12686013883",
+ * visto el 2026-08-18) ni los espejos de razón social/correo que imprime el
+ * PDF. `null` = se le quitó el proveedor: los tres quedan vacíos.
+ *
+ * Lo usa "Cambiar producto" (worker/lib/proyectoLineaProducto.ts), donde el
+ * proveedor cambia DESPUÉS de creada la línea — al crearla ya lo resolvía
+ * worker/lib/proyectoTallas.ts por su cuenta. */
+export async function stampProveedorEnLineaProyecto(
+  env: Env, lineaId: number, proveedorId: number | null,
+): Promise<void> {
+  if (proveedorId === null) {
+    await merge(env, 'proyectos_sub', lineaId, [
+      { id: PROY_SUB_PROVEEDOR_REL, type: 'board_relation', text: '', value: JSON.stringify({ linked_item_ids: [] }) },
+      mirror(PROY_SUB_PROVEEDOR_RZ, ''),
+      mirror(PROY_SUB_PROVEEDOR_CORREO, ''),
+    ]);
+    return;
+  }
+  const proveedor = await rowOf(env, 'proveedores', proveedorId);
+  await merge(env, 'proyectos_sub', lineaId, [
+    {
+      id: PROY_SUB_PROVEEDOR_REL, type: 'board_relation',
+      text: proveedor?.name || String(proveedorId),
+      value: JSON.stringify({ linked_item_ids: [String(proveedorId)] }),
+    },
+    mirror(PROY_SUB_PROVEEDOR_RZ, proveedor?.cols.get(PROVEEDOR_RAZON_SOCIAL)?.text?.trim() || ''),
+    mirror(PROY_SUB_PROVEEDOR_CORREO, proveedor?.cols.get(PROVEEDOR_CORREO)?.text?.trim() || ''),
+  ]);
+}
+
 export { OPP_CONTACTO_REL, LINEA_PRODUCTO_REL };

@@ -8,7 +8,7 @@ import type { Identity } from '../../shared/types';
 import { BOARDS, type BoardSlug } from '../../shared/boards';
 import { isNativeId } from '../../shared/nativeId';
 import { stageAtOrAfter, stageKeyForLabel } from '../../shared/dealStages';
-import type { AjustarLineaRequest, AjustarLineaResponse, CotizacionVirtualDTO, DuplicarOportunidadRequest, DuplicarOportunidadResponse, DuplicarVersionResponse, ItemDetailDTO, QuoteVersionsResponse, TallaBoxInput, CapturarTallasResponse, EstadoHistorialResponse, ProductoResumenResponse, ProductoGeneroResponse } from '../../shared/dto';
+import type { AjustarLineaRequest, AjustarLineaResponse, CotizacionVirtualDTO, DuplicarOportunidadRequest, DuplicarOportunidadResponse, DuplicarVersionResponse, ItemDetailDTO, QuoteVersionsResponse, TallaBoxInput, CapturarTallasResponse, CambiarProductoLineasRequest, CambiarProductoLineasResponse, CambiosProductoResponse, EstadoHistorialResponse, ProductoResumenResponse, ProductoGeneroResponse } from '../../shared/dto';
 import type { ProposedProductsResponse, AddProposedProductResponse } from '../../shared/productosPropuestos';
 import { getItem, childrenOf, pendingItemIds, proyectoForOportunidad, linkedItemId, PROYECTO_OPP_REL } from '../lib/dal';
 import { toItemDTO } from '../lib/serialize';
@@ -23,6 +23,7 @@ import { listVersions, duplicateVersion, restoreVersion, hayLineaPendiente, reco
 import { ajustarLinea, AjusteLineaError } from '../lib/lineaAjustes';
 import { listCotizacionVirtual, ajustarLineaVirtual, ProyectoCotizacionError } from '../lib/proyectoCotizacionVirtual';
 import { capturarTallas, reportarTallasIncorrectas, checkOcCliente, confirmTallasNative, confirmTallasNativeD1 } from '../lib/proyectoTallas';
+import { cambiarProductoLineas, listCambiosProducto, CambiarProductoError } from '../lib/proyectoLineaProducto';
 import { generarOcNative, generarOcNativeD1, generarOcPortal } from '../lib/oc';
 import { getOcNota, getOcNotas, setOcNota, OC_NOTA_MAX } from '../lib/ocNotas';
 import { listarOc, getOc, type OcEstado } from '../lib/ocLedger';
@@ -1390,6 +1391,42 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     text_mm1antcb: 'text', text_mm0h4a1c: 'text', text_mm0hyrfs: 'text',
     numeric_mm1dj4fp: 'numbers', numeric_mm1dmsaz: 'numbers', text_mm1gdsvg: 'text',
   };
+  // Cambiar el PRODUCTO (y su proveedor) de una línea de la OC conservando las
+  // tallas — falta de inventario: se surte otro producto y el desglose que ya
+  // se capturó sigue siendo el bueno (Efraín, 2026-08-25). Toda la lógica y sus
+  // guardas viven en worker/lib/proyectoLineaProducto.ts; aquí solo el wiring.
+  // Igual que /lineas, va ANTES del wildcard /api/proyectos/:id/:action.
+  // La marca visible de "esta línea ya no es el producto cotizado" que pinta la
+  // tabla de OC — mismo espíritu que los pills de versión de la cotización.
+  app.get('/api/proyectos/:id/cambios-producto', async c => {
+    const itemId = Number(c.req.param('id'));
+    if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
+    const queryMala = rejectUnknownQuery(c.req.url, []);
+    if (queryMala) return queryMala;
+    const viewer = c.get('viewer');
+    const row = await getItem(c.env, 'proyectos', itemId, viewer);
+    if (!row) return c.json({ error: 'not found' }, 404);
+    const response: CambiosProductoResponse = { cambios: await listCambiosProducto(c.env, itemId) };
+    return c.json(response);
+  });
+
+  app.post('/api/proyectos/:id/lineas/cambiar-producto', async c => {
+    const itemId = Number(c.req.param('id'));
+    if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
+    const viewer = c.get('viewer');
+    const body = await c.req.json<CambiarProductoLineasRequest>();
+    try {
+      const res = await cambiarProductoLineas(c.env, c.executionCtx, viewer, itemId, body);
+      return c.json(res);
+    } catch (err) {
+      if (err instanceof CambiarProductoError) {
+        return jsonStatus({ ok: false, error: err.message } satisfies CambiarProductoLineasResponse, err.status);
+      }
+      const detalle = err instanceof Error ? err.message : String(err);
+      return jsonStatus({ ok: false, error: 'No se pudo cambiar el producto: ' + detalle } satisfies CambiarProductoLineasResponse, 500);
+    }
+  });
+
   app.post('/api/proyectos/:id/lineas', async c => {
     const itemId = Number(c.req.param('id'));
     if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);

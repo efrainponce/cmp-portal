@@ -62,8 +62,11 @@ const WHITELIST: Partial<Record<BoardSlug, Set<string>>> = {
     'board_relation_mm1cfgv5', 'date_mm20xdtm',
     // Producto y Color — editables en la OC desde el 2026-08-19: son lo que
     // lee el proveedor en el documento, así que su corrección se rastrea igual
-    // que la del costo.
-    'text_mm0hs17x', 'text_mm0h4a1c',
+    // que la del costo. El SKU no se teclea en ningún lado, pero "Cambiar
+    // producto" (2026-08-25, worker/lib/proyectoLineaProducto.ts) lo reescribe
+    // del catálogo, y es la llave de la foto de la OC: si cambia, hay que saber
+    // quién y cuándo.
+    'text_mm0hs17x', 'text_mm0h4a1c', 'text_mm0hyrfs',
   ]),
 };
 

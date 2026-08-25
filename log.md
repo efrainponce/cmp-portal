@@ -1,5 +1,46 @@
 # Log de commits
 
+## 2026-08-25 (5)
+
+- **"Cambiar producto" en la tabla de Órdenes de compra** (Efraín: "a veces
+  necesitamos cambiar el PRODUCTO y el proveedor por falta de inventario, pero
+  YA se subieron tallas y las tallas son correctas con el otro producto").
+  Botón 🔁 por línea: se elige el producto nuevo del CATÁLOGO y el worker lo
+  escribe —con su SKU y su proveedor— en todas las tallas de ese producto+color
+  de un jalón. **Talla y cantidad no se tocan**: son datos del renglón, no del
+  producto, y por eso el desglose (y con él logística, estado e historial de
+  cada línea) sobrevive intacto al cambio.
+- **La Oportunidad y su cotización NO cambian** — decisión de Efraín: el cliente
+  cotizó lo que cotizó. Efecto conocido y aceptado: el badge "Cotizado" del tab
+  Tallas cruza contra la Oportunidad por producto+color, así que para el
+  producto cambiado deja de cruzar. Es la verdad, no un bug: ese producto no
+  está cotizado.
+- Por qué un modal a nivel GRUPO y no la celda inline que ya existía: el
+  producto vive repetido en cada renglón de talla (8 tallas = 8 celdas) y un
+  typo parte el grupo producto+color en dos — de ahí cuelgan las tarjetas del
+  tab Tallas, la ficha de la OC con imágenes y el SKU con el que se resuelve la
+  foto. Al venir del catálogo, el SKU se actualiza SIEMPRE (antes era de solo
+  lectura y se quedaba el viejo, con la foto del producto anterior en la OC).
+- **Marca visible** (Efraín, a media implementación: "agrega info que diga que
+  se cambió el producto, así como le hacemos en cotizaciones"): chip "Producto
+  cambiado" bajo el nombre de la línea, con el antes completo en el hover
+  (producto, SKU, proveedor, quién y cuándo). Sale del respaldo real del cambio,
+  no de una reconstrucción; si la línea se cambió dos veces, el "antes" que
+  muestra es el original.
+- Guardas del mismo linaje que `itemBorrado.ts`: las líneas NO vienen del
+  cliente (el body describe el grupo y el worker lo resuelve contra los hijos
+  reales del Proyecto), respaldo del "antes" en `linea_producto_cambio` ANTES de
+  tocar Monday, topes por operación y por hora, y whitelist FIJA de columnas —
+  talla, cantidad, estado y logística quedan fuera por construcción. Si la OC
+  anterior ya salió (estado "OC Proveedor enviada", "En produccion"…) no
+  bloquea: pide confirmación explícita diciendo cuántas líneas y en qué estado.
+- Solo Compras/Admin. Cada línea escribe solo su delta real, para que el reloj
+  de historial no se llene de "Moneda MXN → MXN". Probado end-to-end contra un
+  proyecto de prueba nativo en local (permisos, 404s, confirmación, alcance
+  grupo vs. una talla, quitar proveedor, espejos del proveedor en nativo) y por
+  la UI: las 4 tallas se movieron a la tarjeta del proveedor nuevo con las
+  cantidades intactas y su chip.
+
 ## 2026-08-25 (4)
 
 - **La foto del catálogo ahora es el DEFAULT** (Efraín, viendo la tira de fotos
