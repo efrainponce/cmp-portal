@@ -11,12 +11,16 @@
 - **Viven en el PROYECTO, no en el SKU.** La foto del catálogo (Airtable) sigue
   siendo la principal y se hereda a todas las OC; estas no: el render del
   bordado de ESTE cliente no tiene por qué aparecer en la orden del siguiente.
-- **En el PDF cada imagen se lleva su propia ficha de media hoja**, con la foto
-  grande y el título "Producto — imagen 2 de 3" (Efraín eligió esto sobre una
-  tira de miniaturas: para eso se sube un render, para que el proveedor lo VEA).
-  Esas fichas no repiten tallas ni totales — el pedido ya va en la ficha de
-  arriba y repetirlo se leería como el doble. La numeración cuenta solo las
-  imágenes que el proveedor ve: sin foto de catálogo, dos extras son "1 de 2".
+- **En el PDF la hoja queda partida** (Efraín, viendo la primera versión: "la
+  primera mitad tal cual como está y abajo TRES FOTOS … que estén
+  suficientemente grandes"): arriba la ficha del producto sin cambios —foto
+  principal, datos, tallas y totales— y debajo una fila de hasta tres imágenes
+  de referencia de ~2.3 × 3.75 pulgadas impresas, con su nombre al pie. Con una
+  o dos fotos, el ancho se reparte entre las que hay en vez de dejar huecos: una
+  sola ocupa la hoja completa. De la cuarta en adelante salen en filas propias
+  del mismo tamaño — encogerlas para que quepan todas es justo lo que se pidió
+  evitar. Un producto con fotos se queda solo en su hoja; sin fotos, siguen
+  entrando dos fichas por página como siempre.
 - Bytes en R2 y registro en D1, nada en Monday. Tope de 6 por producto (cada una
   es media hoja), 5 MB, y el tipo se decide por la FIRMA de los bytes — un
   .webp renombrado a .jpg saldría como hueco gris sin explicación. Quitar una
@@ -26,7 +30,8 @@
   y borrar una dejaba a la otra sin bytes (miniatura rota, hueco en el PDF). El
   key ahora es único por fila, y el borrado además comprueba que ninguna otra
   fila referencie el objeto antes de tirarlo.
-- Ajuste al motor de PDF: una ficha sin tallas ya no dibuja el encabezado
+- Ajuste al motor de PDF: bloque nuevo `imageRow` (fila de imágenes grandes) y
+  `productCard.extras`; una ficha sin tallas ya no dibuja el encabezado
   "TALLA / CANT." vacío — se leía como un dato que se hubiera perdido.
 - Probado end-to-end en local: permisos (vendedor 403), archivo que no es imagen,
   query param desconocido, tope de 6, borrado por autor y por admin, y la OC

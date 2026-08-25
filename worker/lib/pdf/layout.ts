@@ -68,7 +68,16 @@ export type Block =
       /** Null/ausente ⇒ placeholder gris "Sin imagen" (Efraín, 2026-08-24): la
        * OC sale igual aunque el producto no tenga foto todavía. */
       imagen?: PdfImageData | null;
-    };
+      /** Hasta 3 imágenes de referencia (renders, muestras, embellecimientos)
+       * en una fila GRANDE debajo de la ficha — Efraín, 2026-08-25: "la primera
+       * mitad tal cual como está y abajo TRES FOTOS … que estén suficientemente
+       * grandes". Con extras la ficha se queda sola en su página; sin ellas,
+       * siguen entrando dos por hoja como siempre. */
+      extras?: { nombre: string; imagen: PdfImageData }[];
+    }
+  /** Fila suelta de hasta 3 imágenes grandes, para las que no cupieron bajo la
+   * ficha de su producto (un producto puede traer hasta 6). */
+  | { kind: 'imageRow'; titulo: string; imagenes: { nombre: string; imagen: PdfImageData }[] };
 
 export interface DocumentMeta {
   /** Título que va en el encabezado de todas las páginas. */
@@ -370,6 +379,16 @@ function drawSignature(pdf: PdfWriter, cur: Cursor, m: Metrics, block: Extract<B
  * por página sin dejar una huérfana. 792 - 96 (encabezado) - 44 (pie) = 652. */
 const CARD_HEIGHT = 318;
 const CARD_GAP = 8;
+/** Fila de imágenes de referencia bajo la ficha (Efraín, 2026-08-25). Las
+ * medidas salen de lo que queda de hoja: alto útil 652pt − ficha 318 − gap 8 =
+ * 326, y esta fila ocupa 306. Tres cajas de ~165×270pt = 2.3×3.75 pulgadas
+ * impresas, que es justo lo contrario de una miniatura. */
+const EXTRAS_MAX_POR_FILA = 3;
+const EXTRAS_IMG_HEIGHT = 270;
+const EXTRAS_GAP = 10;
+const EXTRAS_LABEL_H = 14;
+const EXTRAS_CAPTION_H = 14;
+const EXTRAS_ROW_HEIGHT = EXTRAS_LABEL_H + EXTRAS_IMG_HEIGHT + EXTRAS_CAPTION_H + 8;
 /** Ancho de la caja de foto: ~3.7" de los 7.2" de contenido. El resto es la
  * columna de datos. */
 const CARD_IMAGE_WIDTH = 268;
@@ -396,11 +415,52 @@ function fitBox(
   return { x: box.x + (box.w - w) / 2, y: box.y + (box.h - h) / 2, w, h };
 }
 
+/** Dibuja una fila de hasta 3 imágenes grandes con su pie. Compartida por la
+ * ficha (las primeras 3) y por el bloque `imageRow` (el excedente), para que
+ * las dos se vean idénticas. Devuelve el alto consumido. */
+function drawImageRow(
+  pdf: PdfWriter, page: number, m: Metrics, top: number,
+  titulo: string, imagenes: { nombre: string; imagen: PdfImageData }[],
+): number {
+  pdf.text(page, m.contentLeft, top + 9, titulo.toUpperCase(), { size: 7.5, font: 'HB', color: INK_FAINT });
+  // El ancho se reparte entre las fotos que HAY, no siempre entre tres: con una
+  // sola imagen, tres huecos dejaban dos tercios de hoja en blanco y la foto
+  // salía más chica de lo que la hoja permite — justo lo contrario de lo que se
+  // pidió ("que estén suficientemente grandes").
+  const cols = Math.min(Math.max(imagenes.length, 1), EXTRAS_MAX_POR_FILA);
+  const boxW = (m.contentWidth - EXTRAS_GAP * (cols - 1)) / cols;
+  const imgTop = top + EXTRAS_LABEL_H;
+  imagenes.slice(0, cols).forEach((extra, i) => {
+    const x = m.contentLeft + i * (boxW + EXTRAS_GAP);
+    const box = { x, y: imgTop, w: boxW, h: EXTRAS_IMG_HEIGHT };
+    pdf.rect(page, box.x, box.y, box.w, box.h, { fill: '#f1f3f6', stroke: RULE });
+    const f = fitBox(extra.imagen, box);
+    pdf.image(page, extra.imagen, f.x, f.y, f.w, f.h);
+    pdf.text(page, x, imgTop + EXTRAS_IMG_HEIGHT + 11, ellipsize(extra.nombre, boxW, 8.5), { size: 8.5, color: INK_SOFT });
+  });
+  return EXTRAS_ROW_HEIGHT;
+}
+
+function drawImageRowBlock(
+  pdf: PdfWriter, cur: Cursor, m: Metrics, block: Extract<Block, { kind: 'imageRow' }>,
+): void {
+  if (block.imagenes.length === 0) return;
+  cur.ensure(EXTRAS_ROW_HEIGHT);
+  cur.y += drawImageRow(pdf, cur.page, m, cur.y, block.titulo, block.imagenes) + CARD_GAP;
+}
+
 function drawProductCard(
   pdf: PdfWriter, cur: Cursor, m: Metrics, block: Extract<Block, { kind: 'productCard' }>,
 ): void {
-  cur.ensure(CARD_HEIGHT);
+  const extras = (block.extras ?? []).slice(0, EXTRAS_MAX_POR_FILA);
+  // Con fotos de referencia la ficha reserva ficha + fila: separarlas dejaría
+  // las imágenes en otra hoja que el producto al que pertenecen.
+  cur.ensure(CARD_HEIGHT + (extras.length ? EXTRAS_ROW_HEIGHT : 0));
   const top = cur.y - 8;
+  const dibujarExtras = () => {
+    if (extras.length === 0) return;
+    cur.y += drawImageRow(pdf, cur.page, m, cur.y - 4, 'Imágenes de referencia', extras) + CARD_GAP;
+  };
   pdf.rect(cur.page, m.contentLeft, top, m.contentWidth, CARD_HEIGHT, { stroke: RULE });
 
   // ── Foto (o placeholder) ──
@@ -455,6 +515,7 @@ function drawProductCard(
       pyVacio += 12;
     }
     cur.y += CARD_HEIGHT + CARD_GAP;
+    dibujarExtras();
     return;
   }
   pdf.line(cur.page, colLeft, tallasTop - 8, colRight, tallasTop - 8, { color: RULE, width: 0.6 });
@@ -496,6 +557,7 @@ function drawProductCard(
   }
 
   cur.y += CARD_HEIGHT + CARD_GAP;
+  dibujarExtras();
 }
 
 function drawChrome(pdf: PdfWriter, m: Metrics, meta: DocumentMeta): void {
@@ -546,6 +608,7 @@ export function renderDocument(meta: DocumentMeta, blocks: Block[]): Uint8Array 
       case 'note': drawNote(pdf, cur, m, block.text); break;
       case 'signature': drawSignature(pdf, cur, m, block); break;
       case 'productCard': drawProductCard(pdf, cur, m, block); break;
+      case 'imageRow': drawImageRowBlock(pdf, cur, m, block); break;
     }
   }
 

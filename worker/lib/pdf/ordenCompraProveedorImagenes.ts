@@ -113,10 +113,17 @@ export function agruparPorProducto(lineas: OcProveedorLinea[]): ProductoGrupo[] 
  * se reparte en VARIAS fichas en vez de recortarse: la lista de tallas es el
  * pedido, y un "+4 tallas más" al pie es una orden mal surtida esperando a
  * pasar. Exportada para poder anclar justo eso en test. */
+/** Cuántas fotos de referencia caben en una fila bajo la ficha — el mismo
+ * número que dibuja worker/lib/pdf/layout.ts. */
+const EXTRAS_POR_FILA = 3;
+
+export type FichaBlock = Extract<Block, { kind: 'productCard' }>;
+export type FilaImagenesBlock = Extract<Block, { kind: 'imageRow' }>;
+
 export function construirFichas(
   grupos: ProductoGrupo[], imagenes: Map<string, PdfImageData>, sinCostos = false,
   extras: Map<string, { nombre: string; imagen: PdfImageData }[]> = new Map(),
-): Extract<Block, { kind: 'productCard' }>[] {
+): (FichaBlock | FilaImagenesBlock)[] {
   return grupos.flatMap(g => {
     const partes: { talla: string; cantidad: string }[][] = [];
     for (let i = 0; i < g.tallas.length; i += PRODUCT_CARD_TALLAS_MAX) {
@@ -153,28 +160,32 @@ export function construirFichas(
       imagen,
     }));
 
-    // Una ficha por imagen extra del proyecto, después de las de tallas. No
-    // repiten tallas ni totales a propósito: el pedido ya está en las de
-    // arriba, y repetirlo se leería como si fuera el doble (mismo criterio que
-    // el pie de las partes). Solo llevan la foto grande y de qué producto es.
+    // Las imágenes del proyecto (renders, muestras, embellecimientos) van
+    // ABAJO de la ficha, en una fila de tres fotos grandes — Efraín,
+    // 2026-08-25: "la primera mitad tal cual como está y abajo TRES FOTOS …
+    // que estén suficientemente grandes". La ficha de arriba no cambia: sigue
+    // llevando el pedido, y las fotos son la referencia visual de ese mismo
+    // producto, en la misma hoja.
     const extrasDelSku = extras.get((g.sku || '').trim().toUpperCase()) ?? [];
-    // El total que se numera incluye la foto del catálogo cuando la hay: para
-    // quien recibe la OC, "imagen 2 de 3" cuenta lo que ve, no de dónde salió.
-    const total = extrasDelSku.length + (imagen ? 1 : 0);
-    const fichasExtra = extrasDelSku.map((extra, i) => ({
-      kind: 'productCard' as const,
-      titulo: `${nombre} — imagen ${i + 1 + (imagen ? 1 : 0)} de ${total}`,
-      datos: [
-        ['SKU / Modelo', g.sku || '—'],
-        ['Color', g.colores.join(', ') || '—'],
-        ['Referencia', extra.nombre],
-      ] as [string, string][],
-      tallas: [],
-      pie: ['Imagen de referencia de esta orden', ''],
-      imagen: extra.imagen,
-    }));
+    // Van con la PRIMERA ficha del producto: es la que trae las tallas y la que
+    // el proveedor mira. Si el desglose se partió en varias, las demás quedan
+    // como estaban.
+    const conExtras: (FichaBlock | FilaImagenesBlock)[] = fichasDeTallas.map((ficha, i) =>
+      i === 0 && extrasDelSku.length > 0
+        ? { ...ficha, extras: extrasDelSku.slice(0, EXTRAS_POR_FILA) }
+        : ficha);
 
-    return [...fichasDeTallas, ...fichasExtra];
+    // Un producto puede traer hasta 6 imágenes y en la hoja de su ficha caben
+    // 3: el resto sale en filas propias, del mismo tamaño, en vez de encogerlas
+    // para que quepan todas (encogerlas es justo lo que se pidió evitar).
+    for (let i = EXTRAS_POR_FILA; i < extrasDelSku.length; i += EXTRAS_POR_FILA) {
+      conExtras.push({
+        kind: 'imageRow',
+        titulo: `${nombre} — más imágenes de referencia`,
+        imagenes: extrasDelSku.slice(i, i + EXTRAS_POR_FILA),
+      });
+    }
+    return conExtras;
   });
 }
 
