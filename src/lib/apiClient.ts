@@ -755,6 +755,10 @@ export async function getCambiosProducto(proyectoId: string): Promise<CambioProd
 
 export interface ProyectoLineaInput {
   producto: string;
+  /** Zona de embellecimiento (Espalda, Frente derecho…). Con esto la línea nace
+   * como línea de EMBELLECIMIENTO: el server la nombra "✨ <zona>", que es el
+   * marcador con el que la OC a proveedor la distingue de un producto. */
+  zona?: string;
   proveedorId?: string;
   cantidad?: number;
   talla?: string;

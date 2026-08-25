@@ -36,6 +36,16 @@ export function boardRelationValue(canon: string): { linked_item_ids: string[] }
   return { linked_item_ids: canon !== '' && Number.isFinite(id) ? [canon] : [] };
 }
 
+/** Nombre del item ligado, del espejo — `null` si no está. Los ids de Monday
+ * son únicos entre boards, así que no hace falta saber a qué board apunta la
+ * columna (que la metadata de columnas tampoco dice). */
+async function nombreDeItemLigado(env: Env, itemId: string): Promise<string | null> {
+  const id = Number(itemId);
+  if (!Number.isFinite(id)) return null;
+  const row = await env.DB.prepare('SELECT name FROM items WHERE item_id = ? LIMIT 1').bind(id).first<{ name: string }>();
+  return row?.name ?? null;
+}
+
 export class OutboxError extends Error {
   status: number;
   constructor(status: number, message: string) {
@@ -124,6 +134,9 @@ export async function submitWrite(
       continue;
     }
     const canon = canonValue(types[colId], cols[colId]);
+    // Texto que se guarda en el espejo. Normalmente es el propio valor canónico;
+    // solo un board_relation de item NATIVO lo cambia (abajo).
+    let texto = canon;
     // Dos columnas necesitan un `value` con el shape REAL de Monday (no el
     // string plano de canonValue) porque algo más adelante lo parsea así —
     // y un item nativo nunca recibe el echo de Monday que normalmente lo
@@ -136,7 +149,16 @@ export async function submitWrite(
     let mergedValue = JSON.stringify(canon);
     if (isNativeId(itemId)) {
       if (colId === 'deal_stage') mergedValue = JSON.stringify(dealStageValue(canon));
-      else if (types[colId] === 'board_relation') mergedValue = JSON.stringify(boardRelationValue(canon));
+      else if (types[colId] === 'board_relation') {
+        mergedValue = JSON.stringify(boardRelationValue(canon));
+        // El `text` de un board_relation es el NOMBRE del item ligado. En un
+        // item real lo rellena la respuesta de Monday; en uno nativo ese echo
+        // no llega NUNCA y la UI se queda mostrando el id crudo ("Proveedor:
+        // 11645211606" al asignar proveedor de embellecimiento en un proyecto
+        // nativo, visto en la prueba local 2026-08-25). Mismo remiendo que ya
+        // hacía a mano el alta de líneas del Proyecto.
+        texto = canon === '' ? '' : await nombreDeItemLigado(env, canon) ?? canon;
+      }
       // Cualquier otra columna `status` (project_status, Etapa Costeo,
       // embellecimiento…): también con `{index}`. Guardar el label suelto dejaba
       // al item fuera de TODOS los grupos de los boards, que filtran por índice
@@ -144,7 +166,7 @@ export async function submitWrite(
       // Proyecto nativo desapareció del sidebar al reescribirse su status.
       else if (types[colId] === 'status') mergedValue = JSON.stringify(nativeStatusValue(slug, colId, canon));
     }
-    const mergedCol: RawCol = { id: colId, type: types[colId], text: canon, value: mergedValue };
+    const mergedCol: RawCol = { id: colId, type: types[colId], text: texto, value: mergedValue };
     const mergedJson = JSON.stringify(mergedCol);
     await env.DB
       .prepare(

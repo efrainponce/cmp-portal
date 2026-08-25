@@ -196,7 +196,9 @@ export function ProyectoDrawer({ id, boardKey, backLabel, defaultTab, onBack, on
       {tab === 'actualizaciones' && <ActualizacionesTab slug="proyectos" itemId={id} />}
       {tab === 'actividad' && <ActividadTab slug="proyectos" itemId={id} />}
       {tab === 'cotizacion' && <CotizacionVirtualTab proyectoId={id} />}
-      {tab === 'embellecimientos' && <EmbellecimientosVirtualTab proyectoId={id} />}
+      {tab === 'embellecimientos' && (
+        <EmbellecimientosVirtualTab proyectoId={id} proyecto={item} onChanged={load} />
+      )}
       {tab === 'documentacion' && (
         <div style={{ padding: '24px 32px 40px', maxWidth: 920, width: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 20 }}>
           <FechaEntregaField proyecto={proyectoState} />

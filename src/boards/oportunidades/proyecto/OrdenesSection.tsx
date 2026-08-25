@@ -22,7 +22,6 @@ import {
   proyectoAction, patchItem, deleteProyectoLinea, getActivity, getOcNotas, saveOcNota,
   listOcImagenes, ocImagenUrl, uploadOcImagen, restablecerOcImagen, listOcDeProyecto,
   getCambiosProducto, listProyectoImagenes, proyectoImagenUrl, uploadProyectoImagen, deleteProyectoImagen,
-  usePoll, SOLO_NOMBRE,
   type ActivityEntryDTO, type CambioProductoDTO, type ItemDetailDTO, type ItemDTO, type OcImagenDTO,
   type OcEmitidaDTO, type ProyectoImagenDTO,
 } from '../../../lib/api';
@@ -31,8 +30,8 @@ import { ConfirmButton } from '../../../components/core/ConfirmButton';
 import { Button } from '../../../components/core/Button';
 import { StatusBadge } from '../../../components/core/Badges';
 import { Modal } from '../../../components/core/Modal';
-import { SearchInput } from '../../../components/forms/SearchInput';
 import { AgregarLineaModal } from '../../proyectos/AgregarLineaModal';
+import { SeleccionarProveedorModal } from '../../proyectos/SeleccionarProveedorModal';
 import { pctToFraccion, fraccionToPct, fraccionNum } from '../../../../shared/descuento';
 import { CambiarProductoModal } from './CambiarProductoModal';
 import { fmtMoney } from '../../../lib/format';
@@ -300,57 +299,26 @@ function LineaHistorial({ entries, onClose, titulo }: {
 
 /** Mover una línea a otro proveedor = sacarla de esta OC y meterla en la de
  * otro (o dejarla sin proveedor, fuera de toda OC). Escribe el mismo
- * board_relation que agrupa las tarjetas. */
+ * board_relation que agrupa las tarjetas — el buscador es el compartido con el
+ * selector por línea de embellecimiento (SeleccionarProveedorModal). */
 function MoverProveedorModal({ lineaId, onClose, onMoved }: {
   lineaId: string; onClose: () => void; onMoved: () => void;
 }) {
-  const [q, setQ] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const { data } = usePoll('proveedores', q, SOLO_NOMBRE);
-  const opciones = data?.items ?? [];
-
-  const mover = async (proveedorId: string) => {
-    setSaving(true);
-    setError(null);
-    try {
-      await patchItem('proyectos_sub', lineaId, { [S_PROVEEDOR]: proveedorId });
-      onMoved();
-      onClose();
-    } catch {
-      setError('No se pudo mover la línea.');
-      setSaving(false);
-    }
-  };
-
   return (
-    <Modal title="Mover línea a otro proveedor" onClose={onClose} width={440}>
-      <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)', marginBottom: 10 }}>
-        La línea sale de la OC actual y entra en la del proveedor que elijas. Si aún no tiene tarjeta, se crea una.
-      </div>
-      <SearchInput value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar proveedor…" style={{ maxWidth: 'none' }} />
-      <div style={{ maxHeight: 240, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', marginTop: 8 }}>
-        {opciones.length === 0 ? (
-          <div style={{ padding: 10, font: 'var(--text-label)', color: 'var(--ink-quiet)' }}>Sin resultados.</div>
-        ) : opciones.map(p => (
-          <div
-            key={p.id}
-            className="row-hover"
-            onClick={saving ? undefined : () => mover(p.id)}
-            style={{ padding: '8px 12px', borderBottom: '1px solid var(--border-subtle)', font: 'var(--text-label)', color: 'var(--ink)', cursor: saving ? 'default' : 'pointer' }}
-          >
-            {p.name}
-          </div>
-        ))}
-      </div>
-      <div
-        onClick={saving ? undefined : () => mover('')}
-        style={{ marginTop: 10, font: 'var(--text-label)', color: 'var(--accent)', cursor: saving ? 'default' : 'pointer' }}
-      >
-        Quitarle el proveedor (la saca de toda OC)
-      </div>
-      {error && <div style={{ marginTop: 8, color: 'var(--status-perdida)', font: 'var(--text-label)' }}>{error}</div>}
-    </Modal>
+    <SeleccionarProveedorModal
+      titulo="Mover línea a otro proveedor"
+      ayuda="La línea sale de la OC actual y entra en la del proveedor que elijas. Si aún no tiene tarjeta, se crea una."
+      etiquetaQuitar="Quitarle el proveedor (la saca de toda OC)"
+      onClose={onClose}
+      onPick={async (proveedorId) => {
+        try {
+          await patchItem('proyectos_sub', lineaId, { [S_PROVEEDOR]: proveedorId });
+        } catch {
+          throw new Error('No se pudo mover la línea.');
+        }
+        onMoved();
+      }}
+    />
   );
 }
 

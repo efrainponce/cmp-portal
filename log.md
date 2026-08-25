@@ -1,5 +1,45 @@
 # Log de commits
 
+## 2026-08-25 (9)
+
+- **Proveedor de embellecimiento, por línea, desde Proyecto → Embellecimientos**
+  (Efraín: "no se puede seleccionar el PROVEEDOR de embellecimiento, es súper
+  importante … que se pueda cambiar por LINEA de embellecimiento"). Quien borda
+  o estampa casi nunca es el proveedor de la prenda, y hasta hoy solo se le
+  podía asignar desde el ⇄ de Órdenes de compra — donde las líneas "✨" salen
+  sin la posición ni la imagen de referencia enfrente. Ahora cada posición del
+  tab muestra quién la borda y deja cambiarlo (Compras/Admin): escribe el MISMO
+  `board_relation_mm1cfgv5` que agrupa las OC, así que la línea entra sola en la
+  OC de ese bordador. En producción **118 de 181 líneas de embellecimiento
+  estaban sin proveedor**.
+- **Si la posición todavía no tiene línea en el Proyecto, "Asignar proveedor" la
+  crea**: `POST /api/proyectos/:id/lineas` acepta `zona` y nombra el subitem
+  "✨ <zona>" — el mismo formato que produce Importar tallas, que es el marcador
+  con el que la OC distingue un embellecimiento de un producto
+  (`worker/lib/ocProveedorPdf.ts`). Sin esto, los proyectos de captura nativa
+  (56 de 84 no tienen ninguna línea ✨) no tenían nada que mandarle al bordador.
+  El costo se sigue capturando en Órdenes de compra, como el de cualquier línea.
+- El emparejamiento zona↔línea vive aparte y con test
+  (`src/boards/proyectos/embellLineas.ts`): va por DESCRIPCIÓN primero, porque
+  un proyecto sí tiene dos "✨ Espalda" con texto distinto, y solo cae al nombre
+  de la zona cuando esa zona tiene una sola línea. Lo que no empareja no se
+  esconde — sale en "Otras líneas de embellecimiento del proyecto", para que
+  toda línea de la OC tenga dónde asignarle proveedor.
+- El buscador de proveedores se extrajo a `SeleccionarProveedorModal` y ahora lo
+  comparten el ⇄ de Órdenes y este selector (evita importar los 1100 renglones
+  de `OrdenesSection` — con su pdfjs lazy — desde el tab de Embellecimientos).
+- **Bug encontrado en la prueba local y corregido**: al escribir un
+  `board_relation` en un item NATIVO, el espejo guardaba el ID crudo como texto
+  y la UI mostraba "Proveedor: 11645211606". Al item real se lo rellena la
+  respuesta de Monday; al nativo no le llega nunca. `submitWrite` ahora resuelve
+  el nombre del item ligado (`worker/lib/outbox.ts`) — el mismo remiendo que ya
+  hacía a mano el alta de líneas del Proyecto, ahora para todos los caminos
+  (incluye el ⇄ de Órdenes en Zona Efrain).
+- Probado de punta a punta en local con un Proyecto NATIVO sembrado en la D1 de
+  miniflare (nada tocó Monday): asignar sobre una línea existente, crear la
+  línea desde una posición sin ella, y verificar que las dos aparecen en la
+  tarjeta de OC del proveedor. Sembrado borrado al terminar.
+
 ## 2026-08-25 (8)
 
 - **"+ Agregar línea" en cada tarjeta de proveedor** (Efraín: "a veces a un

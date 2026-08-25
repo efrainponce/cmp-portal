@@ -1522,10 +1522,21 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
 
     const body = await c.req.json<{
       producto?: string; proveedorId?: string; cantidad?: number; talla?: string; color?: string; sku?: string;
-      costo?: number; descuento?: number; moneda?: string;
+      costo?: number; descuento?: number; moneda?: string; zona?: string;
     }>();
     const producto = body.producto?.trim();
     if (!producto) return c.json({ error: 'producto is required' }, 400);
+
+    // `zona` = línea de EMBELLECIMIENTO (Efraín, 2026-08-25: "que se pueda
+    // cambiar el proveedor por línea de embellecimiento"). El nombre lleva el
+    // prefijo "✨" porque ESE es el marcador con el que la OC a proveedor
+    // distingue un embellecimiento de un producto (worker/lib/ocProveedorPdf.ts
+    // lo lee para poner la zona en el PDF y worker/lib/pdf/ordenCompraProveedorImagenes.ts
+    // para dejarlo fuera de las fichas con foto) — mismo formato que crean las
+    // tallas importadas de cmp-tallas, para que las dos vías produzcan líneas
+    // idénticas. El texto de la posición va en Producto, igual que ellas.
+    const zona = body.zona?.trim();
+    const nombre = zona ? `✨ ${zona}` : producto;
 
     const row = await getItem(c.env, 'proyectos', itemId, viewer, 'own');
     if (!row) return c.json({ error: 'not found' }, 404);
@@ -1565,7 +1576,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
           const rel = columns.find(col => col.id === 'board_relation_mm1cfgv5');
           if (rel && prov?.name) rel.text = prov.name;
         }
-        const id = await insertNativeSubitem(c.env, 'proyectos_sub', itemId, producto, columns);
+        const id = await insertNativeSubitem(c.env, 'proyectos_sub', itemId, nombre, columns);
         // El alta de una línea REAL la registra Monday en su activity_log y el
         // delta sync la recoge (proyectos_sub ya está en la whitelist de
         // worker/lib/activityLog.ts); un proyecto nativo no tiene ese log, así
@@ -1573,12 +1584,12 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
         await recordDirectChanges(c.env, 'proyectos_sub', [{
           boardId: BOARDS.proyectos_sub.id, itemId: id, event: 'create_pulse',
           columnId: null, columnTitle: null,
-          previousText: null, newText: producto,
+          previousText: null, newText: nombre,
           userId: viewer.monday_user_id, userEmail: viewer.email,
         }]);
         return c.json({ ok: true, id: String(id) });
       }
-      const subitem = await createSubitem(c.env, itemId, producto, subitemCols);
+      const subitem = await createSubitem(c.env, itemId, nombre, subitemCols);
       await upsertItem(c.env, 'proyectos_sub', subitem);
       return c.json({ ok: true, id: subitem.id });
     } catch (err) {
