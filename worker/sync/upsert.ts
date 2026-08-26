@@ -56,6 +56,65 @@ export async function emitItemSideEffects(
   }
 }
 
+export interface MirrorUpsert {
+  stmt: D1PreparedStatement;
+  itemId: number;
+  parentItemId: number | null;
+  vendedorIds: number[];
+  contentHash: string;
+  columnsJson: string;
+}
+
+/** El INSERT ... ON CONFLICT del mirror para UN item, armado pero SIN ejecutar.
+ * Para los flujos que escriben muchos items de un jalón: se juntan los
+ * statements y se mandan en un `env.DB.batch()`, que es UN solo subrequest sin
+ * importar cuántos traiga, en vez de un round-trip por item (worker/lib/
+ * proyectoTallas.ts capturarTallas — ver el mismo patrón en reconcile.ts).
+ *
+ * OJO: no hace nada de lo que upsertItem hace ALREDEDOR del write (skip por
+ * content_hash, lectura de `columns` previas, side effects de notificación).
+ * El llamador decide qué de eso necesita — para altas no hay "antes" que
+ * diffear y el batch sale gratis. Para 'oportunidades_sub' hay que pasar el
+ * item ya hidratado por hydrateFichaLineas (esto es síncrono a propósito). */
+export function mirrorUpsertStatement(
+  env: Env,
+  slug: BoardSlug,
+  item: MondayItem,
+  now: string = new Date().toISOString(),
+): MirrorUpsert {
+  const def = BOARDS[slug];
+  const columns = toRawColumns(item);
+  const columnsJson = JSON.stringify(columns);
+  const contentHash = rawHash(columns);
+  const itemId = Number(item.id);
+  const parentItemId = item.parent_item?.id ? Number(item.parent_item.id) : null;
+  const vendedorIds = def.parent ? [] : extractVendedorIds(item, def.authzCols ?? []);
+
+  // Totales de la línea, materializados aquí para que la lista pueda sumarlos
+  // por oportunidad con un SUM por índice — ver worker/lib/lineaTotales.ts.
+  // Fuera del board de líneas las cinco columnas se quedan en NULL.
+  const t = slug === 'oportunidades_sub' ? totalesDeLinea(columns) : null;
+
+  const stmt = env.DB.prepare(
+    `INSERT INTO items (board_id, item_id, parent_item_id, name, group_id, vendedor_ids, monday_updated_at, synced_at, content_hash, columns,
+                        t_costo, t_subtotal, t_total, t_utilidad, t_margen_gob)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+     ON CONFLICT(board_id, item_id) DO UPDATE SET
+       parent_item_id = excluded.parent_item_id, name = excluded.name, group_id = excluded.group_id,
+       vendedor_ids = excluded.vendedor_ids, monday_updated_at = excluded.monday_updated_at,
+       synced_at = excluded.synced_at, content_hash = excluded.content_hash, columns = excluded.columns,
+       t_costo = excluded.t_costo, t_subtotal = excluded.t_subtotal, t_total = excluded.t_total,
+       t_utilidad = excluded.t_utilidad, t_margen_gob = excluded.t_margen_gob`,
+  ).bind(
+    def.id, itemId, parentItemId,
+    item.name, item.group?.id ?? null,
+    JSON.stringify(vendedorIds), item.updated_at, now, contentHash, columnsJson,
+    t?.costo ?? null, t?.subtotal ?? null, t?.total ?? null, t?.utilidad ?? null, t?.margenGob ?? null,
+  );
+
+  return { stmt, itemId, parentItemId, vendedorIds, contentHash, columnsJson };
+}
+
 /** Insert or update the mirror row. When `skipIfUnchanged`, a matching content_hash
  * short-circuits the write entirely. Single-item path (webhook/refresh/outbox echo) —
  * el reconcile por lote NO pasa por aquí, ver reconcile.ts (evita 1-2 round-trips
@@ -71,19 +130,14 @@ export async function upsertItem(
   // compara para decidir si hay cambio) ya trae la descripción del catálogo, aunque
   // el mirror de Monday siga vacío — ver worker/lib/ficha.ts.
   if (slug === 'oportunidades_sub') await hydrateFichaLineas(env, [item]);
-  const columns = toRawColumns(item);
-  const contentHash = rawHash(columns);
-  const itemId = Number(item.id);
+  const write = mirrorUpsertStatement(env, slug, item);
 
   if (opts.skipIfUnchanged) {
     const existing = await env.DB.prepare(
       `SELECT content_hash FROM items WHERE board_id = ? AND item_id = ?`,
-    ).bind(def.id, itemId).first<{ content_hash: string }>();
-    if (existing && existing.content_hash === contentHash) return { changed: false };
+    ).bind(def.id, write.itemId).first<{ content_hash: string }>();
+    if (existing && existing.content_hash === write.contentHash) return { changed: false };
   }
-
-  const vendedorIds = def.parent ? [] : extractVendedorIds(item, def.authzCols ?? []);
-  const now = new Date().toISOString();
 
   // Captura el estado previo de `columns` ANTES del write, solo para los boards
   // que lo necesitan (NEEDS_PREV_COLUMNS) — no pagar la SELECT extra en el resto.
@@ -91,37 +145,15 @@ export async function upsertItem(
   if (NEEDS_PREV_COLUMNS.has(slug)) {
     const prevRow = await env.DB.prepare(
       `SELECT columns FROM items WHERE board_id = ? AND item_id = ?`,
-    ).bind(def.id, itemId).first<{ columns: string }>();
+    ).bind(def.id, write.itemId).first<{ columns: string }>();
     prevColumnsJson = prevRow?.columns ?? null;
   }
 
-  // Totales de la línea, materializados aquí para que la lista pueda sumarlos
-  // por oportunidad con un SUM por índice — ver worker/lib/lineaTotales.ts.
-  // Fuera del board de líneas las cinco columnas se quedan en NULL.
-  const t = slug === 'oportunidades_sub' ? totalesDeLinea(columns) : null;
-
-  await env.DB.prepare(
-    `INSERT INTO items (board_id, item_id, parent_item_id, name, group_id, vendedor_ids, monday_updated_at, synced_at, content_hash, columns,
-                        t_costo, t_subtotal, t_total, t_utilidad, t_margen_gob)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-     ON CONFLICT(board_id, item_id) DO UPDATE SET
-       parent_item_id = excluded.parent_item_id, name = excluded.name, group_id = excluded.group_id,
-       vendedor_ids = excluded.vendedor_ids, monday_updated_at = excluded.monday_updated_at,
-       synced_at = excluded.synced_at, content_hash = excluded.content_hash, columns = excluded.columns,
-       t_costo = excluded.t_costo, t_subtotal = excluded.t_subtotal, t_total = excluded.t_total,
-       t_utilidad = excluded.t_utilidad, t_margen_gob = excluded.t_margen_gob`,
-  ).bind(
-    def.id, itemId,
-    item.parent_item?.id ? Number(item.parent_item.id) : null,
-    item.name, item.group?.id ?? null,
-    JSON.stringify(vendedorIds), item.updated_at, now, contentHash, JSON.stringify(columns),
-    t?.costo ?? null, t?.subtotal ?? null, t?.total ?? null, t?.utilidad ?? null, t?.margenGob ?? null,
-  ).run();
+  await write.stmt.run();
 
   await emitItemSideEffects(
-    env, slug, itemId, item.name,
-    item.parent_item?.id ? Number(item.parent_item.id) : null,
-    prevColumnsJson, JSON.stringify(columns), vendedorIds,
+    env, slug, write.itemId, item.name, write.parentItemId,
+    prevColumnsJson, write.columnsJson, write.vendedorIds,
   );
 
   return { changed: true };

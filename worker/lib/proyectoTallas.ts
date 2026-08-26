@@ -15,10 +15,10 @@ import type { RawCol } from './serialize';
 import { getItem, childrenOf, linkedItemId, ownsItem, PROYECTO_OPP_REL } from './dal';
 import {
   createSubitem, gql, fetchItemWithSubitems, addFileToColumn, fetchUserById,
-  cvText, cvNum, firstPersonId, type MentionInput, type MondayCol,
+  updateItemColumns, cvText, cvNum, firstPersonId, type MentionInput, type MondayCol,
 } from './monday';
 import { emitNotification } from './notify';
-import { upsertItem, refetchItem } from '../sync';
+import { refetchItem, mirrorUpsertStatement, emitItemSideEffects } from '../sync';
 import { BOARDS } from '../../shared/boards';
 import { isNativeId } from '../../shared/nativeId';
 import { PROYECTO_DOCUMENTO_COL } from './portalFiles';
@@ -269,7 +269,27 @@ export function needsUpdate(cols: Map<string, RawCol>, desired: Record<string, u
  * cantidad/costeo distinto se ACTUALIZA en vez de omitirse; solo se omite si de
  * verdad no cambió nada. No borra: a diferencia de import_tallas.py esto es
  * siempre aditivo/correctivo, nunca una fuente de verdad que reemplaza al
- * Proyecto completo. */
+ * Proyecto completo.
+ *
+ * PRESUPUESTO DE SUBREQUESTS (2026-08-26): una invocación de Worker tiene un
+ * tope de llamadas salientes, y ahí cuentan TANTO los fetch a Monday como cada
+ * query a D1. Este loop hace una vuelta por línea, así que el costo por línea
+ * es lo que decide cuántas tallas caben en una captura: una grande reventaba
+ * con "Too many subrequests by single Worker invocation" a media lista, con
+ * parte de las tallas ya creadas en Monday y el mensaje diciendo que no se
+ * guardó nada. Hoy son 3 subrequests por línea (la call a Monday, el contador
+ * de `monday_api_usage` y el write al mirror); antes eran 5-8, por la SELECT de
+ * columnas previas del upsert y, en las actualizaciones, un refetch completo
+ * detrás de la mutación.
+ *
+ * El write al mirror se hace línea por línea a propósito, sin juntarlo en un
+ * `env.DB.batch()`: si la invocación muriera a medias, las líneas ya creadas en
+ * Monday se quedarían sin fila en el mirror y el reintento — que deduplica
+ * contra el mirror — las volvería a crear DUPLICADAS. Un subrequest por línea
+ * es el precio de que reintentar siempre sea seguro.
+ *
+ * El techo de verdad lo pone MAX_TALLAS_POR_REQUEST (shared/dto.ts): la UI
+ * manda la captura en tandas y la ruta rechaza lo que pase de ahí. */
 // Tipo Monday de cada columna que buildTallaColumns puede llenar — necesario
 // para convertir su forma de ESCRITURA ({item_ids:[...]} etc.) al RawColumn
 // que necesita un subitem nativo (shared/nativeId.ts), que nunca pasa por un
@@ -286,11 +306,20 @@ const TALLA_COL_TYPES: Record<string, string> = {
  * prueba end-to-end de producción (2026-08-18) la OC salió a nombre de
  * "11643361506" en vez de "UNIMX". La razón social es un espejo del board
  * Proveedores, así que también se copia (worker/lib/nativeMirrors.ts). */
-async function nativeTallaColumns(env: Env, desired: Record<string, unknown>): Promise<RawColumn[]> {
+type ProveedorTexto = Awaited<ReturnType<typeof proveedorPorId>>;
+
+async function nativeTallaColumns(
+  env: Env, desired: Record<string, unknown>, cache?: Map<number, ProveedorTexto>,
+): Promise<RawColumn[]> {
   const columns = toNativeColumns(desired, TALLA_COL_TYPES);
   const proveedorId = Number(((desired[SUB_PROVEEDOR] as { item_ids?: number[] } | undefined)?.item_ids ?? [])[0]);
   if (!Number.isFinite(proveedorId) || proveedorId <= 0) return columns;
-  const { nombre, razonSocial } = await proveedorPorId(env, proveedorId);
+  let prov = cache?.get(proveedorId);
+  if (!prov) {
+    prov = await proveedorPorId(env, proveedorId);
+    cache?.set(proveedorId, prov);
+  }
+  const { nombre, razonSocial } = prov;
   const rel = columns.find(c => c.id === SUB_PROVEEDOR);
   if (rel) rel.text = nombre;
   if (razonSocial) columns.push({ id: SUB_PROVEEDOR_RZ, type: 'mirror', text: razonSocial, value: null });
@@ -326,6 +355,11 @@ export async function capturarTallas(
   let updated = 0;
   let omitted = 0;
   const seenThisRequest = new Set<string>();
+  // Proveedor→nombre/razón social resuelto UNA vez por proveedor y no por línea
+  // (una captura son decenas de tallas del mismo puñado de proveedores) —
+  // mismo patrón que proveedorCache en fetchCosteoEnrichment. Solo el camino
+  // nativo lo usa; en el real esos textos los resuelve Monday.
+  const provCache = new Map<number, ProveedorTexto>();
   for (const r of wanted) {
     const key = identityKey(r.producto, r.sku, r.color, r.talla);
     if (seenThisRequest.has(key)) { omitted++; continue; } // duplicado dentro del mismo request
@@ -335,17 +369,22 @@ export async function capturarTallas(
     const match = byKey.get(key);
     if (!match) {
       if (native) {
-        await insertNativeSubitem(env, 'proyectos_sub', proyectoId, r.producto.trim(), await nativeTallaColumns(env, desired));
+        await insertNativeSubitem(env, 'proyectos_sub', proyectoId, r.producto.trim(), await nativeTallaColumns(env, desired, provCache));
       } else {
         const subitem = await createSubitem(env, proyectoId, r.producto.trim(), desired);
-        await upsertItem(env, 'proyectos_sub', subitem);
+        // El mirror se asienta con el statement pelón en vez de upsertItem: en
+        // un ALTA no hay `columns` previas que leer (la SELECT de
+        // NEEDS_PREV_COLUMNS no puede devolver nada) ni side effect que emitir
+        // (maybeLogProductoStatus se sale de inmediato con prev = null). Son 2
+        // round-trips a D1 menos POR LÍNEA — ver la nota de presupuesto arriba.
+        await mirrorUpsertStatement(env, 'proyectos_sub', subitem).stmt.run();
       }
       created++;
       continue;
     }
     if (!needsUpdate(colsOf(match), desired)) { omitted++; continue; }
     if (native) {
-      const columns = await nativeTallaColumns(env, desired);
+      const columns = await nativeTallaColumns(env, desired, provCache);
       const byId = new Map(colsOf(match).entries());
       for (const c of columns) byId.set(c.id, c);
       await env.DB
@@ -353,12 +392,29 @@ export async function capturarTallas(
         .bind(JSON.stringify([...byId.values()]), new Date().toISOString(), BOARDS.proyectos_sub.id, match.item_id)
         .run();
     } else {
-      await gql(
-        env,
-        `mutation($b:ID!,$i:ID!,$cv:JSON!){ change_multiple_column_values(board_id:$b,item_id:$i,column_values:$cv){ id } }`,
-        { b: String(BOARDS.proyectos_sub.id), i: String(match.item_id), cv: JSON.stringify(desired) },
-      );
-      await refetchItem(env, BOARDS.proyectos_sub.id, match.item_id);
+      // La mutación ya devuelve la línea COMPLETA como quedó, así que el mirror
+      // se asienta con eso y no con un refetchItem detrás (que era otra call a
+      // Monday + sus SELECTs + su logSync, por CADA línea actualizada). Las
+      // `columns` previas para el historial de estado ya están en la mano
+      // (`match`, del mirror) — misma fuente que leería upsertItem.
+      // Lo único que se deja de hacer es el confirmOutboxEcho del refetch, y no
+      // hace falta: estas escrituras van directo a Monday, no por el outbox; si
+      // alguien más dejó un write pendiente sobre la misma línea, su propio
+      // flush lo confirma.
+      const item = await updateItemColumns(env, BOARDS.proyectos_sub.id, match.item_id, desired);
+      if (item) {
+        const write = mirrorUpsertStatement(env, 'proyectos_sub', item);
+        await write.stmt.run();
+        await emitItemSideEffects(
+          env, 'proyectos_sub', write.itemId, item.name, write.parentItemId,
+          match.columns, write.columnsJson, write.vendedorIds,
+        );
+      } else {
+        // Monday no regresó el item (defensivo, igual que flushGroup en
+        // outbox.ts): se paga el refetch de siempre antes que dejar el mirror
+        // desfasado.
+        await refetchItem(env, BOARDS.proyectos_sub.id, match.item_id);
+      }
     }
     updated++;
   }

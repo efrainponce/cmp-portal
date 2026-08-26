@@ -32,7 +32,16 @@ export function reconcileBoard(env: Env, slug: BoardSlug): Promise<{upserts:numb
 export function reconcileAll(env: Env): Promise<void>       // all 7 boards + prune deleted + sync_log
 export function refetchItem(env: Env, boardId: number, itemId: number): Promise<void> // upsert one
 export function confirmOutboxEcho(env: Env, boardId: number, itemId: number, freshColumns: MondayCol[]): Promise<void>
+export function upsertItem(env: Env, slug: BoardSlug, item: MondayItem, opts?: {skipIfUnchanged?: boolean}): Promise<{changed:boolean}>
+export function mirrorUpsertStatement(env, slug, item, now?): MirrorUpsert  // el INSERT armado, SIN ejecutar
+export function emitItemSideEffects(env, slug, itemId, name, parentItemId, prevColumnsJson, newColumnsJson, vendedorIds): Promise<void>
 ```
+
+`mirrorUpsertStatement` + `emitItemSideEffects` son `upsertItem` desarmado, para quien escribe
+muchos items seguidos y no puede pagar sus round-trips extra a D1 por item (la SELECT de
+`content_hash` y la de `columns` previas). El llamador decide qué necesita: en un ALTA no hay
+"antes" que leer ni side effect que emitir. Ver worker/lib/proyectoTallas.ts (captura de tallas)
+y worker/sync/reconcile.ts (que arma su propio batch con el mismo criterio).
 
 Upsert rules: `vendedor_ids` = JSON int array from the board's `authzCols` people columns
 (parse `value` → `personsAndTeams[].id`); subitem boards store `parent_item_id`, `vendedor_ids='[]'`

@@ -12,6 +12,7 @@
 import { useState } from 'react';
 import type { ItemDTO } from '../../../lib/api';
 import { capturarTallas, type TallaBoxInput } from '../../../lib/api';
+import { enTandas, MAX_TALLAS_POR_REQUEST } from '../../../../shared/dto';
 import { Button } from '../../../components/core/Button';
 
 // Oportunidades subitems (oportunidades_sub, 18395657607) — líneas de la
@@ -112,6 +113,7 @@ export function TallaBoxesCapture({ proyectoId, products, onSaved, titulo, hint 
   const groups = groupsFromProducts(products);
   const [state, setState] = useState<BoxState>({});
   const [saving, setSaving] = useState(false);
+  const [progreso, setProgreso] = useState<{ hechas: number; total: number } | null>(null);
   const [result, setResult] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
 
   if (groups.length === 0) return null;
@@ -132,14 +134,49 @@ export function TallaBoxesCapture({ proyectoId, products, onSaved, titulo, hint 
     if (rows.length === 0) { setResult({ kind: 'error', text: 'Captura al menos una talla con cantidad.' }); return; }
     setSaving(true);
     setResult(null);
-    const res = await capturarTallas(proyectoId, rows);
+
+    // La captura se manda en TANDAS (MAX_TALLAS_POR_REQUEST, shared/dto.ts): una
+    // invocación de Worker tiene un presupuesto acotado de subrequests y una
+    // captura grande de un solo golpe lo agotaba a media lista — "Too many
+    // subrequests by single Worker invocation", con parte de las tallas ya
+    // creadas en Monday (reportado 2026-08-26). Van en SERIE a propósito: en
+    // paralelo cada tanda vería el mismo mirror y dos tandas podrían crear la
+    // misma línea; el worker deduplica contra lo que ya existe, así que la
+    // siguiente tanda tiene que salir con la anterior ya asentada.
+    const tandas = enTandas(rows, MAX_TALLAS_POR_REQUEST);
+
+    const total = { created: 0, updated: 0, omitted: 0 };
+    let hechas = 0;
+    for (const tanda of tandas) {
+      setProgreso(tandas.length > 1 ? { hechas, total: rows.length } : null);
+      const res = await capturarTallas(proyectoId, tanda);
+      if (!res.ok) {
+        setSaving(false);
+        setProgreso(null);
+        // Aviso honesto: lo de las tandas anteriores YA quedó guardado. Volver
+        // a darle "Guardar tallas" no duplica nada (el worker reconcilia por
+        // producto+sku+color+talla), así que reintentar es el camino.
+        const guardadas = total.created + total.updated;
+        setResult({
+          kind: 'error',
+          text: (guardadas ? `Se guardaron ${guardadas} tallas y luego falló: ` : '')
+            + (res.error ?? 'No se pudo guardar.')
+            + (guardadas ? ' Vuelve a darle Guardar para terminar (no se duplican).' : ''),
+        });
+        return;
+      }
+      total.created += res.created ?? 0;
+      total.updated += res.updated ?? 0;
+      total.omitted += res.omitted ?? 0;
+      hechas += tanda.length;
+    }
     setSaving(false);
-    if (!res.ok) { setResult({ kind: 'error', text: res.error ?? 'No se pudo guardar.' }); return; }
+    setProgreso(null);
     setResult({
       kind: 'ok',
-      text: `${res.created ?? 0} tallas guardadas`
-        + (res.updated ? `, ${res.updated} actualizadas` : '')
-        + (res.omitted ? `, ${res.omitted} sin cambios` : '') + '.',
+      text: `${total.created} tallas guardadas`
+        + (total.updated ? `, ${total.updated} actualizadas` : '')
+        + (total.omitted ? `, ${total.omitted} sin cambios` : '') + '.',
     });
     setState({});
     onSaved();
@@ -166,7 +203,7 @@ export function TallaBoxesCapture({ proyectoId, products, onSaved, titulo, hint 
       </div>
       <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <Button variant={saving ? 'disabled' : 'primary'} onClick={saving ? undefined : guardar}>
-          {saving ? 'Guardando…' : 'Guardar tallas'}
+          {saving ? (progreso ? `Guardando… (${progreso.hechas}/${progreso.total})` : 'Guardando…') : 'Guardar tallas'}
         </Button>
         {result && (
           <span style={{ font: 'var(--text-label)', color: result.kind === 'ok' ? 'var(--status-ganada)' : 'var(--status-perdida)' }}>

@@ -251,6 +251,31 @@ export interface ProyectoActionResponse {
 // (vendedor), worker/lib/proyectoTallas.ts. Crea subitems del Proyecto directo
 // (mismo camino que /lineas), sin pasar por cmp-tallas; el Sheet + "Importar
 // tallas" siguen intactos como flujo paralelo.
+/** Tope de líneas por llamada. Cada línea cuesta ~3 subrequests de Cloudflare
+ * (la call a Monday, el contador de API y el write al mirror) y una invocación
+ * de Worker tiene un presupuesto acotado: una captura grande mandada de un solo
+ * golpe lo agotaba a media lista y tronaba con "Too many subrequests by single
+ * Worker invocation" (reportado 2026-08-26), dejando parte de las tallas ya
+ * creadas en Monday y el mensaje diciendo que no se guardó nada.
+ *
+ * La UI parte la captura en tandas de este tamaño (src/boards/oportunidades/
+ * proyecto/TallaCapture.tsx) y la ruta rechaza lo que pase de aquí: un cliente
+ * viejo o un script se topa con un 400 claro, no con el límite de la
+ * plataforma a medio camino. */
+export const MAX_TALLAS_POR_REQUEST = 100;
+
+/** Parte una captura en tandas de a lo más `size`, en orden y sin perder ni
+ * duplicar renglones. Vive aquí, junto al tope, porque partir mal es el peor
+ * de los errores posibles en este flujo: no truena, simplemente se guardan
+ * menos tallas de las que se capturaron y nadie se entera hasta la OC.
+ * Anclado en shared/dto.test.ts. */
+export function enTandas<T>(rows: T[], size: number = MAX_TALLAS_POR_REQUEST): T[][] {
+  if (size < 1) throw new Error('tamaño de tanda inválido');
+  const out: T[][] = [];
+  for (let i = 0; i < rows.length; i += size) out.push(rows.slice(i, i + size));
+  return out;
+}
+
 export interface TallaBoxInput {
   subitemId: number;
   producto: string;

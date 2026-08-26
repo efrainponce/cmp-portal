@@ -248,6 +248,28 @@ export async function createSubitem(
   return { ...raw, column_values: normalizeCols(raw.column_values ?? []) };
 }
 
+/** change_multiple_column_values devolviendo el item COMPLETO (mismo shape que
+ * createSubitem) — el llamador asienta el mirror con lo que Monday acaba de
+ * dejar, sin pagar un refetch aparte. Cada refetch son 2+ subrequests (la call
+ * a Monday, el contador de API, los SELECT del upsert y su logSync) y en un
+ * loop de decenas de líneas eso es justo lo que revienta el presupuesto de la
+ * invocación — ver capturarTallas en worker/lib/proyectoTallas.ts.
+ *
+ * `null` solo si Monday no regresó el item (caso defensivo): el llamador cae a
+ * refetchItem, igual que flushGroup en worker/lib/outbox.ts. */
+export async function updateItemColumns(
+  env: Env,
+  boardId: number,
+  itemId: number,
+  columnValues: Record<string, unknown>,
+): Promise<MondayItem | null> {
+  const query = `mutation($b:ID!,$i:ID!,$cv:JSON!){ change_multiple_column_values(board_id:$b,item_id:$i,column_values:$cv,create_labels_if_missing:true){ ${ITEM_FIELDS} } }`;
+  const data = await gql(env, query, { b: String(boardId), i: String(itemId), cv: JSON.stringify(columnValues) });
+  const raw = data?.change_multiple_column_values;
+  if (!raw) return null;
+  return { ...raw, column_values: normalizeCols(raw.column_values ?? []) };
+}
+
 export interface MondayUpdateAsset { id: string; name: string; file_extension: string }
 
 export interface MondayUpdate {

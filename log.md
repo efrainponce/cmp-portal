@@ -2,6 +2,44 @@
 
 ## 2026-08-26
 
+- **"Too many subrequests" al guardar tallas** (Efraín reportó el error crudo
+  de Cloudflare en la captura de tallas). No era Monday ni los datos: una
+  invocación de Worker tiene un tope de llamadas salientes y ahí cuentan TANTO
+  los fetch a Monday como CADA query a D1. `capturarTallas` da una vuelta por
+  línea y cada una costaba 5-8 subrequests, así que una captura grande —que la
+  UI mandaba entera en un solo POST— agotaba el presupuesto a media lista. Peor
+  que el error: no es atómico, las líneas ya procesadas SÍ quedaron creadas en
+  Monday mientras el mensaje decía que no se guardó nada.
+- **Costo por línea de 5-8 a 3** (la call a Monday, el contador de
+  `monday_api_usage` y el write al mirror):
+  - En un ALTA el mirror se asienta con el statement pelón
+    (`mirrorUpsertStatement`, nuevo en `worker/sync/upsert.ts`) en vez de
+    `upsertItem`: en una creación no hay `columns` previas que leer ni side
+    effect que emitir (`maybeLogProductoStatus` se sale con prev = null).
+  - En una ACTUALIZACIÓN la mutación ahora pide de vuelta el item completo
+    (`updateItemColumns`, nuevo en `worker/lib/monday.ts`) y el mirror se
+    asienta con eso — antes venía un `refetchItem` detrás por cada línea, o sea
+    otra call a Monday más sus SELECTs y su `logSync`.
+  - `upsertItem` quedó armado sobre la misma pieza, así que el SQL del mirror
+    sigue viviendo en UN solo lugar.
+- Los writes al mirror se dejaron **línea por línea a propósito**, sin juntarlos
+  en un `env.DB.batch()`: si la invocación muriera a medias, las líneas ya
+  creadas en Monday se quedarían sin fila en el mirror y el reintento —que
+  deduplica contra el mirror— las crearía DUPLICADAS. Un subrequest por línea es
+  el precio de que reintentar siempre sea seguro.
+- **Tope duro de 100 líneas por llamada** (`MAX_TALLAS_POR_REQUEST`,
+  `shared/dto.ts`): la UI parte la captura en tandas y las manda en serie
+  (contador "Guardando… (40/120)"), y la ruta rechaza con un 400 claro lo que
+  pase de ahí — un cliente viejo o un script ya no se topa con el límite de la
+  plataforma a media lista. Si una tanda falla, el aviso dice cuántas tallas SÍ
+  quedaron guardadas y que volver a darle Guardar no duplica.
+- El partidor de tandas (`enTandas`) vive junto al tope y va con test
+  (`shared/dto.test.ts`): partir mal no truena, simplemente se guardarían menos
+  tallas de las capturadas y el hueco aparecería hasta la OC.
+- Probado en local contra un proyecto NATIVO sembrado en la D1 de miniflare:
+  alta de 3 → 3 creadas, mismas 3 → 3 omitidas, una con cantidad distinta → 1
+  actualizada, 101 filas → 400, 100 filas → 100 creadas.
+
 - **Proyectos desde cero, sin Oportunidad ligada** (Efraín: "que todos puedan
   hacer proyectos sin necesidad de tener una oportunidad, para poder hacer
   órdenes de compra from scratch"). Hasta hoy un Proyecto solo nacía al GANAR

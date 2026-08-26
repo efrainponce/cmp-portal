@@ -9,6 +9,7 @@ import { BOARDS, type BoardSlug } from '../../shared/boards';
 import { isNativeId } from '../../shared/nativeId';
 import { stageAtOrAfter, stageKeyForLabel } from '../../shared/dealStages';
 import type { AjustarLineaRequest, AjustarLineaResponse, CotizacionVirtualDTO, DuplicarOportunidadRequest, DuplicarOportunidadResponse, DuplicarVersionResponse, ItemDetailDTO, QuoteVersionsResponse, TallaBoxInput, CapturarTallasResponse, CambiarProductoLineasRequest, CambiarProductoLineasResponse, CambiosProductoResponse, ProyectoImagenesResponse, EstadoHistorialResponse, ProductoResumenResponse, ProductoGeneroResponse } from '../../shared/dto';
+import { MAX_TALLAS_POR_REQUEST } from '../../shared/dto';
 import type { ProposedProductsResponse, AddProposedProductResponse } from '../../shared/productosPropuestos';
 import { getItem, childrenOf, pendingItemIds, proyectoForOportunidad, linkedItemId, PROYECTO_OPP_REL } from '../lib/dal';
 import { toItemDTO } from '../lib/serialize';
@@ -1700,6 +1701,15 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
 
     const body = await c.req.json<{ rows?: TallaBoxInput[] }>();
     const rows = Array.isArray(body.rows) ? body.rows : [];
+    // Tope duro por llamada (shared/dto.ts): la UI ya manda la captura en
+    // tandas de este tamaño; esto es la red para un cliente viejo o un script,
+    // que si no se topa con el presupuesto de subrequests de Cloudflare a media
+    // lista — con parte de las tallas YA creadas en Monday.
+    if (rows.length > MAX_TALLAS_POR_REQUEST) {
+      return c.json({
+        error: `Demasiadas tallas en una sola llamada (${rows.length}); el máximo por tanda es ${MAX_TALLAS_POR_REQUEST}.`,
+      }, 400);
+    }
 
     try {
       const result = await capturarTallas(c.env, viewer, itemId, rows);
