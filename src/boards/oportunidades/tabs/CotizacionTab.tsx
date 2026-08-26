@@ -40,7 +40,7 @@ import {
   PRODUCTO_COL, PRODUCTO_TXT_COL, PRODUCTO_REL_COL, COLOR_COL,
   EMB_STATUS_COL, EMB_LABEL_CON, EMB_LABEL_SIN,
   PRODUCTO_CONFIRM_COL, PRODUCTO_PROVEEDOR_COL, CATALOGO_TALLAS_COL, linkedProductoId, MONEY_COLS,
-  GRID_COLS_ZONA,
+  GRID_COLS_ZONA, TECHO_COL,
 } from './cotizacion/gridMeta';
 import type { ProductoChoice } from '../../../components/forms/ProductPicker';
 
@@ -145,8 +145,18 @@ export function CotizacionTab({
   // donde lo único editable es el Precio de Venta.
   const ajusteLineEdits = !lineEdits && !precioOnly
     && (me?.role === 'compras' || me?.role === 'admin') && item?.ownedByViewer !== false;
+  // Validación de Costeo: además del Precio de Venta, el TECHO se edita aquí
+  // (Efraín, 2026-08-26: "mi papá CEO debe poder modificar los techos en
+  // Validación de Costeo"). Hasta ahora el techo solo se capturaba en Costeo y
+  // en Validación se pintaba de solo lectura, así que ajustar el tope de una
+  // línea ya costeada obligaba a ir a Monday. No relaja ningún permiso: el
+  // techo ya era escribible por compras/admin en el server (`w: WAC` en
+  // shared/visibility.ts) y `writableIds` sigue mandando por rol — el vendedor
+  // ni siquiera ve la columna. Tampoco versiona: Techo no está en
+  // LINE_DEFINING_COLS (worker/lib/quoteVersions.ts), así que el write sale
+  // directo por el outbox sin reiniciar el ciclo de costeo.
   const editableCols = useMemo(
-    () => (precioOnly ? new Set<string>([COL.precio]) : inlineEditableCols(lineEdits, zonaPrivada, ajusteLineEdits)),
+    () => (precioOnly ? new Set<string>([COL.precio, TECHO_COL]) : inlineEditableCols(lineEdits, zonaPrivada, ajusteLineEdits)),
     [precioOnly, lineEdits, zonaPrivada, ajusteLineEdits],
   );
   const canAddLines = lineEdits && editable;

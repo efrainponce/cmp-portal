@@ -2,6 +2,21 @@
 
 ## 2026-08-26
 
+- **El Techo ya se edita en Validación de Costeo** (Efraín: "mi papá CEO debe
+  poder modificar los techos en Validación de Costeo"). En ese board la grid
+  estaba en modo `precioOnly`: lo único editable era Precio de Venta y el techo
+  se pintaba de solo lectura, así que ajustar el tope de una línea ya costeada
+  obligaba a ir a Monday. Ahora `editableCols` incluye `numeric_mkznpn83`
+  (`TECHO_COL`, id extraído a constante en `gridMeta.tsx`) junto al precio.
+- No relaja ningún permiso: el techo ya era escribible por compras/admin en el
+  server (`w: WAC` en `shared/visibility.ts`, capturado desde Costeo) — la
+  bandera solo dejaba de PINTAR la celda. `writableIds` sigue mandando por rol:
+  el vendedor ni siquiera ve la columna. Tampoco versiona — Techo no está en
+  `LINE_DEFINING_COLS` (`worker/lib/quoteVersions.ts`), así que el write sale
+  directo por el outbox sin reiniciar el ciclo de costeo ni archivar la vigente.
+  Verificado en local sobre OPP-0795 en Validación: cada renglón pinta ya su
+  input de Techo además del de P. venta.
+
 - **Buscar "PRO-0066" no encontraba nada** (Efraín: "por qué no encuentro el
   proyecto 0066 en Reporte de Proyectos"). El buscador del server
   (`SEARCHABLE_COLS` en `worker/lib/dal.ts`) traía el folio de **Oportunidades**

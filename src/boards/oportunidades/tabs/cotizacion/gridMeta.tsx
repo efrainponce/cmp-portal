@@ -14,6 +14,7 @@ export { EMB_STATUS_COL, EMB_LABEL_CON, EMB_LABEL_SIN } from '../../../../../sha
 const EMB_DESC_COL = 'long_text_mm1bj4pt';
 
 export const COSTO_DISTR_COL = 'numeric_mm0bph99';
+export const TECHO_COL = 'numeric_mkznpn83';   // Techo — tope de precio de la línea
 export const ETAPA_COSTEO_COL = 'color_mm084gvf';
 // Moneda del costo de proveedor. `lookup_mm11t8gj` es un MIRROR de la Moneda
 // del producto en el catálogo (Productos text_mkzp59zf) — Monday no deja
@@ -120,7 +121,7 @@ export function inlineEditableCols(lineEdits: boolean, precio = false, ajusteInl
     MONEDA_COL, IVA_PCT_COL,
     // Techo — tope de precio, capturable por Compras/admin junto con el resto
     // del costeo (Efraín, 2026-08-13). Ya escribible en visibility.ts (w: WAC).
-    'numeric_mkznpn83',
+    TECHO_COL,
   ]);
   if (lineEdits) {
     base.add(PRODUCTO_COL);
@@ -193,7 +194,7 @@ export const GRID_COLS_COSTEO: GridCol[] = [
   // Techo — tope de precio capturado en Monday (no es una fórmula del portal),
   // ya visible a compras/admin (AC) en visibility.ts pero nunca pintada como
   // columna (Efraín, 2026-08-10: "agregar la columna TECHO a la cotización").
-  { id: 'numeric_mkznpn83', label: 'Techo', align: 'right', kind: 'money', width: 85 },
+  { id: TECHO_COL, label: 'Techo', align: 'right', kind: 'money', width: 85 },
   { id: 'numeric_mm2qzzbe', label: 'P. venta sugerido', align: 'right', kind: 'money', width: 92 },
   { id: 'numeric_mkzneg3d', label: 'P. venta', align: 'right', kind: 'money', width: 82 },
   // Subtotal / IVA / Total c/IVA vivían solo en la vista de Venta: en Costeo no
