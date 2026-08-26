@@ -14,6 +14,7 @@ import type { ItemDTO } from '../../../lib/api';
 import { capturarTallas, type TallaBoxInput } from '../../../lib/api';
 import { enTandas, MAX_TALLAS_POR_REQUEST } from '../../../../shared/dto';
 import { Button } from '../../../components/core/Button';
+import { numberCellKeyDown } from '../../../components/forms/NumberCellInput';
 
 // Oportunidades subitems (oportunidades_sub, 18395657607) — líneas de la
 // cotización ganada, mismos ids que worker/lib/quoteVersions.ts.
@@ -83,8 +84,11 @@ function ProductoTallaCard({ group, boxes, onChange, onAddTalla }: {
             <span style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)' }}>{talla}</span>
             <input
               type="number" min={0} inputMode="numeric"
+              className="cmp-grid-num-input"
               value={boxes[talla] ?? ''}
               onChange={(e) => onChange(talla, e.target.value)}
+              // ↑/↓ no le suman/restan 1 a la talla (ver NumberCellInput).
+              onKeyDown={(e) => numberCellKeyDown(e, { noNegative: true })}
               style={boxInputStyle}
             />
           </label>

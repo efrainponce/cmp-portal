@@ -44,6 +44,7 @@ import {
   S_PRODUCTO, S_SKU, S_COLOR, S_TALLA, S_CANTIDAD,
   S_PROVEEDOR, S_PROVEEDOR_RAZON, S_PROVEEDOR_CORREO, S_ESTADO, S_COSTO, S_DESCUENTO, S_MONEDA, S_ENTREGA_PROV,
 } from './shared';
+import { NAV_GRID_ATTR, navCellAttrs, numberCellKeyDown } from '../../../components/forms/NumberCellInput';
 
 const PdfCanvasPreview = lazy(() =>
   import('../../../components/core/PdfCanvasPreview').then((m) => ({ default: m.PdfCanvasPreview })),
@@ -191,7 +192,7 @@ const CELL_STYLE = { font: 'var(--text-label)', color: 'var(--ink-secondary)' } 
  * Enter) contra Monday vía PATCH, y pinta el valor nuevo de inmediato aunque
  * el espejo todavía no lo refleje — mismo patrón `overrides` que la captura de
  * cantidades en TallasSection. Escape cancela. */
-function EditableCell({ value, onSave, align = 'left', type = 'text', suffix, placeholder, title, wrap }: {
+function EditableCell({ value, onSave, align = 'left', type = 'text', suffix, placeholder, title, wrap, navCol, noNegative }: {
   value: string;
   onSave: (v: string) => Promise<void>;
   align?: 'left' | 'right';
@@ -199,6 +200,11 @@ function EditableCell({ value, onSave, align = 'left', type = 'text', suffix, pl
   suffix?: string;
   placeholder?: string;
   title?: string;
+  /** Columna numérica navegable: ↑/↓ abren la misma celda del renglón vecino
+   * en vez de sumarle/restarle 1 al número (ver NumberCellInput). */
+  navCol?: string;
+  /** Cantidad: no hay negativo posible. */
+  noNegative?: boolean;
   /** Deja el valor en varias líneas en vez de recortarlo con elipsis — para
    * Producto, cuya descripción se lleva medio renglón ("POLICIA VIAL 27 CM DE
    * BASE BORDADO CON HILO DORADO…") y recortada no se puede ni revisar. */
@@ -228,10 +234,16 @@ function EditableCell({ value, onSave, align = 'left', type = 'text', suffix, pl
       <input
         autoFocus
         type={type}
+        // Sin esto el spinner nativo se dibuja en la celda y un clic en su
+        // flechita de abajo era un -1 silencioso (Efraín, 2026-08-26).
+        className={type === 'number' ? 'cmp-grid-num-input' : undefined}
+        {...(type === 'number' && navCol ? navCellAttrs(navCol) : {})}
+        {...(type === 'number' && noNegative ? { min: 0 } : {})}
         value={draft}
         onChange={e => setDraft(e.target.value)}
         onBlur={commit}
         onKeyDown={e => {
+          if (type === 'number') { numberCellKeyDown(e, { noNegative, onEscape: () => setDraft(null) }); return; }
           if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
           if (e.key === 'Escape') setDraft(null);
         }}
@@ -249,6 +261,7 @@ function EditableCell({ value, onSave, align = 'left', type = 'text', suffix, pl
     <div
       onClick={() => setDraft(shown)}
       title={title ?? 'Clic para editar'}
+      {...(type === 'number' && navCol ? navCellAttrs(navCol) : {})}
       style={{
         ...CELL_STYLE, textAlign: align, cursor: 'text', minWidth: 0,
         borderRadius: 'var(--radius-md)', padding: '3px 5px',
@@ -533,13 +546,14 @@ function ProveedorLineaRow({ l, proyectoId, canEdit, historial, cambio, lineasEn
         <div style={CELL_STYLE}>{l.cols[S_TALLA]?.text || '—'}</div>
         {canEdit ? (
           <>
-            <EditableCell value={val(S_CANTIDAD)} onSave={save(S_CANTIDAD)} align="right" type="number" placeholder="0" />
-            <EditableCell value={costoRaw} onSave={save(S_COSTO)} align="right" type="number" placeholder="Sin costo" title="Costo que se le paga al proveedor — va en el PDF de la OC" />
+            <EditableCell value={val(S_CANTIDAD)} onSave={save(S_CANTIDAD)} align="right" type="number" placeholder="0" navCol={S_CANTIDAD} noNegative />
+            <EditableCell value={costoRaw} onSave={save(S_COSTO)} align="right" type="number" placeholder="Sin costo" title="Costo que se le paga al proveedor — va en el PDF de la OC" navCol={S_COSTO} noNegative />
             <EditableCell value={moneda} onSave={save(S_MONEDA)} placeholder="MXN" />
             <EditableCell
               value={fraccionToPct(val(S_DESCUENTO))}
               onSave={saveDescuento}
               align="right" type="number" suffix="%"
+              navCol={S_DESCUENTO}
               title="En porcentaje: 18 = 18%"
             />
           </>
@@ -1130,7 +1144,7 @@ function ProveedorCard({ group, proyecto, oppId, reload, canEdit, activity, nota
           </div>
           {/* El ref envuelve SOLO las filas: el arrastre ubica la fila destino
               midiendo los hijos de este contenedor. */}
-          <div ref={reorden.contenedor}>
+          <div ref={reorden.contenedor} {...NAV_GRID_ATTR}>
             {reorden.ordenadas.map(l => (
               <ProveedorLineaRow
                 key={l.id}

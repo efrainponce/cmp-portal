@@ -26,6 +26,7 @@ import { latestFileUrl, NO_FIRMADAS_COL, FIRMADAS_COL, SOLICITUDES_COL } from '.
 import { VersionChips } from './cotizacion/VersionChips';
 import { SnapshotTable } from './cotizacion/SnapshotTable';
 import { TotalsRow } from './cotizacion/TotalsRow';
+import { NAV_GRID_ATTR } from '../../../components/forms/NumberCellInput';
 import { CotizacionPdfRow } from './cotizacion/CotizacionPdfRow';
 import { CondicionesCotizacion } from './cotizacion/CondicionesCotizacion';
 import { MobileQuoteRow } from './cotizacion/MobileQuoteRow';
@@ -696,7 +697,7 @@ export function CotizacionTab({
       )}
       <CotizacionPdfRow oppId={oppId} item={item} hasSolicitud={hasSolicitud} hasSinFirmar={hasSinFirmar} hasFirmada={hasFirmada} hasLineas={products.length > 0} onInventarioUploaded={onSaved} />
       {isMobile ? (
-        <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-xl)', overflow: 'hidden' }}>
+        <div {...NAV_GRID_ATTR} style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-xl)', overflow: 'hidden' }}>
           {products.map((p, lineIdx) => (
             <MobileQuoteRow
               key={p.id}
@@ -757,7 +758,7 @@ export function CotizacionTab({
           )}
         </div>
       ) : (
-      <div style={{ ...gridWrapStyle, maxWidth: '100%', overflowX: 'auto', border: '1px solid var(--border)', borderRadius: 'var(--radius-xl)' }}>
+      <div {...NAV_GRID_ATTR} style={{ ...gridWrapStyle, maxWidth: '100%', overflowX: 'auto', border: '1px solid var(--border)', borderRadius: 'var(--radius-xl)' }}>
         <div>
           <div style={{
             ...gridWrapStyle,

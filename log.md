@@ -2,6 +2,40 @@
 
 ## 2026-08-26
 
+- **Las flechas ↑/↓ ya no le restan 1 a las cantidades** (Efraín, video de una
+  cantidad en `-4` con el subtotal en `$0` y la utilidad en negativo). Un
+  `<input type="number">` nativo trata ↑/↓ como spinner: quien viene de Excel o
+  de Monday hace clic en una celda y presiona ↓ para "bajar al siguiente
+  renglón", y en vez de bajar le RESTA 1 al valor — cuatro veces y quedó en -4.
+  Como estas grids guardan en `blur`, el clic en la siguiente celda mandaba ese
+  número a Monday sin que nadie lo escribiera. Verificado en Chromium: 4 ↓ sobre
+  un input numérico daban exactamente `-4`.
+- Segundo camino del mismo bug, este sí a puro clic: el `EditableCell` de las
+  líneas de OC (`OrdenesSection.tsx`) no traía `cmp-grid-num-input`, así que
+  dibujaba el spinner nativo dentro de la celda y un clic en su flechita de
+  abajo era un `-1` silencioso. Descartada la rueda del mouse: Chrome 149 ya
+  scrollea la página en vez de mover el número (medido, `scrollY: 300` y el
+  valor intacto).
+- Fix en `src/components/forms/NumberCellInput.tsx`, el único `type="number"`
+  que deben usar las grids editables: ↑/↓ (y Enter) NUNCA tocan el valor —
+  mueven el foco al mismo campo del renglón vecino, que es lo que la gente
+  estaba intentando hacer. La navegación va por DOM (`data-nav-col` en la celda,
+  `data-cmp-navgrid` en el contenedor) y no por índices de renglón, así funciona
+  igual en la grid de cotización (inputs siempre visibles) y en la de OC (celdas
+  que abren editor al hacer clic: al vecino se le manda `click()`). Enter sin
+  vecino sigue confirmando con `blur`.
+- Aplicado en cotización desktop y mobile (`QuoteRow`, `MobileQuoteRow`), líneas
+  de OC (cantidad, costo, descuento) y las cajas de tallas (`TallasSection`,
+  `TallaCapture`, solo blindaje: van en horizontal, no hay renglón vecino).
+  `noNegative` en cantidades y tallas bloquea teclear "-". Los inputs numéricos
+  de los MODALES se quedaron como estaban a propósito: ahí el valor se ve antes
+  de dar Guardar, el daño silencioso es de las grids que escriben en `blur`.
+- Verificado end-to-end contra la app local con un clon NATIVO (id ≥ 9e11, el
+  worker no le habla a Monday) y las escrituras bloqueadas en el navegador:
+  en cotización ↓ deja el valor en `100` y baja el foco, ↑ regresa, 4 ↓ seguidas
+  siguen en `100`; en OC ↓ cierra el editor de la celda y abre el del renglón de
+  abajo, uno a la vez. Filas sembradas borradas al terminar.
+
 - **El Techo en Validación es solo del CEO, no de todo admin** (Efraín, minutos
   después de lo de abajo: "sí se puede para mi papá Efraín pero no Eli"). La
   celda se pinta editable por CORREO, no por rol —

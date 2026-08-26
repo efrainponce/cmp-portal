@@ -10,6 +10,7 @@ import { AjusteLabelBadge, MonoTag, StatusBadge } from '../../../../components/c
 import { COL } from '../../../../lib/costeoCalc';
 import { LineDetailPanel } from './LineDetailPanel';
 import { ProductPicker, type ProductoChoice } from '../../../../components/forms/ProductPicker';
+import { NumberCellInput } from '../../../../components/forms/NumberCellInput';
 import {
   type GridCol, type RowEditState, marginColor, suggestedPrecio23, numFrom, displayProducto, cellValue,
   inputStyle, valueChipStyle, ETAPA_COSTEO_COLORS, etapaCosteoSelectStyle, computeLineBanner,
@@ -126,9 +127,9 @@ function MobileQuoteRowInner({
     if (writable && c.id === COL.cantidad) {
       const raw = state.editing[c.id] ?? (p.cols[c.id]?.text ?? '');
       return (
-        <input
-          type="number"
-          className="cmp-grid-num-input"
+        <NumberCellInput
+          navCol={c.id}
+          noNegative
           value={raw}
           disabled={!!state.saving[c.id]}
           onChange={(e) => onEdit(p, c.id, e.target.value)}
@@ -186,9 +187,8 @@ function MobileQuoteRowInner({
     if (writable) {
       const raw = state.editing[c.id] ?? (p.cols[c.id]?.text ?? '');
       return (
-        <input
-          type="number"
-          className="cmp-grid-num-input"
+        <NumberCellInput
+          navCol={c.id}
           value={raw}
           disabled={!!state.saving[c.id]}
           onChange={(e) => onEdit(p, c.id, e.target.value)}

@@ -15,6 +15,7 @@ import {
   ProyectoLinks, ProyectoActionBar, FileList, Shell, parseFiles, toR2Files,
   S_PRODUCTO, S_SKU, S_COLOR, S_TALLA, S_CANTIDAD,
 } from './shared';
+import { numberCellKeyDown } from '../../../components/forms/NumberCellInput';
 
 interface CantidadEdit { draft?: string; saving?: boolean; error?: string }
 
@@ -221,10 +222,12 @@ function TallaBoxCard({ group, cotizado, canEditCantidad, canReport, proyectoId,
               {canEditCantidad ? (
                 <input
                   type="number" min={0} inputMode="numeric"
+                  className="cmp-grid-num-input"
                   value={st?.draft ?? cantidadOf(r)}
                   onChange={e => setEdits(p => ({ ...p, [r.id]: { ...p[r.id], draft: e.target.value } }))}
                   onBlur={() => commit(r)}
-                  onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                  // ↑/↓ no le suman/restan 1 a la talla; Enter sigue confirmando.
+                  onKeyDown={e => numberCellKeyDown(e, { noNegative: true })}
                   disabled={st?.saving}
                   style={{ ...boxInputStyle, border: `1px solid ${st?.error ? 'var(--status-perdida)' : 'var(--border)'}` }}
                 />
