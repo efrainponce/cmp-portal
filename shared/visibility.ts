@@ -321,3 +321,30 @@ export const readableCols = (b: BoardSlug, r: Role): string[] =>
  * endpoint entero (worker/routes/boards.ts → 403); la UI solo esconde el tab
  * y los accesos (📋/🕐) para no ofrecer algo que el server va a negar. */
 export const canReadActivity = (r: Role) => r === 'compras' || r === 'admin';
+
+/** ¿Esta persona puede editar el TECHO (`numeric_mkznpn83`) desde el board de
+ * VALIDACIÓN DE COSTEO? Por CORREO, no por rol — es la segunda whitelist por
+ * correo del portal (la otra es la zona privada, worker/lib/zonas.ts) y por la
+ * misma razón: "Actuar en Monday como" presta el `monday_user_id`, así que el
+ * id no identifica a la persona; el correo sí.
+ *
+ * Por qué no es `w: [...]` de la columna: el techo lo captura Compras en el
+ * board de Costeo desde siempre (`w: WAC` arriba) y eso NO cambia. Lo que se
+ * decide aquí es solo si la celda se pinta editable en VALIDACIÓN, donde el
+ * resto de la línea ya está congelada y lo único abierto es el Precio de
+ * Venta. Un board no viaja en el PATCH (la ruta es `oportunidades_sub` venga
+ * de donde venga), así que esto es una regla de la UI, no un candado del
+ * server: quien ya podía escribir el techo desde Costeo lo sigue pudiendo.
+ *
+ * La lista es el CEO y nadie más (Efraín, 2026-08-26: "todos los admins en
+ * validación de costeo deben poder cambiar el techo" → corregido minutos
+ * después a "sí se puede para mi papá Efraín pero no Eli"). Sus DOS correos,
+ * un solo id de Monday. Bajo "ver como" el viewer ya es el suplantado
+ * (worker/mw/identity.ts), así que verlo como él enseña la celda —así se
+ * prueba sin agregar a nadie a la lista. */
+const TECHO_VALIDACION_EMAILS: ReadonlySet<string> = new Set([
+  'efrainponce@mexicanadeproteccion.com',
+  'efrain.ponce@mexicanadeproteccion.com',
+]);
+export const puedeEditarTechoEnValidacion = (email: string | null | undefined): boolean =>
+  !!email && TECHO_VALIDACION_EMAILS.has(email.trim().toLowerCase());

@@ -3,7 +3,7 @@
 // readableCols(). Un cambio accidental aquí no lo atrapa el typecheck (todo son
 // strings), así que estos tests anclan las reglas que importan.
 import { describe, it, expect } from 'vitest';
-import { VISIBILITY, canRead, canReadActivity, canReadBoard, canWrite, readableCols } from './visibility';
+import { VISIBILITY, canRead, canReadActivity, canReadBoard, canWrite, readableCols, puedeEditarTechoEnValidacion } from './visibility';
 import { COLUMN_META } from './column-meta.gen';
 import type { BoardSlug } from './boards';
 import type { Role } from './types';
@@ -320,5 +320,37 @@ describe('color y cantidad — Compras también los escribe (Efraín, 2026-08-19
       expect(canWrite('oportunidades_sub', col, 'compras'), col).toBe(false);
     }
     expect(canWrite('oportunidades_sub', 'numeric_mkzneg3d', 'compras')).toBe(false);
+  });
+});
+
+describe('Techo en Validación de Costeo — por correo, solo el CEO (2026-08-26)', () => {
+  // "Sí se puede para mi papá Efraín pero no Eli": la celda de Techo se pinta
+  // editable en el board de Validación SOLO para el CEO, aunque Elisa (y PAM)
+  // también sean admin. Va por correo porque "Actuar en Monday como" presta el
+  // monday_user_id — mismo criterio que la zona privada (worker/lib/zonas.ts).
+  it('los dos correos del CEO sí', () => {
+    expect(puedeEditarTechoEnValidacion('efrainponce@mexicanadeproteccion.com')).toBe(true);
+    expect(puedeEditarTechoEnValidacion('efrain.ponce@mexicanadeproteccion.com')).toBe(true);
+    expect(puedeEditarTechoEnValidacion('  Efrain.Ponce@Mexicanadeproteccion.com ')).toBe(true);
+  });
+
+  it('los demás admins no — Elisa incluida', () => {
+    for (const email of [
+      'administracion@mexicanadeproteccion.com',   // Elisa Vallado (admin)
+      'compras@mexicanadeproteccion.com',          // Pamela Ricalde (admin)
+      'salinasefrain@mexicanadeproteccion.com',    // Efrain Ponce Salinas (admin)
+      'ventas@mexicanadeproteccion.com',
+      '', null, undefined,
+    ]) {
+      expect(puedeEditarTechoEnValidacion(email), String(email)).toBe(false);
+    }
+  });
+
+  it('no cambia el candado del server: compras/admin siguen escribiendo el Techo desde Costeo', () => {
+    // Esta whitelist es de UI (dónde se pinta la celda). El write path no sabe
+    // de qué board viene el PATCH, así que `w` no se tocó.
+    expect(canWrite('oportunidades_sub', 'numeric_mkznpn83', 'compras')).toBe(true);
+    expect(canWrite('oportunidades_sub', 'numeric_mkznpn83', 'admin')).toBe(true);
+    expect(canWrite('oportunidades_sub', 'numeric_mkznpn83', 'vendedor')).toBe(false);
   });
 });

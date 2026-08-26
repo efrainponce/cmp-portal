@@ -2,6 +2,23 @@
 
 ## 2026-08-26
 
+- **El Techo en Validación es solo del CEO, no de todo admin** (Efraín, minutos
+  después de lo de abajo: "sí se puede para mi papá Efraín pero no Eli"). La
+  celda se pinta editable por CORREO, no por rol —
+  `puedeEditarTechoEnValidacion` en `shared/visibility.ts`, los dos correos del
+  CEO (un solo id de Monday)—, porque "Actuar en Monday como" presta el
+  `monday_user_id` y el id no identifica a la persona: mismo criterio que la
+  zona privada (`worker/lib/zonas.ts`). Elisa y PAM siguen siendo admin y no
+  ven ese input.
+- **No es un candado nuevo, es dónde se pinta la celda.** El PATCH no sabe de
+  qué board viene (la ruta es `oportunidades_sub` siempre), así que `w: WAC` no
+  se tocó: Compras y cualquier admin siguen capturando el techo desde **Costeo**
+  exactamente como antes. Si el techo tuviera que cerrársele a Elisa TAMBIÉN en
+  Costeo, es otra decisión y le pega a Compras — no se toma sola. Anclado en
+  `shared/visibility.test.ts` (los dos correos sí; Elisa, PAM, el correo vacío,
+  no) y verificado en local con `X-Impersonate-Email`: como el CEO la grid pinta
+  4 inputs de Techo + 4 de P. venta; como Elisa, solo los 4 de P. venta.
+
 - **El Techo ya se edita en Validación de Costeo** (Efraín: "mi papá CEO debe
   poder modificar los techos en Validación de Costeo"). En ese board la grid
   estaba en modo `precioOnly`: lo único editable era Precio de Venta y el techo

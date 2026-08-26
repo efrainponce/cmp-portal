@@ -21,7 +21,7 @@ import { previewRow, COL } from '../../../lib/costeoCalc';
 import { isNativeId } from '../../../../shared/nativeId';
 import { useIsMobile } from '../../../lib/useIsMobile';
 import { useMe } from '../../../lib/useMe';
-import { canReadActivity } from '../../../../shared/visibility';
+import { canReadActivity, puedeEditarTechoEnValidacion } from '../../../../shared/visibility';
 import { latestFileUrl, NO_FIRMADAS_COL, FIRMADAS_COL, SOLICITUDES_COL } from './DocumentacionTab';
 import { VersionChips } from './cotizacion/VersionChips';
 import { SnapshotTable } from './cotizacion/SnapshotTable';
@@ -149,15 +149,23 @@ export function CotizacionTab({
   // (Efraín, 2026-08-26: "mi papá CEO debe poder modificar los techos en
   // Validación de Costeo"). Hasta ahora el techo solo se capturaba en Costeo y
   // en Validación se pintaba de solo lectura, así que ajustar el tope de una
-  // línea ya costeada obligaba a ir a Monday. No relaja ningún permiso: el
-  // techo ya era escribible por compras/admin en el server (`w: WAC` en
-  // shared/visibility.ts) y `writableIds` sigue mandando por rol — el vendedor
-  // ni siquiera ve la columna. Tampoco versiona: Techo no está en
-  // LINE_DEFINING_COLS (worker/lib/quoteVersions.ts), así que el write sale
-  // directo por el outbox sin reiniciar el ciclo de costeo.
+  // línea ya costeada obligaba a ir a Monday. Va por CORREO y no por rol —
+  // solo el CEO, "no Eli" aunque también sea admin (mismo día, minutos
+  // después): shared/visibility.ts puedeEditarTechoEnValidacion.
+  //
+  // No relaja ningún permiso ni le quita nada a nadie: el techo ya era
+  // escribible por compras/admin en el server (`w: WAC` en
+  // shared/visibility.ts) y se sigue capturando en Costeo igual que siempre —
+  // esto solo decide dónde se PINTA la celda. `writableIds` sigue mandando por
+  // rol encima de esto. Tampoco versiona: Techo no está en LINE_DEFINING_COLS
+  // (worker/lib/quoteVersions.ts), así que el write sale directo por el outbox
+  // sin reiniciar el ciclo de costeo.
+  const techoEnValidacion = precioOnly && puedeEditarTechoEnValidacion(me?.email);
   const editableCols = useMemo(
-    () => (precioOnly ? new Set<string>([COL.precio, TECHO_COL]) : inlineEditableCols(lineEdits, zonaPrivada, ajusteLineEdits)),
-    [precioOnly, lineEdits, zonaPrivada, ajusteLineEdits],
+    () => (precioOnly
+      ? new Set<string>(techoEnValidacion ? [COL.precio, TECHO_COL] : [COL.precio])
+      : inlineEditableCols(lineEdits, zonaPrivada, ajusteLineEdits)),
+    [precioOnly, techoEnValidacion, lineEdits, zonaPrivada, ajusteLineEdits],
   );
   const canAddLines = lineEdits && editable;
 
