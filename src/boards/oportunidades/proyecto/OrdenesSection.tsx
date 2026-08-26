@@ -20,7 +20,7 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import {
   proyectoAction, patchItem, deleteProyectoLinea, getActivity, getOcNotas, saveOcNota,
-  listOcImagenes, ocImagenUrl, uploadOcImagen, restablecerOcImagen, listOcDeProyecto,
+  listOcImagenes, ocImagenUrl, uploadOcImagen, restablecerOcImagen, listOcDeProyecto, reordenarLineasOc,
   getCambiosProducto, listProyectoImagenes, proyectoImagenUrl, uploadProyectoImagen, deleteProyectoImagen,
   type ActivityEntryDTO, type CambioProductoDTO, type ItemDetailDTO, type ItemDTO, type OcImagenDTO,
   type OcEmitidaDTO, type ProyectoImagenDTO,
@@ -170,11 +170,13 @@ export function findLatestOcFile(
   return { conCostos, sinCostos };
 }
 
-// 11 columnas en el ancho del drawer (~856px útiles con maxWidth 920): las de
+// 12 columnas en el ancho del drawer (~856px útiles con maxWidth 920): las de
 // acciones van al final y TIENEN que caber sin scroll horizontal, o el reloj y
 // el borrar quedan invisibles. Producto se lleva el sobrante y parte el texto.
-const PROVEEDOR_GRID_TEMPLATE = '1.25fr 0.7fr 0.6fr 0.5fr 0.4fr 0.75fr 0.45fr 0.45fr 1fr 0.8fr 0.5fr';
+// La primera es el asa de arrastre (fija en px: es un icono, no crece).
+const PROVEEDOR_GRID_TEMPLATE = '18px 1.25fr 0.7fr 0.6fr 0.5fr 0.4fr 0.75fr 0.45fr 0.45fr 1fr 0.8fr 0.5fr';
 const PROVEEDOR_GRID_COLS: { label: string; align: 'left' | 'right' }[] = [
+  { label: '', align: 'left' },
   { label: 'Producto', align: 'left' }, { label: 'SKU', align: 'left' },
   { label: 'Color', align: 'left' }, { label: 'Talla', align: 'left' },
   { label: 'Cant.', align: 'right' }, { label: 'Costo Distr. C/U', align: 'right' },
@@ -345,15 +347,90 @@ function ChipCambio({ cambio }: { cambio: CambioProductoDTO }) {
   );
 }
 
+/** Arrastrar para reacomodar las líneas de UNA tarjeta de proveedor (Efraín,
+ * 2026-08-25: "un dragger hasta la izquierda para subir y bajar las filas, por
+ * proveedor; eso cambia en el PDF también"). El orden se guarda en D1
+ * (PUT /orden-lineas → worker/lib/itemOrder.ts) y de ahí lo lee el generador
+ * del PDF, así que lo que Compras acomoda aquí es lo que el proveedor lee en
+ * la OC.
+ *
+ * Pointer events y no drag&drop de HTML5: el mismo código sirve con dedo y con
+ * mouse (en iOS el drag nativo no existe), y `setPointerCapture` deja de
+ * depender de que el puntero siga encima de la fila. El reacomodo se pinta al
+ * vuelo y solo se manda al server al soltar — no una llamada por pixel. */
+function useReordenar(lineas: ItemDTO[], guardar: (ids: string[]) => Promise<{ ok: boolean; error?: string }>) {
+  const [ordenLocal, setOrdenLocal] = useState<string[] | null>(null);
+  const [arrastrando, setArrastrando] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const contenedor = useRef<HTMLDivElement>(null);
+  // Orden vivo del arrastre: se lee y escribe dentro del mismo pointermove, y
+  // el estado de React llega un render tarde para eso.
+  const vivo = useRef<string[]>([]);
+
+  // Las líneas que el server todavía no acomoda (o que nacieron después del
+  // arrastre) se van al final SIN romper su orden relativo — sort es estable.
+  const ordenadas = useMemo(() => {
+    if (!ordenLocal) return lineas;
+    const pos = new Map(ordenLocal.map((id, i) => [id, i]));
+    return [...lineas].sort((a, b) => (pos.get(a.id) ?? ordenLocal.length) - (pos.get(b.id) ?? ordenLocal.length));
+  }, [lineas, ordenLocal]);
+
+  const onPointerDown = (id: string) => (e: React.PointerEvent) => {
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    vivo.current = ordenadas.map(l => l.id);
+    setArrastrando(id);
+    setError(null);
+  };
+
+  const onPointerMove = (e: React.PointerEvent) => {
+    if (!arrastrando || !contenedor.current) return;
+    const filas = [...contenedor.current.children] as HTMLElement[];
+    const desde = vivo.current.indexOf(arrastrando);
+    const hasta = filas.findIndex(f => {
+      const r = f.getBoundingClientRect();
+      return e.clientY >= r.top && e.clientY <= r.bottom;
+    });
+    if (desde < 0 || hasta < 0 || hasta === desde) return;
+    const next = [...vivo.current];
+    next.splice(hasta, 0, ...next.splice(desde, 1));
+    vivo.current = next;
+    setOrdenLocal(next);
+  };
+
+  const onPointerUp = async () => {
+    if (!arrastrando) return;
+    setArrastrando(null);
+    const ids = vivo.current;
+    // Soltar en el mismo lugar no manda nada (el asa también se usa de tope
+    // para el scroll horizontal de la tabla).
+    if (ids.join() === lineas.map(l => l.id).join()) return;
+    const res = await guardar(ids);
+    if (!res.ok) {
+      setOrdenLocal(null); // vuelve al orden del server, que es el que sigue vigente
+      setError(res.error ?? 'No se pudo guardar el orden.');
+    }
+  };
+
+  return { ordenadas, arrastrando, error, contenedor, onPointerDown, onPointerMove, onPointerUp };
+}
+
 const ICON_BTN_STYLE = {
   cursor: 'pointer', font: 'var(--text-caption)', color: 'var(--ink-tertiary)',
   padding: '2px 4px', borderRadius: 'var(--radius-md)', userSelect: 'none',
 } as const;
 
-function ProveedorLineaRow({ l, proyectoId, canEdit, historial, cambio, lineasEnGrupo, onChanged }: {
+function ProveedorLineaRow({ l, proyectoId, canEdit, historial, cambio, lineasEnGrupo, onChanged, arrastre }: {
   l: ItemDTO; proyectoId: string; canEdit: boolean; historial: ActivityEntryDTO[];
   /** Marca "esta línea ya no es el producto cotizado" (worker/lib/proyectoLineaProducto.ts). */
   cambio?: CambioProductoDTO; lineasEnGrupo: number; onChanged: () => void;
+  /** Asa de arrastre (useReordenar). Ausente cuando la tarjeta es de solo lectura. */
+  arrastre?: {
+    activa: boolean;
+    onPointerDown: (e: React.PointerEvent) => void;
+    onPointerMove: (e: React.PointerEvent) => void;
+    onPointerUp: (e: React.PointerEvent) => void;
+  };
 }) {
   // Overrides locales: el espejo D1 tarda en confirmar el write a Monday, así
   // que la celda muestra lo recién guardado en vez de regresar al valor viejo
@@ -393,8 +470,32 @@ function ProveedorLineaRow({ l, proyectoId, canEdit, historial, cambio, lineasEn
   };
 
   return (
-    <div style={{ borderTop: '1px solid var(--border-subtle)' }}>
+    <div style={{
+      borderTop: '1px solid var(--border-subtle)',
+      // La fila que se está arrastrando se despega del resto: sin esto, con
+      // renglones de dos líneas, no se distingue cuál va viajando.
+      background: arrastre?.activa ? 'var(--bg-raised)' : undefined,
+      boxShadow: arrastre?.activa ? 'var(--shadow-md, 0 2px 8px rgba(0,0,0,.12))' : undefined,
+      position: 'relative', zIndex: arrastre?.activa ? 1 : undefined,
+    }}>
       <div style={{ display: 'grid', gridTemplateColumns: PROVEEDOR_GRID_TEMPLATE, gap: 8, padding: '6px 12px', alignItems: 'center' }}>
+        {arrastre ? (
+          <span
+            onPointerDown={arrastre.onPointerDown}
+            onPointerMove={arrastre.onPointerMove}
+            onPointerUp={arrastre.onPointerUp}
+            onPointerCancel={arrastre.onPointerUp}
+            title="Arrastra para subir o bajar esta línea — así sale ordenada en el PDF de la OC"
+            style={{
+              ...ICON_BTN_STYLE, alignSelf: 'start', marginTop: 2,
+              cursor: arrastre.activa ? 'grabbing' : 'grab',
+              // Sin esto el dedo hace scroll de la página en vez de arrastrar.
+              touchAction: 'none',
+            }}
+          >
+            ⠿
+          </span>
+        ) : <span />}
         {/* Producto y Color se corrigen aquí antes de mandar la OC (Efraín,
             2026-08-19) — son justo lo que el proveedor lee en el documento.
             Talla no: cuadra contra el desglose de tallas. */}
@@ -889,6 +990,12 @@ function ProveedorCard({ group, proyecto, oppId, reload, canEdit, activity, nota
   const [agregarLinea, setAgregarLinea] = useState(false);
   const [metodoPago, setMetodoPago] = useState(proyecto.cols[P_METODO_PAGO]?.text ?? '');
   const [condPago, setCondPago] = useState(proyecto.cols[P_COND_PAGO]?.text ?? '');
+  // Orden de las líneas de ESTA tarjeta — el que sale impreso en la OC.
+  const reorden = useReordenar(group.lineas, async (ids) => {
+    const res = await reordenarLineasOc(proyecto.id, ids);
+    if (res.ok) reload();
+    return res;
+  });
   const cantidadTotal = group.lineas.reduce((s, r) => s + (Number(r.cols[S_CANTIDAD]?.text?.replace(/,/g, '')) || 0), 0);
   // Total de la OC con el costo YA editado — es el número contra el que Compras
   // revisa que no se le fue un cero de más al capturar (Efraín, 2026-08-18).
@@ -1017,24 +1124,37 @@ function ProveedorCard({ group, proyecto, oppId, reload, canEdit, activity, nota
         </div>
       )}
       <div style={{ overflowX: 'auto' }}>
-        <div style={{ minWidth: 840 }}>
+        <div style={{ minWidth: 860 }}>
           <div style={{ display: 'grid', gridTemplateColumns: PROVEEDOR_GRID_TEMPLATE, gap: 8, padding: '8px 12px', font: 'var(--text-caption)', color: 'var(--ink-tertiary)' }}>
-            {PROVEEDOR_GRID_COLS.map(c => <div key={c.label} style={{ textAlign: c.align }}>{c.label}</div>)}
+            {PROVEEDOR_GRID_COLS.map((c, i) => <div key={i} style={{ textAlign: c.align }}>{c.label}</div>)}
           </div>
-          {group.lineas.map(l => (
-            <ProveedorLineaRow
-              key={l.id}
-              l={l}
-              proyectoId={proyecto.id}
-              canEdit={canEdit}
-              historial={activity.filter(e => e.itemId === l.id)}
-              cambio={cambios.get(l.id)}
-              lineasEnGrupo={tamGrupo.get(claveGrupo(l.cols[S_PRODUCTO]?.text || l.name, l.cols[S_COLOR]?.text || '')) ?? 1}
-              onChanged={reload}
-            />
-          ))}
+          {/* El ref envuelve SOLO las filas: el arrastre ubica la fila destino
+              midiendo los hijos de este contenedor. */}
+          <div ref={reorden.contenedor}>
+            {reorden.ordenadas.map(l => (
+              <ProveedorLineaRow
+                key={l.id}
+                l={l}
+                proyectoId={proyecto.id}
+                canEdit={canEdit}
+                historial={activity.filter(e => e.itemId === l.id)}
+                cambio={cambios.get(l.id)}
+                lineasEnGrupo={tamGrupo.get(claveGrupo(l.cols[S_PRODUCTO]?.text || l.name, l.cols[S_COLOR]?.text || '')) ?? 1}
+                onChanged={reload}
+                arrastre={canEdit ? {
+                  activa: reorden.arrastrando === l.id,
+                  onPointerDown: reorden.onPointerDown(l.id),
+                  onPointerMove: reorden.onPointerMove,
+                  onPointerUp: reorden.onPointerUp,
+                } : undefined}
+              />
+            ))}
+          </div>
         </div>
       </div>
+      {reorden.error && (
+        <div style={{ padding: '6px 14px 0', font: 'var(--text-caption)', color: 'var(--status-perdida)' }}>{reorden.error}</div>
+      )}
       {canEdit && group.proveedorId && (
         <div style={{ padding: '8px 12px 12px' }}>
           <div

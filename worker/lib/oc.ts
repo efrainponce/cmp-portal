@@ -25,6 +25,7 @@ import { registrarReserva, cerrarOc, fallarOc } from './ocLedger';
 import { registrarArchivo } from './archivoLog';
 import { refetchItemTree } from '../sync';
 import { getOcNota } from './ocNotas';
+import { ordenPortal } from './itemOrder';
 
 // Proyecto (18395657594) — ids verificados contra shared/column-meta.gen.ts,
 // mismos que cmp-tallas api/generate_oc.py.
@@ -281,6 +282,20 @@ export interface GenerarOcResult {
   ordenes: OrdenResult[];
 }
 
+/** Acomoda los subitems que vinieron de Monday como los muestra el portal
+ * (manual si Compras ya arrastró, si no el de Monday). Las líneas sin renglón
+ * en `item_order` —recién creadas, todavía sin relectura del árbol— se quedan
+ * al final, en el orden en que Monday las regresó. */
+async function ordenarComoElPortal(env: Env, proyectoId: number, subitems: MondayItem[]): Promise<MondayItem[]> {
+  const orden = await ordenPortal(env, BOARDS.proyectos_sub.id, proyectoId);
+  if (orden.size === 0) return subitems;
+  const alFinal = subitems.length + orden.size;
+  return subitems
+    .map((s, i) => ({ s, pos: orden.get(Number(s.id)) ?? alFinal + i }))
+    .sort((a, b) => a.pos - b.pos)
+    .map(x => x.s);
+}
+
 /** Fila de D1 (MirrorItem) con el shape mínimo de MondayItem que
  * groupSubitemsByProveedor/groupTotals necesitan (solo leen `column_values`
  * — el resto de campos no se usan, se rellenan vacíos). Reusar esas dos
@@ -515,8 +530,13 @@ export async function generarOcNative(
 
   const fetched = await fetchItemWithSubitems(env, proyectoId);
   if (!fetched) return { ok: false, reason: 'not found', ordenes: [] };
-  const { item, subitems } = fetched;
+  const { item } = fetched;
   const cols = item.column_values;
+  // Este camino lee los subitems DIRECTO de Monday, así que no hereda el orden
+  // del portal como los otros dos (que van por `childrenOf`): el reacomodo
+  // manual del dragger (worker/lib/itemOrder.ts) se aplica aquí a mano, o la
+  // misma OC saldría con las líneas en otro orden según con qué botón se emita.
+  const subitems = await ordenarComoElPortal(env, proyectoId, fetched.subitems);
 
   const folioProyecto = cvText(cols, PROYECTO_FOLIO) || String(proyectoId);
   const folioOpp = cvText(cols, PROYECTO_FOLIO_OPP);

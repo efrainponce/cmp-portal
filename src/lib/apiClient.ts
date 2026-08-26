@@ -658,6 +658,23 @@ export async function getOcNotas(proyectoId: string): Promise<Record<string, str
   return body.notas ?? {};
 }
 
+/** Reacomodo manual de las líneas de UNA tarjeta de proveedor (el dragger del
+ * tab "Órdenes de compra"). `ids` va en el orden nuevo y SOLO con las líneas de
+ * ese proveedor: el server permuta los lugares que ya ocupaban dentro del
+ * Proyecto. Ese orden es el que sale impreso en el PDF de la OC. */
+export async function reordenarLineasOc(
+  proyectoId: string, ids: string[],
+): Promise<{ ok: boolean; error?: string }> {
+  const res = await apiFetch(`/proyectos/${proyectoId}/orden-lineas`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) return { ok: false, error: body.error ?? 'No se pudo guardar el orden.' };
+  return { ok: true };
+}
+
 /** Guarda la nota de UN proveedor (vacía = se borra). Devuelve la nota ya
  * recortada por el server, que es la que va a salir impresa. */
 export async function saveOcNota(

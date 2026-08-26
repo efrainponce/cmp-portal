@@ -1,5 +1,31 @@
 # Log de commits
 
+## 2026-08-25 (10)
+
+- **Dragger para reacomodar las filas de una OC, por proveedor** (Efraín: "un
+  dragger hasta la izquierda para subir y bajar las filas… eso cambia en el PDF
+  también"). El asa ⠿ aparece al inicio de cada línea de la tarjeta del
+  proveedor (Compras/Admin), se arrastra con mouse o dedo (pointer events, no
+  drag&drop de HTML5, que en iOS no existe), el reacomodo se pinta al vuelo y
+  solo se manda al soltar.
+- El orden se guarda en **D1, no en Monday**: Monday no tiene API para
+  reordenar subitems. Estrena `manual_order` de `worker/lib/itemOrder.ts` — la
+  columna que ese archivo dejó prevista desde el 2026-08-14 justo para esto y
+  que gana sobre el orden de Monday, así que el reacomodo sobrevive a la
+  siguiente relectura del árbol.
+- **Sale impreso en la OC**: los dos motores del portal (`generarOcPortal`,
+  `generarOcNativeD1`) arman las líneas con `childrenOf`, que ordena por ese
+  campo. El camino Eledo/DocuSeal lee los subitems directo de Monday, así que
+  ahí el orden se aplica a mano (`ordenarComoElPortal`) — o la misma orden
+  saldría distinta según con qué botón se emita. Lo que sigue fuera de alcance
+  es cmp-tallas, que arma su PDF sin pasar por el Worker.
+- Arrastrar en la OC de un proveedor **no revuelve las de los demás**: el PUT
+  manda solo las líneas de esa tarjeta y el server permuta los lugares que ya
+  ocupaban dentro del Proyecto (`aplicarOrdenParcial`, con test). Sin eso, el
+  reacomodo se vería también en Cotización y Tallas, que leen el mismo orden.
+  Una línea que no es del Proyecto tumba la petición completa, no se acomoda al
+  final en silencio.
+
 ## 2026-08-25 (9)
 
 - **Proveedor de embellecimiento, por línea, desde Proyecto → Embellecimientos**

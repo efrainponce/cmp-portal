@@ -30,6 +30,7 @@ import {
 } from '../lib/proyectoImagenes';
 import { generarOcNative, generarOcNativeD1, generarOcPortal } from '../lib/oc';
 import { getOcNota, getOcNotas, setOcNota, OC_NOTA_MAX } from '../lib/ocNotas';
+import { aplicarOrdenParcial, setManualOrder } from '../lib/itemOrder';
 import { listarOc, getOc, type OcEstado } from '../lib/ocLedger';
 import { registrarArchivo, historialArchivos } from '../lib/archivoLog';
 import {
@@ -1182,6 +1183,44 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     }
     const guardada = await setOcNota(c.env, itemId, proveedorId, nota, viewer.email);
     return c.json({ ok: true, nota: guardada });
+  });
+
+  // Reacomodo manual de las líneas de UNA tarjeta de proveedor (el dragger del
+  // tab "Órdenes de compra", Efraín 2026-08-25): el orden en que Compras las
+  // acomoda es el orden en que salen impresas en la OC. Se guarda en D1
+  // (worker/lib/itemOrder.ts) porque Monday NO tiene cómo reordenar subitems
+  // por API, y el PDF ya lee de ahí — los dos motores del portal
+  // (generarOcPortal / generarOcNativeD1) arman sus líneas con `childrenOf`,
+  // que ordena por COALESCE(manual_order, monday_order).
+  //
+  // El body trae SOLO las líneas de ese proveedor: se permutan los lugares que
+  // ya ocupaban en el orden global del Proyecto, para no revolver las líneas de
+  // los demás proveedores (ni las de Cotización/Tallas, que leen el mismo orden).
+  app.put('/api/proyectos/:id/orden-lineas', async c => {
+    const itemId = Number(c.req.param('id'));
+    if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
+    const viewer = c.get('viewer');
+    if (viewer.role !== 'compras' && viewer.role !== 'admin') return jsonStatus({ error: 'forbidden' }, 403);
+    // Muta -> scope 'own' (worker/lib/dal.ts), igual que la nota de arriba.
+    const row = await getItem(c.env, 'proyectos', itemId, viewer, 'own');
+    if (!row) return c.json({ error: 'not found' }, 404);
+
+    const body = await c.req.json().catch(() => ({} as Record<string, unknown>));
+    const pedidos: number[] = Array.isArray(body.ids) ? body.ids.map(Number) : [];
+    if (pedidos.length === 0 || pedidos.some(n => !Number.isFinite(n))) {
+      return jsonStatus({ error: 'ids inválidos' }, 400);
+    }
+    if (new Set(pedidos).size !== pedidos.length) return jsonStatus({ error: 'ids repetidos' }, 400);
+
+    const hijos = await childrenOf(c.env, 'proyectos', itemId, viewer);
+    const actual = hijos.map(h => Number(h.item_id));
+    const conocidas = new Set(actual);
+    // Una línea que no es de este Proyecto no se acomoda "por default" al final:
+    // se rechaza la petición completa (mismo criterio que rejectUnknownQuery).
+    if (pedidos.some(id => !conocidas.has(id))) return jsonStatus({ error: 'línea ajena al proyecto' }, 400);
+
+    await setManualOrder(c.env, BOARDS.proyectos_sub.id, itemId, aplicarOrdenParcial(actual, pedidos));
+    return c.json({ ok: true });
   });
 
   // Cotización — vista previa generada nativa por el portal (2026-08-13), mismo
