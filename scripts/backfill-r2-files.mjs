@@ -40,7 +40,9 @@ const env = { MONDAY_API_KEY };
 const EXEC = process.argv.includes('--exec');
 const BUCKET = 'mexicanadeproteccion';
 
-const PROYECTO_DOCUMENTO_COL = 'file_mm0hayh4';
+// Documento del cliente: la columna vigente y la que el portal usaba antes
+// del 2026-08-26 (worker/lib/portalFiles.ts) — las dos caen en el mismo key.
+const PROYECTO_DOCUMENTO_COLS = ['file_mm33yv4p', 'file_mm0hayh4'];
 const PROYECTO_OPP_REL = 'board_relation_mm0hf0y3';
 const EMBELL_FILE_COL = 'file_mm5akjy5';
 const EMBELL_SEP = '__';
@@ -102,8 +104,10 @@ async function collectTasks() {
   for (const item of proyectos) {
     const oppId = firstLinkedId(item.column_values, PROYECTO_OPP_REL);
     if (oppId == null) continue;
-    for (const f of parseFileEntries(item.column_values, PROYECTO_DOCUMENTO_COL)) {
-      tasks.push({ key: `oportunidades/${oppId}/documento/${f.name}`, assetId: f.assetId, name: f.name });
+    for (const colId of PROYECTO_DOCUMENTO_COLS) {
+      for (const f of parseFileEntries(item.column_values, colId)) {
+        tasks.push({ key: `oportunidades/${oppId}/documento/${f.name}`, assetId: f.assetId, name: f.name });
+      }
     }
     for (const [categoria, colId] of Object.entries(PROYECTO_FILE_COLS)) {
       for (const f of parseFileEntries(item.column_values, colId)) {

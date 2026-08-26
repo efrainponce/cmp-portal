@@ -167,8 +167,14 @@ export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
     // el vendedor; compras/admin la ven pero no la tocan (Efraín, 2026-08-05).
     date_mm0m1vfv: { vis: V, w: WV },
     // OC / cotización / contrato firmado por el cliente — sube el vendedor
-    // (quien lo recibe) o compras/admin (Efraín, 2026-07-17).
-    file_mm0hayh4: { vis: V, w: V },
+    // (quien lo recibe) o compras/admin (Efraín, 2026-07-17). En Monday es
+    // "OC/contrato/cotización firmada (oculto)": es donde el equipo lo sube de
+    // verdad (worker/lib/portalFiles.ts PROYECTO_DOCUMENTO_COL, 2026-08-26).
+    file_mm33yv4p: { vis: V, w: V },
+    // "Cotización Firmada Institucion" — a donde apuntaba el portal antes del
+    // 2026-08-26. Solo lectura: 4 proyectos viejos siguen mostrando su
+    // documento, pero lo nuevo ya se escribe en file_mm33yv4p.
+    file_mm0hayh4: { vis: V },
   },
 
   proyectos_sub: {

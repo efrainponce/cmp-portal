@@ -1,6 +1,6 @@
 // Cotizaciones/solicitudes de costeo son columnas de Oportunidades, aún sin
 // endpoint de upload — dropzone deshabilitada "(próximamente)". OC/contrato
-// firmado por el cliente sí vive en el Proyecto ligado (file_mm0hayh4) y ya
+// firmado por el cliente sí vive en el Proyecto ligado (file_mm33yv4p) y ya
 // tiene upload real — único caso habilitado por ahora (Efraín, 2026-07-17).
 //
 // 2026-07-25/26: aquí vive la capa de documentos del portal. Dos caminos:
@@ -16,7 +16,7 @@ import type { ItemDetailDTO } from '../../../lib/api';
 import { uploadProyectoDocumento, borrarProyectoDocumento, useBoards, colForBoard } from '../../../lib/api';
 import { patchItem } from '../../../lib/apiClient';
 import { useMe } from '../../../lib/useMe';
-import { P_OC_CLIENTE, type ProyectoState } from '../ProyectoSection';
+import { P_OC_CLIENTE, P_OC_CLIENTE_LEGADO, type ProyectoState } from '../ProyectoSection';
 import { DocumentsPanel } from '../../../components/documents/DocumentsPanel';
 
 export const SOLICITUDES_COL = 'file_mm0z6rze'; // Cotizaciones sin precio
@@ -25,7 +25,7 @@ export const FIRMADAS_COL = 'file_mm0zjras';    // Cotizaciones Firmadas
 export const INVENTARIO_COL = 'file_mm0hpefr';  // Inventario Actual (Imagen)
 const FECHA_ENTREGA_COL = 'date_mm0m1vfv';
 
-interface DocFile { url: string; name: string; key?: string; assetId?: number }
+interface DocFile { url: string; name: string; key?: string; assetId?: number; soloLectura?: boolean }
 
 /** El `text` de una columna file son las URLs de Monday
  * (…/resources/<assetId>/<nombre>). El assetId se conserva porque es lo único
@@ -186,7 +186,7 @@ function FileListOrEmpty({ files, onDelete, borrando }: {
             >
               {f.name}
             </a>
-            {onDelete && (
+            {onDelete && !f.soloLectura && (
               <button
                 type="button"
                 onClick={() => onDelete(f)}
@@ -276,7 +276,7 @@ export function FechaEntregaField({ proyecto }: { proyecto?: ProyectoState }) {
   );
 }
 
-/** Único upload real de esta pestaña: sube al Proyecto ligado (file_mm0hayh4),
+/** Único upload real de esta pestaña: sube al Proyecto ligado (file_mm33yv4p),
  * no a la Oportunidad — el resto de las secciones se queda deshabilitado. */
 export function OcContratoSection({ proyecto, oppId }: { proyecto?: ProyectoState; oppId: string | null }) {
   const [uploading, setUploading] = useState(false);
@@ -318,7 +318,15 @@ export function OcContratoSection({ proyecto, oppId }: { proyecto?: ProyectoStat
   // Reconstruye el key de R2 (durable, sin expirar) en vez de usar la URL
   // firmada de Monday que trae el mirror — GET /api/files/... cae de vuelta
   // a Monday por sí solo si el archivo aún no se migró (ver worker/routes/oportunidades.ts).
-  const files = p && oppId ? parseFiles(p.cols[P_OC_CLIENTE]?.text).map((f) => ({
+  // Se listan las dos columnas: la vigente y la que el portal usaba antes del
+  // 2026-08-26 — los proyectos viejos siguen mostrando su documento (el key de
+  // /api/files es el mismo, el server resuelve en cuál de las dos vive).
+  const files = p && oppId ? [
+    ...parseFiles(p.cols[P_OC_CLIENTE]?.text),
+    // El borrado solo sabe de la columna vigente, así que estos no ofrecen
+    // "Borrar" — se quitan desde Monday si hiciera falta.
+    ...parseFiles(p.cols[P_OC_CLIENTE_LEGADO]?.text).map((f) => ({ ...f, soloLectura: true })),
+  ].map((f) => ({
     ...f, url: `/api/files/oportunidades/${oppId}/documento/${encodeURIComponent(f.name)}`,
   })) : [];
   const canUpload = !!p;

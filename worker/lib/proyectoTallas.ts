@@ -21,7 +21,7 @@ import { emitNotification } from './notify';
 import { refetchItem, mirrorUpsertStatement, emitItemSideEffects } from '../sync';
 import { BOARDS } from '../../shared/boards';
 import { isNativeId } from '../../shared/nativeId';
-import { PROYECTO_DOCUMENTO_COL } from './portalFiles';
+import { PROYECTO_DOCUMENTO_COL, PROYECTO_DOCUMENTO_COL_LEGADO } from './portalFiles';
 import { renderDocument, type Block } from './pdf/layout';
 import { fechaLarga } from './pdf/templates';
 import { createDocuSealSubmission } from './docuseal';
@@ -112,12 +112,15 @@ function colsOf(row: MirrorItem): Map<string, RawCol> {
 }
 
 /** "Validar tallas (vendedor)" exige que el cliente ya tenga su OC/cotización/
- * contrato firmado subido en el Proyecto (file_mm0hayh4) — Efraín, 2026-08-10:
+ * contrato firmado subido en el Proyecto (file_mm33yv4p) — Efraín, 2026-08-10:
  * "no pueden empezar a enviar a validación de tallas sin el documento del
  * cliente". Solo lectura, mismo criterio que checkCosteo/checkValidacion
  * (worker/lib/costeo.ts): se valida ANTES de pegarle a cmp-tallas. */
 export function checkOcCliente(row: MirrorItem): { ok: true } | { ok: false; error: string } {
-  const tiene = !!colsOf(row).get(PROYECTO_DOCUMENTO_COL)?.text;
+  // Vale la columna vigente o la de antes: los proyectos que subieron el
+  // documento cuando el portal apuntaba a file_mm0hayh4 no se quedan trabados.
+  const cols = colsOf(row);
+  const tiene = !!cols.get(PROYECTO_DOCUMENTO_COL)?.text || !!cols.get(PROYECTO_DOCUMENTO_COL_LEGADO)?.text;
   return tiene ? { ok: true } : {
     ok: false,
     error: 'Falta subir la orden de compra / cotización firmada / contrato del cliente antes de validar tallas (pestaña Documentación).',

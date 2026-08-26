@@ -5,7 +5,7 @@
 // cada tab se pueda leer sin cargar las otras. Re-exporta exactamente lo que
 // los consumidores de este módulo ya importaban, así que ningún import site
 // tuvo que cambiar.
-export { P_SHEET_LINK, P_OC_CLIENTE, ESTADO_PRODUCTO_COLORS, useProyecto, linkUrl, type ProyectoState } from './proyecto/shared';
+export { P_SHEET_LINK, P_OC_CLIENTE, P_OC_CLIENTE_LEGADO, ESTADO_PRODUCTO_COLORS, useProyecto, linkUrl, type ProyectoState } from './proyecto/shared';
 export { ProyectoTallasSection } from './proyecto/TallasSection';
 export { ProyectoOrdenesSection } from './proyecto/OrdenesSection';
 export { EjecucionSection } from './proyecto/EjecucionSection';

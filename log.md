@@ -2,6 +2,23 @@
 
 ## 2026-08-26
 
+- **La pestaña Documentación apuntaba a la columna equivocada** (Efraín:
+  "tienes que ligar la columna correcta de documentación"). El portal leía y
+  escribía `file_mm0hayh4` ("Cotización Firmada Institucion"), que solo tiene 4
+  proyectos viejos; el equipo sube el documento en `file_mm33yv4p`
+  ("OC/contrato/cotización firmada (oculto)"), con archivo en **46 de los 107**
+  proyectos. Efecto: proyectos con su contrato cargado en Monday se veían "Sin
+  documentos" y quedaban trabados en el gate de tallas — el caso de la captura,
+  PRO-0066 (Ocuilan), tenía ahí sus 2 contratos.
+- El id vive en **un solo lugar** (`worker/lib/portalFiles.ts`
+  `PROYECTO_DOCUMENTO_COL`), así que el cambio arrastra subida, borrado,
+  `/api/files`, el gate `checkOcCliente` y el backfill a R2.
+- La columna de antes queda **de solo lectura** (`vis: V` sin `w` en
+  `shared/visibility.ts`): sus archivos se siguen listando y sirviendo por el
+  mismo key de `/api/files`, pero sin botón de "Borrar" y sin recibir subidas
+  nuevas. El gate de tallas acepta cualquiera de las dos, para no trabar a los
+  proyectos que ya habían subido el documento por el portal.
+
 - **"+ Nuevo proyecto" también en Reporte de Proyectos** (Efraín). Ese acceso
   no filtra por etapa, así que el proyecto recién creado aparece ahí mismo. Se
   queda fuera solo **Logística**, que lista únicamente "Proyecto Terminado":

@@ -10,7 +10,15 @@ import { parseFiles, splitZone } from './embellecimientoImagenes';
 import { fetchAssetPublicUrls } from './monday';
 
 // OC / cotización / contrato firmado por el cliente (board Proyectos).
-export const PROYECTO_DOCUMENTO_COL = 'file_mm0hayh4';
+// Es "OC/contrato/cotización firmada (oculto)", la columna donde el equipo SÍ
+// sube el documento (46 de 107 proyectos al 2026-08-26). El portal apuntaba a
+// "Cotización Firmada Institucion" (file_mm0hayh4), que solo tiene 4 proyectos
+// viejos: la pestaña Documentación salía vacía aunque el documento estuviera
+// cargado en Monday (Efraín, 2026-08-26).
+export const PROYECTO_DOCUMENTO_COL = 'file_mm33yv4p';
+// La columna de antes: se sigue LEYENDO (los 4 proyectos viejos no pierden su
+// documento) pero ya no se escribe — no está en la whitelist como writable.
+export const PROYECTO_DOCUMENTO_COL_LEGADO = 'file_mm0hayh4';
 
 // Documentos que genera cmp-tallas subiendo directo a Monday (nunca al portal,
 // nunca dual-write) — el fallback de abajo es lo único que los mantiene
@@ -107,12 +115,23 @@ async function resolveMondayAssetProyecto(env: Env, parts: string[], viewer: Ide
     return parseFiles(row.columns, colId).find(f => matchesName(f.name, filename))?.assetId ?? null;
   }
 
-  const colId = categoria === 'documento' ? PROYECTO_DOCUMENTO_COL : PROYECTO_FILE_COLS[categoria];
-  if (!colId) return null;
   const filename = parts.slice(3).join('/');
   const row = await getItem(env, 'proyectos', proyectoId, viewer);
   if (!row) return null;
+  if (categoria === 'documento') return assetDocumento(row.columns, filename);
+  const colId = PROYECTO_FILE_COLS[categoria];
+  if (!colId) return null;
   return parseFiles(row.columns, colId).find(f => matchesName(f.name, filename))?.assetId ?? null;
+}
+
+/** Documento del cliente: la columna vigente primero y la de antes después —
+ * un proyecto viejo sigue sirviendo su archivo por el mismo key de /api/files. */
+function assetDocumento(columns: string, filename: string): number | null {
+  for (const colId of [PROYECTO_DOCUMENTO_COL, PROYECTO_DOCUMENTO_COL_LEGADO]) {
+    const hit = parseFiles(columns, colId).find(f => matchesName(f.name, filename));
+    if (hit) return hit.assetId;
+  }
+  return null;
 }
 
 /** assetId de Monday detrás de un key de /api/files, respetando el scoping del
@@ -128,7 +147,7 @@ export async function resolveMondayAsset(env: Env, key: string, viewer: Identity
     const filename = parts.slice(3).join('/');
     const proyecto = await proyectoForOportunidad(env, oppId, viewer);
     if (!proyecto) return null;
-    return parseFiles(proyecto.columns, PROYECTO_DOCUMENTO_COL).find(f => matchesName(f.name, filename))?.assetId ?? null;
+    return assetDocumento(proyecto.columns, filename);
   }
 
   if (categoria === 'embellecimiento') {

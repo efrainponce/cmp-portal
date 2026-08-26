@@ -20,7 +20,13 @@ export const P_SHEET_LINK = 'link_mm1amwz8';     // Google Sheet de tallas
 export const P_DRIVE_LINK = 'link_mm462saa';     // Carpeta Drive (visible Compras)
 export const P_TALLAS_PDF = 'file_mm0hcrtz';     // PDFs relación de tallas (visible Compras)
 export const P_OC_PDF = 'file_mm0hj9pn';         // PDFs órdenes de compra (visible Compras)
-export const P_OC_CLIENTE = 'file_mm0hayh4'; // OC/cotización/contrato firmado por el cliente (vendedor sube)
+// OC/cotización/contrato firmado por el cliente (vendedor sube). En Monday se
+// titula "OC/contrato/cotización firmada (oculto)" — es donde el equipo lo sube
+// (ver worker/lib/portalFiles.ts PROYECTO_DOCUMENTO_COL, 2026-08-26).
+export const P_OC_CLIENTE = 'file_mm33yv4p';
+// A donde apuntaba el portal antes: solo lectura, para no esconder el documento
+// de los proyectos que lo tienen ahí ("Cotización Firmada Institucion").
+export const P_OC_CLIENTE_LEGADO = 'file_mm0hayh4';
 export const P_METODO_PAGO = 'text_mm4cct6a';    // Método de pago (default del Proyecto, prellenado por tarjeta)
 export const P_COND_PAGO = 'text_mm4cdyjb';      // Condiciones de pago (default del Proyecto, prellenado por tarjeta)
 
@@ -199,7 +205,9 @@ export function ProyectoActionBar({ proyecto, reload, actions }: {
   };
 
   const sheetUrl = linkUrl(proyecto, P_SHEET_LINK);
-  const ocCliente = !!proyecto.cols[P_OC_CLIENTE]?.text;
+  // Mismo criterio que el server (worker/lib/proyectoTallas.ts checkOcCliente):
+  // cuenta la columna vigente o la de antes.
+  const ocCliente = !!proyecto.cols[P_OC_CLIENTE]?.text || !!proyecto.cols[P_OC_CLIENTE_LEGADO]?.text;
   // Proyecto NATIVO (Zona Efrain): no existe en Monday, así que tampoco existe
   // el archivo de tallas de cmp-tallas — el desglose se captura por boxes desde
   // la Oportunidad. "Validar tallas" sí aplica (worker: confirmTallasNativeD1),
