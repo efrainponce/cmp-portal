@@ -80,10 +80,46 @@ function matchesName(entryName: string, filename: string): boolean {
   return entryName === filename || entryName === safeDecode(filename);
 }
 
+/** Igual que `isKnownFileCategory` pero para el prefijo `proyectos/…`: un
+ * Proyecto sin Oportunidad ligada guarda sus archivos colgados de sí mismo
+ * (worker/lib/r2.ts proyectoFileKey, 2026-08-26). Son las columnas que viven en
+ * el Proyecto o en sus líneas — nunca las de la Oportunidad. */
+export function isKnownProyectoFileCategory(categoria: string): boolean {
+  return categoria === 'documento' || categoria === 'logistica' || categoria in PROYECTO_FILE_COLS;
+}
+
+/** assetId detrás de un key `proyectos/<proyectoId>/<categoria>/…`. Mismo
+ * scoping que la variante de oportunidades: se resuelve con dal.getItem, así
+ * que un viewer que no ve el Proyecto tampoco ve sus archivos. */
+async function resolveMondayAssetProyecto(env: Env, parts: string[], viewer: Identity): Promise<number | null> {
+  const proyectoId = Number(parts[1]);
+  if (!Number.isFinite(proyectoId)) return null;
+  const categoria = parts[2];
+
+  if (categoria === 'logistica') {
+    const subitemId = Number(parts[3]);
+    const field = parts[4];
+    const colId = field ? LOGISTICA_FILE_COLS[field] : undefined;
+    const filename = parts.slice(5).join('/');
+    if (!Number.isFinite(subitemId) || !colId) return null;
+    const row = await getItem(env, 'proyectos_sub', subitemId, viewer);
+    if (!row || row.parent_item_id !== proyectoId) return null;
+    return parseFiles(row.columns, colId).find(f => matchesName(f.name, filename))?.assetId ?? null;
+  }
+
+  const colId = categoria === 'documento' ? PROYECTO_DOCUMENTO_COL : PROYECTO_FILE_COLS[categoria];
+  if (!colId) return null;
+  const filename = parts.slice(3).join('/');
+  const row = await getItem(env, 'proyectos', proyectoId, viewer);
+  if (!row) return null;
+  return parseFiles(row.columns, colId).find(f => matchesName(f.name, filename))?.assetId ?? null;
+}
+
 /** assetId de Monday detrás de un key de /api/files, respetando el scoping del
  * viewer (dal.getItem/proyectoForOportunidad). null = no existe o no lo puede ver. */
 export async function resolveMondayAsset(env: Env, key: string, viewer: Identity): Promise<number | null> {
   const parts = key.split('/');
+  if (parts[0] === 'proyectos') return resolveMondayAssetProyecto(env, parts, viewer);
   const oppId = Number(parts[1]);
   if (parts[0] !== 'oportunidades' || !Number.isFinite(oppId)) return null;
   const categoria = parts[2];

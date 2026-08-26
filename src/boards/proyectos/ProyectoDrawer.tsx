@@ -83,6 +83,23 @@ interface Props {
 // SWR de sesión — mismo patrón que OpportunityDrawer.
 const detailCache = new Map<string, ItemDetailDTO>();
 
+function Cargando() {
+  return <div style={{ padding: 24, font: 'var(--text-label)', color: 'var(--ink-quiet)' }}>Cargando…</div>;
+}
+
+/** Proyecto sin Oportunidad ligada — el caso normal de un proyecto creado desde
+ * cero para levantar una OC (src/boards/proyectos/CrearProyectoModal.tsx). No es
+ * un error: estos dos tabs leen las líneas de la Oportunidad y aquí no hay. */
+function SinOportunidad({ que }: { que: string }) {
+  return (
+    <div style={{ padding: 24, font: 'var(--text-label)', color: 'var(--ink-quiet)', maxWidth: 560 }}>
+      Este proyecto no tiene una Oportunidad ligada. {que} sale de la cotización de la Oportunidad,
+      así que aquí no hay nada que mostrar — los productos de la orden de compra se capturan en el
+      tab «Órdenes de compra», con «+ Agregar producto».
+    </div>
+  );
+}
+
 export function ProyectoDrawer({ id, boardKey, backLabel, defaultTab, openTab, onTabChange, onBack, onOpenOportunidad }: Props) {
   const isMobile = useIsMobile();
   const me = useMe();
@@ -92,6 +109,13 @@ export function ProyectoDrawer({ id, boardKey, backLabel, defaultTab, openTab, o
   const [tab, setTab] = useState<ProyectoTabKey>(() => (esTab(openTab) ? openTab : defaultTab as ProyectoTabKey));
   const cambiarTab = (t: ProyectoTabKey) => { setTab(t); onTabChange?.(t); };
   const [oportunidadId, setOportunidadId] = useState<string | null>(null);
+  // Tri-estado a mano: `oportunidadId === null` significa las DOS cosas
+  // (todavía no llega la respuesta / no hay oportunidad ligada) y Cotización y
+  // Embellecimientos necesitan distinguirlas — un proyecto hecho desde cero
+  // (shared/createFields.ts) no tiene oportunidad y sus endpoints responden 404
+  // a propósito ("Este proyecto no tiene una Oportunidad ligada"), que pintado
+  // en rojo se lee como una falla del portal.
+  const [oppResuelta, setOppResuelta] = useState(false);
   // Nombre del proyecto: mismo permiso que el de la oportunidad (Efraín, 2026-08-13).
   const { boards } = useBoards();
   const canEditNombre = !!colForBoard(boards, 'proyectos').find((c) => c.id === 'name')?.w;
@@ -107,8 +131,12 @@ export function ProyectoDrawer({ id, boardKey, backLabel, defaultTab, openTab, o
     setItem(detailCache.get(id) ?? null);
     setTab(esTab(openTab) ? openTab : defaultTab as ProyectoTabKey);
     setOportunidadId(null);
+    setOppResuelta(false);
     load();
-    getProyectoOportunidad(id).then(setOportunidadId).catch(() => setOportunidadId(null));
+    getProyectoOportunidad(id)
+      .then(setOportunidadId)
+      .catch(() => setOportunidadId(null))
+      .finally(() => setOppResuelta(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
@@ -205,9 +233,15 @@ export function ProyectoDrawer({ id, boardKey, backLabel, defaultTab, openTab, o
 
       {tab === 'actualizaciones' && <ActualizacionesTab slug="proyectos" itemId={id} />}
       {tab === 'actividad' && <ActividadTab slug="proyectos" itemId={id} />}
-      {tab === 'cotizacion' && <CotizacionVirtualTab proyectoId={id} />}
+      {tab === 'cotizacion' && (
+        !oppResuelta ? <Cargando />
+          : oportunidadId ? <CotizacionVirtualTab proyectoId={id} />
+            : <SinOportunidad que="La cotización" />
+      )}
       {tab === 'embellecimientos' && (
-        <EmbellecimientosVirtualTab proyectoId={id} proyecto={item} onChanged={load} />
+        !oppResuelta ? <Cargando />
+          : oportunidadId ? <EmbellecimientosVirtualTab proyectoId={id} proyecto={item} onChanged={load} />
+            : <SinOportunidad que="Los embellecimientos" />
       )}
       {tab === 'documentacion' && (
         <div style={{ padding: '24px 32px 40px', maxWidth: 920, width: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 20 }}>

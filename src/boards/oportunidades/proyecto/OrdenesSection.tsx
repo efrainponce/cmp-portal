@@ -1008,7 +1008,7 @@ function ProveedorCard({ group, proyecto, oppId, reload, canEdit, activity, nota
     return s + cant * costo * (1 - desc);
   }, 0);
   const monedaOc = group.lineas.map(r => r.cols[S_MONEDA]?.text).find(Boolean) ?? '';
-  const ocFiles = toR2Files(parseFiles(proyecto.cols[P_OC_PDF]?.text), oppId, 'oc');
+  const ocFiles = toR2Files(parseFiles(proyecto.cols[P_OC_PDF]?.text), oppId, 'oc', proyecto.id);
   // Un renglón por PRODUCTO (no por línea): la OC con imágenes junta las tallas
   // de un mismo SKU en una sola ficha, así que la foto también es una sola.
   const productos = useMemo(() => {

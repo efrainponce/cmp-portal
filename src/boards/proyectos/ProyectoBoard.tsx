@@ -2,6 +2,20 @@ import { lazy, Suspense, useState } from 'react';
 import { ProyectoBoardList } from './ProyectoBoardList';
 import { usePrefetchOnIdle } from '../../lib/lazyPrefetch';
 import { PROJECT_BOARDS, type ProjectBoardKey } from '../../lib/projectStages';
+import { Button } from '../../components/core/Button';
+import { IconPlus } from '../../components/icons';
+
+// El modal solo pesa cuando alguien lo abre (igual que "Nueva oportunidad").
+const CrearProyectoModal = lazy(() => import('./CrearProyectoModal'));
+
+// Un proyecto nuevo nace en "Desglose de tallas" (shared/createFields.ts
+// CREATE_DEFAULTS), así que el botón solo va en los accesos que muestran esa
+// etapa — si no, el proyecto recién creado desaparecería de la lista donde se
+// creó. Son además los dos accesos operativos: Ventas entra por "Documentación
+// y Tallas" y Compras por "Órdenes de Compra" (shared/boardAccess.ts).
+// "Zona Efrain" queda fuera: ahí los items son NATIVOS (viven solo en D1) y
+// esto crea en Monday — mezclarlos filtraría la zona privada.
+const CREAR_EN: ProjectBoardKey[] = ['doctallas', 'ordenescompra'];
 
 // Mismo criterio que en los boards de Oportunidades: el drawer se precarga
 // cuando el navegador está ocioso, no compitiendo con la carga de la lista.
@@ -31,11 +45,21 @@ export function ProyectoBoard({ boardKey, openId, openTab, onTabChange, onOpenCh
   // callback dispara mientras se espera /items (el hilo está libre esperando
   // la red) y le roba ancho de banda justo al request que importa.
   const [listaLista, setListaLista] = useState(false);
+  const [creating, setCreating] = useState(false);
   usePrefetchOnIdle(cargarDrawer, listaLista);
 
   return (
     <div style={{ position: 'relative', height: '100%', width: '100%' }}>
-      {!openId && <ProyectoBoardList config={config} q={q} onSearch={setQ} onOpen={onOpenChange} onReady={() => setListaLista(true)} />}
+      {!openId && (
+        <ProyectoBoardList
+          config={config} q={q} onSearch={setQ} onOpen={onOpenChange} onReady={() => setListaLista(true)}
+          headerAction={CREAR_EN.includes(boardKey) ? (
+            <Button variant="primary" onClick={() => setCreating(true)}>
+              <IconPlus /> Nuevo proyecto
+            </Button>
+          ) : undefined}
+        />
+      )}
       {openId && (
         <Suspense fallback={<div style={{ padding: 32 }}>Cargando…</div>}>
         <ProyectoDrawer
@@ -48,6 +72,17 @@ export function ProyectoBoard({ boardKey, openId, openTab, onTabChange, onOpenCh
           onBack={() => onOpenChange(null)}
           onOpenOportunidad={onOpenOportunidad}
         />
+        </Suspense>
+      )}
+      {creating && (
+        <Suspense fallback={null}>
+          <CrearProyectoModal
+            onClose={() => setCreating(false)}
+            onCreated={(itemId) => {
+              setCreating(false);
+              onOpenChange(String(itemId)); // Abrir el drawer del proyecto nuevo
+            }}
+          />
         </Suspense>
       )}
     </div>

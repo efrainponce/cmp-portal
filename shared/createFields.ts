@@ -6,7 +6,7 @@
 
 export interface CreateField { id: string; required?: boolean }
 
-export const CREATE_FIELDS: Record<'instituciones' | 'contactos' | 'oportunidades', CreateField[]> = {
+export const CREATE_FIELDS: Record<'instituciones' | 'contactos' | 'oportunidades' | 'proyectos', CreateField[]> = {
   // Requested by Efraín 2026-07-15: exactly these fields, "super fácil". Product
   // lines are NOT captured at creation — the enviar-costeo validation blocks the
   // costeo hand-off until lines with cantidad y color válido exist.
@@ -23,6 +23,27 @@ export const CREATE_FIELDS: Record<'instituciones' | 'contactos' | 'oportunidade
     { id: 'color_mm47f0ca' },                   // Tipo de cotización
     { id: 'color_mm0ex0ed' },                   // ¿Quieres cotizar nuevos productos?
     { id: 'deal_expected_close_date' },         // Fecha límite
+  ],
+  // Proyecto "desde cero", SIN Oportunidad ligada (Efraín, 2026-08-26): hasta
+  // ahora un Proyecto solo nacía al GANAR una oportunidad
+  // (worker/lib/ganarOportunidad.ts), y compras necesita poder levantar una OC
+  // sin que haya habido una venta detrás. La columna Oportunidad
+  // (board_relation_mm0hf0y3) NO está aquí a propósito: ligar se hace ganando
+  // la oportunidad, y dejar que el form la eligiera abriría la puerta a dos
+  // proyectos para la misma opp (el flujo de Ganar es idempotente justo para
+  // evitar eso).
+  //
+  // Vendedor y Compras son OBLIGATORIOS porque son las dos llaves de scoping
+  // del board (shared/boards.ts: authzCols = Vendedor, comprasCol = Compras,
+  // worker/lib/dal.ts): un proyecto sin ellas sería invisible hasta para quien
+  // lo acaba de crear — el mismo hoyo que ya se tapó en Contactos.
+  proyectos: [
+    { id: 'name', required: true },
+    { id: 'multiple_person_mm0hrnqq', required: true }, // Vendedor (authz key)
+    { id: 'project_owner', required: true },            // Compras (comprasCol)
+    { id: 'board_relation_mm0hb0gy' },                  // Contacto → de ahí sale el espejo Institución
+    { id: 'dropdown_mm0hnyv' },                         // Zona
+    { id: 'date_mm0m1vfv' },                            // Fecha Entrega
   ],
   instituciones: [
     { id: 'name', required: true },
@@ -57,6 +78,12 @@ export const CREATE_FIELDS: Record<'instituciones' | 'contactos' | 'oportunidade
 // (deal_stage isn't in CREATE_FIELDS, so the route rejects it if the client tries).
 export const CREATE_DEFAULTS: Partial<Record<keyof typeof CREATE_FIELDS, Record<string, string>>> = {
   oportunidades: { deal_stage: 'Nueva oportunidad' },
+  // Etapa inicial del post-venta. En un Proyecto creado por Monday la estampa
+  // el board solo; uno creado por API nace SIN valor y eso lo deja INVISIBLE en
+  // todos los accesos del sidebar (src/lib/projectStages.ts filtra por
+  // project_status y un item sin valor no cae en ningún grupo) — el mismo
+  // hallazgo que ya está anotado en worker/lib/ganarOportunidad.ts.
+  proyectos: { project_status: 'Desglose de tallas' },
 };
 
 export function isCreatable(slug: string): slug is keyof typeof CREATE_FIELDS {

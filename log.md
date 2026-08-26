@@ -1,5 +1,47 @@
 # Log de commits
 
+## 2026-08-26
+
+- **Proyectos desde cero, sin Oportunidad ligada** (Efraín: "que todos puedan
+  hacer proyectos sin necesidad de tener una oportunidad, para poder hacer
+  órdenes de compra from scratch"). Hasta hoy un Proyecto solo nacía al GANAR
+  una oportunidad, así que una compra sin venta detrás no tenía dónde vivir.
+  Botón "+ Nuevo proyecto" en los accesos **Documentación y Tallas** (Ventas) y
+  **Órdenes de Compra** (Compras), con un form mínimo: nombre, vendedor,
+  compras, contacto, zona y fecha de entrega.
+- El proyecto nace en **"Desglose de tallas"** y en el grupo "Etapa 1" del
+  board, igual que uno ganado. Sin esa etapa por default el proyecto quedaría
+  invisible en TODOS los accesos del sidebar (los 4 filtran por
+  `project_status` y un item sin valor no cae en ningún grupo) — el mismo
+  hallazgo que ya estaba anotado en `ganarOportunidad.ts`.
+- **Vendedor y Compras son obligatorios**: son las dos llaves con las que
+  `dal.ts` decide quién ve el renglón (vendedor por `authzCols`, compras por
+  `comprasCol`). Sin ellas el proyecto nacería invisible hasta para quien lo
+  acaba de crear — el mismo hoyo que ya se tapó en Contactos. El form las
+  prellena con quien está creando. "Elaborado por" (firmante de la OC) se
+  deriva de Compras, como en un proyecto ganado.
+- **Ligar a una oportunidad NO está en el form, a propósito**: eso lo sigue
+  haciendo "Ganar" desde la oportunidad, que es idempotente. Si el form dejara
+  elegirla, dos proyectos podrían colgar de la misma opp.
+- Los tabs **Cotización** y **Embellecimientos** de un proyecto sin oportunidad
+  muestran un estado vacío que explica dónde capturar los productos, en vez del
+  error rojo "No se pudo cargar la cotización" (leen las líneas de la
+  Oportunidad, y aquí no hay).
+- **Los archivos del proyecto ya se sirven desde el portal aunque no haya
+  oportunidad**: el key de R2 ahora también puede colgar del Proyecto
+  (`proyectos/<id>/…`, antes solo `oportunidades/<oppId>/…`) y `/api/files`
+  sirve los dos con el mismo scoping. Antes, sin oppId no se guardaba copia y
+  el tab acababa enlazando el `protected_static` de Monday — o sea que la OC de
+  un proyecto hecho desde cero no la podía abrir nadie sin cuenta de Monday.
+  Aplica a la OC del portal, a la OC/contrato firmado del cliente y a los
+  archivos de Logística.
+- Probado de punta a punta contra Monday real (proyecto de prueba creado,
+  línea con proveedor y costo, OC del portal generada y descargada por
+  `/api/files`, y todo borrado después): quemó los folios **OC-122 y OC-123**
+  del ledger.
+- Anclado en `shared/createFields.test.ts` (columnas de scoping obligatorias,
+  etapa inicial válida, Oportunidad fuera del form).
+
 ## 2026-08-25 (11)
 
 - **Link directo a la pestaña de una oportunidad o proyecto** (Efraín: "agregar

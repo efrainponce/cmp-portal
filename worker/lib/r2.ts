@@ -22,6 +22,24 @@ export function oportunidadFileKey(
   return `oportunidades/${oppId}/${categoria}/${id}${filename}`;
 }
 
+/** Key de un archivo que cuelga del PROYECTO, no de una oportunidad.
+ *
+ * Existe desde que un Proyecto puede nacer SIN Oportunidad ligada (Efraín,
+ * 2026-08-26 — ver shared/createFields.ts). Antes, todo archivo del post-venta
+ * se guardaba bajo `oportunidades/<oppId>/…` y sin oppId simplemente NO se
+ * copiaba a R2: el portal se quedaba con el link `protected_static` de Monday,
+ * que pide sesión de Monday para abrirse. O sea que la OC de un proyecto hecho
+ * desde cero no la podía abrir nadie del portal.
+ *
+ * Mismo formato y mismas reglas de prefijo que oportunidadFileKey — solo cambia
+ * el primer segmento, y `/api/files` sirve los dos. */
+export function proyectoFileKey(
+  proyectoId: number, categoria: string, filename: string, assetId?: string | number | null,
+): string {
+  const id = assetId != null && String(assetId).trim() !== '' ? `${assetId}-` : '';
+  return `proyectos/${proyectoId}/${categoria}/${id}${filename}`;
+}
+
 export async function putFile(env: Env, key: string, file: Blob, contentType?: string): Promise<void> {
   await env.FILES.put(key, file, { httpMetadata: { contentType: contentType || file.type || 'application/octet-stream' } });
 }

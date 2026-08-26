@@ -74,9 +74,12 @@ interface Props {
   /** Se llama UNA vez, cuando la lista ya pintó datos. Lo usan los wrappers
    * para precargar el drawer sin estorbarle a la carga inicial. */
   onReady?: () => void;
+  /** Botón/acción a la derecha del buscador (p.ej. "Nuevo proyecto") — mismo
+   * contrato que StageBoardList. */
+  headerAction?: React.ReactNode;
 }
 
-export function ProyectoBoardList({ config, q, onSearch, onOpen, onReady }: Props) {
+export function ProyectoBoardList({ config, q, onSearch, onOpen, onReady, headerAction }: Props) {
   const isMobile = useIsMobile();
   const { boards } = useBoards();
   const cols = colForBoard(boards, 'proyectos');
@@ -120,6 +123,7 @@ export function ProyectoBoardList({ config, q, onSearch, onOpen, onReady }: Prop
       <div style={{ padding: isMobile ? '14px 14px 12px' : '26px 32px 16px', borderBottom: '1px solid var(--border)', flex: 'none' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
           <div style={{ font: 'var(--text-title)', color: 'var(--ink)' }}>{config.title}</div>
+          {headerAction}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
           <div style={{ font: 'var(--text-label)', color: 'var(--ink-tertiary)' }}>{items.length} proyectos</div>

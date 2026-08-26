@@ -111,7 +111,13 @@ export function parseFiles(text?: string): { url: string; name: string; assetId?
 /** Reconstruye el key de R2 igual que DocumentacionTab.toR2Files — tallas/OC
  * viven en el Proyecto, así que el oppId no es directo (viene del lookup
  * inverso getProyectoOportunidad y puede tardar en resolver o venir null).
- * Sin oppId se deja la URL firmada de Monday que ya trae el mirror. */
+ *
+ * Sin oppId el archivo cuelga del PROYECTO (`proyectos/<id>/…`,
+ * worker/lib/r2.ts proyectoFileKey): es el caso normal de un proyecto hecho
+ * desde cero, sin oportunidad (2026-08-26). Antes se dejaba el link de Monday
+ * tal cual, que es un `protected_static` y pide sesión de Monday para abrirse
+ * — la OC no la podía abrir nadie desde el portal. Sin ninguno de los dos ids
+ * (el lookup todavía en vuelo) se deja el link del mirror, como antes. */
 /** Categorías cuyo key lleva el assetId al frente (worker/lib/r2.ts): las que
  * suben PERSONAS, donde dos archivos distintos sí pueden llamarse igual (dos
  * fotos "IMG_0001.jpg"). Los documentos GENERADOS —cotización, tallas, OC— se
@@ -123,12 +129,14 @@ function llevaAssetId(categoria: string): boolean {
 
 export function toR2Files(
   files: { url: string; name: string; assetId?: string }[], oppId: string | null, categoria: string,
+  proyectoId?: string | null,
 ): { url: string; name: string; assetId?: string }[] {
-  if (!oppId) return files;
+  const base = oppId ? `oportunidades/${oppId}` : proyectoId ? `proyectos/${proyectoId}` : null;
+  if (!base) return files;
   const prefijo = (f: { assetId?: string }) => (llevaAssetId(categoria) && f.assetId ? `${f.assetId}-` : '');
   return files.map(f => ({
     ...f,
-    url: `/api/files/oportunidades/${oppId}/${categoria}/${prefijo(f)}${encodeURIComponent(f.name)}`,
+    url: `/api/files/${base}/${categoria}/${prefijo(f)}${encodeURIComponent(f.name)}`,
   }));
 }
 

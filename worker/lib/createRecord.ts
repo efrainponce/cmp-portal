@@ -31,6 +31,14 @@ const CREATOR_ROLES: Identity['role'][] = ['vendedor', 'compras', 'admin'];
 
 const CONTACTO_VENDEDOR = 'multiple_person_mm03vqwx';   // Contactos → Vendedor
 
+// Proyectos (18395657594) — mismos ids que usa worker/lib/ganarOportunidad.ts
+// al crear el Proyecto de una oportunidad ganada.
+const PROYECTO_COMPRAS = 'project_owner';
+const PROYECTO_ELABORADO_POR = 'multiple_person_mm164em1';
+// Grupo "Nuevos" del board, el mismo al que Ganar manda el Proyecto. Sin esto
+// el item cae en el primer grupo del board, que no es ese.
+const CREATE_GROUP: Record<string, string> = { proyectos: 'new_group29179' };
+
 export async function submitCreate(
   env: Env,
   slug: string,
@@ -102,13 +110,23 @@ export async function submitCreate(
     );
   }
 
+  // "Elaborado por" es uno de los 3 firmantes de la OC a proveedor
+  // (worker/lib/oc.ts resolveSigners) y en un Proyecto nacido de "Ganar" se
+  // copia de Compras (worker/lib/ganarOportunidad.ts). Un proyecto hecho desde
+  // cero se comporta igual — no es un campo del form, se deriva.
+  if (slug === 'proyectos' && cols?.[PROYECTO_COMPRAS]?.trim()) {
+    columnValues[PROYECTO_ELABORADO_POR] = encodeColumnValue(
+      boardMeta[PROYECTO_ELABORADO_POR]?.type ?? 'people', cols[PROYECTO_COMPRAS],
+    );
+  }
+
   const board = BOARDS[slug];
   let item;
   try {
     // maxRetries:1 (no el default 4) — el front espera este round-trip para
     // navegar al item nuevo con su id real de Monday (ver comentario en
     // createItem, worker/lib/monday.ts).
-    item = await createItem(env, board.id, name.trim(), columnValues, { maxRetries: 1 });
+    item = await createItem(env, board.id, name.trim(), columnValues, { maxRetries: 1, groupId: CREATE_GROUP[slug] });
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
     throw new CreateError(502, `monday create failed: ${detail}`);

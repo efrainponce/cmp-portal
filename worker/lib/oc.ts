@@ -19,7 +19,7 @@ import { getOrCreateDriveFolderForOportunidad, uploadPdfToDrive } from './drive'
 import { isNativeId } from '../../shared/nativeId';
 import { BOARDS } from '../../shared/boards';
 import { mergeNativeCols } from './nativeMirrors';
-import { oportunidadFileKey, putFile } from './r2';
+import { oportunidadFileKey, proyectoFileKey, putFile } from './r2';
 import { generarOcProveedorPdf, prepararOcProveedor, renderOcProveedor } from './ocProveedorPdf';
 import { registrarReserva, cerrarOc, fallarOc } from './ocLedger';
 import { registrarArchivo } from './archivoLog';
@@ -362,14 +362,16 @@ export async function generarOcNativeD1(
       const pdfBytes = await generarOcProveedorPdf(env, proyectoId, group.proveedorId, viewer);
       const filename = nombreArchivoOc(folioOrden, group.proveedorRZ || group.proveedorNombre);
 
-      if (oppId != null) {
-        const key = oportunidadFileKey(oppId, 'oc', filename);
-        await putFile(env, key, new Blob([pdfBytes], { type: 'application/pdf' }));
-        orden.pdfUrl = `/api/files/${key}`;
-      }
+      // Sin Oportunidad ligada el archivo cuelga del Proyecto (2026-08-26): el
+      // key de antes NO existía y la OC se quedaba sin copia en R2.
+      const key = oppId != null
+        ? oportunidadFileKey(oppId, 'oc', filename)
+        : proyectoFileKey(proyectoId, 'oc', filename);
+      await putFile(env, key, new Blob([pdfBytes], { type: 'application/pdf' }));
+      orden.pdfUrl = `/api/files/${key}`;
       await registrarArchivo(env, {
         acto: 'genera', categoria: 'oc', nombre: filename, boardId: BOARDS.proyectos.id,
-        itemId: proyectoId, r2Key: oppId != null ? oportunidadFileKey(oppId, 'oc', filename) : null,
+        itemId: proyectoId, r2Key: key,
         bytes: pdfBytes.length, porEmail: viewer.email,
       });
       await cerrarOc(env, folioOrden, { archivo: filename, monto, moneda });
@@ -453,24 +455,25 @@ export async function generarOcPortal(
       /** Guarda una copia en R2 (y en Monday si el Proyecto no es nativo).
        * Devuelve la URL con la que el portal la sirve. */
       const guardar = async (bytes: Uint8Array, nombre: string): Promise<string | undefined> => {
-        let url: string | undefined;
         // Copia en R2 con el key que ya usa el tab (toR2Files) — sirve la OC sin
         // depender del link firmado de Monday, y es la única copia si el Proyecto
-        // es nativo (Zona Efrain), donde no hay columna a la cual subir.
-        if (oppId != null) {
-          const key = oportunidadFileKey(oppId, 'oc', nombre);
-          await putFile(env, key, new Blob([bytes], { type: 'application/pdf' }));
-          url = `/api/files/${key}`;
-        }
+        // es nativo (Zona Efrain), donde no hay columna a la cual subir. Sin
+        // Oportunidad ligada (proyecto hecho desde cero, 2026-08-26) el key
+        // cuelga del Proyecto: antes no se guardaba nada y el tab acababa
+        // enlazando el `protected_static` de Monday, que pide sesión de Monday.
+        const key = oppId != null
+          ? oportunidadFileKey(oppId, 'oc', nombre)
+          : proyectoFileKey(proyectoId, 'oc', nombre);
+        await putFile(env, key, new Blob([bytes], { type: 'application/pdf' }));
+        const url = `/api/files/${key}`;
         if (!nativo) {
-          const upload = await addFileToColumn(env, proyectoId, PROYECTO_OC_PDF, new Blob([bytes], { type: 'application/pdf' }), nombre);
-          url = url ?? upload.publicUrl;
+          await addFileToColumn(env, proyectoId, PROYECTO_OC_PDF, new Blob([bytes], { type: 'application/pdf' }), nombre);
         }
         await registrarArchivo(env, {
           acto: 'genera',
           categoria: nombre.includes('_SIN-COSTOS') ? 'oc-sin-costos' : 'oc',
           nombre, boardId: BOARDS.proyectos.id, itemId: proyectoId, colId: nativo ? null : PROYECTO_OC_PDF,
-          r2Key: oppId != null ? oportunidadFileKey(oppId, 'oc', nombre) : null,
+          r2Key: key,
           bytes: bytes.length, porEmail: viewer.email,
         });
         return url;

@@ -245,7 +245,9 @@ function FileField({ label, field, colId, row, oppId, onSaved }: {
     onSaved();
   };
 
-  const files = oppId ? toR2Files(parseFiles(row.cols[colId]?.text), oppId, `logistica/${row.id}/${field}`) : parseFiles(row.cols[colId]?.text);
+  // Sin oportunidad ligada el key cuelga del Proyecto padre de la línea
+  // (worker/lib/r2.ts proyectoFileKey) — `parentId` es justo ese id.
+  const files = toR2Files(parseFiles(row.cols[colId]?.text), oppId, `logistica/${row.id}/${field}`, row.parentId);
 
   return (
     <div>

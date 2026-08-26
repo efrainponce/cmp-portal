@@ -352,7 +352,7 @@ export function ProyectoTallasSection({ state, oppId }: { state: ProyectoState; 
         titulo="Capturar tallas"
         hint="Cuántas piezas de cada talla por producto — se guardan como líneas del proyecto. Puedes capturar de a poco: lo que dejes en blanco no se toca."
       />
-      <FileList label="Relaciones de tallas (PDF)" files={toR2Files(parseFiles(p.cols[P_TALLAS_PDF]?.text), oppId, 'tallas')} />
+      <FileList label="Relaciones de tallas (PDF)" files={toR2Files(parseFiles(p.cols[P_TALLAS_PDF]?.text), oppId, 'tallas', p.id)} />
     </div>
   );
 }

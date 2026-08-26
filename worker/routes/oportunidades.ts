@@ -54,7 +54,7 @@ import { insertSeguimiento } from '../lib/home';
 import { listZoneImages, uploadZoneImage, EmbellImageError } from '../lib/embellecimientoImagenes';
 import { listProposedProducts, addProposedProduct, ProposedProductError } from '../lib/productosPropuestos';
 import { resolveMondayAsset, keyLegado, PROYECTO_DOCUMENTO_COL } from '../lib/portalFiles';
-import { putFile, oportunidadFileKey } from '../lib/r2';
+import { putFile, oportunidadFileKey, proyectoFileKey } from '../lib/r2';
 import { resolveCotizacionPdfUrl, nativeCotizacionPdf, CotizacionPdfError, ETIQUETA_BY_KIND, type PdfKind } from '../lib/cotizacionPdfs';
 import { refetchItem, refetchItemTree, upsertItem } from '../sync';
 import { jsonStatus, contentDisposition, rejectUnknownQuery } from '../lib/http';
@@ -812,7 +812,13 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     // explícitamente al prefijo de documentación de oportunidades (2026-07-25):
     // el bucket también guarda ya los PDFs de `documentos/…`, que tienen su
     // propia ruta con scoping por fuente (worker/routes/documents.ts).
-    if (!key.startsWith('oportunidades/')) return c.json({ error: 'not found' }, 404);
+    // `proyectos/…` desde 2026-08-26: un Proyecto puede nacer SIN Oportunidad
+    // ligada (shared/createFields.ts) y entonces sus archivos —la OC del portal
+    // la primera— cuelgan de él (worker/lib/r2.ts proyectoFileKey). El scoping
+    // real lo hace resolveMondayAsset/getItem más abajo, igual que el otro
+    // prefijo; esto solo acota qué se puede pedir del bucket.
+    const esProyecto = key.startsWith('proyectos/');
+    if (!key.startsWith('oportunidades/') && !esProyecto) return c.json({ error: 'not found' }, 404);
 
     // Nombre de DESCARGA: el key es `oportunidades/<oppId>/<categoría>/<nombre
     // original>`, así que el último segmento ya es el nombre real del archivo y
@@ -822,10 +828,12 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     // Sin el prefijo de assetId: es un detalle del key, no parte del nombre que
     // la persona debe ver al descargar.
     const nombreOriginal = decodeURIComponent((keyLegado(key) ?? key).split('/').pop() ?? '');
-    const oppId = Number(key.split('/')[1]);
-    const oppRow = Number.isFinite(oppId) ? await getItem(c.env, 'oportunidades', oppId, viewer) : null;
+    const dueñoId = Number(key.split('/')[1]);
+    const dueñoRow = Number.isFinite(dueñoId)
+      ? await getItem(c.env, esProyecto ? 'proyectos' : 'oportunidades', dueñoId, viewer)
+      : null;
     const disposition = contentDisposition(nombreDescarga({
-      item: oppRow?.name, etiqueta: nombreOriginal, ext: extensionDe(nombreOriginal),
+      item: dueñoRow?.name, etiqueta: nombreOriginal, ext: extensionDe(nombreOriginal),
     }));
 
     // Los archivos subidos ANTES del prefijo de assetId (2026-08-25) viven en el
@@ -1752,13 +1760,17 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     // proyectoTallas.ts) encuentre texto no vacío en PROYECTO_DOCUMENTO_COL.
     if (isNativeId(itemId)) {
       const oppId = linkedItemId(row, PROYECTO_OPP_REL);
-      const key = oppId != null ? oportunidadFileKey(oppId, 'documento', file.name) : null;
-      if (key) await putFile(c.env, key, file);
+      // Sin Oportunidad ligada el key cuelga del Proyecto (worker/lib/r2.ts,
+      // 2026-08-26) — antes el archivo se quedaba sin copia y sin URL servible.
+      const key = oppId != null
+        ? oportunidadFileKey(oppId, 'documento', file.name)
+        : proyectoFileKey(itemId, 'documento', file.name);
+      await putFile(c.env, key, file);
       await stampNativeFileMarker(c.env, 'proyectos', itemId, PROYECTO_DOCUMENTO_COL, file.name, 'replace');
       // assetId 0: un item nativo no tiene asset de Monday — el registro de
       // quién subió empata por nombre (worker/lib/archivoBorrado.ts).
       await registrarSubida(c.env, BOARDS.proyectos.id, itemId, PROYECTO_DOCUMENTO_COL, { assetId: 0, nombre: file.name }, viewer.email);
-      return c.json({ ok: true, id: `native-${Date.now()}`, name: file.name, url: key ? `/api/files/${key}` : '' });
+      return c.json({ ok: true, id: `native-${Date.now()}`, name: file.name, url: `/api/files/${key}` });
     }
 
     const asset = await addFileToColumn(c.env, itemId, PROYECTO_DOCUMENTO_COL, file, file.name);
@@ -1771,15 +1783,16 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       { assetId: Number(asset.id) || 0, nombre: asset.name || file.name }, viewer.email);
 
     // Dual-write a R2: el Proyecto no trae el oppId directo, se resuelve del
-    // board_relation ya cargado en `row` (ver worker/lib/dal.ts). Si el
-    // proyecto aún no está ligado (caso raro), se queda solo en Monday.
+    // board_relation ya cargado en `row` (ver worker/lib/dal.ts). Un proyecto
+    // hecho desde cero no tiene ninguna (shared/createFields.ts, 2026-08-26) y
+    // el archivo cuelga de él — antes ese caso se quedaba solo en Monday, o sea
+    // con un link que pide sesión de Monday para abrirse.
     const oppId = linkedItemId(row, PROYECTO_OPP_REL);
-    if (oppId != null) {
-      const key = oportunidadFileKey(oppId, 'documento', file.name, asset.id);
-      await putFile(c.env, key, file);
-      return c.json({ ok: true, id: asset.id, name: asset.name, url: `/api/files/${key}` });
-    }
-    return c.json({ ok: true, id: asset.id, name: asset.name, url: asset.publicUrl });
+    const key = oppId != null
+      ? oportunidadFileKey(oppId, 'documento', file.name, asset.id)
+      : proyectoFileKey(itemId, 'documento', file.name, asset.id);
+    await putFile(c.env, key, file);
+    return c.json({ ok: true, id: asset.id, name: asset.name, url: `/api/files/${key}` });
   });
 
   // Borra un archivo de la OC/contrato: del portal Y de Monday, 1-1
@@ -1862,8 +1875,10 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     // /proyectos/:id/documento. Sin oppId no hay key estable que reconstruir
     // después, así que ahí se rechaza en vez de dejar el archivo huérfano.
     if (isNativeId(itemId)) {
-      if (oppId == null) return c.json({ error: 'el proyecto no está ligado a una oportunidad' }, 409);
-      const key = oportunidadFileKey(oppId, `logistica/${itemId}/${field}`, file.name);
+      if (proyectoId == null) return c.json({ error: 'la línea no tiene proyecto padre' }, 409);
+      const key = oppId != null
+        ? oportunidadFileKey(oppId, `logistica/${itemId}/${field}`, file.name)
+        : proyectoFileKey(proyectoId, `logistica/${itemId}/${field}`, file.name);
       await putFile(c.env, key, file);
       await stampNativeFileMarker(c.env, 'proyectos_sub', itemId, colId, file.name);
       await registrarArchivo(c.env, {
@@ -1882,8 +1897,11 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       bytes: file.size, porEmail: viewer.email,
     });
 
-    if (oppId != null) {
-      const key = oportunidadFileKey(oppId, `logistica/${itemId}/${field}`, file.name, asset.id);
+    // Sin Oportunidad ligada, el key cuelga del Proyecto padre (2026-08-26).
+    const key = oppId != null
+      ? oportunidadFileKey(oppId, `logistica/${itemId}/${field}`, file.name, asset.id)
+      : proyectoId != null ? proyectoFileKey(proyectoId, `logistica/${itemId}/${field}`, file.name, asset.id) : null;
+    if (key) {
       await putFile(c.env, key, file);
       return c.json({ ok: true, id: asset.id, name: asset.name, url: `/api/files/${key}` });
     }
