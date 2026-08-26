@@ -18,11 +18,12 @@ import {
   refreshItem, restaurarVersion, patchItem, type ItemDetailDTO, type QuoteVersionDTO,
 } from '../../lib/api';
 import { statusIndex } from '../../lib/statusValue';
+import { routePath } from '../../lib/routing';
 import { DEAL_STAGE_LABELS, stageAtOrAfter, type StageBoardKey } from '../../lib/dealStages';
 import { COSTEO_STAGE_BLOCKED, puedeMandarACosteo, puedeGenerarCotizacion } from '../../../shared/dealStages';
 import { useIsMobile } from '../../lib/useIsMobile';
 import { uxAction, uxNav } from '../../lib/telemetry';
-import { BoardTabsBar, type DrawerTabKey } from './BoardTabsBar';
+import { BoardTabsBar, isDrawerTab, type DrawerTabKey } from './BoardTabsBar';
 import { CotizacionTab } from './tabs/CotizacionTab';
 import { ETAPA_COSTEO_COL } from './tabs/cotizacion/gridMeta';
 import { Modal } from '../../components/core/Modal';
@@ -44,6 +45,11 @@ interface Props {
   id: string;
   backLabel: string;
   defaultTab: string;
+  /** Pestaña pedida por la URL (/board/item/tab). Si no es una pestaña conocida
+   * se ignora y manda `defaultTab`. */
+  openTab?: string | null;
+  /** Refleja la pestaña activa en la URL para poder copiar/compartir el link. */
+  onTabChange?: (tab: DrawerTabKey) => void;
   onBack: () => void;
   /** Origin board — drives the Cotizaciones variant (costeo boards see cost breakdown). */
   boardKey?: StageBoardKey;
@@ -108,7 +114,7 @@ function ChangeIconButton({ onClick, label }: { onClick: () => void; label: stri
   );
 }
 
-export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey, onDuplicated }: Props) {
+export function OpportunityDrawer({ id, backLabel, defaultTab, openTab, onTabChange, onBack, boardKey, onDuplicated }: Props) {
   const isMobile = useIsMobile();
   const me = useMe();
   const canDuplicate = !!me;
@@ -136,7 +142,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
   const [syncing, setSyncing] = useState(false);
   const currentIdRef = useRef(id);
   currentIdRef.current = id;
-  const [tab, setTab] = useState<DrawerTabKey>(defaultTab as DrawerTabKey);
+  const [tab, setTab] = useState<DrawerTabKey>(() => (isDrawerTab(openTab) ? openTab : defaultTab as DrawerTabKey));
   const [notice, setNotice] = useState<Notice | null>(null);
   // Pre-chequeo de costeo (todas las etapas): null = cargando; deshabilita el botón.
   const [costeoReady, setCosteoReady] = useState<{ ok: boolean; errors?: string[] } | null>(null);
@@ -297,8 +303,15 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
     setRefreshing(false);
   };
 
+  // Cambiar de pestaña también mueve la URL (sin empujar historial): así el
+  // link copiado abre exactamente lo que la persona está viendo.
+  const onChangeTab = (t: DrawerTabKey) => {
+    setTab(t);
+    onTabChange?.(t);
+  };
+
   const onCopyLink = async () => {
-    const url = `${window.location.origin}/${boardKey ?? 'oportunidades'}/${id}`;
+    const url = `${window.location.origin}${routePath(boardKey ?? 'oportunidades', id, activeTab)}`;
     try {
       await navigator.clipboard.writeText(url);
       setLinkCopied(true);
@@ -918,7 +931,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, onBack, boardKey,
         </div>
       )}
 
-      <BoardTabsBar active={activeTab} onChange={setTab} showPostventa={showPostventa} showProyectos={showProyectos} />
+      <BoardTabsBar active={activeTab} onChange={onChangeTab} showPostventa={showPostventa} showProyectos={showProyectos} />
 
       {/* Una vez existe el Proyecto (Ganada), la conversación post-venta vive
           en su feed de Monday, no en el de la Oportunidad (Efraín, 2026-07-17). */}

@@ -56,6 +56,12 @@ const TABS: { key: ProyectoTabKey; label: string }[] = [
 // en TODOS los accesos (Efraín, 2026-08-10: "no todos los boards tienen
 // actualizaciones" — se había quedado fuera de estos dos por error, no a propósito).
 // Cotización/Embellecimientos van en los 4 accesos por igual (Efraín, 2026-08-12).
+// El tercer segmento de la URL (/<board>/<id>/<tab>) se valida contra TABS
+// antes de abrir el drawer ahí; cualquier otra cosa cae al defaultTab del board.
+function esTab(v: string | null | undefined): v is ProyectoTabKey {
+  return !!v && TABS.some((t) => t.key === v);
+}
+
 const TABS_BY_BOARD: Partial<Record<ProjectBoardKey, ProyectoTabKey[]>> = {
   doctallas: ['actualizaciones', 'actividad', 'cotizacion', 'embellecimientos', 'documentacion', 'tallas'],
   ordenescompra: ['actualizaciones', 'actividad', 'cotizacion', 'embellecimientos', 'documentacion', 'tallas', 'ordenes'],
@@ -66,6 +72,9 @@ interface Props {
   boardKey: ProjectBoardKey;
   backLabel: string;
   defaultTab: string;
+  /** Pestaña pedida por la URL y su reflejo de vuelta (link copiable). */
+  openTab?: string | null;
+  onTabChange?: (tab: string) => void;
   onBack: () => void;
   /** Abre la Oportunidad ligada en su propio drawer (cotización/embellecimientos viven ahí). */
   onOpenOportunidad: (id: string) => void;
@@ -74,13 +83,14 @@ interface Props {
 // SWR de sesión — mismo patrón que OpportunityDrawer.
 const detailCache = new Map<string, ItemDetailDTO>();
 
-export function ProyectoDrawer({ id, boardKey, backLabel, defaultTab, onBack, onOpenOportunidad }: Props) {
+export function ProyectoDrawer({ id, boardKey, backLabel, defaultTab, openTab, onTabChange, onBack, onOpenOportunidad }: Props) {
   const isMobile = useIsMobile();
   const me = useMe();
   const [item, setItem] = useState<ItemDetailDTO | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [tab, setTab] = useState<ProyectoTabKey>(defaultTab as ProyectoTabKey);
+  const [tab, setTab] = useState<ProyectoTabKey>(() => (esTab(openTab) ? openTab : defaultTab as ProyectoTabKey));
+  const cambiarTab = (t: ProyectoTabKey) => { setTab(t); onTabChange?.(t); };
   const [oportunidadId, setOportunidadId] = useState<string | null>(null);
   // Nombre del proyecto: mismo permiso que el de la oportunidad (Efraín, 2026-08-13).
   const { boards } = useBoards();
@@ -95,7 +105,7 @@ export function ProyectoDrawer({ id, boardKey, backLabel, defaultTab, onBack, on
 
   useEffect(() => {
     setItem(detailCache.get(id) ?? null);
-    setTab(defaultTab as ProyectoTabKey);
+    setTab(esTab(openTab) ? openTab : defaultTab as ProyectoTabKey);
     setOportunidadId(null);
     load();
     getProyectoOportunidad(id).then(setOportunidadId).catch(() => setOportunidadId(null));
@@ -181,7 +191,7 @@ export function ProyectoDrawer({ id, boardKey, backLabel, defaultTab, onBack, on
           .map((t) => (
           <div
             key={t.key}
-            onClick={() => setTab(t.key)}
+            onClick={() => cambiarTab(t.key)}
             style={{
               padding: '9px 4px', marginRight: 14, font: "600 11.5px 'Inter', sans-serif", cursor: 'pointer', whiteSpace: 'nowrap',
               color: tab === t.key ? 'var(--ink)' : 'var(--ink-quiet)',

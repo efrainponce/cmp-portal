@@ -204,7 +204,7 @@ y `src/lib/estadoProductoBuckets.ts`.
 - [src/lib/mockFallback.ts](src/lib/mockFallback.ts) — Fallback offline para el board Oportunidades: se activa cuando cualquier fetch al Worker falla, no solo en dev — reusa src/data/oportunidades.ts. Exports: mockBoardMeta, mockPatch, mockList, mockItemDetail.
 - [src/lib/productSearch.ts](src/lib/productSearch.ts) — Búsqueda flexible por palabras (nombre/SKU/marca, sin acentos) sobre el catálogo de Productos, usada por ProductPicker. Exports: PRODUCTO_SKU_COL, PRODUCTO_NOMBRE_COL, PRODUCTO_MARCA_COL, norm, alnum, productoSku, productoMarca, productoNombreCorto, productSearchIndex, searchProductos, exactProducto.
 - [src/lib/projectStages.ts](src/lib/projectStages.ts) — Config de los 4 accesos Proyectos (post-venta: Tallas, OC, Ejecución, Logística). Exports: ProjectBoardKey, ProjectBoardConfig, PROJECT_STATUS_ORDER, PROJECT_BOARDS.
-- [src/lib/routing.ts](src/lib/routing.ts) — Ruteo mínimo por History API (sin react-router, deep links). Exports: useRoute.
+- [src/lib/routing.ts](src/lib/routing.ts) — Ruteo mínimo por History API (sin react-router, deep links `/board/item/tab`). Exports: useRoute, routePath, parsePath.
 - [src/lib/sessionState.ts](src/lib/sessionState.ts) — Señal global de sesión de Access expirada tras agotar el auto-retry, consumida por App.tsx para bloquear la UI. Exports: markSessionExpired, useSessionExpired.
 - [src/lib/statusValue.ts](src/lib/statusValue.ts) — Monday status-type columns: parse value {index, post_id, ...}. Exports: statusIndex.
 - [src/lib/syncStatus.ts](src/lib/syncStatus.ts) — Board-list header: "actualizado hace X min" (item.updated_at de Monday). Exports: lastMondayUpdateFromItems.

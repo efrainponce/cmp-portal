@@ -18,6 +18,9 @@ const OpportunityDrawer = lazy(cargarDrawer);
 interface Props {
   boardKey: StageBoardKey;
   openId: string | null;
+  /** Pestaña pedida por la URL (/<board>/<id>/<tab>) y su reflejo de vuelta. */
+  openTab?: string | null;
+  onTabChange?: (tab: string) => void;
   onOpenChange: (id: string | null) => void;
   /** Llamado con el id de la oportunidad nueva tras "Duplicar" en el drawer —
    * siempre nace en etapa "Nueva oportunidad", así que navega al board Oportunidades. */
@@ -35,7 +38,7 @@ interface Props {
  * lo necesitan: solo llegan ahí oportunidades que ya avanzaron. 'zona_efrain'
  * también lo necesita — es como llega Elisa crea una oportunidad para el CEO
  * sin salir de esa pestaña (Efraín, 2026-08-12). */
-export function StageBoard({ boardKey, openId, onOpenChange, onDuplicated }: Props) {
+export function StageBoard({ boardKey, openId, openTab, onTabChange, onOpenChange, onDuplicated }: Props) {
   const config = STAGE_BOARDS[boardKey];
   const [q, setQ] = useState('');
   // El drawer se precarga SOLO cuando la lista ya pintó: si no, el idle
@@ -81,6 +84,8 @@ export function StageBoard({ boardKey, openId, onOpenChange, onDuplicated }: Pro
           id={openId}
           backLabel={`Volver a ${config.title}`}
           defaultTab={config.defaultTab}
+          openTab={openTab}
+          onTabChange={onTabChange}
           onBack={() => onOpenChange(null)}
           boardKey={config.key}
           onDuplicated={onDuplicated}

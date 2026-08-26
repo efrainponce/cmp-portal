@@ -11,6 +11,9 @@ const ProyectoDrawer = lazy(cargarDrawer);
 interface Props {
   boardKey: ProjectBoardKey;
   openId: string | null;
+  /** Pestaña pedida por la URL (/<board>/<id>/<tab>) y su reflejo de vuelta. */
+  openTab?: string | null;
+  onTabChange?: (tab: string) => void;
   onOpenChange: (id: string | null) => void;
   /** El id abierto es del board Proyectos — abrir la Oportunidad ligada navega
    * a su propio board/drawer (misma lógica que un link cruzado). */
@@ -21,7 +24,7 @@ interface Props {
  * Órdenes de Compra, Logística): lista por project_status + drawer nativo del
  * Proyecto. Mismo patrón que StageBoard, pero sobre el board Proyectos en vez
  * de Oportunidades filtrada por etapa (Efraín, 2026-07-17). */
-export function ProyectoBoard({ boardKey, openId, onOpenChange, onOpenOportunidad }: Props) {
+export function ProyectoBoard({ boardKey, openId, openTab, onTabChange, onOpenChange, onOpenOportunidad }: Props) {
   const config = PROJECT_BOARDS[boardKey];
   const [q, setQ] = useState('');
   // El drawer se precarga SOLO cuando la lista ya pintó: si no, el idle
@@ -40,6 +43,8 @@ export function ProyectoBoard({ boardKey, openId, onOpenChange, onOpenOportunida
           boardKey={boardKey}
           backLabel={`Volver a ${config.title}`}
           defaultTab={config.defaultTab}
+          openTab={openTab}
+          onTabChange={onTabChange}
           onBack={() => onOpenChange(null)}
           onOpenOportunidad={onOpenOportunidad}
         />

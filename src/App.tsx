@@ -29,7 +29,7 @@ const AnalisisPage = lazy(() => import('./app/AnalisisPage').then((m) => ({ defa
 function App() {
   const sessionExpired = useSessionExpired();
   const me = useMe();
-  const { board: activeBoard, itemId, navigate } = useRoute();
+  const { board: activeBoard, itemId, tab: openTab, navigate, setTab } = useRoute();
   const [collapsed, setCollapsed] = useState(false);
   const isMobile = useIsMobile();
 
@@ -62,11 +62,11 @@ function App() {
 
   const views = (
     <Suspense fallback={<div style={{ padding: 32 }}>Cargando…</div>}>
-      {activeBoard === 'oportunidades' && <OportunidadesBoard openId={itemId} onOpenChange={onOpenChange} onDuplicated={onDuplicated} />}
+      {activeBoard === 'oportunidades' && <OportunidadesBoard openId={itemId} openTab={openTab} onTabChange={setTab} onOpenChange={onOpenChange} onDuplicated={onDuplicated} />}
       {(activeBoard === 'oportunidades_web' || activeBoard === 'costeo' || activeBoard === 'validacion' || activeBoard === 'zona_efrain') && (
         // key: cambiar de board debe resetear el estado local (búsqueda),
         // igual que cuando eran 5 componentes distintos.
-        <StageBoard key={activeBoard} boardKey={activeBoard} openId={itemId} onOpenChange={onOpenChange} onDuplicated={onDuplicated} />
+        <StageBoard key={activeBoard} boardKey={activeBoard} openId={itemId} openTab={openTab} onTabChange={setTab} onOpenChange={onOpenChange} onDuplicated={onDuplicated} />
       )}
       {(activeBoard === 'doctallas' || activeBoard === 'ordenescompra' || activeBoard === 'ejecucion'
         || activeBoard === 'logistica' || activeBoard === 'zona_efrain_proy') && (
@@ -74,6 +74,8 @@ function App() {
           key={activeBoard}
           boardKey={activeBoard}
           openId={itemId}
+          openTab={openTab}
+          onTabChange={setTab}
           onOpenChange={onOpenChange}
           onOpenOportunidad={(oppId) => navigate('oportunidades', oppId)}
         />

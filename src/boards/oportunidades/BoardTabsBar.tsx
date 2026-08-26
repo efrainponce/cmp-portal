@@ -9,6 +9,17 @@ export type DrawerTabKey =
   | 'actualizaciones' | 'cotizacion' | 'embellecimientos' | 'nuevosproductos' | 'actividad'
   | 'documentacion' | 'tallas' | 'ordenes' | 'ejecucion' | 'logistica';
 
+// Mismas llaves, en runtime: el tercer segmento de la URL (/board/item/tab) se
+// valida contra esto antes de abrir el drawer en esa pestaña.
+export const DRAWER_TAB_KEYS: DrawerTabKey[] = [
+  'actualizaciones', 'cotizacion', 'embellecimientos', 'nuevosproductos', 'actividad',
+  'documentacion', 'tallas', 'ordenes', 'ejecucion', 'logistica',
+];
+
+export function isDrawerTab(v: string | null | undefined): v is DrawerTabKey {
+  return !!v && (DRAWER_TAB_KEYS as string[]).includes(v);
+}
+
 interface Props {
   active: DrawerTabKey;
   onChange: (tab: DrawerTabKey) => void;

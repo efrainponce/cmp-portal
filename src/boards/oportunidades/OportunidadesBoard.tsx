@@ -16,12 +16,15 @@ const OpportunityDrawer = lazy(cargarDrawer);
 
 interface Props {
   openId: string | null;
+  /** Pestaña pedida por la URL (/oportunidades/<id>/<tab>) y su reflejo de vuelta. */
+  openTab?: string | null;
+  onTabChange?: (tab: string) => void;
   onOpenChange: (id: string | null) => void;
   /** Llamado con el id de la oportunidad nueva tras "Duplicar" en el drawer. */
   onDuplicated: (newId: string) => void;
 }
 
-export function OportunidadesBoard({ openId, onOpenChange, onDuplicated }: Props) {
+export function OportunidadesBoard({ openId, openTab, onTabChange, onOpenChange, onDuplicated }: Props) {
   const [creating, setCreating] = useState(false);
   const [q, setQ] = useState('');
   // El drawer se precarga SOLO cuando la lista ya pintó: si no, el idle
@@ -52,6 +55,8 @@ export function OportunidadesBoard({ openId, onOpenChange, onDuplicated }: Props
           id={openId}
           backLabel={`Volver a ${CONFIG.title}`}
           defaultTab={CONFIG.defaultTab}
+          openTab={openTab}
+          onTabChange={onTabChange}
           onBack={() => onOpenChange(null)}
           boardKey={CONFIG.key}
           onDuplicated={onDuplicated}

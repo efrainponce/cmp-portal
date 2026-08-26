@@ -1,5 +1,26 @@
 # Log de commits
 
+## 2026-08-25 (11)
+
+- **Link directo a la pestaña de una oportunidad o proyecto** (Efraín: "agregar
+  a cada oportunidad la URL … para llegar a cada [tab]"). La ruta gana un
+  tercer segmento opcional: `/ejecucion/11832754547/cotizacion` abre el drawer
+  ya parado en Cotización. Aplica igual a los 6 boards de Oportunidades y a los
+  accesos de Proyectos, con el nombre de la pestaña tal cual (`cotizacion`,
+  `embellecimientos`, `documentacion`, `tallas`, `ordenes`, `ejecucion`,
+  `logistica`, `actualizaciones`, `actividad`, `nuevosproductos`).
+- Cambiar de pestaña **reescribe** la URL (`replaceState`, no `pushState`): así
+  el link de la barra de direcciones siempre refleja lo que se está viendo, y
+  el botón "Atrás" del navegador sigue cerrando el drawer en vez de recorrer
+  pestañas una por una. "Copiar link" ahora copia la pestaña activa.
+- Nada se rompe si el link viene mal: un tercer segmento que no sea una
+  pestaña conocida se ignora y el drawer abre en su `defaultTab` de siempre, y
+  las URLs viejas de dos segmentos (`/costeo/12345`) siguen idénticas. Las
+  pestañas gateadas por etapa (Postventa/Proyectos) mantienen su gate — el
+  link pide, la etapa manda.
+- Anclado en `src/lib/routing.test.ts` (parseo de 3 segmentos, ida y vuelta con
+  `routePath`, board desconocido, segmentos de más).
+
 ## 2026-08-25 (10)
 
 - **Dragger para reacomodar las filas de una OC, por proveedor** (Efraín: "un
