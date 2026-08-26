@@ -4,7 +4,7 @@
 // que ensanche el scope de escritura no lo caza el typecheck (todo son números).
 import { describe, it, expect } from 'vitest';
 import type { Identity } from '../../shared/types';
-import { ownerIdsFor, leadsOthers, scopeFor } from './dal';
+import { ownerIdsFor, leadsOthers, scopeFor, SEARCHABLE_COLS } from './dal';
 
 const vendedor = (over: Partial<Identity> = {}): Identity => ({
   email: 'ray@mexicanadeproteccion.com',
@@ -150,3 +150,23 @@ describe('scopeFor: zona privada (hidden_owner_ids)', () => {
   });
 });
 
+
+// El buscador de la lista arma su propio haystack en el cliente, pero el server
+// ya filtró antes: una columna fuera de esta lista es una búsqueda que devuelve
+// cero sin explicación. Pasó con el folio de Proyectos — "PRO-0066" no
+// encontraba nada (Efraín, 2026-08-26).
+describe('SEARCHABLE_COLS', () => {
+  it('cubre el folio de LOS DOS boards con folio', () => {
+    expect(SEARCHABLE_COLS).toContain('pulse_id_mm0qcq0m'); // Oportunidades
+    expect(SEARCHABLE_COLS).toContain('pulse_id_mm1a12gy'); // Proyectos
+  });
+
+  it('cubre Institución en los dos (lookup distinto por board)', () => {
+    expect(SEARCHABLE_COLS).toContain('lookup_mm1bs976');  // Oportunidades
+    expect(SEARCHABLE_COLS).toContain('lookup_mm1dwn6');   // Proyectos
+  });
+
+  it('todos los ids son inertes para el SQL (van inline, no como bind)', () => {
+    for (const id of SEARCHABLE_COLS) expect(id).toMatch(/^[a-z0-9_]+$/);
+  });
+});

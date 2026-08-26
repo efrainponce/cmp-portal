@@ -7,8 +7,12 @@ export type ProjectBoardKey = 'doctallas' | 'ordenescompra' | 'ejecucion' | 'log
 export interface ProjectBoardConfig {
   key: ProjectBoardKey;
   title: string;
-  /** project_status values (índices, ver shared/column-meta.gen.ts) que caen en este acceso. */
-  statuses: string[];
+  /** project_status values (índices, ver shared/column-meta.gen.ts) que caen en
+   * este acceso. **Sin `statuses` no se filtra NADA** — es lo que quiere
+   * "Reporte de Proyectos" (Efraín, 2026-08-26: "ve TODO"): listar los índices
+   * uno por uno escondía cualquier proyecto con la etapa vacía o con un label
+   * que Monday agregue después, sin avisar. */
+  statuses?: string[];
   /** Solo proyectos cuyo Vendedor sea uno de estos nombres (case-insensitive) —
    * usado por 'zona_efrain_proy' para acotar el post-venta a la zona privada
    * (worker/lib/zonas.ts). Filtro de conveniencia en el cliente, como el
@@ -38,7 +42,8 @@ export const PROJECT_BOARDS: Record<ProjectBoardKey, ProjectBoardConfig> = {
   // cerrados. Agrupado por Zona en vez de por status (ProyectoBoardList.tsx).
   // Renombrado a "Reporte de Proyectos" y sin filtro de status (Efraín, 2026-08-13):
   // muestra TODOS los proyectos sin importar su etapa.
-  ejecucion: { key: 'ejecucion', title: 'Reporte de Proyectos', statuses: PROJECT_STATUS_ORDER, defaultTab: 'ejecucion' },
+  // Sin `statuses`: TODOS los proyectos, incluidos los que no tienen etapa.
+  ejecucion: { key: 'ejecucion', title: 'Reporte de Proyectos', defaultTab: 'ejecucion' },
   logistica: { key: 'logistica', title: 'Logística', statuses: ['1'], defaultTab: 'logistica' },
   // Zona privada "Efrain" del lado de Proyectos (Efraín, 2026-08-17) — el
   // espejo de STAGE_BOARDS.zona_efrain (src/lib/dealStages.ts): TODAS las
@@ -48,7 +53,7 @@ export const PROJECT_BOARDS: Record<ProjectBoardKey, ProjectBoardConfig> = {
   // vendedor que el tab de Ventas: la zona es la del CEO, no la de quien tiene
   // acceso al tab. Arranca en Documentación, el primer paso del post-venta.
   zona_efrain_proy: {
-    key: 'zona_efrain_proy', title: 'Zona Efrain', statuses: PROJECT_STATUS_ORDER,
+    key: 'zona_efrain_proy', title: 'Zona Efrain',
     vendedorNames: ['Efrain Ponce'], defaultTab: 'documentacion',
   },
 };

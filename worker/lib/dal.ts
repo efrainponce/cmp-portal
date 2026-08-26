@@ -130,13 +130,29 @@ export function childSlugOf(slug: BoardSlug): BoardSlug | undefined {
 // json_each over `columns` finds them regardless of board — other boards simply
 // have no matching id). Vendedor/Compras + Institución/Folio/Contacto: users
 // search by client or institution name ("zeus"), not just the item name.
-const SEARCHABLE_COLS = [
+export const SEARCHABLE_COLS = [
   'deal_owner', 'multiple_person_mm03qyw9',        // Vendedor / Compras
   'lookup_mm1bs976', 'pulse_id_mm0qcq0m', 'deal_contact', // Institución / Folio / Contacto
   // Productos: SKU / Nombre Producto / Marca — el catálogo se busca por SKU
   // tanto como por nombre (Efraín, 2026-07-30).
   'product_and_service_sku', 'text_mm0wvga2', 'product_and_service_description',
+  // PROYECTOS (2026-08-26): Folio / Institución / Vendedor. Faltaban, así que
+  // buscar "PRO-0066" en cualquier board de Proyectos devolvía CERO filas desde
+  // el server — la lista sí sabe buscar por folio, pero filtraba una respuesta
+  // que ya venía vacía. El folio del proyecto es distinto al de la oportunidad
+  // (pulse_id_mm0qcq0m), por eso son dos ids.
+  'pulse_id_mm1a12gy', 'lookup_mm1dwn6', 'multiple_person_mm0hrnqq',
 ];
+
+/** Los ids van INLINE en el SQL, no como binds: son constantes de este archivo
+ * (se valida la forma para que nunca puedan volverse inyección) y repetirlas
+ * por cada palabra del query consumía ~1 bind por columna por palabra — con el
+ * tope de ~100 binds por statement de D1, una búsqueda de varias palabras
+ * quedaba a nada de tronar. */
+const SEARCHABLE_IN = SEARCHABLE_COLS.map((id) => {
+  if (!/^[a-z0-9_]+$/.test(id)) throw new Error(`SEARCHABLE_COLS: id inválido ${id}`);
+  return `'${id}'`;
+}).join(',');
 
 /** Palabras del query. Todas deben aparecer (AND) pero cada una puede caer en
  * un campo distinto y en cualquier orden — "5.11 bota" o "bota 5.11" llegan al
@@ -152,7 +168,6 @@ export async function listItems(env: Env, slug: BoardSlug, viewer: Identity, q?:
   const binds: unknown[] = [board.id, ...scope.binds];
   let sql = `SELECT * FROM items WHERE board_id = ? AND (${scope.where})`;
   if (q) {
-    const placeholders = SEARCHABLE_COLS.map(() => '?').join(',');
     // Una cláusula por palabra (AND entre ellas, OR entre campos dentro de
     // cada una): antes el query entero iba en un solo LIKE, así que "5.11
     // bota" no encontraba nada aunque las dos palabras estuvieran en el item.
@@ -161,11 +176,11 @@ export async function listItems(env: Env, slug: BoardSlug, viewer: Identity, q?:
         name LIKE ? COLLATE NOCASE
         OR EXISTS (
           SELECT 1 FROM json_each(items.columns) je
-          WHERE json_extract(je.value, '$.id') IN (${placeholders})
+          WHERE json_extract(je.value, '$.id') IN (${SEARCHABLE_IN})
             AND json_extract(je.value, '$.text') LIKE ? COLLATE NOCASE
         )
       )`;
-      binds.push(`%${token}%`, ...SEARCHABLE_COLS, `%${token}%`);
+      binds.push(`%${token}%`, `%${token}%`);
     }
   }
   sql += ' ORDER BY monday_updated_at DESC LIMIT 4000';

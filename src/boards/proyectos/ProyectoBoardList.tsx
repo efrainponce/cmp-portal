@@ -1,7 +1,8 @@
-// Lista de Proyectos (post-venta) para los 3 accesos del sidebar (Documentación
-// y Tallas / Órdenes de Compra / Logística) — agrupada por project_status,
-// filtrada por config.statuses. Fuente: board Proyectos directo, nunca vía el
-// board_relation hacia la Oportunidad (Efraín, 2026-07-17 — ver dal.ts).
+// Lista de Proyectos (post-venta) para los accesos del sidebar (Documentación y
+// Tallas / Órdenes de Compra / Logística / Reporte de Proyectos) — agrupada por
+// project_status y filtrada por config.statuses; sin `statuses` no se filtra
+// nada. Fuente: board Proyectos directo, nunca vía el board_relation hacia la
+// Oportunidad (Efraín, 2026-07-17 — ver dal.ts).
 import { useEffect, useRef } from 'react';
 import { useBoards, usePoll, colForBoard, type ItemDTO } from '../../lib/api';
 import { groupByColumn } from '../../lib/groupBy';
@@ -97,7 +98,7 @@ export function ProyectoBoardList({ config, q, onSearch, onOpen, onReady, header
   }, [status, onReady]);
   const allItems = data?.items ?? [];
   const statusItems = allItems
-    .filter((it) => config.statuses.includes(statusIndex(it.cols[STATUS_COL])))
+    .filter((it) => !config.statuses || config.statuses.includes(statusIndex(it.cols[STATUS_COL])))
     .filter((it) => vendedorNamesMatch(it, config.vendedorNames));
   const sync = lastMondayUpdateFromItems(statusItems);
 

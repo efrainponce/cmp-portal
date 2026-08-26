@@ -2,6 +2,26 @@
 
 ## 2026-08-26
 
+- **Buscar "PRO-0066" no encontraba nada** (Efraín: "por qué no encuentro el
+  proyecto 0066 en Reporte de Proyectos"). El buscador del server
+  (`SEARCHABLE_COLS` en `worker/lib/dal.ts`) traía el folio de **Oportunidades**
+  (`pulse_id_mm0qcq0m`) pero no el de **Proyectos** (`pulse_id_mm1a12gy`), ni su
+  Institución ni su Vendedor: cualquier búsqueda por folio de proyecto salía con
+  CERO filas desde D1. La lista sí sabe buscar por folio, pero estaba filtrando
+  una respuesta que ya venía vacía. Verificado contra la D1 de producción: el
+  mismo query con las columnas nuevas devuelve el proyecto.
+- Los ids de esas columnas ahora van **inline en el SQL** (validados contra
+  `/^[a-z0-9_]+$/`) en vez de repetirse como binds por cada palabra del query:
+  con 11 columnas y el tope de 6 palabras eran ~78 binds de un presupuesto de
+  ~100 por statement de D1. Anclado en `worker/lib/dal.test.ts`.
+- **Reporte de Proyectos ya no filtra por etapa** (Efraín: "quita todos los
+  filtros, ve TODO"). `statuses` es opcional en `ProjectBoardConfig`: sin él no
+  se filtra nada. Listar los 6 índices uno por uno escondía en silencio
+  cualquier proyecto con la etapa vacía o con un label que Monday agregue
+  después. Mismo trato para "Zona Efrain" del post-venta, que ya decía "todas
+  las etapas". Documentación y Tallas / Órdenes de Compra / Logística siguen
+  acotados: cada equipo ve su tramo.
+
 - **La pestaña Documentación apuntaba a la columna equivocada** (Efraín:
   "tienes que ligar la columna correcta de documentación"). El portal leía y
   escribía `file_mm0hayh4` ("Cotización Firmada Institucion"), que solo tiene 4
