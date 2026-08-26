@@ -2,6 +2,11 @@
 
 ## 2026-08-26
 
+- **"+ Nuevo proyecto" también en Reporte de Proyectos** (Efraín). Ese acceso
+  no filtra por etapa, así que el proyecto recién creado aparece ahí mismo. Se
+  queda fuera solo **Logística**, que lista únicamente "Proyecto Terminado":
+  ahí el proyecto nuevo desaparecería en el momento de crearlo.
+
 - **"Too many subrequests" al guardar tallas** (Efraín reportó el error crudo
   de Cloudflare en la captura de tallas). No era Monday ni los datos: una
   invocación de Worker tiene un tope de llamadas salientes y ahí cuentan TANTO

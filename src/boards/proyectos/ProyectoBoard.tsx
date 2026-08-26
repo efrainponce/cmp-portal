@@ -11,11 +11,13 @@ const CrearProyectoModal = lazy(() => import('./CrearProyectoModal'));
 // Un proyecto nuevo nace en "Desglose de tallas" (shared/createFields.ts
 // CREATE_DEFAULTS), así que el botón solo va en los accesos que muestran esa
 // etapa — si no, el proyecto recién creado desaparecería de la lista donde se
-// creó. Son además los dos accesos operativos: Ventas entra por "Documentación
-// y Tallas" y Compras por "Órdenes de Compra" (shared/boardAccess.ts).
-// "Zona Efrain" queda fuera: ahí los items son NATIVOS (viven solo en D1) y
-// esto crea en Monday — mezclarlos filtraría la zona privada.
-const CREAR_EN: ProjectBoardKey[] = ['doctallas', 'ordenescompra'];
+// creó. Eso deja fuera a "Logística", que solo lista "Proyecto Terminado".
+// "Reporte de Proyectos" sí entra (Efraín, 2026-08-26): no filtra por etapa,
+// así que el proyecto nuevo aparece ahí mismo — y es la vista donde se ve el
+// post-venta completo. "Zona Efrain" queda fuera: ahí los items son NATIVOS
+// (viven solo en D1) y esto crea en Monday — mezclarlos filtraría la zona
+// privada.
+const CREAR_EN: ProjectBoardKey[] = ['doctallas', 'ordenescompra', 'ejecucion'];
 
 // Mismo criterio que en los boards de Oportunidades: el drawer se precarga
 // cuando el navegador está ocioso, no compitiendo con la carga de la lista.
