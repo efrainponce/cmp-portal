@@ -37,6 +37,12 @@ export interface DocTemplate {
    * "ESTO SOLO LO VEN compras y admin" (Efraín, 2026-08-14). Sin este campo =
    * sin restricción extra (default: todos los que ven la fuente). */
   view?: Role[];
+  /** Además del rol, exige estar en la whitelist de utilidades por CORREO
+   * (shared/visibility.ts puedeVerUtilidades). Lo pide `validacion-costeo`: la
+   * hoja lleva utilidad, utilidad % y margen gob por línea, así que sería la
+   * puerta de atrás perfecta a lo que las columnas ya no enseñan — se tapan las
+   * cifras en la grid y se bajan igualitas en un PDF (Efraín, 2026-08-27). */
+  requiereUtilidades?: boolean;
   /** Roles que pueden firmarlo. Lista vacía = documento no firmable. */
   sign: Role[];
   /** Cuántas firmas admite antes de considerarse completo. */
@@ -93,6 +99,7 @@ export const DOC_TEMPLATES: Record<DocTemplateId, DocTemplate> = {
     source: 'oportunidad',
     create: ['compras', 'admin'],
     view: ['compras', 'admin'],
+    requiereUtilidades: true,
     sign: [],
     maxSignatures: 1,
     autoAcuse: true,

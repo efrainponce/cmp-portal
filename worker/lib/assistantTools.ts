@@ -371,10 +371,15 @@ const SKIP_TYPES = new Set([
 ]);
 
 /** All non-empty, role-readable columns of a row as {Título: texto}. */
-function readableRecord(slug: keyof typeof COLUMN_META, row: MirrorItem, role: Role): Record<string, string> {
+function readableRecord(
+  slug: keyof typeof COLUMN_META, row: MirrorItem, role: Role, email?: string | null,
+): Record<string, string> {
   const cols = colEntries(row.columns);
   const out: Record<string, string> = { nombre: row.name };
-  for (const id of readableCols(slug, role)) {
+  // El agente (WhatsApp y chat del portal) lee por las MISMAS reglas que el
+  // portal: sin el correo, "¿cuánto dejó esta oportunidad?" contestaría con la
+  // utilidad a quien la pantalla ya no se la enseña.
+  for (const id of readableCols(slug, role, email)) {
     const meta = COLUMN_META[slug][id];
     if (!meta || SKIP_TYPES.has(meta.type)) continue;
     const text = cols.get(id)?.text?.trim();
@@ -519,10 +524,10 @@ async function toolDetalleOportunidad(env: Env, viewer: Identity, input: Record<
   ]);
   return {
     content: JSON.stringify({
-      oportunidad: { item_id: item.item_id, ...readableRecord('oportunidades', item, viewer.role) },
+      oportunidad: { item_id: item.item_id, ...readableRecord('oportunidades', item, viewer.role, viewer.email) },
       monto_venta: venta.get(item.item_id) ?? 0,
       nota_monto: 'monto_venta (MXN) = Σ Precio de Venta C/U × Cantidad de las líneas; 0 = sin precios capturados',
-      lineas: lineas.slice(0, 30).map(l => readableRecord('oportunidades_sub', l, viewer.role)),
+      lineas: lineas.slice(0, 30).map(l => readableRecord('oportunidades_sub', l, viewer.role, viewer.email)),
       ...(lineas.length > 30 ? { nota: `Mostrando 30 de ${lineas.length} líneas.` } : {}),
     }),
     isError: false,

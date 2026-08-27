@@ -18,6 +18,7 @@
 // cotizacion_versions (worker/lib/quoteVersions.ts) y NO se suman aquí — el
 // pipeline es lo que se está vendiendo hoy, no la suma de todos los intentos.
 import type { Env } from '../env';
+import { puedeVerUtilidades } from '../../shared/visibility';
 import type { Identity } from '../../shared/types';
 import { BOARDS } from '../../shared/boards';
 import { scopeFor } from './dal';
@@ -147,7 +148,21 @@ export async function buildAnalyticsResponse(
   env: Env, viewer: Identity, q: AnalyticsQuery,
 ): Promise<AnalyticsResponse> {
   const [rows, syncedAt] = await Promise.all([fetchRows(env, viewer, q), lastSync(env)]);
-  return buildAnalytics(rows, {
+  // Utilidad solo para la whitelist por correo (Efraín, 2026-08-27). Se vacía
+  // ANTES de agregar, no después: si solo se borrara `utilidadGanada` del
+  // total, la misma cifra seguiría saliendo sumada por zona y por vendedor en
+  // `grupos`. Con la columna en null, `buildAnalytics` produce 0 en todos lados
+  // y el paso de abajo convierte esos ceros en "ausente", que es lo honesto —
+  // este tablero es admin-only y hasta hoy le enseñaba la utilidad a cualquier
+  // admin, PAM incluida.
+  const conUtilidades = puedeVerUtilidades(viewer.email);
+  const filas = conUtilidades ? rows : rows.map(r => ({ ...r, utilidad: null }));
+  const out = buildAnalytics(filas, {
     por: q.por, desde: q.desde, hasta: q.hasta, syncedAt, generadoAt: new Date().toISOString(),
   });
+  if (!conUtilidades) {
+    delete out.utilidadGanada;
+    for (const g of out.grupos) delete g.utilidadGanada;
+  }
+  return out;
 }

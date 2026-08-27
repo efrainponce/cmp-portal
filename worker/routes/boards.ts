@@ -175,9 +175,9 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
   });
 
   app.get('/api/boards', c => {
-    const role = c.get('viewer').role;
+    const viewer = c.get('viewer');
     const boards = (Object.keys(BOARDS) as BoardSlug[])
-      .map(slug => ({ slug, title: BOARDS[slug].title, cols: toColMeta(slug, role) }))
+      .map(slug => ({ slug, title: BOARDS[slug].title, cols: toColMeta(slug, viewer.role, viewer.email) }))
       .filter(b => b.cols.length > 0);
     return c.json(boards);
   });
@@ -284,7 +284,7 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
       listItems(c.env, slug, viewer, q),
       pendingItemIds(c.env, BOARDS[slug].id),
     ]);
-    const items = rows.map(r => toItemDTO(r, slug, viewer.role, pending.has(r.item_id), only));
+    const items = rows.map(r => toItemDTO(r, slug, viewer.role, pending.has(r.item_id), only, viewer.email));
     const body: ListResponse = { board: slug, items, total: items.length, etag };
     // Después del 304: el agregado solo corre cuando de verdad hay respuesta
     // nueva que mandar.
@@ -293,7 +293,7 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
     if (conTotales) {
       body.totales = slug === 'proyectos'
         ? await totalesPorProyecto(c.env, viewer, rows)
-        : await totalesPorOportunidad(c.env, viewer.role, new Set(rows.map(r => r.item_id)));
+        : await totalesPorOportunidad(c.env, viewer.role, new Set(rows.map(r => r.item_id)), viewer.email);
     }
     return c.json(body);
   });
@@ -330,9 +330,9 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
     ]);
     if (!row) return c.json({ error: 'not found' }, 404);
 
-    const dto: ItemDetailDTO = toItemDTO(row, slug, viewer.role, pending.has(row.item_id));
+    const dto: ItemDetailDTO = toItemDTO(row, slug, viewer.role, pending.has(row.item_id), undefined, viewer.email);
     if (childSlug) {
-      dto.children = children.map(r => toItemDTO(r, childSlug, viewer.role, childPending.has(r.item_id)));
+      dto.children = children.map(r => toItemDTO(r, childSlug, viewer.role, childPending.has(r.item_id), undefined, viewer.email));
     }
     // ¿La ve por ser suya, o porque lidera la zona de su dueño? Reusa el MISMO
     // predicado que el write path (scope 'own'), así la UI nunca ofrece editar
@@ -750,7 +750,7 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
     const rows = allRows.filter(r => {
       if (r.column_id == null || r.column_id === 'name') return true;
       const rowSlug = boardById(r.board_id)?.slug;
-      return rowSlug != null && canRead(rowSlug, r.column_id, viewer.role);
+      return rowSlug != null && canRead(rowSlug, r.column_id, viewer.role, viewer.email);
     });
     // Roster cacheado (mismo TTL que /api/users) — solo para mostrar nombre en
     // vez de un monday_user_id crudo. Un usuario NATIVO del portal (alta sin

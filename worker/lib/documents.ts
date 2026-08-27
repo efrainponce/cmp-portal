@@ -22,7 +22,7 @@ import {
 import { renderTemplate, formatTallas, formatMultiline, type DocData, type RenderedSignature } from './pdf/templates';
 import { jpegInfo } from './pdf/writer';
 import { getItem, childrenOf } from './dal';
-import { canRead } from '../../shared/visibility';
+import { canRead, puedeVerUtilidades } from '../../shared/visibility';
 import { getBoardAccess } from './boardAccess';
 import { readPortalFile, normalizeFileKey } from './portalFiles';
 import { BOARDS } from '../../shared/boards';
@@ -207,9 +207,9 @@ async function solicitudCosteoData(env: Env, oppId: number, viewer: Identity): P
   // una columna que su destinatario no podría ver en pantalla.
   const cols = colMap(row.columns);
   const text = (id: string): string | undefined =>
-    canRead('oportunidades', id, viewer.role) ? cols.get(id)?.text?.trim() || undefined : undefined;
+    canRead('oportunidades', id, viewer.role, viewer.email) ? cols.get(id)?.text?.trim() || undefined : undefined;
   const subText = (c: Map<string, RawCol>, id: string): string | undefined =>
-    canRead('oportunidades_sub', id, viewer.role) ? c.get(id)?.text?.trim() || undefined : undefined;
+    canRead('oportunidades_sub', id, viewer.role, viewer.email) ? c.get(id)?.text?.trim() || undefined : undefined;
 
   const hijos = await childrenOf(env, 'oportunidades', oppId, viewer);
   const lineas = hijos.map(child => {
@@ -271,11 +271,11 @@ async function cotizacionData(env: Env, oppId: number, viewer: Identity, folio: 
 
   const cols = colMap(row.columns);
   const text = (id: string): string | undefined =>
-    canRead('oportunidades', id, viewer.role) ? cols.get(id)?.text?.trim() || undefined : undefined;
+    canRead('oportunidades', id, viewer.role, viewer.email) ? cols.get(id)?.text?.trim() || undefined : undefined;
   const subText = (c: Map<string, RawCol>, id: string): string | undefined =>
-    canRead('oportunidades_sub', id, viewer.role) ? c.get(id)?.text?.trim() || undefined : undefined;
+    canRead('oportunidades_sub', id, viewer.role, viewer.email) ? c.get(id)?.text?.trim() || undefined : undefined;
   const subNum = (c: Map<string, RawCol>, id: string): number =>
-    canRead('oportunidades_sub', id, viewer.role) ? num(c.get(id)?.text) : 0;
+    canRead('oportunidades_sub', id, viewer.role, viewer.email) ? num(c.get(id)?.text) : 0;
 
   const hijos = await childrenOf(env, 'oportunidades', oppId, viewer);
   let numPartida = 1;
@@ -333,11 +333,11 @@ async function costeoValidacionData(env: Env, oppId: number, viewer: Identity): 
 
   const cols = colMap(row.columns);
   const text = (id: string): string | undefined =>
-    canRead('oportunidades', id, viewer.role) ? cols.get(id)?.text?.trim() || undefined : undefined;
+    canRead('oportunidades', id, viewer.role, viewer.email) ? cols.get(id)?.text?.trim() || undefined : undefined;
   const subText = (c: Map<string, RawCol>, id: string): string | undefined =>
-    canRead('oportunidades_sub', id, viewer.role) ? c.get(id)?.text?.trim() || undefined : undefined;
+    canRead('oportunidades_sub', id, viewer.role, viewer.email) ? c.get(id)?.text?.trim() || undefined : undefined;
   const subNum = (c: Map<string, RawCol>, id: string): number =>
-    canRead('oportunidades_sub', id, viewer.role) ? num(c.get(id)?.text) : 0;
+    canRead('oportunidades_sub', id, viewer.role, viewer.email) ? num(c.get(id)?.text) : 0;
 
   const hijos = await childrenOf(env, 'oportunidades', oppId, viewer);
   const lineas = hijos
@@ -590,8 +590,18 @@ async function nombreDeLaFuente(env: Env, row: DocRow, viewer: Identity): Promis
  * pueda ver la oportunidad fuente — 404, nunca 403, mismo criterio que
  * assertSourceVisible (la existencia tampoco se filtra). */
 function assertTemplateViewable(templateId: string, viewer: Identity): void {
+  if (!templateVisible(templateId, viewer)) throw new DocumentError(404, 'not found');
+}
+
+/** Rol + whitelist de utilidades. Se saca aparte porque el mismo criterio lo
+ * necesitan el gate de UN documento (arriba, que lanza 404) y el LISTADO, que
+ * simplemente se salta las plantillas que el viewer no puede ver. */
+function templateVisible(templateId: string, viewer: Identity): boolean {
   const template = DOC_TEMPLATES[templateId as DocTemplateId];
-  if (template?.view && !template.view.includes(viewer.role)) throw new DocumentError(404, 'not found');
+  if (!template) return true;
+  if (template.view && !template.view.includes(viewer.role)) return false;
+  if (template.requiereUtilidades && !puedeVerUtilidades(viewer.email)) return false;
+  return true;
 }
 
 async function signaturesOf(env: Env, docId: string): Promise<SigRow[]> {
@@ -675,8 +685,7 @@ export async function listDocuments(
 
   const out: DocumentDTO[] = [];
   for (const row of rows) {
-    const template = DOC_TEMPLATES[row.template_id as DocTemplateId];
-    if (template?.view && !template.view.includes(viewer.role)) continue;
+    if (!templateVisible(row.template_id, viewer)) continue;
     out.push(toDTO(row, await signaturesOf(env, row.id)));
   }
   return out;

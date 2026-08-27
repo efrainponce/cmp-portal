@@ -3,7 +3,7 @@
 // readableCols(). Un cambio accidental aquí no lo atrapa el typecheck (todo son
 // strings), así que estos tests anclan las reglas que importan.
 import { describe, it, expect } from 'vitest';
-import { VISIBILITY, canRead, canReadActivity, canReadBoard, canWrite, readableCols, puedeEditarTechoEnValidacion } from './visibility';
+import { VISIBILITY, canRead, canReadActivity, canReadBoard, canWrite, readableCols, puedeEditarTechoEnValidacion, puedeVerUtilidades } from './visibility';
 import { COLUMN_META } from './column-meta.gen';
 import type { BoardSlug } from './boards';
 import type { Role } from './types';
@@ -352,5 +352,100 @@ describe('Techo en Validación de Costeo — por correo, solo el CEO (2026-08-26
     expect(canWrite('oportunidades_sub', 'numeric_mkznpn83', 'compras')).toBe(true);
     expect(canWrite('oportunidades_sub', 'numeric_mkznpn83', 'admin')).toBe(true);
     expect(canWrite('oportunidades_sub', 'numeric_mkznpn83', 'vendedor')).toBe(false);
+  });
+});
+
+
+// ── Utilidades por CORREO ────────────────────────────────────────────────────
+// Efraín, 2026-08-27: "todas las utilidades, incluyendo validación de costeo y
+// proyectos; eso solo lo ve Eli y mi papá". Hasta ese día las veía cualquier
+// compras/admin (grupo AC) — o sea PAM y EMY entre ellos. Va por correo y no
+// por rol: un rol nuevo obligaría a re-etiquetar las ~100 columnas de la
+// whitelist, y el monday_user_id se presta con "Actuar en Monday como".
+describe('utilidades: whitelist por correo', () => {
+  // Las seis cifras de RESULTADO. Si mañana Monday agrega otra fórmula de
+  // utilidad hay que meterla a UTILIDAD_COLS o se cuela por aquí.
+  const UTILIDAD = [
+    'formula_mkzne7gd',   // Utilidad (C/U)
+    'formula_mkznry25',   // Utilidad Total
+    'formula_mkznpw5p',   // Utilidad (%)
+    'formula_mkzn28xk',   // Diferencia
+    'formula_mkznpp33',   // Margen Gob (C/U)
+    'formula_mkznsb7m',   // Margen Gob Total
+  ];
+  const PERMITIDOS = [
+    'administracion@mexicanadeproteccion.com',   // Elisa Vallado
+    'efrainponce@mexicanadeproteccion.com',      // CEO
+    'efrain.ponce@mexicanadeproteccion.com',     // CEO, 2º correo
+    'salinasefrain@mexicanadeproteccion.com',    // Efraín Ponce Salinas
+    'efrain.ponces@gmail.com',                   // Efraín, personal
+  ];
+  const FUERA = [
+    'compras@mexicanadeproteccion.com',          // Pamela Ricalde "PAM" (admin)
+    'cotizaciones4@mexicanadeproteccion.com',    // Emily Martínez "EMY" (compras)
+    'ventas@mexicanadeproteccion.com',
+  ];
+
+  it('la whitelist normaliza espacios y mayúsculas', () => {
+    expect(puedeVerUtilidades('  Administracion@Mexicanadeproteccion.com ')).toBe(true);
+    for (const email of FUERA) expect(puedeVerUtilidades(email), email).toBe(false);
+  });
+
+  it('sin correo NO se ven — el default es el seguro', () => {
+    // Es la regla que sostiene todo: si algún camino del worker se queda sin
+    // pasar el correo, las utilidades se ocultan en vez de filtrarse.
+    for (const col of UTILIDAD) {
+      expect(canRead('oportunidades_sub', col, 'admin'), col).toBe(false);
+      expect(canRead('oportunidades_sub', col, 'admin', null), col).toBe(false);
+      expect(canRead('oportunidades_sub', col, 'admin', ''), col).toBe(false);
+    }
+  });
+
+  it('la whitelist sí las lee; PAM y EMY no, aunque el rol se las permitiera', () => {
+    for (const col of UTILIDAD) {
+      for (const email of PERMITIDOS) {
+        expect(canRead('oportunidades_sub', col, 'admin', email), `${col} ${email}`).toBe(true);
+      }
+      for (const email of FUERA) {
+        expect(canRead('oportunidades_sub', col, 'admin', email), `${col} ${email}`).toBe(false);
+        expect(canRead('oportunidades_sub', col, 'compras', email), `${col} ${email}`).toBe(false);
+      }
+    }
+  });
+
+  it('el vendedor sigue sin verlas — el correo no ABRE nada que el rol cierre', () => {
+    // La whitelist solo QUITA. Un vendedor en la lista (no lo hay, pero por si
+    // alguien agrega un correo equivocado) seguiría sin ver costos ni utilidad.
+    for (const col of UTILIDAD) {
+      expect(canRead('oportunidades_sub', col, 'vendedor', PERMITIDOS[0]), col).toBe(false);
+    }
+  });
+
+  it('NO toca los costos ni el Margen Gob % que Compras captura', () => {
+    // El costeo es el trabajo de Compras: si esto se lo quita, EMY no puede
+    // costear. Margen Gob % es un input, no un resultado.
+    const suyas = [
+      'numeric_mkznnm5s',   // Margen Gob % (input de captura)
+      'formula_mkznrm5a',   // Costo Total
+      'formula_mkznpfgg',   // Costo Total Unitario
+      'numeric_mm0bph99',   // Costo Distr. C/U
+      'numeric_mkznpn83',   // Techo
+    ];
+    for (const col of suyas) {
+      expect(canRead('oportunidades_sub', col, 'compras', 'cotizaciones4@mexicanadeproteccion.com'), col).toBe(true);
+      expect(canRead('oportunidades_sub', col, 'admin', 'compras@mexicanadeproteccion.com'), col).toBe(true);
+    }
+    expect(canWrite('oportunidades_sub', 'numeric_mkznnm5s', 'compras')).toBe(true);
+  });
+
+  it('readableCols las quita también — es la lista que filtra cada lectura', () => {
+    const dePam = readableCols('oportunidades_sub', 'admin', 'compras@mexicanadeproteccion.com');
+    const deEli = readableCols('oportunidades_sub', 'admin', 'administracion@mexicanadeproteccion.com');
+    for (const col of UTILIDAD) {
+      expect(dePam, col).not.toContain(col);
+      expect(deEli, col).toContain(col);
+    }
+    // Y no se llevó nada de paso: la diferencia son EXACTAMENTE las seis.
+    expect(deEli.length - dePam.length).toBe(UTILIDAD.length);
   });
 });

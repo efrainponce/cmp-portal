@@ -2,7 +2,7 @@
 import type { MirrorItem, Role } from '../../shared/types';
 import type { BoardSlug } from '../../shared/boards';
 import type { ItemDTO, ItemDetailDTO, ColVal, ColMeta } from '../../shared/dto';
-import { VISIBILITY, readableCols, canWrite } from '../../shared/visibility';
+import { VISIBILITY, readableCols, canWrite, puedeVerUtilidades } from '../../shared/visibility';
 import { COLUMN_META } from '../../shared/column-meta.gen';
 
 export interface RawCol {
@@ -35,11 +35,14 @@ function buildColVal(col: RawCol): ColVal {
 // cada llamada: readableCols recorre las ~40-100 columnas del board y arma un
 // array nuevo. Memoizar deja ese trabajo en una sola vez por (board, rol).
 const readableSetCache = new Map<string, Set<string>>();
-function readableSet(slug: BoardSlug, role: Role): Set<string> {
-  const key = `${slug}:${role}`;
+function readableSet(slug: BoardSlug, role: Role, email?: string | null): Set<string> {
+  // El correo NO entra en la llave: entra el booleano que decide. Son dos
+  // variantes por (board, rol) —ve utilidades o no— en vez de una entrada por
+  // persona, que con el poll de 5 s haría crecer el caché sin techo.
+  const key = `${slug}:${role}:${puedeVerUtilidades(email) ? 'u' : '-'}`;
   let set = readableSetCache.get(key);
   if (!set) {
-    set = new Set(readableCols(slug, role));
+    set = new Set(readableCols(slug, role, email));
     readableSetCache.set(key, set);
   }
   return set;
@@ -55,8 +58,12 @@ export function toItemDTO(
   role: Role,
   pendingWrite = false,
   only?: ReadonlySet<string>,
+  /** Correo del viewer — decide si las cifras de utilidad/margen viajan
+   * (shared/visibility.ts puedeVerUtilidades). Omitirlo las OCULTA: el default
+   * es el seguro, ver la nota en utilidadTapada. */
+  email?: string | null,
 ): ItemDTO {
-  const allowed = readableSet(slug, role);
+  const allowed = readableSet(slug, role, email);
   let rawCols: RawCol[] = [];
   try {
     rawCols = JSON.parse(row.columns || '[]');
@@ -101,11 +108,18 @@ export async function itemDetailEtag(dto: ItemDetailDTO): Promise<string> {
   return `"${hex}"`;
 }
 
-export function toColMeta(slug: BoardSlug, role: Role): ColMeta[] {
+export function toColMeta(slug: BoardSlug, role: Role, email?: string | null): ColMeta[] {
   const boardVis = VISIBILITY[slug];
   const boardMeta = COLUMN_META[slug] ?? {};
+  // Se parte de `readableSet`, la MISMA lista que filtra los valores, en vez de
+  // releer `vis` por su cuenta: si no, el catálogo de columnas y los datos
+  // pueden discrepar. Importa porque la grid arma `visibleCols` intersectando
+  // contra este ColMeta (gridMeta.tsx) — quitar aquí Utilidad/Margen Gob es lo
+  // que hace que desaparezcan del encabezado y de la fila de TOTAL, en vez de
+  // quedarse como columnas vacías.
+  const legibles = readableSet(slug, role, email);
   return Object.keys(boardVis)
-    .filter(id => boardVis[id].vis.includes(role))
+    .filter(id => legibles.has(id))
     .map(id => {
       const meta = boardMeta[id];
       return {

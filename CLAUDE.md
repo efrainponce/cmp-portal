@@ -34,6 +34,15 @@ con el Worker (`/api/*`). Bot de WhatsApp + chat del portal comparten agente Cla
   hace que Monday asigne una etiqueta arbitraria en silencio.
 - Permisos por columna/rol viven en `shared/visibility.ts` (server las filtra; la UI
   solo refleja `ColMeta.w`). Decisiones de whitelist son de Efraín — no las cambies solo.
+- **Las UTILIDADES van por CORREO, no por rol** (`puedeVerUtilidades`, 2026-08-27):
+  Utilidad C/U/Total/%, Diferencia y Margen Gob C/U/Total solo las ven Elisa, el
+  CEO y Efraín — PAM (admin) y EMY (compras) quedan fuera aunque su rol se las
+  permita. Los COSTOS y el Margen Gob % (input de captura) no se tocan: son el
+  trabajo de Compras. `canRead`/`readableCols`/`toItemDTO`/`toColMeta` reciben el
+  correo y **sin él OCULTAN** — si agregas un camino de lectura, pásale
+  `viewer.email` o las cifras desaparecen para quien sí puede verlas. Ya tapa:
+  columnas de la grid, `totales` de las listas, el tablero de Análisis y el PDF
+  `validacion-costeo` (`requiereUtilidades`). Anclado en `shared/visibility.test.ts`.
 - **El portal y Monday quedan 1-1: lo que se borra en el portal se borra en
   Monday** (Efraín, 2026-08-19 tarde). Ese día, por unas horas, "borrar" fue
   OCULTAR y rompió costeo el mismo día: la línea escondida seguía viva en Monday

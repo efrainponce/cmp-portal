@@ -108,8 +108,8 @@ export async function prepararOcProveedor(
   if (!row) throw new OcProveedorPdfError(404, 'proyecto no encontrado');
 
   const childRows = await childrenOf(env, 'proyectos', proyectoId, viewer);
-  const proyecto = toItemDTO(row, 'proyectos', viewer.role, false);
-  const children = childRows.map(r => toItemDTO(r, 'proyectos_sub', viewer.role, false));
+  const proyecto = toItemDTO(row, 'proyectos', viewer.role, false, undefined, viewer.email);
+  const children = childRows.map(r => toItemDTO(r, 'proyectos_sub', viewer.role, false, undefined, viewer.email));
 
   const lineasProveedor = children.filter(l => {
     const rel = l.cols[S_PROVEEDOR]?.value as { linked_item_ids?: string[] } | undefined;

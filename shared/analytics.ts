@@ -129,7 +129,12 @@ export interface GrupoMetrics {
   tiempoCosteo: TiempoCosteo;
   conversion: Conversion;
   montoPipeline: number;
-  utilidadGanada: number;
+  /** Ausente = el viewer no está en la whitelist de utilidades
+   * (shared/visibility.ts puedeVerUtilidades, Efraín 2026-08-27). Ausente y NO
+   * cero: un `$0` se lee como "no ganamos nada", que es peor que no mostrarlo.
+   * El worker además vacía la utilidad renglón por renglón antes de sumar, así
+   * que tampoco se puede reconstruir por grupo. */
+  utilidadGanada?: number;
 }
 
 export type HuecoKind =
@@ -160,7 +165,8 @@ export interface AnalyticsResponse {
   tiempoCosteo: TiempoCosteo;
   conversion: Conversion;
   montoPipeline: number;
-  utilidadGanada: number;
+  /** Ausente para quien no está en la whitelist de utilidades — ver GrupoMetrics. */
+  utilidadGanada?: number;
   grupos: GrupoMetrics[];
   huecos: Hueco[];
   /** Qué tan fresco está el mirror del que salió todo esto. */

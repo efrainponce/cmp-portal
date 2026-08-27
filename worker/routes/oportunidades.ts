@@ -981,8 +981,8 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       childrenOf(c.env, 'proyectos', row.item_id, viewer),
       pendingItemIds(c.env, BOARDS.proyectos_sub.id),
     ]);
-    const dto: ItemDetailDTO = toItemDTO(row, 'proyectos', viewer.role, pending.has(row.item_id));
-    dto.children = children.map(r => toItemDTO(r, 'proyectos_sub', viewer.role, childPending.has(r.item_id)));
+    const dto: ItemDetailDTO = toItemDTO(row, 'proyectos', viewer.role, pending.has(row.item_id), undefined, viewer.email);
+    dto.children = children.map(r => toItemDTO(r, 'proyectos_sub', viewer.role, childPending.has(r.item_id), undefined, viewer.email));
     return c.json({ proyecto: dto });
   });
 

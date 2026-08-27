@@ -381,10 +381,13 @@ function Contenido({ data, por, isMobile, onOpenOportunidad }: {
           value={fmtMonto(data.montoPipeline)}
           hint={`${fmtMonto(c.montoAbierto)} todavía abierto`}
         />
+        {/* Sin utilidad (admin fuera de la whitelist de shared/visibility.ts) el
+            tile enseña solo el monto ganado — nunca "utilidad $0", que se lee
+            como "no ganamos nada" en vez de "esto no te toca verlo". */}
         <StatTile
           label="Ganado"
           value={fmtMonto(c.montoGanado)}
-          hint={`utilidad ${fmtMonto(data.utilidadGanada)}`}
+          hint={data.utilidadGanada === undefined ? undefined : `utilidad ${fmtMonto(data.utilidadGanada)}`}
           tone="ganada"
         />
         <StatTile

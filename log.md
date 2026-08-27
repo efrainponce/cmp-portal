@@ -2,6 +2,52 @@
 
 ## 2026-08-27
 
+- **Las utilidades ahora van por CORREO, no por rol** (Efraín: "todas las
+  utilidades incluyendo validación de costeo y proyectos; eso solo lo ve Eli y
+  mi papá"). Hasta hoy Utilidad C/U, Utilidad Total, Utilidad %, Diferencia y
+  Margen Gob C/U/Total las veía cualquier `compras`/`admin` (grupo AC) — o sea
+  PAM (admin) y EMY (compras) entre ellos.
+- Se descartó el ROL nuevo "jefa de compras": hay 150 checks de `'admin'` en 51
+  archivos y las whitelists de `visibility.ts` son listas de roles con
+  fail-closed, así que un rol nuevo empieza viendo CERO columnas y hay que
+  agregarlo a mano a los ~5 grupos de los 8 boards; la falla sería silenciosa.
+  Y se descartó bajarla a `compras`: `comprasScopeFor` la acota a las
+  oportunidades donde ella es Responsable compras — medido en producción, PAM
+  pasaría de 830 oportunidades a 41. Eso no le quita el reporte, le quita el
+  portal.
+- Queda como whitelist por correo (decisión de Efraín: whitelist y no blocklist,
+  un admin nuevo empieza SIN ver utilidades), mismo patrón y mismo porqué que
+  ZONA_PRIVADA_ADMINS_PERMITIDOS y TECHO_VALIDACION_EMAILS: "Actuar en Monday
+  como" PRESTA un `monday_user_id`, así que el id no identifica a la persona.
+  Elisa + los dos correos del CEO + las dos cuentas de Efraín.
+- `canRead`/`readableCols`/`toItemDTO`/`toColMeta` reciben ahora el correo, y
+  **sin correo OCULTAN**: un camino que se quede sin actualizar tapa las cifras
+  en vez de filtrarlas. Se actualizaron los ~20 llamadores del worker.
+- No es solo la grid. Se taparon las CUATRO puertas que llevaban a la misma
+  cifra: las columnas de la línea, los `totales` de las listas (Validación
+  Costeo, Oportunidades, el Reporte de Proyectos), el tablero de **Análisis**
+  —`utilidadGanada` global y por zona; la utilidad se vacía renglón por renglón
+  ANTES de agregar, si no seguía saliendo sumada por grupo— y el PDF **"Hoja de
+  costeo de Validación"**, que lleva utilidad y margen por línea y era la puerta
+  de atrás perfecta (`DocTemplate.requiereUtilidades`). El agente de WhatsApp y
+  el chat del portal leen por las mismas reglas: sin esto, "¿cuánto dejó esta
+  oportunidad?" contestaba lo que la pantalla ya no enseña.
+- NO se tocaron los costos ni el Margen Gob % — ese es un input que Compras
+  captura, no un resultado; quitarlo rompería el costeo, que sí es su trabajo.
+  Tampoco se sacó el board Validación Costeo del sidebar (Efraín): con las
+  columnas tapadas, PAM entra y ve costos y precios pero ningún margen.
+- La fila de TOTAL ya no pinta un "0.0%" en Margen Gob % cuando la columna no
+  viajó: un cero ahí se lee como dato, no como "esto no te toca".
+- Límite honesto, escrito en el código: quien ve Costo Total y Precio de Venta
+  puede sacar la utilidad con una resta. Esto quita las cifras de la pantalla y
+  de la API, no la aritmética.
+- Verificado en local suplantando: admin fuera de la lista → las 6 columnas
+  fuera de `/api/boards`, `totales` sin utilidad/margen, `utilidadGanada`
+  ausente en Análisis; Elisa → todo completo. Capturas de la grid y de la lista
+  en los dos casos. `shared/visibility.test.ts` ancla las 6 columnas, los 5
+  correos, que sin correo se ocultan, que el vendedor sigue sin verlas (la
+  whitelist solo QUITA, nunca abre) y que Compras conserva costos y Margen Gob %.
+
 - **Reporte de Proyectos ahora trae el costeo, solo para admins** (Efraín:
   "puedes cambiar el board Reporte de Proyectos y agregar lo mismo que
   Validación Costeo PERO POR CADA PROYECTO" + "jalar TODA la info de costeo,

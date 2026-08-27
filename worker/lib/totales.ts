@@ -52,8 +52,13 @@ export async function totalesPorOportunidad(
   env: Env,
   role: Role,
   visibles: Set<number>,
+  /** Correo del viewer: Utilidad y Margen Gob solo salen para la whitelist
+   * (shared/visibility.ts puedeVerUtilidades, Efraín 2026-08-27). El gate se
+   * hereda de `canRead` en vez de repetirse aquí — igual que el de rol. Sin
+   * correo, esas tres cifras no viajan. */
+  email?: string | null,
 ): Promise<Record<string, TotalesDTO>> {
-  const puede = (colId: string) => canRead('oportunidades_sub', colId, role);
+  const puede = (colId: string) => canRead('oportunidades_sub', colId, role, email);
   // Sin una sola métrica legible (almacén) no hay nada que mandar ni que consultar.
   if (![COSTO_COL, SUBTOTAL_COL, TOTAL_COL, UTILIDAD_COL, MARGEN_GOB_COL].some(puede)) return {};
 
@@ -143,7 +148,7 @@ export async function totalesPorProyecto(
 
   const pedidas = new Set([...oppDe.values()].filter(id => legibles.has(id)));
   if (pedidas.size === 0) return {};
-  const porOpp = await totalesPorOportunidad(env, viewer.role, pedidas);
+  const porOpp = await totalesPorOportunidad(env, viewer.role, pedidas, viewer.email);
 
   const out: Record<string, TotalesDTO> = {};
   for (const [proyectoId, oppId] of oppDe) {

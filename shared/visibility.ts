@@ -296,8 +296,63 @@ export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
   },
 };
 
-export const canRead = (b: BoardSlug, col: string, r: Role) =>
-  !!VISIBILITY[b][col]?.vis.includes(r);
+/** Las cifras de UTILIDAD y MARGEN de la línea — el resultado del costeo, no
+ * sus insumos. Van por CORREO encima del rol (Efraín, 2026-08-27: "todas las
+ * utilidades, incluyendo validación de costeo y proyectos; eso solo lo ve Eli y
+ * mi papá"). Hasta hoy las veía cualquier `compras`/`admin` (grupo AC), o sea
+ * PAM y EMY entre ellos.
+ *
+ * QUÉ NO ENTRA, a propósito:
+ *  - `numeric_mkznnm5s` (Margen Gob %) — no es un resultado: es el dato que
+ *    Compras CAPTURA durante el costeo y alimenta las fórmulas. Quitarlo
+ *    rompería la captura, que sí es su trabajo.
+ *  - Los COSTOS (`formula_mkznrm5a` Costo Total, `numeric_mm0bph99` Costo Distr.
+ *    …) — Compras vive de ellos.
+ * `formula_mkzn28xk` (Diferencia) sí entra: docs/monday-column-map.md la agrupa
+ * con la familia de Utilidad, no con los costos.
+ *
+ * OJO con lo que esto NO tapa: quien ve Costo Total y Precio de Venta puede
+ * sacar la utilidad con una resta. Esto quita las cifras de la pantalla y de la
+ * API, no la aritmética. */
+const UTILIDAD_COLS: ReadonlySet<string> = new Set([
+  'formula_mkzne7gd',   // Utilidad (C/U)
+  'formula_mkznry25',   // Utilidad Total
+  'formula_mkznpw5p',   // Utilidad (%)
+  'formula_mkzn28xk',   // Diferencia
+  'formula_mkznpp33',   // Margen Gob (C/U)
+  'formula_mkznsb7m',   // Margen Gob Total
+]);
+
+/** Whitelist por CORREO, no por rol ni por `monday_user_id` — mismo criterio y
+ * mismo porqué que ZONA_PRIVADA_ADMINS_PERMITIDOS (worker/lib/zonas.ts) y que
+ * TECHO_VALIDACION_EMAILS aquí abajo: "Actuar en Monday como"
+ * (worker/routes/admin.ts) PRESTA un monday_user_id, así que el id no
+ * identifica a la persona; el correo sí.
+ *
+ * Es whitelist y no blocklist por decisión de Efraín (2026-08-27): un admin
+ * nuevo empieza SIN ver utilidades hasta que alguien lo agregue aquí a mano.
+ * Falla del lado seguro. Elisa Vallado + el CEO (sus dos correos) + Efraín
+ * (sus dos cuentas, con las que prueba en producción). */
+const UTILIDADES_EMAILS: ReadonlySet<string> = new Set([
+  'administracion@mexicanadeproteccion.com',  // Elisa Vallado
+  'efrainponce@mexicanadeproteccion.com',     // Efraín Ponce (CEO)
+  'efrain.ponce@mexicanadeproteccion.com',    // Efraín Ponce (CEO, 2º correo)
+  'salinasefrain@mexicanadeproteccion.com',   // Efraín Ponce Salinas
+  'efrain.ponces@gmail.com',                  // Efraín Ponce Salinas (personal)
+]);
+
+export const puedeVerUtilidades = (email: string | null | undefined): boolean =>
+  !!email && UTILIDADES_EMAILS.has(email.trim().toLowerCase());
+
+/** El `email` es OPCIONAL y su ausencia OCULTA (no muestra): un camino que se
+ * me pase de actualizar deja las utilidades fuera, que es el error barato. Si
+ * algún día alguien de la whitelist no ve sus cifras, el bug es aquí: falta
+ * pasarle el correo a esta función desde ese camino. */
+const utilidadTapada = (col: string, email?: string | null) =>
+  UTILIDAD_COLS.has(col) && !puedeVerUtilidades(email);
+
+export const canRead = (b: BoardSlug, col: string, r: Role, email?: string | null) =>
+  !!VISIBILITY[b][col]?.vis.includes(r) && !utilidadTapada(col, email);
 /** ¿El rol puede ver ALGO de este board? Un board sin una sola columna legible
  * es interno para ese rol y sus rutas se niegan enteras (worker/routes/boards.ts),
  * no solo sus columnas: `cols` sale vacío pero `name` viaja SIEMPRE en el
@@ -308,8 +363,10 @@ export const canReadBoard = (b: BoardSlug, r: Role) =>
   Object.values(VISIBILITY[b]).some(c => c.vis.includes(r));
 export const canWrite = (b: BoardSlug, col: string, r: Role) =>
   !!VISIBILITY[b][col]?.w?.includes(r);
-export const readableCols = (b: BoardSlug, r: Role): string[] =>
-  Object.entries(VISIBILITY[b]).filter(([, c]) => c.vis.includes(r)).map(([id]) => id);
+export const readableCols = (b: BoardSlug, r: Role, email?: string | null): string[] =>
+  Object.entries(VISIBILITY[b])
+    .filter(([id, c]) => c.vis.includes(r) && !utilidadTapada(id, email))
+    .map(([id]) => id);
 
 /** ¿Este rol puede ver el HISTORIAL de actividad (worker/lib/activityLog.ts)?
  * Solo compras y admin (Efraín, 2026-08-18: "las actividades no quiero que las

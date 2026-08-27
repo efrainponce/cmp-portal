@@ -33,6 +33,13 @@ export function TotalsRow({ variant, visibleCols, products, rows, isMobile = fal
     utilidadTotal += numFrom(state, p, UTILIDAD_TOTAL_COL);
     margenGobTotal += numFrom(state, p, COL.margenGobTotal);
   }
+  // ¿Llegó siquiera la columna de Margen Gob Total? Para quien no está en la
+  // whitelist de utilidades (shared/visibility.ts) NO viaja, así que su total
+  // sumaba 0 y esta fila pintaba un "0.0%" en Margen Gob % — un dato falso
+  // justo donde se acaba de esconder el verdadero. Se mira el DATO y no
+  // `visibleCols` para que esconder la columna a mano (el picker "Columnas") no
+  // cambie el cálculo, solo dónde cae.
+  const hayMargenGob = products.some(p => p.cols[COL.margenGobTotal] !== undefined);
   const margenPct = subtotal > 0 ? (utilidadTotal / subtotal) * 100 : 0;
   // Igual que Utilidad %: ponderado sobre el subtotal total, no el promedio
   // simple del % de cada fila.
@@ -62,8 +69,10 @@ export function TotalsRow({ variant, visibleCols, products, rows, isMobile = fal
           [SUBTOTAL_COL]: { value: fmtMoney(subtotal) },
           [IVA_COL]: { value: fmtMoney(iva) },
           [TOTAL_CON_IVA_COL]: { value: fmtMoney(totalConIva) },
-          [COL.margenGobPct]: { value: `${margenGobPct.toFixed(1)}%` },
-          [COL.margenGobTotal]: { value: fmtMoney(margenGobTotal) },
+          ...(hayMargenGob ? {
+            [COL.margenGobPct]: { value: `${margenGobPct.toFixed(1)}%` },
+            [COL.margenGobTotal]: { value: fmtMoney(margenGobTotal) },
+          } : {}),
           [UTILIDAD_TOTAL_COL]: { value: fmtMoney(utilidadTotal), color: marginColor(margenPct) },
           [MARGEN_COL]: { value: `${margenPct.toFixed(1)}%`, color: marginColor(margenPct) },
         };

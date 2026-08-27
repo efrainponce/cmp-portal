@@ -10,6 +10,7 @@
 import { lazy, Suspense, useEffect, useState, type ChangeEvent } from 'react';
 import { Modal } from '../../../../components/core/Modal';
 import { useMe } from '../../../../lib/useMe';
+import { puedeVerUtilidades } from '../../../../../shared/visibility';
 import { uploadOportunidadInventario } from '../../../../lib/api';
 import { inventarioFiles } from '../DocumentacionTab';
 import type { ItemDetailDTO } from '../../../../lib/api';
@@ -312,8 +313,14 @@ export function CotizacionPdfRow({ oppId, item, hasSolicitud, hasSinFirmar, hasF
   // oportunidad recién creada (Efraín reportó "no veo donde subir el inventario").
   const canUploadInventario = me?.role === 'compras' || me?.role === 'admin';
   const showInventario = !!(item && (hasInventario || canUploadInventario));
-  // Hoja de costeo de Validación: solo compras/admin la ven (Efraín, 2026-08-14).
-  const showValidacionCosteo = me?.role === 'compras' || me?.role === 'admin';
+  // Hoja de costeo de Validación: compras/admin (Efraín, 2026-08-14) Y, desde el
+  // 2026-08-27, solo la whitelist de utilidades — la hoja lleva utilidad,
+  // utilidad % y margen gob por línea, así que sin esto sería la puerta de atrás
+  // a lo que las columnas de la grid ya no enseñan. El server manda igual
+  // (DOC_TEMPLATES['validacion-costeo'].requiereUtilidades → 404); esto es solo
+  // no ofrecer un botón que va a fallar.
+  const showValidacionCosteo = (me?.role === 'compras' || me?.role === 'admin')
+    && puedeVerUtilidades(me?.email);
 
   // Los PDFs se bajan al DAR CLIC en "Ver", no al abrir la oportunidad.
   //

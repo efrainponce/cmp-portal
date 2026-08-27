@@ -60,8 +60,8 @@ export async function generarCotizacionPreviewPdf(
   const childRows = await childrenOf(env, 'oportunidades', oppId, viewer);
   if (childRows.length === 0) throw new CotizacionPreviewPdfError(422, 'la oportunidad no tiene líneas de producto');
 
-  const opp = toItemDTO(row, 'oportunidades', viewer.role, false);
-  const children = childRows.map(r => toItemDTO(r, 'oportunidades_sub', viewer.role, false));
+  const opp = toItemDTO(row, 'oportunidades', viewer.role, false, undefined, viewer.email);
+  const children = childRows.map(r => toItemDTO(r, 'oportunidades_sub', viewer.role, false, undefined, viewer.email));
 
   const lineas: CotizacionPreviewLinea[] = children.map(l => ({
     producto: l.cols[SUB_PRODUCTO_NOMBRE]?.text || l.cols[SUB_PRODUCTO_TXT]?.text || l.name || '—',
