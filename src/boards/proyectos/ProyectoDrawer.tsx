@@ -21,11 +21,12 @@ import { ActividadTab } from '../oportunidades/tabs/ActividadTab';
 import { FechaEntregaField, OcContratoSection } from '../oportunidades/tabs/DocumentacionTab';
 import { ProyectoTallasSection, ProyectoOrdenesSection, EjecucionSection, LogisticaSection, type ProyectoState } from '../oportunidades/ProyectoSection';
 import { CotizacionVirtualTab } from './CotizacionVirtualTab';
+import { CosteoProyectoTab } from './CosteoProyectoTab';
 import { EmbellecimientosVirtualTab } from './EmbellecimientosVirtualTab';
 import type { ProjectBoardKey } from '../../lib/projectStages';
 import { canReadActivity } from '../../../shared/visibility';
 
-type ProyectoTabKey = 'actualizaciones' | 'actividad' | 'cotizacion' | 'embellecimientos' | 'documentacion' | 'tallas' | 'ordenes' | 'ejecucion' | 'logistica';
+type ProyectoTabKey = 'actualizaciones' | 'actividad' | 'cotizacion' | 'costeo' | 'embellecimientos' | 'documentacion' | 'tallas' | 'ordenes' | 'ejecucion' | 'logistica';
 
 const FOLIO_COL = 'pulse_id_mm1a12gy';
 const INSTITUCION_COL = 'lookup_mm1dwn6';
@@ -41,6 +42,11 @@ const TABS: { key: ProyectoTabKey; label: string }[] = [
   // la vista corta de lo mismo.
   { key: 'actividad', label: 'Actividad' },
   { key: 'cotizacion', label: 'Cotización' },
+  // Costeo completo de la Oportunidad ligada, solo lectura (Efraín,
+  // 2026-08-27). Va SOLO en el Reporte de Proyectos y solo para admin — ver el
+  // filtro de la barra de tabs más abajo; el tab "Cotización" de arriba es la
+  // vista corta y sí escribe, este no escribe nada.
+  { key: 'costeo', label: 'Costeo' },
   { key: 'embellecimientos', label: 'Embellecimientos' },
   { key: 'documentacion', label: 'Documentación' },
   { key: 'tallas', label: 'Tallas' },
@@ -108,6 +114,12 @@ export function ProyectoDrawer({ id, boardKey, backLabel, defaultTab, openTab, o
   const [refreshing, setRefreshing] = useState(false);
   const [tab, setTab] = useState<ProyectoTabKey>(() => (esTab(openTab) ? openTab : defaultTab as ProyectoTabKey));
   const cambiarTab = (t: ProyectoTabKey) => { setTab(t); onTabChange?.(t); };
+  // Tab "Costeo": solo admin y solo en el Reporte de Proyectos (Efraín,
+  // 2026-08-27, "SOLO PARA ADMINS"). Gatea el tab Y su contenido — el tercer
+  // segmento de la URL (/ejecucion/<id>/costeo) es copiable y llegaría igual a
+  // quien no le toca. El server filtra las columnas de costo por rol de todos
+  // modos (shared/visibility.ts), esto es lo que se PINTA.
+  const puedeVerCosteo = boardKey === 'ejecucion' && me?.role === 'admin';
   const [oportunidadId, setOportunidadId] = useState<string | null>(null);
   // Tri-estado a mano: `oportunidadId === null` significa las DOS cosas
   // (todavía no llega la respuesta / no hay oportunidad ligada) y Cotización y
@@ -216,6 +228,11 @@ export function ProyectoDrawer({ id, boardKey, backLabel, defaultTab, openTab, o
           // Historial de cambios: solo Compras/Admin (shared/visibility.ts
           // canReadActivity, Efraín 2026-08-18) — el endpoint responde 403 al resto.
           .filter((t) => t.key !== 'actividad' || (me != null && canReadActivity(me.role)))
+          // Costeo completo: solo admin y solo en el Reporte de Proyectos
+          // (Efraín, 2026-08-27, "SOLO PARA ADMINS"). El server filtra las
+          // columnas de costo por rol de todos modos (shared/visibility.ts),
+          // pero el tab no tiene por qué asomarse en los demás accesos.
+          .filter((t) => t.key !== 'costeo' || puedeVerCosteo)
           .map((t) => (
           <div
             key={t.key}
@@ -237,6 +254,17 @@ export function ProyectoDrawer({ id, boardKey, backLabel, defaultTab, openTab, o
         !oppResuelta ? <Cargando />
           : oportunidadId ? <CotizacionVirtualTab proyectoId={id} />
             : <SinOportunidad que="La cotización" />
+      )}
+      {tab === 'costeo' && (
+        me == null ? <Cargando />
+          : !puedeVerCosteo ? (
+            <div style={{ padding: 24, font: 'var(--text-label)', color: 'var(--ink-quiet)' }}>
+              El costeo completo solo lo ve dirección.
+            </div>
+          )
+            : !oppResuelta ? <Cargando />
+              : oportunidadId ? <CosteoProyectoTab oportunidadId={oportunidadId} />
+                : <SinOportunidad que="El costeo" />
       )}
       {tab === 'embellecimientos' && (
         !oppResuelta ? <Cargando />

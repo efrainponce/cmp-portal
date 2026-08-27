@@ -35,7 +35,7 @@ import { isZonaPrivadaAdminPermitido } from '../lib/zonas';
 import { refetchItem, refetchItemTree } from '../sync';
 import { jsonStatus, rejectUnknownQuery, contentDisposition } from '../lib/http';
 import { nombreDescarga, extensionDe } from '../../shared/nombreArchivo';
-import { totalesPorOportunidad, totalesVersion } from '../lib/totales';
+import { totalesPorOportunidad, totalesPorProyecto, totalesVersion } from '../lib/totales';
 import { contentTypeFor } from '../lib/mime';
 import { notifyItemComment } from '../lib/updateNotify';
 import { markUpdatesSeen, seenByFor } from '../lib/updateSeen';
@@ -242,9 +242,15 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
     const q = c.req.query('q');
 
     // ?totales=1 — la lista de etapas pinta las métricas de la cotización
-    // (Costo, Subtotal, Total, Utilidad, Margen Gob) por oportunidad. Solo
-    // tiene sentido en Oportunidades: en cualquier otro board se ignora.
-    const conTotales = c.req.query('totales') === '1' && slug === 'oportunidades';
+    // (Costo, Subtotal, Total, Utilidad, Margen Gob) por oportunidad. En
+    // Proyectos son las MISMAS cifras re-indexadas por proyecto vía la
+    // Oportunidad ligada (Efraín, 2026-08-27: el Reporte de Proyectos muestra
+    // "lo mismo que Validación Costeo pero por cada proyecto"), y ahí van SOLO
+    // para admin — lo pidió así explícitamente, y el dinero de una oportunidad
+    // no tiene por qué asomarse por un board de post-venta a quien no le toca.
+    // En cualquier otro board el parámetro se ignora.
+    const conTotales = c.req.query('totales') === '1'
+      && (slug === 'oportunidades' || (slug === 'proyectos' && viewer.role === 'admin'));
 
     // ?cols=a,b,c — el cliente declara qué columnas va a pintar y el resto no
     // viaja. El board Oportunidades trae ~34 columnas por item y la lista pinta
@@ -285,7 +291,9 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
     // Solo de las oportunidades que este viewer YA recibió: `rows` viene
     // scopeado por dal.ts y el agregado no repite ese filtro por su cuenta.
     if (conTotales) {
-      body.totales = await totalesPorOportunidad(c.env, viewer.role, new Set(rows.map(r => r.item_id)));
+      body.totales = slug === 'proyectos'
+        ? await totalesPorProyecto(c.env, viewer, rows)
+        : await totalesPorOportunidad(c.env, viewer.role, new Set(rows.map(r => r.item_id)));
     }
     return c.json(body);
   });

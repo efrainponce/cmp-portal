@@ -49,8 +49,10 @@ export interface ListResponse {
   items: ItemDTO[];
   total: number;
   etag: string;                 // aggregate hash — If-None-Match => 304
-  /** itemId -> totales de su cotización. Solo cuando se pide `?totales=1`
-   * (la lista de Oportunidades); ausente en el resto de los boards. */
+  /** itemId -> totales de su cotización. Solo cuando se pide `?totales=1`:
+   * la lista de Oportunidades (por oportunidad) y el Reporte de Proyectos
+   * (por PROYECTO, vía la Oportunidad ligada, solo admin — ver
+   * worker/lib/totales.ts). Ausente en el resto de los boards. */
   totales?: Record<string, TotalesDTO>;
 }
 

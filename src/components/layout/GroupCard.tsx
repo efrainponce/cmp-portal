@@ -16,6 +16,11 @@ interface GroupCardProps {
    * estado interno. */
   collapsed?: boolean;
   onToggleCollapsed?: () => void;
+  /** Contenido al final del encabezado, alineado a la derecha — lo usa el
+   * Reporte de Proyectos para el total de la zona (Efraín, 2026-08-27). Se
+   * pinta esté o no colapsado el grupo: con las zonas cerradas, el encabezado
+   * es justo donde se quiere leer la suma. */
+  headerRight?: ReactNode;
 }
 
 function ChevronIcon({ collapsed, color }: { collapsed: boolean; color: string }) {
@@ -37,7 +42,7 @@ function ChevronIcon({ collapsed, color }: { collapsed: boolean; color: string }
  * (Efraín, 2026-07-16). */
 export function GroupCard({
   label, color, tint, count, children, flat = false, defaultCollapsed = false,
-  collapsed: collapsedProp, onToggleCollapsed,
+  collapsed: collapsedProp, onToggleCollapsed, headerRight,
 }: GroupCardProps) {
   const [internalCollapsed, setInternalCollapsed] = useState(defaultCollapsed);
   const isMobile = useIsMobile();
@@ -62,6 +67,7 @@ export function GroupCard({
         <div style={{ width: 9, height: 9, borderRadius: '50%', background: color, flex: 'none' }} />
         <div style={{ font: 'var(--text-eyebrow)', color, textTransform: 'uppercase', letterSpacing: '.5px' }}>{label}</div>
         <div style={{ font: 'var(--text-chip)', color: '#fff', background: color, padding: '1px 7px', borderRadius: 'var(--radius-pill)' }}>{count}</div>
+        {headerRight}
       </div>
       {!collapsed && children}
     </div>

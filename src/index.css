@@ -67,3 +67,17 @@ input, textarea, select, button {
 .cmp-grid-num-input {
   -moz-appearance: textfield;
 }
+
+/* Reporte de Proyectos con las métricas de costeo (Efraín, 2026-08-27): seis
+   columnas de dinero + batería + etapa + entrega + folio no caben en una
+   pantalla de laptop. Debajo de 1650 px se retiran las dos piezas que ya se
+   ven completas al abrir el proyecto —la batería de avance y la fecha de
+   entrega— y ese espacio se lo queda el nombre, que si no se recorta a tres
+   letras. Arriba de 1650 se ve todo (verificado a 1920 con Playwright).
+   Va en CSS y no en JS porque `useIsMobile` es un solo breakpoint (390 px) y
+   esto es otra cosa: cuántas columnas caben, no si es celular. */
+@media (max-width: 1650px) {
+  .reporte-solo-ancho {
+    display: none !important;
+  }
+}

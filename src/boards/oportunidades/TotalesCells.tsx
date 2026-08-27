@@ -127,7 +127,13 @@ export function TotalesHeader({ metricas, isMobile }: { metricas: Metrica[]; isM
   );
 }
 
-export function TotalesCells({ totales, metricas }: { totales: TotalesDTO | undefined; metricas: Metrica[] }) {
+export function TotalesCells({ totales, metricas, strong = false }: {
+  totales: TotalesDTO | undefined; metricas: Metrica[];
+  /** Fila de suma (encabezado de grupo / gran total): mismo ancho y misma
+   * posición de columna que un renglón normal, pero en negritas para que se
+   * lea como un total y no como un proyecto más. */
+  strong?: boolean;
+}) {
   if (metricas.length === 0) return null;
   // Las celdas van en su PROPIO contenedor, no sueltas en el renglón: sueltas
   // heredaban el gap de 16 px del renglón mientras el encabezado usaba 10, y
@@ -145,8 +151,8 @@ export function TotalesCells({ totales, metricas }: { totales: TotalesDTO | unde
             style={{
               width: m.width, flex: 'none', textAlign: 'right',
               font: 'var(--text-label)', fontVariantNumeric: 'tabular-nums',
-              color: color ?? (texto === '—' ? 'var(--ink-faint)' : 'var(--ink-secondary)'),
-              fontWeight: color ? 600 : 400,
+              color: color ?? (texto === '—' ? 'var(--ink-faint)' : strong ? 'var(--ink)' : 'var(--ink-secondary)'),
+              fontWeight: strong ? 700 : color ? 600 : 400,
               whiteSpace: 'nowrap', overflow: 'hidden',
             }}
           >
@@ -177,6 +183,95 @@ export function TotalesChips({ totales, metricas }: { totales: TotalesDTO | unde
           </div>
         );
       })}
+    </div>
+  );
+}
+
+
+/** Suma de varias cotizaciones — el total de una zona o de la lista completa
+ * (Efraín, 2026-08-27, para el Reporte de Proyectos). Solo suma las métricas
+ * que de verdad llegaron: si el rol no recibió `costo`, el total tampoco lo
+ * inventa en $0 y la columna sigue sin pintarse. La Utilidad % se RECALCULA
+ * ponderada sobre el subtotal sumado — promediar los porcentajes de cada
+ * proyecto daría un número distinto (y falso) al de Monday y al de la fila de
+ * totales del tab Cotización. */
+export function sumaTotales(lista: (TotalesDTO | undefined)[]): TotalesDTO {
+  const out: TotalesDTO = { lineas: 0 };
+  const acumular = (k: 'costo' | 'subtotal' | 'total' | 'utilidad' | 'margenGob', v: number | undefined) => {
+    if (v === undefined) return;
+    out[k] = (out[k] ?? 0) + v;
+  };
+  for (const t of lista) {
+    if (!t) continue;
+    out.lineas += t.lineas;
+    acumular('costo', t.costo);
+    acumular('subtotal', t.subtotal);
+    acumular('total', t.total);
+    acumular('utilidad', t.utilidad);
+    acumular('margenGob', t.margenGob);
+  }
+  if (out.utilidad !== undefined && out.subtotal !== undefined && out.subtotal > 0) {
+    out.utilidadPct = (out.utilidad / out.subtotal) * 100;
+  }
+  return out;
+}
+
+/** Bloque de totales para el encabezado de un grupo (GroupCard): las mismas
+ * celdas del renglón más el hueco de la columna "hace X", para que cada suma
+ * caiga exactamente sobre su columna. */
+export function TotalesGrupo({ totales, metricas, isMobile }: {
+  totales: TotalesDTO; metricas: Metrica[]; isMobile: boolean;
+}) {
+  if (metricas.length === 0) return null;
+  if (isMobile) {
+    return (
+      <div style={{ marginLeft: 'auto', minWidth: 0 }}>
+        <TotalesChips totales={totales} metricas={metricas} />
+      </div>
+    );
+  }
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: GAP_RENGLON, marginLeft: 'auto', flex: 'none' }}>
+      <TotalesCells totales={totales} metricas={metricas} strong />
+      <div style={{ width: 70, flex: 'none' }} />
+    </div>
+  );
+}
+
+/** Gran total al final de la lista — misma geometría que TotalesHeader (que es
+ * la del renglón), para que la última fila caiga en columna con todo lo de
+ * arriba. Va sticky abajo: con 90 proyectos, un total al que hay que llegar
+ * haciendo scroll no sirve de nada. */
+export function TotalesGranTotal({ totales, metricas, isMobile }: {
+  totales: TotalesDTO; metricas: Metrica[]; isMobile: boolean;
+}) {
+  if (metricas.length === 0) return null;
+  return (
+    <div
+      style={{
+        position: 'sticky', bottom: 0, zIndex: 3,
+        display: 'flex', alignItems: 'center', gap: GAP_RENGLON,
+        margin: `4px ${isMobile ? 10 : GROUPCARD_MARGEN}px 0`,
+        padding: isMobile ? '10px 14px' : `10px ${GROUPCARD_BORDE + PADDING_RENGLON}px`,
+        background: 'var(--bg-sunken)',
+        border: '1px solid var(--border)',
+        borderRadius: 'var(--radius-lg)',
+      }}
+    >
+      <div style={{ font: 'var(--text-body-strong)', color: 'var(--ink)', letterSpacing: '.02em' }}>
+        TOTAL
+      </div>
+      {isMobile ? (
+        <div style={{ marginLeft: 'auto', minWidth: 0 }}>
+          <TotalesChips totales={totales} metricas={metricas} />
+        </div>
+      ) : (
+        <>
+          <div style={{ marginLeft: 'auto' }} />
+          <TotalesCells totales={totales} metricas={metricas} strong />
+          <div style={{ width: 70, flex: 'none' }} />
+        </>
+      )}
     </div>
   );
 }

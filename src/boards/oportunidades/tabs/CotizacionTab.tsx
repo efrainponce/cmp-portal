@@ -48,6 +48,7 @@ import type { ProductoChoice } from '../../../components/forms/ProductPicker';
 export function CotizacionTab({
   subCols, oppCols = [], products, variant = 'venta', onSaved, onVersioned, versions = [], onNuevaVersion, onRestoreVersion, editable = true, stage, oppId, item,
   readOnly = false, precioOnly = false, draft = false, showCondiciones = false, zonaPrivada = false,
+  soloLectura = false,
 }: {
   subCols: ColMeta[];
   /** ColMeta del board `oportunidades` — las condiciones de la cotización
@@ -90,6 +91,13 @@ export function CotizacionTab({
    * (producto/color/cantidad/embellecimiento). Ahí no hay traspaso entre
    * Ventas, Compras y dirección: es la misma persona (Efraín, 2026-08-18). */
   zonaPrivada?: boolean;
+  /** Vitrina: la grid de Costeo/Validación completa SIN una sola escritura
+   * (Efraín, 2026-08-27 — el tab "Costeo" del Reporte de Proyectos). No basta
+   * con `editable={false}`, que solo apaga las celdas: también se van
+   * "Ajustar línea", la confirmación de Compras del panel de detalle y la fila
+   * de PDFs (que genera y sube archivos). Lo que queda es leer y la fila de
+   * TOTAL abajo. */
+  soloLectura?: boolean;
 }) {
   const isMobile = useIsMobile();
   const tabPadding = isMobile ? '14px 14px 24px' : '24px 32px 40px';
@@ -179,7 +187,8 @@ export function CotizacionTab({
   // encontrado probando en vivo con una oportunidad recién creada y marcada
   // Ganada sin costear: `!lineEdits` daba false aunque la fila ya se pintaba
   // de solo lectura). `canAddLines` ya combina ambos factores correctamente.
-  const canAjustar = !canAddLines && (me?.role === 'vendedor' || me?.role === 'compras' || me?.role === 'admin');
+  const canAjustar = !soloLectura && !canAddLines
+    && (me?.role === 'vendedor' || me?.role === 'compras' || me?.role === 'admin');
   // Historial por renglón (📋): solo Compras/Admin — shared/visibility.ts
   // canReadActivity (Efraín, 2026-08-18). El endpoint responde 403 al resto.
   const canVerActividad = me != null && canReadActivity(me.role);
@@ -278,7 +287,7 @@ export function CotizacionTab({
       return next;
     });
 
-  const canConfirm = me?.role === 'compras' || me?.role === 'admin';
+  const canConfirm = !soloLectura && (me?.role === 'compras' || me?.role === 'admin');
   const [confirmSaving, setConfirmSaving] = useState<Record<string, boolean>>({});
   const [confirmError, setConfirmError] = useState<Record<string, string | undefined>>({});
 
@@ -633,7 +642,7 @@ export function CotizacionTab({
             </span>
           </div>
         )}
-        <CotizacionPdfRow oppId={oppId} item={item} hasSolicitud={hasSolicitud} hasSinFirmar={hasSinFirmar} hasFirmada={hasFirmada} hasLineas={products.length > 0} onInventarioUploaded={onSaved} />
+        {!soloLectura && <CotizacionPdfRow oppId={oppId} item={item} hasSolicitud={hasSolicitud} hasSinFirmar={hasSinFirmar} hasFirmada={hasFirmada} hasLineas={products.length > 0} onInventarioUploaded={onSaved} />}
         <SnapshotTable version={selectedVersion} />
       </div>
     );
@@ -657,7 +666,7 @@ export function CotizacionTab({
     return (
       <div style={{ padding: tabPadding, width: '100%', boxSizing: 'border-box' }}>
         <VersionChips versions={versions} selected={selectedVersionId} onSelect={setSelectedVersionId} onNuevaVersion={onNuevaVersion} />
-        <CotizacionPdfRow oppId={oppId} item={item} hasSolicitud={hasSolicitud} hasSinFirmar={hasSinFirmar} hasFirmada={hasFirmada} hasLineas={products.length > 0} onInventarioUploaded={onSaved} />
+        {!soloLectura && <CotizacionPdfRow oppId={oppId} item={item} hasSolicitud={hasSolicitud} hasSinFirmar={hasSinFirmar} hasFirmada={hasFirmada} hasLineas={products.length > 0} onInventarioUploaded={onSaved} />}
         <div style={{ font: 'var(--text-label)', color: 'var(--ink-quiet)', marginBottom: 16 }}>
           Sin líneas de producto registradas.
         </div>
@@ -695,7 +704,7 @@ export function CotizacionTab({
           {divergenciaNotice}
         </div>
       )}
-      <CotizacionPdfRow oppId={oppId} item={item} hasSolicitud={hasSolicitud} hasSinFirmar={hasSinFirmar} hasFirmada={hasFirmada} hasLineas={products.length > 0} onInventarioUploaded={onSaved} />
+      {!soloLectura && <CotizacionPdfRow oppId={oppId} item={item} hasSolicitud={hasSolicitud} hasSinFirmar={hasSinFirmar} hasFirmada={hasFirmada} hasLineas={products.length > 0} onInventarioUploaded={onSaved} />}
       {isMobile ? (
         <div {...NAV_GRID_ATTR} style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-xl)', overflow: 'hidden' }}>
           {products.map((p, lineIdx) => (

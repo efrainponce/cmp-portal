@@ -1,5 +1,47 @@
 # Log de commits
 
+## 2026-08-27
+
+- **Reporte de Proyectos ahora trae el costeo, solo para admins** (Efraín:
+  "puedes cambiar el board Reporte de Proyectos y agregar lo mismo que
+  Validación Costeo PERO POR CADA PROYECTO" + "jalar TODA la info de costeo,
+  todas las columnas que tiene Validación Costeo, solo lectura, con totales
+  hasta abajo").
+- En la LISTA: las mismas seis cifras de Validación de Costeo (Costo, Subtotal,
+  Total, Utilidad %, Margen Gob, Utilidad) por proyecto, la suma de cada zona en
+  su encabezado y un gran total pegado abajo. El dinero no vive en el board
+  Proyectos —vive en las líneas de la Oportunidad ligada—, así que
+  `totalesPorProyecto` (worker/lib/totales.ts) re-indexa el agregado que ya
+  existía: proyecto → `board_relation_mm0hf0y3` → totales de sus líneas.
+- Doble filtro de renglón, no uno: entran los proyectos que el viewer ya recibió
+  (dal.ts lo scopea) Y solo las oportunidades que ese viewer podría leer por su
+  cuenta. Sin lo segundo, un proyecto visible que apunta a una oportunidad de la
+  zona privada sacaba su dinero por la puerta de atrás del board de post-venta.
+  El `?totales=1` en `proyectos` además solo lo atiende el server si el rol es
+  admin — probado en local: un vendedor recibe la lista SIN el mapa de totales.
+- Cabían a 1920 pero no a 1440: seis columnas de dinero + batería + etapa +
+  entrega + folio dejaban el nombre del proyecto en tres letras. Debajo de
+  1650 px se retiran batería y fecha de entrega (las dos se ven completas al
+  abrir el proyecto) y el nombre se recorta con puntos suspensivos con el
+  nombre completo en el tooltip. Verificado con Playwright a 1440, 1920 y 390.
+- En el PROYECTO: tab nuevo **Costeo** (solo admin, solo en este board) con la
+  grid COMPLETA de Validación de Costeo de la Oportunidad ligada —las ~16
+  columnas, sus anchos y su fila de TOTAL— de solo lectura. Reusa
+  `CotizacionTab` con una prop nueva `soloLectura` en vez de dibujar otra grid:
+  una copia se desalinearía sola la próxima vez que se agregue una columna. No
+  basta `editable={false}` (eso solo apaga las celdas): `soloLectura` también
+  quita "Ajustar línea", la confirmación de Compras del panel de detalle y la
+  fila de PDFs, que genera y sube archivos. Verificado: cero inputs editables en
+  la pestaña.
+- El tab lee la oportunidad dos veces, como el drawer de Oportunidades: primero
+  el mirror (pinta al instante) y encima la relectura viva contra Monday (~4 s
+  medidos en local), que nunca borra lo ya pintado si Monday falla. El tab
+  "Cotización" que ya existía no se tocó: ese es la vista corta y sí escribe con
+  "Editar/Dividir".
+- El gate del tab es por boardKey + rol y va también en el CONTENIDO, no solo en
+  la barra: el tercer segmento de la URL (`/ejecucion/<id>/costeo`) es copiable
+  y llegaría igual a quien no le toca.
+
 ## 2026-08-26
 
 - **Las flechas ↑/↓ ya no le restan 1 a las cantidades** (Efraín, video de una

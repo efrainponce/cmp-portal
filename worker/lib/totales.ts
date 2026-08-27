@@ -12,10 +12,11 @@
 // las versiones superadas viven archivadas en `cotizacion_versions`, ver
 // worker/lib/quoteVersions.ts), así que es la cotización que está sobre la mesa.
 import type { Env } from '../env';
-import type { Role } from '../../shared/types';
+import type { Identity, MirrorItem, Role } from '../../shared/types';
 import type { TotalesDTO } from '../../shared/dto';
 import { BOARDS } from '../../shared/boards';
 import { canRead } from '../../shared/visibility';
+import { linkedItemId, scopeFor, PROYECTO_OPP_REL } from './dal';
 
 // Las mismas columnas de línea que ya gatea shared/visibility.ts: Subtotal y
 // Total los ve el vendedor (es lo que cotiza al cliente); Costo, Utilidad y
@@ -97,4 +98,57 @@ export async function totalesVersion(env: Env): Promise<string> {
     .bind(BOARDS.oportunidades_sub.id)
     .first<{ c: number; m: string | null }>();
   return `${row?.c ?? 0}.${row?.m ?? ''}`;
+}
+
+/**
+ * Lo mismo, pero indexado por PROYECTO (Efraín, 2026-08-27): el Reporte de
+ * Proyectos pinta las mismas seis cifras que Validación de Costeo, una por
+ * proyecto. El dinero no vive en el board Proyectos — vive en las líneas de la
+ * Oportunidad ligada (`board_relation_mm0hf0y3`), así que esto solo re-indexa
+ * el agregado de arriba: proyecto -> oportunidad -> totales de sus líneas.
+ *
+ * Dos filtros, igual que en `totalesPorOportunidad`:
+ *  - Por COLUMNA, heredado de shared/visibility.ts (lo hace la función de arriba).
+ *  - Por RENGLÓN, y aquí van los DOS extremos de la cadena: solo entran los
+ *    proyectos que el viewer ya recibió (`rows` viene scopeado por dal.ts) Y
+ *    solo las oportunidades que el viewer podría leer por su cuenta. Lo segundo
+ *    no es redundante: un proyecto visible puede apuntar a una oportunidad de la
+ *    zona privada (worker/lib/zonas.ts), y sin este segundo filtro el dinero de
+ *    esa oportunidad saldría por la puerta de atrás del board Proyectos.
+ *
+ * La lista de oportunidades legibles se pide de una sola consulta (una columna,
+ * índice por board) en vez de un `IN (...)` con un bind por proyecto: no caben
+ * ~600 ids en los ~100 binds que aguanta D1.
+ */
+export async function totalesPorProyecto(
+  env: Env,
+  viewer: Identity,
+  rows: MirrorItem[],
+): Promise<Record<string, TotalesDTO>> {
+  // proyecto -> oportunidad ligada. Un proyecto creado desde cero
+  // (CrearProyectoModal) no tiene relación: se queda sin cifras, no en ceros.
+  const oppDe = new Map<number, number>();
+  for (const row of rows) {
+    const oppId = linkedItemId(row, PROYECTO_OPP_REL);
+    if (oppId != null) oppDe.set(row.item_id, oppId);
+  }
+  if (oppDe.size === 0) return {};
+
+  const scope = scopeFor('oportunidades', viewer);
+  const res = await env.DB
+    .prepare(`SELECT item_id FROM items WHERE board_id = ? AND (${scope.where})`)
+    .bind(BOARDS.oportunidades.id, ...scope.binds)
+    .all<{ item_id: number }>();
+  const legibles = new Set((res.results ?? []).map(r => r.item_id));
+
+  const pedidas = new Set([...oppDe.values()].filter(id => legibles.has(id)));
+  if (pedidas.size === 0) return {};
+  const porOpp = await totalesPorOportunidad(env, viewer.role, pedidas);
+
+  const out: Record<string, TotalesDTO> = {};
+  for (const [proyectoId, oppId] of oppDe) {
+    const t = porOpp[String(oppId)];
+    if (t) out[String(proyectoId)] = t;
+  }
+  return out;
 }
