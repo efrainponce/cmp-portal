@@ -145,7 +145,7 @@ export function StageBoardList({ config, groupColId = 'deal_stage', q, onSearch,
   // `true` = pide también las métricas de la cotización por oportunidad
   // (?totales=1). Van en TODOS los boards de etapa (Efraín, 2026-08-20): el
   // worker recorta por rol, así que un vendedor solo recibe Subtotal y Total.
-  const { status, data } = usePoll('oportunidades', q, pollCols, true);
+  const { status, data, refrescar, refrescando } = usePoll('oportunidades', q, pollCols, true);
 
   // Avisa UNA vez que ya hay datos en pantalla. El wrapper lo usa para
   // precargar el drawer: antes de esto la lista no compite con nada.
@@ -233,6 +233,25 @@ export function StageBoardList({ config, groupColId = 'deal_stage', q, onSearch,
             {items.length} activas{config.subtitleSuffix}
           </div>
           <SyncIndicator syncedAt={sync.updatedAt} pending={sync.pending} label="actualizado" />
+          {/* "Actualizar" de verdad (2026-08-27): pide la lista con ?fresh=1, que
+              obliga al worker a leer Monday antes de contestar. Hasta ahora el
+              único camino para enterarse de un cambio hecho en Monday era el cron
+              de 15 min, así que recargar la página no adelantaba NADA y compras
+              esperaba hasta 30 min por una oportunidad nueva. */}
+          <button
+            type="button"
+            onClick={() => { void refrescar(); }}
+            disabled={refrescando}
+            title="Buscar cambios en Monday ahora"
+            style={{
+              font: 'var(--text-caption)', color: 'var(--ink-tertiary)',
+              background: 'none', border: 'none', padding: '2px 4px',
+              cursor: refrescando ? 'default' : 'pointer', textDecoration: 'underline',
+              opacity: refrescando ? 0.5 : 1,
+            }}
+          >
+            {refrescando ? 'buscando…' : 'actualizar'}
+          </button>
         </div>
         <div style={{ marginTop: isMobile ? 10 : 14, display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 10, flexWrap: 'wrap' }}>
           <SearchInput

@@ -139,7 +139,7 @@ y `src/lib/estadoProductoBuckets.ts`.
 
 ### worker/sync/
 
-- [worker/sync/delta.ts](worker/sync/delta.ts) — Delta sync cada 15 min: jala activity_logs recientes de las 8 boards en una call y refetchea solo los items que cambiaron, complementa al reconcile de 12h. Exports: deltaSync.
+- [worker/sync/delta.ts](worker/sync/delta.ts) — Delta sync: jala activity_logs recientes de las 8 boards en UNA call (ventana propia por board) y refetchea solo los items que cambiaron. Dispara por el cron de 15 min Y por el LATIDO a demanda que cuelga del poll de la lista (`deltaSyncIfStale`, lease en D1 → 1 corrida por minuto de uso real, cero cuando nadie usa el portal). Checkpoint por board + prioridad al pipeline para que Productos no atrase a Oportunidades; ventana adaptativa contra el tope de 200 de activity_logs. Complementa al reconcile de 12h. Exports: deltaSync, deltaSyncIfStale, ordenarCola, calcularCheckpoints.
 - [worker/sync/echo.ts](worker/sync/echo.ts) — Outbox echo: ¿estado fresco de Monday coincide con lo que escribimos? Exports: confirmOutboxEcho.
 - [worker/sync/index.ts](worker/sync/index.ts) — Superficie pública del módulo A (ver docs/dev-contracts.md). Exports: (exports re-publicados).
 - [worker/sync/log.ts](worker/sync/log.ts) — Tiny sync_log writer compartido por helpers de sync. Exports: logSync.
@@ -185,7 +185,7 @@ y `src/lib/estadoProductoBuckets.ts`.
 
 ### src/lib/
 
-- [src/lib/api.ts](src/lib/api.ts) — ETag-aware polling hooks sobre apiClient; fallback a mock offline. Exports: (re-exports), PollStatus, PollResult.
+- [src/lib/api.ts](src/lib/api.ts) — ETag-aware polling hooks sobre apiClient; fallback a mock offline. `usePoll` devuelve además `refrescar()`/`refrescando` — el botón "actualizar" de la lista, que pide `?fresh=1` y obliga al worker a leer Monday antes de contestar. Exports: (re-exports), PollStatus, PollResult, queryLista, SOLO_NOMBRE.
 - [src/lib/apiClient.ts](src/lib/apiClient.ts) — Cliente tipado (no-hook) para worker API (ver docs/dev-contracts.md). Exports: BoardMeta, AccessError, logout.
 - [src/lib/telemetry.ts](src/lib/telemetry.ts) — Buffer en memoria de eventos de interacción; sale en lote (~5s / 20 eventos / pagehide) con sendBeacon. Nunca bloquea la UI ni propaga errores. Los GET van muestreados al 2% (la lista poletea cada 5s). Exports: uxNav, uxEdit, uxClick, uxAck, uxError, uxAction, uxClickBusy, uxApiLatency.
 - [src/lib/costeoCalc.ts](src/lib/costeoCalc.ts) — Fórmulas de costeo para preview local (1:1 con Monday). Exports: COL, cellNumber, CostChain, computeCostChain.

@@ -2,6 +2,67 @@
 
 ## 2026-08-27
 
+- **Sincronización con Monday: de 15-30 min a ~30 s** (Efraín: "TODOS los de
+  compras me dicen que las nuevas oportunidades toman hasta 30 minutos aun
+  picándole en actualizar… ¿por qué? sin quemar tantos API calls").
+- **El porqué, medido en producción**: el portal no tiene webhooks de cambio de
+  columna desde el 2026-07-31 — se quitaron porque el `change_column_value`
+  genérico se comía ~80% de la cuota de acciones de Monday. Los webhooks vivos
+  del board de Oportunidades son solo `create_item`, `change_name`,
+  `item_deleted`, `create_subitem`, `subitem_deleted` y `create_update`; los
+  boards de líneas (18395657607, 18395657609) no tienen NINGUNO. O sea: costos,
+  cantidades, Etapa Costeo y el Responsable compras —todo lo que se edita dentro
+  de Monday o lo que escribe cmp-tallas— entraba al espejo únicamente por el
+  cron de 15 min. Comparando `monday_updated_at` vs `synced_at` de las 12
+  oportunidades más recientes: retrasos de 6 a 18 min y **las 12 cayendo
+  exactamente en un tick del cron**, ni una por webhook.
+- Y "actualizar" no hacía nada: `GET /api/boards/:slug/items` lee SOLO el espejo
+  D1. El `?fresh=1` que sí relee Monday existía únicamente para el drawer de un
+  item, así que recargar la lista no podía adelantar nada. Tenían razón.
+- **Latido a demanda** (`deltaSyncIfStale`, worker/sync/delta.ts): el poll de la
+  lista dispara el delta sync en `waitUntil` si hace más de 60 s que no corre.
+  El lease vive en `sync_state` y se toma con un UPDATE condicional, así que
+  corre COMO MUCHO uno por minuto por más gente que esté poleando cada 5 s, y
+  CERO cuando nadie usa el portal — el costo es por minuto de uso real, no por
+  usuario. ~+600 llamadas/día sobre las ~1,300 que ya se gastaban
+  (`monday_api_usage`); cadencia elegida por Efraín entre 30 s / 60 s / 2 min.
+- **Botón "actualizar" de verdad** en la lista de etapa: pide `?fresh=1`, que
+  ahora sí espera un latido (lease corto de 20 s) antes de contestar. Con tope
+  de reloj de 6 s para que no se cuelgue si hay backlog — lo que no alcance
+  queda pendiente y lo recoge el siguiente latido.
+- **Checkpoint POR BOARD + prioridad al pipeline.** Era uno solo y global, y con
+  el tope de 50 refetches compartido un board ruidoso atrasaba a los demás:
+  el 2026-08-27 a las 17:31 el delta gastó ~50 refetches seguidos en Productos,
+  abortó por subrequests (`abortado tras 49/50`) y dejó 21 pendientes — entre
+  ellos las líneas que compras estaba esperando, que se fueron al ciclo
+  siguiente. Ahí están los 30 min. Ahora Oportunidades/líneas/Proyectos se
+  atienden primero y cada board avanza su propio checkpoint.
+- **Bug de pérdida silenciosa arreglado.** `activity_logs` va con `limit:200` y
+  devuelve los eventos MÁS RECIENTES primero (verificado en vivo). Al saturarse
+  se perdían los más VIEJOS de la ventana —justo los pegados al checkpoint— y el
+  checkpoint avanzaba igual hasta `to`: esos cambios no reaparecían hasta el
+  reconcile de 12h. Pasó ese mismo día: tras un hueco de una hora sin cron, la
+  corrida de las 21:01 reportó `events=200` exacto. Ahora un board saturado no
+  avanza, su ventana se encoge a un cuarto hasta que quepa (piso de 60 s) y
+  vuelve a 20 min al normalizarse; si aun en el piso satura, se avanza y se
+  grita en `sync_log` en vez de quedarse en un ciclo infinito.
+- `fetchActivityLogs` recibe ahora una ventana POR BOARD (alias de GraphQL) —
+  sigue siendo UNA sola llamada HTTP, pero un board al día ya no gasta su tope
+  de 200 re-pidiendo los eventos viejos de otro.
+- La matemática del checkpoint salió a `ordenarCola`/`calcularCheckpoints`,
+  puras y con test (`worker/sync/delta.test.ts`, 7 casos): es la pieza que falla
+  EN SILENCIO — un checkpoint congelado deja el portal mudo sin una sola fila de
+  error (pasó 3 días en agosto) y uno que avanza de más pierde cambios.
+- **Un webhook nuevo**, `change_specific_column_value` de `deal_stage` en
+  Oportunidades (id 629364610, registrado hoy). No es el genérico que se quitó
+  en julio: dispara solo al mover la etapa, que es lo que mete o saca una
+  oportunidad de la lista de compras. `scripts/create-webhooks.mjs` acepta
+  `--column=` para esto. OJO: en el board ya había otro webhook de `deal_stage`
+  que es de Make (id 531643702), no confundirlos.
+- El cron de 15 min se queda como piso garantizado: se salta ticks (hubo un
+  hueco de una hora completa, 20:01→21:01) y el latido lo cubre.
+
+
 - **Las utilidades ahora van por CORREO, no por rol** (Efraín: "todas las
   utilidades incluyendo validación de costeo y proyectos; eso solo lo ve Eli y
   mi papá"). Hasta hoy Utilidad C/U, Utilidad Total, Utilidad %, Diferencia y

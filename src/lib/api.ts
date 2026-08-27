@@ -20,11 +20,16 @@ export type PollStatus = 'loading' | 'ready' | 'denied' | 'offline';
  * la app dejaba de coincidir con la precargada — la lista se bajaba DOS veces
  * y la optimización salía contraproducente (medido). Los ids de columna de
  * Monday son [a-z0-9_], así que van crudos sin ambigüedad. */
-export function queryLista(q: string, colsParam: string | null, totales = false): string {
+export function queryLista(q: string, colsParam: string | null, totales = false, fresh = false): string {
   const partes: string[] = [];
   if (q) partes.push('q=' + encodeURIComponent(q));
   if (colsParam !== null) partes.push('cols=' + colsParam);
   if (totales) partes.push('totales=1');
+  // `fresh=1` va SOLO en el botón "Actualizar", nunca en el poll de 5 s: hace
+  // que el worker espere un latido del delta sync (una lectura a Monday) antes
+  // de contestar. La precarga de index.html no lo manda, así que tampoco entra
+  // en la URL que tiene que coincidir con la precargada.
+  if (fresh) partes.push('fresh=1');
   return partes.length ? '?' + partes.join('&') : '';
 }
 
@@ -43,6 +48,11 @@ export interface PollResult {
   data: ListResponse | null;
   offlineMock: boolean;
   refetch: () => void;
+  /** Botón "Actualizar": pide la lista con `?fresh=1`, o sea obliga al worker a
+   * leer Monday (latido del delta sync) antes de contestar, en vez de servir el
+   * espejo D1 como hace el poll normal. */
+  refrescar: () => Promise<void>;
+  refrescando: boolean;
 }
 
 /** Fetches the item list for `slug`, then re-polls every 5s using If-None-Match
@@ -58,6 +68,7 @@ export function usePoll(slug: BoardSlug, q = '', cols?: readonly string[], total
   const [status, setStatus] = useState<PollStatus>('loading');
   const [data, setData] = useState<ListResponse | null>(null);
   const [offlineMock, setOfflineMock] = useState(false);
+  const [refrescando, setRefrescando] = useState(false);
   const etagRef = useRef<string | undefined>(undefined);
   // true en cuanto hay algo que pintar — al cambiar `q` NO se regresa a
   // "loading" ni se dispara el request de inmediato: la lista actual sigue
@@ -70,12 +81,13 @@ export function usePoll(slug: BoardSlug, q = '', cols?: readonly string[], total
   // null = sin proyección (todas las columnas); '' = ninguna columna.
   const colsParam = cols ? cols.join(',') : null;
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (fresh = false) => {
     // Pestaña oculta: no gastes requests — al volver, el listener de
-    // visibilitychange de abajo recarga de inmediato.
-    if (document.hidden) return;
+    // visibilitychange de abajo recarga de inmediato. Un "Actualizar" explícito
+    // sí pasa: lo pidió alguien que está mirando.
+    if (document.hidden && !fresh) return;
     try {
-      const params = queryLista(q, colsParam, totales);
+      const params = queryLista(q, colsParam, totales, fresh);
       const headers: Record<string, string> = {};
       if (etagRef.current) headers['If-None-Match'] = etagRef.current;
       const res = await apiFetch(`/boards/${slug}/items${params}`, { headers });
@@ -113,9 +125,9 @@ export function usePoll(slug: BoardSlug, q = '', cols?: readonly string[], total
     // Solo el primer load (sin nada que pintar) muestra "loading"; los cambios
     // de búsqueda mantienen la lista y llegan con debounce de 300 ms.
     if (!hasDataRef.current) setStatus('loading');
-    const debounce = window.setTimeout(load, hasDataRef.current ? 300 : 0);
-    const timer = window.setInterval(load, 5000);
-    const onVisible = () => { if (!document.hidden) load(); };
+    const debounce = window.setTimeout(() => { void load(); }, hasDataRef.current ? 300 : 0);
+    const timer = window.setInterval(() => { void load(); }, 5000);
+    const onVisible = () => { if (!document.hidden) void load(); };
     document.addEventListener('visibilitychange', onVisible);
     return () => {
       window.clearTimeout(debounce);
@@ -124,7 +136,12 @@ export function usePoll(slug: BoardSlug, q = '', cols?: readonly string[], total
     };
   }, [load]);
 
-  return { status, data, offlineMock, refetch: load };
+  const refrescar = useCallback(async () => {
+    setRefrescando(true);
+    try { await load(true); } finally { setRefrescando(false); }
+  }, [load]);
+
+  return { status, data, offlineMock, refetch: () => { void load(); }, refrescar, refrescando };
 }
 
 // /api/boards es metadata de columnas por rol — no cambia durante la sesión.

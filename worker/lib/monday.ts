@@ -152,29 +152,62 @@ export interface ActivityLogEntry {
   boardId: number; entity: string; event: string; userId: string; createdAt: string; data: string;
 }
 
-/** Eventos de actividad de todas las boards dadas, en UNA sola call (cada Board
- * trae sus propios activity_logs ya filtrados por rango). Dos consumidores:
- * el delta sync (worker/sync/delta.ts, solo usa `data.pulse_id` para saber qué
- * refetchear) y el log de actividad por item (worker/lib/activityLog.ts, usa
- * todo lo demás). `from`/`to` van en ISO8601; `created_at` de la RESPUESTA es
- * un timestamp propietario de Monday (ticks de 100ns desde epoch Unix — NO
- * ISO, NO epoch en ms; verificado en vivo 2026-08-14 contra la fecha real de
- * un evento reciente), por eso viaja crudo — worker/lib/activityLog.ts lo
- * convierte con BigInt (Number pierde precisión pasado 2^53). */
+/** Dos consumidores: el delta sync (worker/sync/delta.ts, solo usa
+ * `data.pulse_id` para saber qué refetchear) y el log de actividad por item
+ * (worker/lib/activityLog.ts, usa todo lo demás). */
+export interface ActivityWindow { boardId: number; from: string; to: string }
+
+/** Tope de eventos que Monday devuelve por board en UNA consulta. Importa
+ * porque `activity_logs` entrega los MÁS RECIENTES primero (verificado en vivo
+ * 2026-08-27): al saturarse, lo que se pierde son los eventos MÁS VIEJOS de la
+ * ventana — justo los que están pegados al checkpoint. Por eso la respuesta
+ * dice qué boards saturaron (`saturated`) en vez de dejar que el llamador
+ * avance el checkpoint sobre eventos que nunca vio. */
+export const ACTIVITY_LOG_LIMIT = 200;
+
+/** Eventos de actividad de varias boards en UNA sola call HTTP, cada una con su
+ * PROPIA ventana (alias de GraphQL, un `boards(...)` por board). La ventana por
+ * board existe porque el delta sync lleva un checkpoint independiente por board
+ * (worker/sync/delta.ts): con una ventana común, un board al día tendría que
+ * re-pedir los eventos viejos de otro y gastaría su tope de 200 en eventos que
+ * ya procesó.
+ *
+ * `from`/`to` van en ISO8601; `created_at` de la RESPUESTA es un timestamp
+ * propietario de Monday (ticks de 100ns desde epoch Unix — NO ISO, NO epoch en
+ * ms; verificado en vivo 2026-08-14 contra la fecha real de un evento
+ * reciente), por eso viaja crudo — worker/lib/activityLog.ts lo convierte con
+ * BigInt (Number pierde precisión pasado 2^53). */
 export async function fetchActivityLogs(
-  env: Env, boardIds: number[], from: string, to: string,
-): Promise<ActivityLogEntry[]> {
-  const query = `query($ids:[ID!],$from:ISO8601DateTime,$to:ISO8601DateTime){
-    boards(ids:$ids){ id activity_logs(from:$from,to:$to,limit:200){ entity event user_id created_at data } } }`;
-  const data = await gql(env, query, { ids: boardIds.map(String), from, to });
-  const out: ActivityLogEntry[] = [];
-  for (const b of data?.boards ?? []) {
-    const boardId = Number(b.id);
-    for (const log of b.activity_logs ?? []) {
-      out.push({ boardId, entity: log.entity, event: log.event, userId: log.user_id, createdAt: log.created_at, data: log.data });
+  env: Env, windows: ActivityWindow[],
+): Promise<{ entries: ActivityLogEntry[]; saturated: Set<number> }> {
+  if (windows.length === 0) return { entries: [], saturated: new Set() };
+
+  const vars: Record<string, unknown> = {};
+  const decls: string[] = [];
+  const bodies: string[] = [];
+  windows.forEach((w, i) => {
+    decls.push(`$b${i}:[ID!]`, `$f${i}:ISO8601DateTime`, `$t${i}:ISO8601DateTime`);
+    vars[`b${i}`] = [String(w.boardId)];
+    vars[`f${i}`] = w.from;
+    vars[`t${i}`] = w.to;
+    bodies.push(`a${i}: boards(ids:$b${i}){ id activity_logs(from:$f${i},to:$t${i},limit:${ACTIVITY_LOG_LIMIT}){ entity event user_id created_at data } }`);
+  });
+  const query = `query(${decls.join(',')}){ ${bodies.join(' ')} }`;
+  const data = await gql(env, query, vars);
+
+  const entries: ActivityLogEntry[] = [];
+  const saturated = new Set<number>();
+  windows.forEach((w, i) => {
+    for (const b of data?.[`a${i}`] ?? []) {
+      const boardId = Number(b.id);
+      const logs = b.activity_logs ?? [];
+      if (logs.length >= ACTIVITY_LOG_LIMIT) saturated.add(boardId);
+      for (const log of logs) {
+        entries.push({ boardId, entity: log.entity, event: log.event, userId: log.user_id, createdAt: log.created_at, data: log.data });
+      }
     }
-  }
-  return out;
+  });
+  return { entries, saturated };
 }
 
 /** One page of items for a board (100/page). Pass `cursor` from the previous call to continue. */

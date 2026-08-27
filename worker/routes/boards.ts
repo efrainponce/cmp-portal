@@ -32,7 +32,7 @@ import { listActivity, actorNameResolver } from '../lib/activityLog';
 import { cachedFetchUsers } from '../lib/rosterCache';
 import { getBoardAccess } from '../lib/boardAccess';
 import { isZonaPrivadaAdminPermitido } from '../lib/zonas';
-import { refetchItem, refetchItemTree } from '../sync';
+import { refetchItem, refetchItemTree, deltaSyncIfStale } from '../sync';
 import { jsonStatus, rejectUnknownQuery, contentDisposition } from '../lib/http';
 import { nombreDescarga, extensionDe } from '../../shared/nombreArchivo';
 import { totalesPorOportunidad, totalesPorProyecto, totalesVersion } from '../lib/totales';
@@ -99,6 +99,14 @@ async function autoVersionLineaCosteada(
 // + relectura). Corta, porque la garantía que pide el negocio es que al ABRIR
 // una oportunidad se vea exactamente lo que Monday tiene (Efraín, 2026-07-30).
 const FRESH_WINDOW_MS = 3_000;
+
+// Cadencia del latido del delta sync que dispara el poll de la lista (ver el
+// GET /items). 60 s de fondo — Efraín, 2026-08-27, eligiendo el punto entre
+// frescura y cuota: ~+600 llamadas a Monday al día en horario laboral sobre
+// las ~1,300 que ya se gastan. El botón "Actualizar" puede apurarlo hasta cada
+// 20 s; el lease impide que se vuelva un martillo.
+const LATIDO_MS = 60_000;
+const LATIDO_FORZADO_MS = 20_000;
 
 /** Trae el item (y sus líneas, si el board tiene subitems) directo de Monday
  * antes de responder. Nunca lanza: si Monday falla o va lento, se sirve el
@@ -236,7 +244,7 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
     // lista devuelve el board completo, y quien la usa para decidir sobre qué
     // items actuar (borrar, por ejemplo) se llevaría todo. Ver el porqué en
     // worker/lib/http.ts.
-    const queryMala = rejectUnknownQuery(c.req.url, ['q', 'cols', 'totales']);
+    const queryMala = rejectUnknownQuery(c.req.url, ['q', 'cols', 'totales', 'fresh']);
     if (queryMala) return queryMala;
     const viewer = c.get('viewer');
     const q = c.req.query('q');
@@ -275,6 +283,29 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
     // otro board (las líneas), así que su versión también entra: editar una
     // línea no mueve el board de Oportunidades y sin esto los números se
     // quedarían congelados detrás de un 304.
+    // LATIDO del delta sync (2026-08-27). El portal no tiene webhooks de cambio
+    // de columna desde 2026-07-31 (se comían ~80% de la cuota de acciones de
+    // Monday), así que TODO lo que se edita dentro de Monday o lo que escribe
+    // cmp-tallas entraba al espejo solo por el cron de 15 min: medido ese día,
+    // las 12 oportunidades más recientes traían entre 6 y 18 min de retraso y
+    // todas caían exactamente en un tick del cron ("compras tarda hasta 30 min
+    // en ver una oportunidad nueva aunque le piquen a actualizar").
+    //
+    // Colgarlo del poll de la lista lo vuelve a demanda: `deltaSyncIfStale`
+    // toma un lease en D1, así que corre COMO MUCHO uno cada 60 s por más
+    // gente que esté poleando cada 5 s, y CERO cuando nadie usa el portal —
+    // una llamada extra a Monday por minuto de uso real, no por usuario.
+    //
+    // `?fresh=1` es el botón "Actualizar" de la lista: mismo latido pero
+    // ESPERADO (para que la respuesta ya lo refleje) y con lease más corto.
+    // Antes ese botón solo releía el espejo D1, o sea no hacía absolutamente
+    // nada contra Monday — por eso el equipo decía que picarle no servía.
+    if (c.req.query('fresh')) {
+      await deltaSyncIfStale(c.env, LATIDO_FORZADO_MS);
+    } else {
+      c.executionCtx.waitUntil(deltaSyncIfStale(c.env, LATIDO_MS));
+    }
+
     const variante = conTotales ? `${colsParam ?? ''}|t${await totalesVersion(c.env)}` : colsParam;
     const etag = await etagFor(c.env, slug, viewer, variante);
     c.header('ETag', etag);
