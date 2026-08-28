@@ -2,6 +2,24 @@
 
 ## 2026-08-28
 
+- **Elisa ya puede modificar el Techo en Validación de Costeo** (Efraín: "Elisa
+  sigue sin poder modificar el techo, fix ahora" → `administracion`). Revierte
+  el recorte del 2026-08-26 ("sí se puede para mi papá Efraín pero no Eli"):
+  `administracion@mexicanadeproteccion.com` entra a `TECHO_VALIDACION_EMAILS`
+  (`shared/visibility.ts`), la whitelist por CORREO que decide dónde se PINTA
+  la celda del Techo (`numeric_mkznpn83`) en el board de Validación. PAM y
+  cualquier admin nuevo siguen fuera — es whitelist, se entra a mano.
+- **No es un permiso nuevo del server, era la UI.** El write ya estaba
+  permitido: la columna es `w: WAC` y Elisa es `role='admin'` en `identity`
+  (verificado en la D1 de producción), así que podía capturar el techo desde
+  **Costeo** desde siempre; lo que faltaba era que la grid de Validación
+  (modo `precioOnly`) le pintara el input. Por eso el fix es una línea de
+  whitelist y no toca `w`, ni el outbox, ni versiona (Techo no está en
+  `LINE_DEFINING_COLS`).
+- Anclado en `shared/visibility.test.ts`: caso propio para Elisa (con espacios
+  y mayúsculas), y los demás admins —PAM, Efrain Ponce Salinas, Paola de
+  cdmx.administracion, el correo vacío— siguen en falso.
+
 - **Compras puede hacer todo lo de Ventas** (Efraín, a raíz de que Elizabeth
   reportó que "el portal no le deja agregar productos a una oportunidad nueva").
 - **Dos candados, no uno.** El primero, en el nav: la fila de `role_board_access`

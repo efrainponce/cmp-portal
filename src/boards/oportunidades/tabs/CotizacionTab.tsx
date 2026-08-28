@@ -158,9 +158,9 @@ export function CotizacionTab({
   // (Efraín, 2026-08-26: "mi papá CEO debe poder modificar los techos en
   // Validación de Costeo"). Hasta ahora el techo solo se capturaba en Costeo y
   // en Validación se pintaba de solo lectura, así que ajustar el tope de una
-  // línea ya costeada obligaba a ir a Monday. Va por CORREO y no por rol —
-  // solo el CEO, "no Eli" aunque también sea admin (mismo día, minutos
-  // después): shared/visibility.ts puedeEditarTechoEnValidacion.
+  // línea ya costeada obligaba a ir a Monday. Va por CORREO y no por rol:
+  // la whitelist es el CEO y Elisa (2026-08-28; el 26 se le había quitado a
+  // ella, "no Eli") — shared/visibility.ts puedeEditarTechoEnValidacion.
   //
   // No relaja ningún permiso ni le quita nada a nadie: el techo ya era
   // escribible por compras/admin en el server (`w: WAC` en

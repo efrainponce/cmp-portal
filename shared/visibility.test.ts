@@ -335,22 +335,28 @@ describe('Compras escribe TODO lo de Ventas (Efraín, 2026-08-28)', () => {
   });
 });
 
-describe('Techo en Validación de Costeo — por correo, solo el CEO (2026-08-26)', () => {
-  // "Sí se puede para mi papá Efraín pero no Eli": la celda de Techo se pinta
-  // editable en el board de Validación SOLO para el CEO, aunque Elisa (y PAM)
-  // también sean admin. Va por correo porque "Actuar en Monday como" presta el
-  // monday_user_id — mismo criterio que la zona privada (worker/lib/zonas.ts).
+describe('Techo en Validación de Costeo — por correo: CEO + Elisa (2026-08-28)', () => {
+  // La celda de Techo se pinta editable en el board de Validación solo para
+  // quien esté en la whitelist por CORREO, aunque PAM también sea admin. Va
+  // por correo porque "Actuar en Monday como" presta el monday_user_id —
+  // mismo criterio que la zona privada (worker/lib/zonas.ts). Elisa quedó
+  // fuera el 2026-08-26 ("no Eli") y volvió a entrar el 2026-08-28.
   it('los dos correos del CEO sí', () => {
     expect(puedeEditarTechoEnValidacion('efrainponce@mexicanadeproteccion.com')).toBe(true);
     expect(puedeEditarTechoEnValidacion('efrain.ponce@mexicanadeproteccion.com')).toBe(true);
     expect(puedeEditarTechoEnValidacion('  Efrain.Ponce@Mexicanadeproteccion.com ')).toBe(true);
   });
 
-  it('los demás admins no — Elisa incluida', () => {
+  it('Elisa sí (2026-08-28)', () => {
+    expect(puedeEditarTechoEnValidacion('administracion@mexicanadeproteccion.com')).toBe(true);
+    expect(puedeEditarTechoEnValidacion(' Administracion@Mexicanadeproteccion.com ')).toBe(true);
+  });
+
+  it('los demás admins no', () => {
     for (const email of [
-      'administracion@mexicanadeproteccion.com',   // Elisa Vallado (admin)
       'compras@mexicanadeproteccion.com',          // Pamela Ricalde (admin)
       'salinasefrain@mexicanadeproteccion.com',    // Efrain Ponce Salinas (admin)
+      'cdmx.administracion@mexicanadeproteccion.com',  // Paola Andrade (vendedor)
       'ventas@mexicanadeproteccion.com',
       '', null, undefined,
     ]) {

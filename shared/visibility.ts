@@ -398,15 +398,18 @@ export const canReadActivity = (r: Role) => r === 'compras' || r === 'admin';
  * de donde venga), así que esto es una regla de la UI, no un candado del
  * server: quien ya podía escribir el techo desde Costeo lo sigue pudiendo.
  *
- * La lista es el CEO y nadie más (Efraín, 2026-08-26: "todos los admins en
- * validación de costeo deben poder cambiar el techo" → corregido minutos
- * después a "sí se puede para mi papá Efraín pero no Eli"). Sus DOS correos,
- * un solo id de Monday. Bajo "ver como" el viewer ya es el suplantado
+ * La lista es el CEO (sus DOS correos, un solo id de Monday) y Elisa
+ * (Efraín, 2026-08-26: "todos los admins ... deben poder cambiar el techo" →
+ * corregido minutos después a "sí se puede para mi papá Efraín pero no Eli" →
+ * revertido el 2026-08-28: "Elisa sigue sin poder modificar el techo, fix
+ * ahora"). PAM y cualquier admin nuevo siguen fuera: es whitelist, se entra a
+ * mano. Bajo "ver como" el viewer ya es el suplantado
  * (worker/mw/identity.ts), así que verlo como él enseña la celda —así se
  * prueba sin agregar a nadie a la lista. */
 const TECHO_VALIDACION_EMAILS: ReadonlySet<string> = new Set([
   'efrainponce@mexicanadeproteccion.com',
   'efrain.ponce@mexicanadeproteccion.com',
+  'administracion@mexicanadeproteccion.com',   // Elisa Vallado (admin)
 ]);
 export const puedeEditarTechoEnValidacion = (email: string | null | undefined): boolean =>
   !!email && TECHO_VALIDACION_EMAILS.has(email.trim().toLowerCase());
