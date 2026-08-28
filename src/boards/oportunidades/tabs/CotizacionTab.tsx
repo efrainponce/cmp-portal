@@ -21,7 +21,7 @@ import { previewRow, COL } from '../../../lib/costeoCalc';
 import { isNativeId } from '../../../../shared/nativeId';
 import { useIsMobile } from '../../../lib/useIsMobile';
 import { useMe } from '../../../lib/useMe';
-import { canReadActivity, puedeEditarTechoEnValidacion } from '../../../../shared/visibility';
+import { canReadActivity, puedeCapturarEnValidacion } from '../../../../shared/visibility';
 import { latestFileUrl, NO_FIRMADAS_COL, FIRMADAS_COL, SOLICITUDES_COL } from './DocumentacionTab';
 import { VersionChips } from './cotizacion/VersionChips';
 import { SnapshotTable } from './cotizacion/SnapshotTable';
@@ -41,7 +41,7 @@ import {
   PRODUCTO_COL, PRODUCTO_TXT_COL, PRODUCTO_REL_COL, COLOR_COL,
   EMB_STATUS_COL, EMB_LABEL_CON, EMB_LABEL_SIN,
   PRODUCTO_CONFIRM_COL, PRODUCTO_PROVEEDOR_COL, CATALOGO_TALLAS_COL, linkedProductoId, MONEY_COLS,
-  GRID_COLS_ZONA, TECHO_COL,
+  GRID_COLS_ZONA,
 } from './cotizacion/gridMeta';
 import type { ProductoChoice } from '../../../components/forms/ProductPicker';
 
@@ -154,27 +154,35 @@ export function CotizacionTab({
   // donde lo único editable es el Precio de Venta.
   const ajusteLineEdits = !lineEdits && !precioOnly
     && (me?.role === 'compras' || me?.role === 'admin') && item?.ownedByViewer !== false;
-  // Validación de Costeo: además del Precio de Venta, el TECHO se edita aquí
+  // Validación de Costeo: la grid deja de ser "solo Precio de Venta" y abre
+  // TODA la captura de la línea —costos, Techo, Margen Gob %, Moneda, IVA %,
+  // Etapa Costeo, color y cantidad— para quien esté en la whitelist por CORREO
   // (Efraín, 2026-08-26: "mi papá CEO debe poder modificar los techos en
-  // Validación de Costeo"). Hasta ahora el techo solo se capturaba en Costeo y
-  // en Validación se pintaba de solo lectura, así que ajustar el tope de una
-  // línea ya costeada obligaba a ir a Monday. Va por CORREO y no por rol:
-  // la whitelist es el CEO y Elisa (2026-08-28; el 26 se le había quitado a
-  // ella, "no Eli") — shared/visibility.ts puedeEditarTechoEnValidacion.
+  // Validación de Costeo"; 2026-08-28: "también tiene que poder modificar
+  // margen gob, de hecho todos los valores", con Elisa dentro). Antes ajustar
+  // cualquier cifra de una línea ya costeada obligaba a ir a Monday o a
+  // regresarla a Costeo. Va por correo y no por rol —PAM también es admin y se
+  // queda con el precio nada más—: shared/visibility.ts puedeCapturarEnValidacion.
   //
-  // No relaja ningún permiso ni le quita nada a nadie: el techo ya era
-  // escribible por compras/admin en el server (`w: WAC` en
-  // shared/visibility.ts) y se sigue capturando en Costeo igual que siempre —
-  // esto solo decide dónde se PINTA la celda. `writableIds` sigue mandando por
-  // rol encima de esto. Tampoco versiona: Techo no está en LINE_DEFINING_COLS
-  // (worker/lib/quoteVersions.ts), así que el write sale directo por el outbox
-  // sin reiniciar el ciclo de costeo.
-  const techoEnValidacion = precioOnly && puedeEditarTechoEnValidacion(me?.email);
+  // No relaja ningún permiso ni le quita nada a nadie: esas columnas ya eran
+  // escribibles por compras/admin en el server (`w: WAC`, y `w: WA` el precio)
+  // y se siguen capturando en Costeo igual que siempre — esto solo decide
+  // dónde se PINTAN las celdas. `writableIds` (ColMeta.w, por rol) sigue
+  // mandando encima. Producto y embellecimiento NO se abren inline: siguen
+  // siendo trabajo de Ventas y se cambian con "Ajustar línea" (✎), que ya está
+  // disponible aquí. Color y cantidad sí, y no reinician el costeo: para
+  // compras/admin el server los asienta como mini versión V{n}.{m}
+  // (worker/lib/lineaAjustes.ts esAjusteInline). El resto —costos, techo,
+  // margen gob— no está en LINE_DEFINING_COLS, así que sale directo por el
+  // outbox sin versionar.
+  const capturaEnValidacion = precioOnly && puedeCapturarEnValidacion(me?.email);
   const editableCols = useMemo(
     () => (precioOnly
-      ? new Set<string>(techoEnValidacion ? [COL.precio, TECHO_COL] : [COL.precio])
+      ? (capturaEnValidacion
+        ? inlineEditableCols(false, true, true)
+        : new Set<string>([COL.precio]))
       : inlineEditableCols(lineEdits, zonaPrivada, ajusteLineEdits)),
-    [precioOnly, techoEnValidacion, lineEdits, zonaPrivada, ajusteLineEdits],
+    [precioOnly, capturaEnValidacion, lineEdits, zonaPrivada, ajusteLineEdits],
   );
   const canAddLines = lineEdits && editable;
 

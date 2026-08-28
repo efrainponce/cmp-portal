@@ -3,7 +3,7 @@
 // readableCols(). Un cambio accidental aquí no lo atrapa el typecheck (todo son
 // strings), así que estos tests anclan las reglas que importan.
 import { describe, it, expect } from 'vitest';
-import { VISIBILITY, canRead, canReadActivity, canReadBoard, canWrite, readableCols, puedeEditarTechoEnValidacion, puedeVerUtilidades } from './visibility';
+import { VISIBILITY, canRead, canReadActivity, canReadBoard, canWrite, readableCols, puedeCapturarEnValidacion, puedeVerUtilidades } from './visibility';
 import { COLUMN_META } from './column-meta.gen';
 import type { BoardSlug } from './boards';
 import type { Role } from './types';
@@ -335,21 +335,23 @@ describe('Compras escribe TODO lo de Ventas (Efraín, 2026-08-28)', () => {
   });
 });
 
-describe('Techo en Validación de Costeo — por correo: CEO + Elisa (2026-08-28)', () => {
-  // La celda de Techo se pinta editable en el board de Validación solo para
-  // quien esté en la whitelist por CORREO, aunque PAM también sea admin. Va
-  // por correo porque "Actuar en Monday como" presta el monday_user_id —
-  // mismo criterio que la zona privada (worker/lib/zonas.ts). Elisa quedó
-  // fuera el 2026-08-26 ("no Eli") y volvió a entrar el 2026-08-28.
+describe('Captura en Validación de Costeo — por correo: CEO + Elisa (2026-08-28)', () => {
+  // La grid de Validación abre TODA la captura de la línea (costos, Techo,
+  // Margen Gob %, Moneda, IVA %, color, cantidad) además del Precio de Venta,
+  // pero solo para la whitelist por CORREO: PAM también es admin y se queda
+  // con el precio nada más. Va por correo porque "Actuar en Monday como"
+  // presta el monday_user_id — mismo criterio que la zona privada
+  // (worker/lib/zonas.ts). Elisa quedó fuera el 2026-08-26 ("no Eli") y
+  // volvió a entrar, ya con todos los valores, el 2026-08-28.
   it('los dos correos del CEO sí', () => {
-    expect(puedeEditarTechoEnValidacion('efrainponce@mexicanadeproteccion.com')).toBe(true);
-    expect(puedeEditarTechoEnValidacion('efrain.ponce@mexicanadeproteccion.com')).toBe(true);
-    expect(puedeEditarTechoEnValidacion('  Efrain.Ponce@Mexicanadeproteccion.com ')).toBe(true);
+    expect(puedeCapturarEnValidacion('efrainponce@mexicanadeproteccion.com')).toBe(true);
+    expect(puedeCapturarEnValidacion('efrain.ponce@mexicanadeproteccion.com')).toBe(true);
+    expect(puedeCapturarEnValidacion('  Efrain.Ponce@Mexicanadeproteccion.com ')).toBe(true);
   });
 
   it('Elisa sí (2026-08-28)', () => {
-    expect(puedeEditarTechoEnValidacion('administracion@mexicanadeproteccion.com')).toBe(true);
-    expect(puedeEditarTechoEnValidacion(' Administracion@Mexicanadeproteccion.com ')).toBe(true);
+    expect(puedeCapturarEnValidacion('administracion@mexicanadeproteccion.com')).toBe(true);
+    expect(puedeCapturarEnValidacion(' Administracion@Mexicanadeproteccion.com ')).toBe(true);
   });
 
   it('los demás admins no', () => {
@@ -360,16 +362,29 @@ describe('Techo en Validación de Costeo — por correo: CEO + Elisa (2026-08-28
       'ventas@mexicanadeproteccion.com',
       '', null, undefined,
     ]) {
-      expect(puedeEditarTechoEnValidacion(email), String(email)).toBe(false);
+      expect(puedeCapturarEnValidacion(email), String(email)).toBe(false);
     }
   });
 
-  it('no cambia el candado del server: compras/admin siguen escribiendo el Techo desde Costeo', () => {
-    // Esta whitelist es de UI (dónde se pinta la celda). El write path no sabe
-    // de qué board viene el PATCH, así que `w` no se tocó.
-    expect(canWrite('oportunidades_sub', 'numeric_mkznpn83', 'compras')).toBe(true);
-    expect(canWrite('oportunidades_sub', 'numeric_mkznpn83', 'admin')).toBe(true);
-    expect(canWrite('oportunidades_sub', 'numeric_mkznpn83', 'vendedor')).toBe(false);
+  it('no cambia el candado del server: compras/admin siguen capturando desde Costeo', () => {
+    // Esta whitelist es de UI (dónde se pintan las celdas). El write path no
+    // sabe de qué board viene el PATCH, así que `w` no se tocó.
+    for (const col of [
+      'numeric_mkznpn83',   // Techo
+      'numeric_mkznnm5s',   // Margen Gob %
+      'numeric_mm0bph99',   // Costo Distr. C/U
+      'numeric_mkzn2q51',   // Descuento Distr. %
+      'numeric_mkzngs9x',   // Gastos %
+      'numeric_mm0gxvpa',   // Costo embell. C/U
+      'numeric_mm0rvhgs',   // Conversión
+    ]) {
+      expect(canWrite('oportunidades_sub', col, 'compras'), col).toBe(true);
+      expect(canWrite('oportunidades_sub', col, 'admin'), col).toBe(true);
+      expect(canWrite('oportunidades_sub', col, 'vendedor'), col).toBe(false);
+    }
+    // El Precio de Venta sigue siendo la excepción de siempre: solo admin.
+    expect(canWrite('oportunidades_sub', 'numeric_mkzneg3d', 'admin')).toBe(true);
+    expect(canWrite('oportunidades_sub', 'numeric_mkzneg3d', 'compras')).toBe(false);
   });
 });
 

@@ -2,6 +2,35 @@
 
 ## 2026-08-28
 
+- **En Validación de Costeo ya se editan TODOS los valores, no solo el Techo**
+  (Efraín, minutos después de lo de abajo: "también tiene que poder modificar
+  margen gob. De hecho todos los valores"). La grid de Validación estaba en
+  modo `precioOnly` = un solo input (Precio de Venta) + el Techo del parche
+  anterior; ahora, para quien esté en la whitelist por correo, abre la captura
+  COMPLETA de la línea: Costo Distr., Descuento %, Conversión, Gastos %, Costo
+  embell. C/U, **Margen Gob %**, Moneda, IVA %, Etapa Costeo, Techo, Precio de
+  Venta, más color y cantidad. Un ajuste de cifras sobre una línea ya costeada
+  ya no obliga a ir a Monday ni a regresarla a Costeo.
+- La whitelist se renombró a `puedeCapturarEnValidacion` /
+  `VALIDACION_CAPTURA_EMAILS` (`shared/visibility.ts`) porque ya no es solo el
+  Techo. Sigue siendo el CEO (sus dos correos) + Elisa; **PAM y cualquier admin
+  nuevo siguen viendo solo el Precio** — se entra a mano.
+- **Sigue sin relajar un solo permiso del server:** esas columnas ya eran
+  `w: WAC` (compras/admin, capturadas en Costeo desde siempre) y el Precio
+  `w: WA`; lo único que cambia es dónde se PINTA la celda. `writableIds`
+  (`ColMeta.w`, por rol) manda encima: a un vendedor esto no le abriría nada,
+  ni ve las columnas. En la práctica es `inlineEditableCols(false, true, true)`
+  en `CotizacionTab`, el mismo conjunto que ya usaba Costeo.
+- **Qué NO se abrió inline y por qué:** producto y embellecimiento siguen
+  siendo trabajo de Ventas — se cambian con "Ajustar línea" (✎), que ya estaba
+  disponible en Validación. Color y cantidad sí van inline y no reinician el
+  costeo: para compras/admin el server los asienta como mini versión V{n}.{m}
+  (`worker/lib/lineaAjustes.ts esAjusteInline`). El resto (costos, techo,
+  margen gob) no está en `LINE_DEFINING_COLS`, así que sale directo por el
+  outbox sin versionar ni archivar la vigente.
+- El test de `shared/visibility.test.ts` que anclaba el candado del server se
+  amplió del Techo a los 7 inputs de costeo + el Precio de Venta.
+
 - **Elisa ya puede modificar el Techo en Validación de Costeo** (Efraín: "Elisa
   sigue sin poder modificar el techo, fix ahora" → `administracion`). Revierte
   el recorte del 2026-08-26 ("sí se puede para mi papá Efraín pero no Eli"):

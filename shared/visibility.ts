@@ -384,32 +384,36 @@ export const readableCols = (b: BoardSlug, r: Role, email?: string | null): stri
  * y los accesos (📋/🕐) para no ofrecer algo que el server va a negar. */
 export const canReadActivity = (r: Role) => r === 'compras' || r === 'admin';
 
-/** ¿Esta persona puede editar el TECHO (`numeric_mkznpn83`) desde el board de
- * VALIDACIÓN DE COSTEO? Por CORREO, no por rol — es la segunda whitelist por
- * correo del portal (la otra es la zona privada, worker/lib/zonas.ts) y por la
- * misma razón: "Actuar en Monday como" presta el `monday_user_id`, así que el
- * id no identifica a la persona; el correo sí.
+/** ¿Esta persona CAPTURA en el board de VALIDACIÓN DE COSTEO — o sea, ve la
+ * grid con sus inputs abiertos (costos, Techo, Margen Gob %, Moneda, IVA %,
+ * Etapa Costeo, color y cantidad) en vez de solo el Precio de Venta? Por
+ * CORREO, no por rol — es la segunda whitelist por correo del portal (la otra
+ * es la zona privada, worker/lib/zonas.ts) y por la misma razón: "Actuar en
+ * Monday como" presta el `monday_user_id`, así que el id no identifica a la
+ * persona; el correo sí.
  *
- * Por qué no es `w: [...]` de la columna: el techo lo captura Compras en el
+ * Por qué no es `w: [...]` de las columnas: el costeo lo captura Compras en el
  * board de Costeo desde siempre (`w: WAC` arriba) y eso NO cambia. Lo que se
- * decide aquí es solo si la celda se pinta editable en VALIDACIÓN, donde el
- * resto de la línea ya está congelada y lo único abierto es el Precio de
- * Venta. Un board no viaja en el PATCH (la ruta es `oportunidades_sub` venga
- * de donde venga), así que esto es una regla de la UI, no un candado del
- * server: quien ya podía escribir el techo desde Costeo lo sigue pudiendo.
+ * decide aquí es solo si las celdas se pintan editables en VALIDACIÓN, donde
+ * el resto de la línea ya está congelada. Un board no viaja en el PATCH (la
+ * ruta es `oportunidades_sub` venga de donde venga), así que esto es una regla
+ * de la UI, no un candado del server: quien ya podía escribir esas columnas
+ * desde Costeo lo sigue pudiendo. `ColMeta.w` (rol) sigue mandando encima:
+ * a un vendedor esta whitelist no le abriría nada, ni ve las columnas.
  *
  * La lista es el CEO (sus DOS correos, un solo id de Monday) y Elisa
- * (Efraín, 2026-08-26: "todos los admins ... deben poder cambiar el techo" →
- * corregido minutos después a "sí se puede para mi papá Efraín pero no Eli" →
- * revertido el 2026-08-28: "Elisa sigue sin poder modificar el techo, fix
- * ahora"). PAM y cualquier admin nuevo siguen fuera: es whitelist, se entra a
- * mano. Bajo "ver como" el viewer ya es el suplantado
- * (worker/mw/identity.ts), así que verlo como él enseña la celda —así se
- * prueba sin agregar a nadie a la lista. */
-const TECHO_VALIDACION_EMAILS: ReadonlySet<string> = new Set([
+ * (Efraín, 2026-08-26: "todos los admins en validación de costeo deben poder
+ * cambiar el techo" → corregido minutos después a "sí se puede para mi papá
+ * Efraín pero no Eli" → revertido y AMPLIADO el 2026-08-28: "Elisa sigue sin
+ * poder modificar el techo, fix ahora" + "también tiene que poder modificar
+ * margen gob, de hecho todos los valores"). PAM y cualquier admin nuevo
+ * siguen fuera: es whitelist, se entra a mano. Bajo "ver como" el viewer ya
+ * es el suplantado (worker/mw/identity.ts), así que verlo como él enseña las
+ * celdas —así se prueba sin agregar a nadie a la lista. */
+const VALIDACION_CAPTURA_EMAILS: ReadonlySet<string> = new Set([
   'efrainponce@mexicanadeproteccion.com',
   'efrain.ponce@mexicanadeproteccion.com',
   'administracion@mexicanadeproteccion.com',   // Elisa Vallado (admin)
 ]);
-export const puedeEditarTechoEnValidacion = (email: string | null | undefined): boolean =>
-  !!email && TECHO_VALIDACION_EMAILS.has(email.trim().toLowerCase());
+export const puedeCapturarEnValidacion = (email: string | null | undefined): boolean =>
+  !!email && VALIDACION_CAPTURA_EMAILS.has(email.trim().toLowerCase());
