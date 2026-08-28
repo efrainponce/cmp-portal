@@ -1,5 +1,32 @@
 # Log de commits
 
+## 2026-08-28
+
+- **Compras puede hacer todo lo de Ventas** (Efraín, a raíz de que Elizabeth
+  reportó que "el portal no le deja agregar productos a una oportunidad nueva").
+- **Dos candados, no uno.** El primero, en el nav: la fila de `role_board_access`
+  de compras en producción no traía `oportunidades` ni `oportunidades_web`
+  (alguien los quitó desde Settings; el seed de `shared/boardAccess.ts` sí los
+  tiene), así que el board "Nueva oportunidad" ni siquiera le aparecía en el
+  sidebar. Se le devolvieron esos dos + `doctallas` directo en D1 —dato, no
+  código, no necesita deploy— y se quita desde Settings si estorba.
+- El segundo, el de verdad: **Producto** (`text_mm0bkm1j` y
+  `board_relation_mkzmafgp`) y **Embellecimiento** (`color_mm1b34bg`) seguían en
+  el grupo `WV` (vendedor+admin) de `shared/visibility.ts`. `outbox.ts` gatea
+  cada write con `canWrite()`, así que aunque llegara a la grid el server le
+  rechazaba ponerle el producto a la línea. Es exactamente el mismo candado que
+  el 2026-08-19 con Color y Cantidad, un grupo más arriba.
+- **Se acabó el grupo `WV`**: todo lo que escribe el vendedor es ahora `w: V`
+  (vendedor+compras+admin), en línea (producto/embellecimiento), en la
+  oportunidad (Cliente), en el proyecto (Fecha Entrega) y en el catálogo
+  (Institución y Vendedor de un contacto).
+- **La única excepción sigue en pie**: Precio de Venta C/U (`numeric_mkzneg3d`)
+  es de admin y de nadie más. Los costos siguen invisibles para ventas y las
+  utilidades siguen yendo por correo — este cambio no toca ninguna de las dos.
+- Anclado en `shared/visibility.test.ts` con un barrido, no con una lista de
+  ids: si mañana aparece una columna que el vendedor escriba y compras no, el
+  test truena.
+
 ## 2026-08-27
 
 - **Sincronización con Monday: de 15-30 min a ~30 s** (Efraín: "TODOS los de

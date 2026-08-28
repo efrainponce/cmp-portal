@@ -12,7 +12,12 @@ export interface ColRule { vis: Role[]; w?: Role[] }
 
 const V: Role[] = ['vendedor', 'compras', 'admin'];   // seller-visible
 const AC: Role[] = ['compras', 'admin'];              // internal: costs, proveedor, ops
-const WV: Role[] = ['vendedor', 'admin'];             // PROPOSED writable set
+// WV ('vendedor'+'admin') murió el 2026-08-28: Compras hace TODO lo de Ventas
+// (Efraín). Elizabeth (compras) no podía ponerle el producto a una línea de una
+// oportunidad nueva — el candado era este grupo, igual que el 2026-08-19 con
+// Color y Cantidad. Todo lo que el vendedor escribe ahora es `w: V`. La ÚNICA
+// excepción que sigue en pie es el Precio de Venta (`numeric_mkzneg3d`, w: WA):
+// ese lo pone solo admin, y esa regla no la toca este cambio.
 const WAC: Role[] = ['compras', 'admin'];             // writable: costeo capture (compras/admin)
 const WA: Role[] = ['admin'];                         // writable: solo admin (precio de venta)
 // Catálogo de Productos, columnas de pura identificación (nombre/SKU): las ve
@@ -59,7 +64,7 @@ export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
     // contact_account, ya verificado escribible en vivo (2026-07-14). El
     // vendedor lo relinkea para corregir Institución cuando quedó mal
     // capturada al crear la oportunidad (Institución es mirror de este campo).
-    deal_contact: { vis: V, w: WV },
+    deal_contact: { vis: V, w: V },
     // Vendedor / Comprador — reasignables desde el drawer (Efraín, 2026-07-16:
     // vendedor, compras y admin pueden cambiar cualquiera de los dos).
     deal_owner:              { vis: V, w: V },
@@ -90,12 +95,12 @@ export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
     // este gate) para resetearla a "No iniciado" cuando el vendedor edita una
     // línea ya costeada.
     color_mm084gvf: { vis: V, w: WAC },
-    // PROPOSED writable 2026-07-15 (versiones de cotización): el vendedor edita
-    // producto/color/cantidad/embellecimiento de una línea — nunca las columnas de
-    // costo (grupo AC/WAC abajo, las llena compras aparte). Pendiente confirmación
-    // de Efraín, mismo patrón que text_mm0gje0 en `oportunidades`.
-    text_mm0bkm1j:        { vis: V, w: WV },   // Producto (texto libre)
-    board_relation_mkzmafgp: { vis: V, w: WV }, // Producto (auto) → Productos; ya probado en createOportunidad.ts
+    // Producto/color/cantidad/embellecimiento de una línea — los edita Ventas y,
+    // desde el 2026-08-28, también Compras (Efraín: "compras puede hacer todo lo
+    // de ventas"). Nunca las columnas de costo (grupo AC/WAC abajo, esas las llena
+    // Compras aparte) ni el Precio de Venta (w: WA, solo admin).
+    text_mm0bkm1j:        { vis: V, w: V },    // Producto (texto libre)
+    board_relation_mkzmafgp: { vis: V, w: V },  // Producto (auto) → Productos; ya probado en createOportunidad.ts
     // Color y Cantidad — también los escribe COMPRAS, en cualquier etapa
     // (Efraín, 2026-08-19: "en cotización los de compras siempre pueden
     // modificar colores y cantidades"). Elizabeth abría una oportunidad en
@@ -106,7 +111,7 @@ export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
     // (esAjusteInline) y worker/lib/lineaAjustes.ts.
     text_mm07s2mg:        { vis: V, w: V },    // Color
     numeric_mkzm6399:     { vis: V, w: V },    // Cantidad
-    color_mm1b34bg:       { vis: V, w: WV },   // Embellecimiento (status)
+    color_mm1b34bg:       { vis: V, w: V },    // Embellecimiento (status)
     // Descripción/imagen de zonas — Compras también las captura/edita desde
     // el board Costeo (tab Embellecimientos), no solo Ventas (Efraín, 2026-08-12).
     long_text_mm1bj4pt:   { vis: V, w: V },    // Descripción Embellecimientos
@@ -163,9 +168,9 @@ export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
     // como puente de la "nota al proveedor" del tab Órdenes de compra
     // (worker/lib/ocNotas.ts, Efraín 2026-08-19).
     text_mm4c74f8: { vis: AC, w: WAC },
-    // Fecha Entrega — obligatoria (tab Documentación del Proyecto), la captura
-    // el vendedor; compras/admin la ven pero no la tocan (Efraín, 2026-08-05).
-    date_mm0m1vfv: { vis: V, w: WV },
+    // Fecha Entrega — obligatoria (tab Documentación del Proyecto). La captura
+    // el vendedor; compras/admin también, desde el 2026-08-28 (antes solo la veían).
+    date_mm0m1vfv: { vis: V, w: V },
     // OC / cotización / contrato firmado por el cliente — sube el vendedor
     // (quien lo recibe) o compras/admin (Efraín, 2026-07-17). En Monday es
     // "OC/contrato/cotización firmada (oculto)": es donde el equipo lo sube de
@@ -283,9 +288,9 @@ export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
       'text_mm45xn3', 'text_mm45tqrm', 'text_mm456fbp', 'text_mm562a0m'], V),
     // Writable since the 2025-04 API bump fixed board_relation writes to this
     // CRM "Account" column (silently no-op'd on 2024-10) — verified live 2026-07-14.
-    contact_account: { vis: V, w: WV },   // Institución
+    contact_account: { vis: V, w: V },   // Institución
     // Reasignable desde el picker de Contactos (Efraín, 2026-07-18): mismo set que Institución.
-    multiple_person_mm03vqwx: { vis: V, w: WV },   // Vendedor
+    multiple_person_mm03vqwx: { vis: V, w: V },   // Vendedor
   },
 
   // Catálogo interno para el picker de "línea manual" en el Proyecto (OC

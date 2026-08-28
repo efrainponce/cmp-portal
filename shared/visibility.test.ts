@@ -299,13 +299,17 @@ describe('historial de actividad — solo Compras y Admin (Efraín, 2026-08-18)'
   });
 });
 
-describe('color y cantidad — Compras también los escribe (Efraín, 2026-08-19)', () => {
-  // "En cotización los de compras siempre pueden modificar colores y cantidades".
-  // Elizabeth (Compras) abría una oportunidad en Costeo y los dos campos salían
-  // de solo lectura: `w` era WV (vendedor+admin) y outbox.ts gatea con canWrite(),
-  // así que este es el candado real — la grid solo lo refleja.
-  it('compras escribe Color y Cantidad', () => {
-    for (const col of ['text_mm07s2mg', 'numeric_mkzm6399']) {
+describe('Compras escribe TODO lo de Ventas (Efraín, 2026-08-28)', () => {
+  // Primero fueron color y cantidad (2026-08-19: "en cotización los de compras
+  // siempre pueden modificar colores y cantidades"); el 2026-08-28 Elizabeth
+  // (Compras) reportó que no podía ponerle el PRODUCTO a una línea de una
+  // oportunidad nueva y Efraín cerró la regla: "compras puede hacer todo lo de
+  // ventas". El candado real es este `w` — outbox.ts gatea con canWrite() y la
+  // grid solo lo refleja.
+  it('compras escribe todas las columnas de línea que escribe el vendedor', () => {
+    for (const col of ['text_mm07s2mg', 'numeric_mkzm6399',          // Color, Cantidad
+      'text_mm0bkm1j', 'board_relation_mkzmafgp',                     // Producto (texto + relación)
+      'color_mm1b34bg', 'long_text_mm1bj4pt', 'file_mm5akjy5']) {     // Embellecimiento
       for (const role of ['vendedor', 'compras', 'admin'] as Role[]) {
         expect(canWrite('oportunidades_sub', col, role), `${col}/${role}`).toBe(true);
       }
@@ -313,13 +317,21 @@ describe('color y cantidad — Compras también los escribe (Efraín, 2026-08-19
     }
   });
 
-  it('lo demás de la línea NO se le abrió: producto, embellecimiento y precio', () => {
-    // Producto y embellecimiento siguen siendo trabajo de Ventas; el precio es
-    // solo admin (arriba). Si esto truena, alguien amplió la excepción de más.
-    for (const col of ['text_mm0bkm1j', 'board_relation_mkzmafgp', 'color_mm1b34bg']) {
-      expect(canWrite('oportunidades_sub', col, 'compras'), col).toBe(false);
+  it('barrido: no queda ninguna columna que el vendedor escriba y compras no', () => {
+    // La regla completa, no una lista de ids: si mañana alguien agrega una
+    // columna con `w` de puro vendedor, esto truena. La única excepción viva es
+    // el Precio de Venta, que es de ADMIN y tampoco lo escribe el vendedor.
+    for (const slug of Object.keys(VISIBILITY) as BoardSlug[]) {
+      for (const col of Object.keys(VISIBILITY[slug])) {
+        if (!canWrite(slug, col, 'vendedor')) continue;
+        expect(canWrite(slug, col, 'compras'), `${slug}.${col}`).toBe(true);
+      }
     }
+  });
+
+  it('el precio de venta sigue siendo la excepción: solo admin', () => {
     expect(canWrite('oportunidades_sub', 'numeric_mkzneg3d', 'compras')).toBe(false);
+    expect(canWrite('oportunidades_sub', 'numeric_mkzneg3d', 'vendedor')).toBe(false);
   });
 });
 
