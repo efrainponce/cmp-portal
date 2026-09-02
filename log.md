@@ -2,6 +2,21 @@
 
 ## 2026-09-02
 
+- **Traslape de 10 s en la ventana del delta sync** (hueco real, medido).
+  Con un item de prueba en producción: el activity log de Monday muestra el
+  evento **1.7-3 s DESPUÉS** de que la mutación ya regresó (3 rondas: 2987,
+  1670 y 1755 ms), con `created_at` anterior a ese regreso. La ventana del
+  delta cortaba exactamente en "ahora" y la siguiente arrancaba ahí: un
+  cambio hecho en los últimos ~3 s de cada ventana no venía en la respuesta y
+  ya nunca se pedía — perdido hasta el reconcile de 12 h. Con el latido cada
+  30 s hay el doble de bordes que antes, y desde hoy `?fresh=1` confía en el
+  checkpoint, así que el hueco importaba más. `calcularCheckpoints` deja el
+  checkpoint 10 s (3× lo medido, `ACTIVITY_LAG_OVERLAP_MS`) antes de `to` y
+  la siguiente corrida relee ese tramo; refetch y activity_log son
+  idempotentes. `FRESCO_POR_LATIDO_MS` sube a 40 s (30 de cadencia + 10 de
+  traslape). 4 tests nuevos en `delta.test.ts`; `docs/dev-contracts.md`
+  documenta `?since/?tv` y el `?fresh=1` condicionado.
+
 - **Segunda ronda de optimización** (Efraín: "lanza todos o los que me
   recomiendes"; de las 5 opciones, 1-2-3 hechas, 4 medida y descartada, 5 no
   porque quita una red de seguridad por casi nada).

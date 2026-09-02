@@ -99,10 +99,12 @@ async function autoVersionLineaCosteada(
 // + relectura). Corta, porque la garantía que pide el negocio es que al ABRIR
 // una oportunidad se vea exactamente lo que Monday tiene (Efraín, 2026-07-30).
 const FRESH_WINDOW_MS = 3_000;
-// Edad máxima del último latido completo para dar el espejo por verificado
-// al abrir (ver GET /items/:id). Igual a la cadencia del latido: si corrió
-// hace menos que eso, corrió lo más reciente que puede haber corrido.
-const FRESCO_POR_LATIDO_MS = 30_000;
+// Edad máxima del checkpoint del delta sync para dar el espejo por verificado
+// al abrir (ver GET /items/:id): la cadencia del latido (30 s) más el
+// traslape que el checkpoint se queda atrás de la corrida (10 s, delta.ts
+// ACTIVITY_LAG_OVERLAP_MS). Si el checkpoint es más viejo, no hubo latido
+// completo reciente y se relee.
+const FRESCO_POR_LATIDO_MS = 40_000;
 
 // El botón "Actualizar" de la lista puede apurar el latido del delta sync
 // hasta cada 20 s (el de fondo, LATIDO_MS, vive en worker/index.ts: cuelga de

@@ -97,3 +97,25 @@ describe('calcularCheckpoints', () => {
     expect(cps.get(OPP)).toBe('2026-08-27T17:00:00.000Z');
   });
 });
+
+describe('calcularCheckpoints con traslape', () => {
+  const w = [{ boardId: OPP, from: '2026-09-02T17:00:00.000Z', to: '2026-09-02T17:20:00.000Z' }];
+
+  it('sin pendientes se queda `overlap` antes de `to`: la siguiente corrida relee ese tramo', () => {
+    expect(calcularCheckpoints(w, [], new Set(), 10_000).get(OPP)).toBe('2026-09-02T17:19:50.000Z');
+  });
+
+  it('un pendiente más viejo que el traslape sigue mandando', () => {
+    const pend = [{ boardId: OPP, itemId: 1, ticks: ticks('2026-09-02T17:10:00Z') }];
+    expect(calcularCheckpoints(w, pend, new Set(), 10_000).get(OPP)).toBe('2026-09-02T17:09:59.999Z');
+  });
+
+  it('nunca retrocede antes de `from` aunque la ventana sea más corta que el traslape', () => {
+    const corta = [{ boardId: OPP, from: '2026-09-02T17:00:00.000Z', to: '2026-09-02T17:00:05.000Z' }];
+    expect(calcularCheckpoints(corta, [], new Set(), 10_000).get(OPP)).toBe('2026-09-02T17:00:00.000Z');
+  });
+
+  it('saturado sigue quedándose en `from`', () => {
+    expect(calcularCheckpoints(w, [], new Set([OPP]), 10_000).get(OPP)).toBe('2026-09-02T17:00:00.000Z');
+  });
+});

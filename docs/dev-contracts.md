@@ -76,8 +76,8 @@ ACCESS_TEAM_DOMAIN/ACCESS_AUD when ENVIRONMENT==='prod'; DEV_EMAIL — plus opti
 |---|---|
 | GET /api/me | MeDTO |
 | GET /api/boards | `[{slug,title,cols: ColMeta[]}]` — cols filtered by role, order = VISIBILITY key order, meta from shared/column-meta.gen.ts |
-| GET /api/boards/:slug/items | ListResponse; `?q=` name ILIKE; ETag = md5(max(synced_at)+count) ⇒ 304 on If-None-Match; vendedor scoping (below) |
-| GET /api/boards/:slug/items/:id | ItemDetailDTO + children (via parent board's subitem slug); **404** (not 403) when not owned |
+| GET /api/boards/:slug/items | ListResponse; `?q=` name ILIKE; `?cols=a,b` proyección (vacío = solo `name`); `?totales=1` métricas por oportunidad; `?fresh=1` espera un latido del delta sync; **`?since=<syncedAt>` (+ `?tv=<totalesVersion>`) = respuesta INCREMENTAL** (2026-09-02): `items` solo los sincronizados desde la marca, `incremental.ids` la lista completa en orden, `incremental.totales` igual/parcial/completo — el cliente fusiona (`src/lib/api.ts fusionarIncremental`). ETag = md5(max(synced_at)+count+scope+variante) ⇒ 304 on If-None-Match, se decide ANTES de leer filas; vendedor scoping (below) |
+| GET /api/boards/:slug/items/:id | ItemDetailDTO + children (via parent board's subitem slug); **404** (not 403) when not owned. `?fresh=1` relee item+líneas de Monday antes de contestar, SALVO que el checkpoint del delta sync del board (y del de líneas) tenga < 40 s (`mirrorVerificadoAt`): ahí el espejo ya es Monday y `syncedAt` = ese checkpoint |
 | PATCH /api/boards/:slug/items/:id | body WriteRequest; every col must pass `canWrite(slug,col,role)` else 403; optimistic: merge into mirror `columns` (text=value), outbox insert, waitUntil flush; ⇒ `{ok:true,pending:true}` |
 | POST /api/boards/:slug/items/:id/refresh | rate-limit: skip if synced_at<30s; calls A.refetchItem |
 | POST /api/oportunidades/:id/cotizacion | automations client → Vercel generate_cotizacion with X-CMP-Secret; 501 if CMP_TALLAS_BASE unset; refetch after |

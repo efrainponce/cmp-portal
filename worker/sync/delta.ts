@@ -63,6 +63,13 @@ const MAX_WINDOW_MS = 20 * 60 * 1000;
 const MIN_WINDOW_MS = 60 * 1000;
 const WINDOW_PREFIX = 'delta_window_ms:';
 
+// Cuánto se vuelve a leer de la ventana anterior en cada corrida, por el
+// retraso con que Monday llena su activity log (1.7-3 s medidos; ver
+// calcularCheckpoints). 10 s = 3× lo medido. El checkpoint es también la
+// prueba de "espejo verificado" que usa ?fresh=1 al abrir (mirrorVerificadoAt),
+// así que ahora dice la verdad con este margen incluido.
+const ACTIVITY_LAG_OVERLAP_MS = 10_000;
+
 // Tope de items releídos por corrida. Con el refetch en lote cada 100 items
 // cuestan ~5-8 subrequests (1 a Monday + un puñado a D1), no 6-8 POR item como
 // antes, así que el tope ya no es un cuello: 300 = tres llamadas a Monday por
@@ -174,11 +181,22 @@ export function ordenarCola(pendientes: Pendiente[], prioritarios: Set<number>):
  *     manda primero lo más reciente, así que lo truncado es lo más VIEJO de la
  *     ventana: darlo por visto es perderlo hasta el reconcile de 12h.
  * Nunca retrocede antes de `from`.
+ *
+ * TRASLAPE (`overlapMs`, 2026-09-02): el activity log de Monday se llena con
+ * retraso — medido en prod con un item de prueba: el evento aparece 1.7-3 s
+ * DESPUÉS de que la mutación ya regresó, con `created_at` anterior a ese
+ * regreso. Con la ventana cortada exactamente en `to`, un cambio hecho en
+ * los últimos segundos antes de `to` no estaba en la respuesta y, como la
+ * siguiente ventana arrancaba en `to`, ya nunca se pedía: perdido hasta el
+ * reconcile de 12 h. El checkpoint se queda `overlapMs` antes de `to` para
+ * que la siguiente corrida vuelva a pedir ese tramo (refetch y activity_log
+ * son idempotentes, repetir un evento no duplica nada).
  */
 export function calcularCheckpoints(
   windows: { boardId: number; from: string; to: string }[],
   noAtendidos: Pendiente[],
   saturados: Set<number>,
+  overlapMs = 0,
 ): Map<number, string> {
   const primeroPendiente = new Map<number, string>();
   for (const p of noAtendidos) {
@@ -188,7 +206,8 @@ export function calcularCheckpoints(
 
   const out = new Map<number, string>();
   for (const w of windows) {
-    let checkpoint = saturados.has(w.boardId) ? w.from : w.to;
+    const toConTraslape = overlapMs > 0 ? new Date(Date.parse(w.to) - overlapMs).toISOString() : w.to;
+    let checkpoint = saturados.has(w.boardId) ? w.from : toConTraslape;
     const pendiente = primeroPendiente.get(w.boardId);
     if (pendiente) {
       // ticks de 100ns -> ms (ver ticksToIso); BigInt porque Number pierde
@@ -416,7 +435,7 @@ export async function deltaSync(
       `board saturado con ventana mínima (>${'200'} eventos en ${MIN_WINDOW_MS / 1000}s): se avanza el checkpoint, los eventos más viejos de la ventana solo los recupera el reconcile`);
   }
 
-  const checkpoints = calcularCheckpoints(windows, pendientes, saturated);
+  const checkpoints = calcularCheckpoints(windows, pendientes, saturated, ACTIVITY_LAG_OVERLAP_MS);
   for (const [boardId, checkpoint] of checkpoints) {
     // Se escribe siempre, aunque no haya avanzado: así queda sembrado el
     // checkpoint por board y la próxima corrida ya no cae al `legacy`.
