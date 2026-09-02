@@ -2,6 +2,25 @@
 
 ## 2026-09-02
 
+- **Catálogos grandes: render progresivo + renglón memoizado** (`BoardTable`).
+  Medido en producción con CPU 4×: Instituciones = 3,174 renglones × 15
+  columnas = **105k nodos y 2.3 s de hilo principal congelado en una sola
+  tarea**; Productos 58k nodos y 1.35 s. El poll de 5 s además re-pintaba
+  todo en cada cambio (los `<tr>` no estaban memoizados, y hasta hoy los
+  objetos tampoco conservaban identidad). Ahora: los primeros 150 renglones
+  salen en el primer frame y el resto entra en lotes de 600 con
+  `requestIdleCallback` (timeout 200 ms; `setTimeout` donde no exista); el
+  DOM final es idéntico, Ctrl+F sigue encontrando todo en cuanto termina.
+  Medido local, CPU 4×, Instituciones: primeras filas **1.38 s → 0.57 s**,
+  peor congelamiento **2.13 s → 0.77 s**, tabla completa 3.56 → 3.61 s
+  (igual). Productos: 0.88 → 0.53 s, peor 1.09 → 0.65 s, completa 2.06 →
+  1.62 s. Probé lotes de 250 (peor 586 ms pero completa en 5.5 s: cada
+  lote re-acomoda la tabla entera) y de 1000 (peor 985 ms): 600 es el punto.
+  Una búsqueda que acorta mucho la lista reinicia el límite para que al
+  borrarla los 3k regresen por lotes; un alta/baja no lo reinicia. `Row`
+  memoizado + el poll incremental = un cambio en un registro re-pinta un
+  renglón. Sin cambio visual.
+
 - **Traslape de 10 s en la ventana del delta sync** (hueco real, medido).
   Con un item de prueba en producción: el activity log de Monday muestra el
   evento **1.7-3 s DESPUÉS** de que la mutación ya regresó (3 rondas: 2987,

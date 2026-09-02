@@ -221,7 +221,7 @@ y `src/lib/estadoProductoBuckets.ts`.
 - [src/components/notifications/NotificationCenter.tsx](src/components/notifications/NotificationCenter.tsx) — Panel de 2 bandejas (Importantes/Actualizaciones), deep-link al drawer. Exports: NotificationCenter.
 - [src/components/board/BoardStatus.tsx](src/components/board/BoardStatus.tsx) — Loading/denied/offline states compartidos. Exports: BoardStatus.
 - [src/components/board/ProgressBattery.tsx](src/components/board/ProgressBattery.tsx) — Barra segmentada de avance (tab Ejecución + lista): compact para fila de lista, full con leyenda para el header del drawer. Exports: ProgressBattery.
-- [src/components/board/BoardTable.tsx](src/components/board/BoardTable.tsx) — Tabla genérica estilo Monday. Exports: BoardTable.
+- [src/components/board/BoardTable.tsx](src/components/board/BoardTable.tsx) — Tabla genérica estilo Monday. Renglón memoizado y render PROGRESIVO (150 primeros, luego lotes de 600 en idle) para los catálogos de miles de filas — 2026-09-02, medido: Instituciones congelaba 2.3 s el hilo con CPU 4×. Exports: BoardTable.
 - [src/components/board/PaymentRequestButton.tsx](src/components/board/PaymentRequestButton.tsx) — Botón POST solicitud pago a Monday item. Exports: PaymentRequestButton.
 - [src/components/board/SyncIndicator.tsx](src/components/board/SyncIndicator.tsx) — Indicador "sincronizado hace X min". Exports: SyncIndicator.
 - [src/components/board/cellHelpers.ts](src/components/board/cellHelpers.ts) — Helpers plain para rendering de celdas. Exports: cellAlign, renderCellText, chipFor.
