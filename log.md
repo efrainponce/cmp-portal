@@ -11,7 +11,11 @@
   viejos hasta el reconcile de 12 h o hasta que alguien abriera ESA
   oportunidad con `?fresh=1`. Y desde esta mañana abrir se salta la ida a
   Monday cuando el latido está fresco, así que ni eso. Cuesta una llamada más
-  por lote de líneas (los padres de hasta 100 líneas en una sola).
+  por lote de líneas (los padres de hasta 100 líneas en una sola). Verificado
+  en prod con OPP-0838 (opp de pruebas E2E): Etapa Costeo de una línea
+  cambiada en Monday a las 20:15:34 UTC → el latido releyó la línea a las
+  :50 y a su padre a las :52; el espejo "Etapa Costeo" de la oportunidad pasó
+  de "No iniciado ×5" a "En curso, No iniciado ×4" en 18 s (regresado después).
 - **Drawer: la grid de cotización ya no se monta dos veces al abrir.** La
   llave de remontaje de `CotizacionTab` era `versions.length`, y las
   versiones llegan DESPUÉS del item ([] → N): cada primera apertura montaba la
