@@ -2,6 +2,37 @@
 
 ## 2026-09-02
 
+- **Sync: el latido relee también al PADRE de cada línea cambiada**
+  (`refetchItems(…, { conPadres: true })` desde el delta). Una línea que
+  cambia en Monday o por cmp-tallas (validar_costeo, import_tallas) solo deja
+  evento en el board de LÍNEAS; el padre no se entera, y sus espejos que
+  agregan las líneas —"Etapa Costeo" (`lookup_mm087at6`), el badge que Compras
+  mira en la lista de Costeo; "Estado de productos" en Proyectos— se quedaban
+  viejos hasta el reconcile de 12 h o hasta que alguien abriera ESA
+  oportunidad con `?fresh=1`. Y desde esta mañana abrir se salta la ida a
+  Monday cuando el latido está fresco, así que ni eso. Cuesta una llamada más
+  por lote de líneas (los padres de hasta 100 líneas en una sola).
+- **Drawer: la grid de cotización ya no se monta dos veces al abrir.** La
+  llave de remontaje de `CotizacionTab` era `versions.length`, y las
+  versiones llegan DESPUÉS del item ([] → N): cada primera apertura montaba la
+  grid, la tiraba y la volvía a montar — catálogo, `GET /documents` y el
+  pintado entero repetidos (medido en prod: dos `/documents` y dos tareas
+  largas por apertura). Ahora la llave sube solo cuando CAMBIA la vigente
+  entre dos conocidas (duplicar/restaurar/eliminar con versión), que es lo que
+  el remontaje quería resetear; `id` va en la llave aparte.
+- **Catálogo de Productos: se revalida con ETag pasados 60 s** en vez de "una
+  descarga por sesión". Una "Descripción y tallas confirmadas" palomeada en
+  Monday, o por OTRO usuario de Compras, seguía sin palomear en cada
+  oportunidad que se abría hasta recargar la pestaña (el server sí la veía y
+  dejaba pasar "Mandar a validación": botón activo con la casilla vacía).
+  Si nada cambió el worker contesta 304 sin cuerpo; si cambió, baja el nuevo.
+  Verificado con el build de producción: 0 requests dentro del minuto, 304
+  después.
+- `listVersions`: las dos lecturas independientes de D1 en paralelo (sale en
+  cada apertura del drawer).
+- Revisado en prod a media tarde: `monday_api_usage` va en 880 llamadas hoy
+  (ayer 1,005) con el latido a 30 s — la cuota de 25k sigue lejísimos.
+
 - **Borrar una línea: una sola regla, "versión es después de costeo"**
   (Efraín: "unifícale"). Había dos caminos con dos comportamientos: el 🗑 de
   la fila (DELETE genérico) versionaba solo si la cotización ya estaba

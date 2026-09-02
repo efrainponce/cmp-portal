@@ -164,20 +164,59 @@ export async function getBoards(): Promise<BoardMeta[]> {
 // Se invalida en cuanto alguien escribe un producto (ver patchItem): la grid ya
 // hace update optimista de su copia local, pero el caché tiene que soltar la
 // versión vieja para que la siguiente apertura no la reviva.
+//
+// Y se RE-VALIDA (2026-09-02): "una descarga por sesión" dejaba el catálogo
+// congelado horas — una "Descripción y tallas confirmadas" palomeada en
+// Monday, o por OTRO usuario de Compras, seguía sin palomear en cada
+// oportunidad que se abría hasta recargar la pestaña entera (el server sí la
+// veía y dejaba pasar "Mandar a validación": botón activo con la casilla
+// vacía). Pasados CATALOGO_MAX_AGE_MS, la siguiente apertura vuelve a pedir
+// con If-None-Match: si nada cambió el worker contesta 304 sin cuerpo
+// (~1 KB), si cambió baja el catálogo nuevo. Lo que ya está en pantalla no se
+// toca — los consumidores lo piden al montar.
+const CATALOGO_MAX_AGE_MS = 60_000;
 let catalogoProductos: Promise<ItemDTO[]> | null = null;
+let catalogoEtag: string | undefined;
+let catalogoAt = 0;
 
 export function getCatalogoProductos(): Promise<ItemDTO[]> {
-  if (!catalogoProductos) {
-    catalogoProductos = listItems('productos', undefined, CATALOGO_COLS).catch((e) => {
-      catalogoProductos = null; // no cachear fallas — el siguiente intento reintenta
-      throw e;
-    });
+  if (!catalogoProductos || Date.now() - catalogoAt > CATALOGO_MAX_AGE_MS) {
+    const previo = catalogoProductos;
+    const etagPrevio = catalogoEtag;
+    catalogoAt = Date.now();
+    catalogoProductos = listItemsConEtag('productos', CATALOGO_COLS, etagPrevio)
+      .then((r) => {
+        if (r.status === 304) return previo!; // solo se manda If-None-Match cuando hay previo
+        catalogoEtag = r.etag;
+        return r.items;
+      })
+      .catch((e) => {
+        // Sin caché: no guardar la falla, el siguiente intento reintenta. Con
+        // caché: quédate con lo que había (la revalidación fue de cortesía).
+        if (!previo) { catalogoProductos = null; throw e; }
+        catalogoProductos = previo;
+        return previo;
+      });
   }
   return catalogoProductos;
 }
 
 export function invalidarCatalogoProductos(): void {
   catalogoProductos = null;
+  catalogoEtag = undefined;
+}
+
+/** `listItems` con ETag: manda If-None-Match si hay uno conocido y devuelve
+ * `status: 304` sin cuerpo cuando el worker dice que nada cambió. */
+async function listItemsConEtag(slug: BoardSlug, cols: readonly string[], etag?: string):
+  Promise<{ status: 200; items: ItemDTO[]; etag: string } | { status: 304 }> {
+  const res = await apiFetch(`/boards/${slug}/items?cols=${cols.join(',')}`, {
+    headers: etag ? { 'If-None-Match': etag } : undefined,
+  });
+  if (res.status === 304 && etag) return { status: 304 };
+  if (!res.ok) throw new Error('GET items failed: ' + res.status);
+  const body: ListResponse = await res.json();
+  return { status: 200, items: body.items, etag: body.etag };
 }
 
 /** Catálogo genérico de un board (usado para el picker de producto al agregar una

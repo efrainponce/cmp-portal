@@ -173,8 +173,12 @@ async function maxVersion(env: Env, itemId: number): Promise<number> {
  * existe conceptualmente desde la primera línea, no solo tras generar la cotización.
  * [] solo cuando la oportunidad no tiene ninguna línea todavía. */
 export async function listVersions(env: Env, itemId: number, viewer: Identity): Promise<QuoteVersionDTO[]> {
-  const archived = await archivedVersions(env, itemId);
-  const lineas = await childrenOf(env, 'oportunidades', itemId, viewer);
+  // Independientes entre sí: en paralelo (cada ida a D1 desde el Worker es un
+  // round-trip, y este endpoint sale en cada apertura del drawer).
+  const [archived, lineas] = await Promise.all([
+    archivedVersions(env, itemId),
+    childrenOf(env, 'oportunidades', itemId, viewer),
+  ]);
   if (lineas.length === 0) return archived;
   const vigenteProducts = lineas.map(snapshotLine);
   const vigenteId = archived.length ? Math.max(...archived.map(v => v.id)) + 1 : 1;

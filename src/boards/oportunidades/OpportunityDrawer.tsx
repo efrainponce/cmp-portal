@@ -291,6 +291,24 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, openTab, onTabCha
     return () => { cancelled = true; clearInterval(interval); };
   }, [id, stage, item, boardKey]);
 
+  // Llave de remontaje de CotizacionTab: sube cuando CAMBIA la vigente
+  // (duplicar, restaurar, eliminar línea con versión, generar cotización) para
+  // resetear la selección de chips y volver a la vigente. Antes la llave era
+  // `versions.length`, y como al abrir las versiones llegan DESPUÉS del item
+  // ([] → N), cada primera apertura montaba la grid dos veces: catálogo,
+  // documentos y el pintado entero repetidos (medido en prod 2026-09-02:
+  // dos GET /documents y dos tareas largas por apertura). Solo cuenta un
+  // cambio entre dos vigentes CONOCIDAS; la primera llegada no remonta. `id`
+  // va en la llave aparte, para no arrastrar estado entre oportunidades.
+  const vigenteId = versions.find((v) => v.status === 'vigente')?.id ?? null;
+  const [cotGen, setCotGen] = useState(0);
+  const vigentePrevRef = useRef<number | null>(null);
+  useEffect(() => { vigentePrevRef.current = null; }, [id]); // antes del de abajo: al navegar no cuenta
+  useEffect(() => {
+    if (vigentePrevRef.current !== null && vigenteId !== null && vigenteId !== vigentePrevRef.current) setCotGen((g) => g + 1);
+    if (vigenteId !== null) vigentePrevRef.current = vigenteId;
+  }, [id, vigenteId]);
+
   const showPostventa = stageAtOrAfter(stage, '9');
   const proyecto = useProyecto(id, !!item && showPostventa);
 
@@ -933,9 +951,9 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, openTab, onTabCha
       )}
       {activeTab === 'cotizacion' && (
         <CotizacionTab
-          // Remount cuando cambia el número de versiones (duplicar/restaurar):
-          // resetea la selección interna de chips y regresa la vista a la vigente.
-          key={`cot-${versions.length}`}
+          // Remount cuando cambia la VIGENTE (duplicar/restaurar): resetea la
+          // selección interna de chips y regresa la vista a la vigente (ver cotGen).
+          key={`cot-${id}-${cotGen}`}
           subCols={subCols} oppCols={oppCols} products={products} variant={cotizacionVariant} onSaved={load} versions={versions}
           onVersioned={(v) => {
             cacheSet(versionsCache, id, v);

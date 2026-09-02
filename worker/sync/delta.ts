@@ -375,8 +375,10 @@ export async function deltaSync(
   // pendiente y lo recoge la siguiente corrida.
   const lanzables = Date.now() > vence ? [] : lotes;
   noAtendidos.push(...lotes.slice(lanzables.length).flat());
+  // `conPadres`: el lote de líneas relee también sus oportunidades/proyectos
+  // (espejos del padre que agregan las líneas — ver refetch.ts).
   const resultados = await Promise.allSettled(lanzables.map(lote =>
-    refetchItems(env, lote[0]!.boardId, lote.map(p => p.itemId))));
+    refetchItems(env, lote[0]!.boardId, lote.map(p => p.itemId), { conPadres: true })));
   for (let i = 0; i < resultados.length; i++) {
     const res = resultados[i]!;
     const lote = lanzables[i]!;
