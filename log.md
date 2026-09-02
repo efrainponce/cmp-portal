@@ -30,6 +30,11 @@
   después.
 - `listVersions`: las dos lecturas independientes de D1 en paralelo (sale en
   cada apertura del drawer).
+- "Validar costeo": el update de bitácora en Monday ("✅ Costeo validado por…")
+  sale en `waitUntil`, ya no en serie antes de responder. Por `ux_event`, ese
+  botón tardaba 7.8 s en promedio la última semana (17 clics): la etapa, la
+  notificación, la relectura del árbol y el PDF siguen en la respuesta; la
+  bitácora no la espera nadie.
 - Revisado en prod a media tarde: `monday_api_usage` va en 880 llamadas hoy
   (ayer 1,005) con el latido a 30 s — la cuota de 25k sigue lejísimos.
 

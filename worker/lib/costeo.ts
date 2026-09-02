@@ -632,9 +632,12 @@ export async function confirmarCosteo(
   });
   // Rastro de quién validó, visible también para quien abra el item en Monday
   // (mismo patrón que el rechazo de costeo). Best-effort: no tumba la validación.
-  try {
-    await postUpdate(env, BOARDS.oportunidades.id, itemId,
-      `✅ Costeo validado por ${viewer.nombre ?? viewer.email} — precio de venta confirmado.`);
-  } catch { /* el stage ya quedó; el update es bitácora */ }
+  // En `waitUntil` y no en la respuesta: es bitácora, nadie la espera, y el
+  // botón "Validar costeo" tardaba 7.8 s en promedio (ux_event, semana del
+  // 2026-08-26) — cada ida a Monday en serie aquí es un segundo más de botón
+  // ocupado para Elisa.
+  ctx.waitUntil(postUpdate(env, BOARDS.oportunidades.id, itemId,
+    `✅ Costeo validado por ${viewer.nombre ?? viewer.email} — precio de venta confirmado.`)
+    .catch(() => { /* el stage ya quedó; el update es bitácora */ }));
   return { ok: true };
 }
