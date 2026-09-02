@@ -60,10 +60,12 @@ export function AjustarLineaModal({
   catalogLoading: boolean;
   onClose: () => void;
   onSaved: (divergencia?: CostoDivergenciaDTO) => void;
-  /** Solo modo 'eliminar': el server archivó la vigente como versión nueva
-   * antes de borrar la línea — el drawer necesita refrescar `versions`, no
-   * solo el item (onSaved), para que el chip "V{n} · vigente" y el historial
-   * queden correctos (Efraín, 2026-08-13). */
+  /** Solo modo 'eliminar': si la cotización ya estaba costeada, el server
+   * archivó la vigente como versión nueva antes de borrar la línea (misma
+   * regla que el 🗑 de la fila: "versión es después de costeo", Efraín
+   * 2026-09-02) — el drawer necesita refrescar `versions`, no solo el item
+   * (onSaved), para que el chip "V{n} · vigente" y el historial queden
+   * correctos (Efraín, 2026-08-13). */
   onVersioned?: (versions: QuoteVersionDTO[]) => void;
   /** false en Ganada/Perdida (mismo `editable` de CotizacionTab): a diferencia
    * de editar/dividir, eliminar SÍ pasa por "+ Nueva versión" y el server la
@@ -142,7 +144,7 @@ export function AjustarLineaModal({
 
       {modo === 'eliminar' ? (
         <div style={{ font: 'var(--text-label)', color: 'var(--ink)', marginBottom: 4 }}>
-          Se eliminará <strong>{displayProducto(linea)}</strong> ({cantidadActual} uds) de la cotización. Esto crea una <strong>versión nueva</strong> sin esa línea y la manda de vuelta a costeo — no se puede deshacer.
+          Se eliminará <strong>{displayProducto(linea)}</strong> ({cantidadActual} uds) de la cotización y de Monday. Si la cotización ya estaba costeada, la versión anterior queda <strong>archivada</strong> con esa línea; las demás líneas no se descostean.
         </div>
       ) : (
         <>

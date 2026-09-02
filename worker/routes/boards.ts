@@ -1,9 +1,9 @@
 // Rutas genéricas de boards espejados de Monday (list/detail/patch/create/
 // refresh/updates) + identidad del viewer y rosters. Movido tal cual desde
 // worker/index.ts (2026-07-16) — sin cambios de comportamiento.
-import type { Context, ExecutionContext, Hono } from 'hono';
+import type { Context, Hono } from 'hono';
 import type { Env } from '../env';
-import type { Identity, MirrorItem } from '../../shared/types';
+import type { MirrorItem } from '../../shared/types';
 import { BOARDS, boardById } from '../../shared/boards';
 import type { BoardSlug } from '../../shared/boards';
 import { isNativeId } from '../../shared/nativeId';
@@ -19,7 +19,7 @@ import { toItemDTO, toColMeta, itemDetailEtag } from '../lib/serialize';
 import { canRead, canReadActivity, canReadBoard, canWrite } from '../../shared/visibility';
 import { submitWrite, OutboxError } from '../lib/outbox';
 import { submitCreate, submitCreateNative, isNativeCreatable, CreateError } from '../lib/createRecord';
-import { duplicateVersion, esDraftVigente, hayLineaPendiente, QuoteVersionError, LINE_DEFINING_COLS } from '../lib/quoteVersions';
+import { esDraftVigente, LINE_DEFINING_COLS, autoVersionSiCosteada } from '../lib/quoteVersions';
 import { addFileToUpdate, fetchAssetPublicUrls, type MentionInput } from '../lib/monday';
 import { borrarItem, BorradoError } from '../lib/itemBorrado';
 import { esAjusteInline, registrarAjusteInline } from '../lib/lineaAjustes';
@@ -61,38 +61,9 @@ function boardFor(c: Context<{ Bindings: Env }>): BoardSlug | null {
   return canReadBoard(slug, c.get('viewer').role) ? slug : null;
 }
 
-/** Editar/borrar una línea de cotización (producto/color/cantidad/
- * embellecimiento) sobre una vigente ya costeada versiona en automático —
- * mismo mecanismo que "+ Nueva versión" (duplicateVersion), pero disparado
- * por el write mismo en vez de requerir que el vendedor lo pida aparte: las
- * versiones son un registro "detrás", nunca un candado para seguir editando
- * (Efraín, 2026-08-14). Incluye Ganada/Perdida (Efraín, 2026-08-14): también
- * se puede versionar ahí. Devuelve el error de duplicateVersion tal cual
- * (p.ej. sin líneas); el caller decide qué hacer.
- *
- * Dos cosas cambiaron el 2026-08-19 ("no podemos perder toda la info"):
- *  - `resetear` viaja hasta duplicateVersion, así que solo la línea que se
- *    tocó regresa a "No iniciado" — el costeo de las demás sobrevive.
- *  - el no-op ya no es "la vigente es un borrador COMPLETO" sino "ya hay
- *    alguna línea pendiente de costeo": con el reset por línea, la vigente
- *    casi nunca queda toda en borrador, y sin esto cada tecleo posterior
- *    archivaría otra versión (V2, V3, V4…). La primera edición sobre una
- *    cotización enteramente costeada archiva la foto de ese estado; mientras
- *    quede trabajo pendiente, las siguientes solo editan. */
-async function autoVersionLineaCosteada(
-  env: Env, ctx: ExecutionContext, parentItemId: number, viewer: Identity,
-  resetear: 'todas' | number[],
-): Promise<QuoteVersionError | null> {
-  const lineas = await childrenOf(env, 'oportunidades', parentItemId, viewer);
-  if (lineas.length === 0 || hayLineaPendiente(lineas)) return null;
-  try {
-    await duplicateVersion(env, ctx, parentItemId, viewer, { resetear });
-    return null;
-  } catch (err) {
-    if (err instanceof QuoteVersionError) return err;
-    throw err;
-  }
-}
+// El auto-versionado al editar/borrar una línea vive en
+// worker/lib/quoteVersions.ts (autoVersionSiCosteada): compartido con
+// "Ajustar línea → Eliminar" (worker/routes/oportunidades.ts).
 
 // Ventana en la que un refetch recién hecho se considera "ya fresco" — evita
 // pegarle a Monday dos veces cuando el drawer recarga en ráfaga (abrir + write
@@ -476,7 +447,7 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
           ajusteCompras = { parentItemId: linea.parent_item_id, linea };
         } else {
           // Solo esta línea vuelve a costeo: es la única que cambió.
-          const versionError = await autoVersionLineaCosteada(c.env, c.executionCtx, linea.parent_item_id, viewer, [itemId]);
+          const versionError = await autoVersionSiCosteada(c.env, c.executionCtx, linea.parent_item_id, viewer, [itemId]);
           if (versionError) {
             return jsonStatus({ ok: false, pending: false, error: versionError.message } satisfies WriteResponse, versionError.status);
           }
@@ -489,7 +460,7 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
       if (ajusteCompras && result.ok) {
         // Best-effort: la mini versión es trazabilidad, no debe convertir un
         // write ya aplicado en un 500. Sin subversión sobre un borrador todavía
-        // sin costear (mismo criterio que autoVersionLineaCosteada): ahí no hay
+        // sin costear (mismo criterio que autoVersionSiCosteada): ahí no hay
         // vigente que retocar, la línea se está capturando.
         try {
           const lineas = await childrenOf(c.env, 'oportunidades', ajusteCompras.parentItemId, viewer);
@@ -524,7 +495,7 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
     if (slug === 'oportunidades_sub' && row.parent_item_id != null && !isNativeId(row.parent_item_id)) {
       // Borrar no descostea nada: la línea se va y las que quedan siguen
       // costeadas igual. La versión archivada conserva la que se borró.
-      const versionError = await autoVersionLineaCosteada(c.env, c.executionCtx, row.parent_item_id, viewer, []);
+      const versionError = await autoVersionSiCosteada(c.env, c.executionCtx, row.parent_item_id, viewer, []);
       if (versionError) return jsonStatus({ ok: false, error: versionError.message }, versionError.status);
     }
 

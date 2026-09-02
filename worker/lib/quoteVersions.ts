@@ -230,6 +230,42 @@ export function hayLineaPendiente(lineas: MirrorItem[]): boolean {
   return lineas.some(lineaPendiente);
 }
 
+/**
+ * Versionar EN AUTOMÁTICO antes de editar/borrar una línea — la regla de
+ * Efraín (2026-09-02, "acuérdate que versión es después de costeo"): una
+ * cotización que YA está costeada por completo archiva su foto antes de
+ * tocarse; mientras quede alguna línea sin costear (Nueva oportunidad, un
+ * borrador, un costeo a medias) solo se edita, sin versión. Mismo mecanismo
+ * que "+ Nueva versión" (duplicateVersion) pero disparado por el write mismo:
+ * las versiones son un registro "detrás", nunca un candado para seguir
+ * editando (Efraín, 2026-08-14). Incluye Ganada/Perdida (2026-08-14).
+ *
+ * Es UNA sola función para los dos caminos que borran una línea (el 🗑 de la
+ * fila = DELETE genérico, y "Ajustar línea → Eliminar") y para el PATCH de
+ * columnas que definen la línea: antes "Eliminar" desde el modal versionaba
+ * SIEMPRE, aun con la cotización sin costear, y el 🗑 solo si estaba
+ * costeada — dos comportamientos para el mismo verbo.
+ *
+ * `resetear`: qué líneas regresan a "No iniciado" en la vigente (2026-08-19,
+ * "no podemos perder toda la info"): al editar, solo la tocada; al borrar,
+ * ninguna — la línea se va y las que quedan siguen costeadas igual. Devuelve
+ * el error de duplicateVersion tal cual (p.ej. sin líneas); el caller decide.
+ */
+export async function autoVersionSiCosteada(
+  env: Env, ctx: ExecutionContext, parentItemId: number, viewer: Identity,
+  resetear: 'todas' | number[],
+): Promise<QuoteVersionError | null> {
+  const lineas = await childrenOf(env, 'oportunidades', parentItemId, viewer);
+  if (lineas.length === 0 || hayLineaPendiente(lineas)) return null;
+  try {
+    await duplicateVersion(env, ctx, parentItemId, viewer, { resetear });
+    return null;
+  } catch (err) {
+    if (err instanceof QuoteVersionError) return err;
+    throw err;
+  }
+}
+
 /** "+ Nueva versión" = duplicar la vigente, literal (Efraín, 2026-07-17): archiva
  * la vigente tal como está en D1 y regresa la Etapa Costeo de TODAS las líneas a
  * "No iniciado". El mirror (idéntico) queda como borrador: el grid se desbloquea

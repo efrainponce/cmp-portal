@@ -2,6 +2,28 @@
 
 ## 2026-09-02
 
+- **Borrar una línea: una sola regla, "versión es después de costeo"**
+  (Efraín: "unifícale"). Había dos caminos con dos comportamientos: el 🗑 de
+  la fila (DELETE genérico) versionaba solo si la cotización ya estaba
+  costeada por completo, y "Ajustar línea → Eliminar" versionaba SIEMPRE
+  (`duplicateVersion` directo), aun con líneas sin costear — en Costeo, con
+  la cotización a medias, cada borrado desde el modal archivaba otra V{n}.
+  Ahora los dos (y también "+ Agregar línea") pasan por
+  `autoVersionSiCosteada` (`worker/lib/quoteVersions.ts`, antes
+  `autoVersionLineaCosteada` privada de boards.ts): si NO queda ninguna
+  línea pendiente de costeo se archiva la foto antes de tocar; si queda
+  alguna, solo se edita/borra. `resetear: []` al borrar (nada se descostea) y
+  `[lineaId]` al editar, como ya era. El texto del modal decía que borrar
+  "manda de vuelta a costeo" — no lo hacía desde el 2026-08-19; corregido.
+- **Instituciones: de 15 columnas a 4 en la tabla** (Tipo, Municipio,
+  Estado, Vendedor — Efraín: "córtale a instituciones y contactos"; Contactos
+  ya estaba en 3 desde el 2026-08-05). Y los dos catálogos ahora piden SOLO
+  esas columnas (`?cols=`, como ya hacía la lista de Oportunidades): la
+  respuesta de Instituciones baja de 3.2 MB a 1.3 MB crudos y la tabla de
+  105k a 35k nodos. Medido local, CPU 4×: tabla completa **3.6 s → 1.7 s**,
+  peor congelamiento 768 → 484 ms. Las columnas siguen legibles en el board
+  (el server no cambió), solo salen de la tabla.
+
 - **Catálogos grandes: render progresivo + renglón memoizado** (`BoardTable`).
   Medido en producción con CPU 4×: Instituciones = 3,174 renglones × 15
   columnas = **105k nodos y 2.3 s de hilo principal congelado en una sola

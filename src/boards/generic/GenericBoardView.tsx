@@ -37,6 +37,12 @@ const HIDDEN_LIST_COLS: Partial<Record<BoardSlug, string[]>> = {};
 // si algún día lo tiene) pero fuera de esta tabla.
 const LIST_COLS: Partial<Record<BoardSlug, string[]>> = {
   contactos: ['text_mm0dz8yj', 'contact_account', 'multiple_person_mm03vqwx'], // Cargo, Institución, Vendedor
+  // Instituciones (Efraín, 2026-09-02, "córtale a instituciones"): de 15
+  // columnas a 4 — Tipo, Municipio, Estado, Vendedor. Fuera de la tabla (no
+  // del board: siguen legibles) Clientes, Grupo, RFC, Domicilio y Régimen
+  // Fiscal, Fin de Administración, Proyectos, Documentos y los tres ids de
+  // INEGI. Medido con CPU 4×: 3,174 renglones × 15 columnas eran 105k nodos.
+  instituciones: ['dropdown_mm1bajsm', 'text_mm1bvz12', 'dropdown_mm1b46m9', 'multiple_person_mm0c3xbk'],
 };
 
 export function GenericBoardView({ slug, title }: Props) {
@@ -47,7 +53,11 @@ export function GenericBoardView({ slug, title }: Props) {
   const [activityProducto, setActivityProducto] = useState<ItemDTO | null>(null);
   const { boards } = useBoards();
   const cols = colForBoard(boards, slug);
-  const { status, data, refetch } = usePoll(slug, q);
+  // Los boards con LIST_COLS piden SOLO esas columnas (`?cols=`): Instituciones
+  // completo eran 3.2 MB crudos por 3,174 registros. El server intersecta
+  // contra la whitelist igual que siempre.
+  const listColIds = LIST_COLS[slug];
+  const { status, data, refetch } = usePoll(slug, q, listColIds);
   const items = data?.items ?? [];
   const sync = lastMondayUpdateFromItems(items);
   // Oportunidades también es creatable, pero tiene su propio modal en su board —
@@ -60,7 +70,6 @@ export function GenericBoardView({ slug, title }: Props) {
   // fila deja de ser clicable en vez de abrir un panel que el server niega.
   const verActividad = useCanVerActividad();
   const onRowClick = canEditContacto ? setEditingContact : (slug === 'productos' && verActividad) ? setActivityProducto : undefined;
-  const listColIds = LIST_COLS[slug];
   const hidden = HIDDEN_LIST_COLS[slug];
   const tableCols: ColMeta[] = listColIds
     ? listColIds.map((id) => cols.find((c) => c.id === id)).filter((c): c is ColMeta => !!c)

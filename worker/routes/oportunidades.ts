@@ -20,7 +20,7 @@ import {
 } from '../lib/automations';
 import { enviarACosteo, enviarAValidacion, confirmarCosteo, checkCosteo, checkValidacion, CosteoError } from '../lib/costeo';
 import { generarCotizacionNative, generarCotizacionNativeD1, CotizacionError } from '../lib/cotizacion';
-import { listVersions, duplicateVersion, restoreVersion, hayLineaPendiente, recordFirstVersion, QuoteVersionError } from '../lib/quoteVersions';
+import { listVersions, duplicateVersion, restoreVersion, recordFirstVersion, QuoteVersionError, autoVersionSiCosteada } from '../lib/quoteVersions';
 import { ajustarLinea, AjusteLineaError } from '../lib/lineaAjustes';
 import { listCotizacionVirtual, ajustarLineaVirtual, ProyectoCotizacionError } from '../lib/proyectoCotizacionVirtual';
 import { capturarTallas, reportarTallasIncorrectas, checkOcCliente, confirmTallasNative, confirmTallasNativeD1 } from '../lib/proyectoTallas';
@@ -611,12 +611,11 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
         // (mismo mecanismo que "+ Nueva versión") en vez de bloquear — las
         // versiones son un registro "detrás", nunca un candado para seguir
         // trabajando la cotización, incluida Ganada/Perdida (Efraín, 2026-08-14).
-        const lineas = await childrenOf(c.env, 'oportunidades', itemId, viewer);
         // La línea nueva nace sin Etapa Costeo (= pendiente); las que ya
-        // estaban costeadas no se tocan (Efraín, 2026-08-19).
-        if (lineas.length > 0 && !hayLineaPendiente(lineas)) {
-          await duplicateVersion(c.env, c.executionCtx, itemId, viewer, { resetear: [] });
-        }
+        // estaban costeadas no se tocan (Efraín, 2026-08-19). Misma regla que
+        // editar/borrar una línea: autoVersionSiCosteada.
+        const versionError = await autoVersionSiCosteada(c.env, c.executionCtx, itemId, viewer, []);
+        if (versionError) throw versionError;
       }
 
       // Cantidad arranca en 0 a propósito (Efraín) — el grid la marca con warning
@@ -683,18 +682,19 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     }
 
     // 'eliminar' (Efraín, 2026-08-13): a diferencia de editar/dividir, borrar
-    // una línea completa cambia el total de la cotización — se maneja aparte,
-    // reusando duplicateVersion (archiva la vigente como versión nueva y
-    // resetea Etapa Costeo) antes de borrar, mismo mecanismo que "+ Nueva
-    // versión" y con el mismo guard de Ganada/Perdida.
+    // una línea completa cambia el total de la cotización — se maneja aparte.
+    // Versiona con la MISMA regla que el 🗑 de la fila (autoVersionSiCosteada,
+    // Efraín 2026-09-02 "versión es después de costeo"): si la cotización ya
+    // está costeada por completo se archiva la foto (ahí queda la línea
+    // eliminada, `resetear: []` = ninguna línea viva se descostea); si aún hay
+    // líneas sin costear, solo se borra. Antes este camino versionaba siempre.
     if (body.modo === 'eliminar') {
       const linea = await getItem(c.env, 'oportunidades_sub', lineaId, viewer, 'own');
       if (!linea || linea.parent_item_id == null) return c.json({ error: 'not found' }, 404);
       const itemId = linea.parent_item_id;
       try {
-        // `resetear: []`: se archiva la foto (ahí queda la línea eliminada)
-        // y ninguna línea viva se descostea (Efraín, 2026-08-19).
-        await duplicateVersion(c.env, c.executionCtx, itemId, viewer, { resetear: [] });
+        const versionError = await autoVersionSiCosteada(c.env, c.executionCtx, itemId, viewer, []);
+        if (versionError) throw versionError;
         // Se borra en Monday y en el mirror (worker/lib/itemBorrado.ts): una
         // línea que solo se esconde del portal sigue contando en costeo y en la
         // cotización, que leen Monday directo (Efraín, 2026-08-19). Sigue
