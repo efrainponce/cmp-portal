@@ -3,7 +3,7 @@
 // una sola fila de error (pasó 3 días en 2026-08-14), y uno que avanza de más
 // pierde cambios hasta el reconcile de 12h (2026-08-27, ventana saturada).
 import { describe, it, expect } from 'vitest';
-import { ordenarCola, calcularCheckpoints } from './delta';
+import { ordenarCola, calcularCheckpoints, agruparPorBoard } from './delta';
 
 const OPP = 18395657596;
 const LINEAS = 18395657607;
@@ -29,6 +29,28 @@ describe('ordenarCola', () => {
       { boardId: OPP, itemId: 8, ticks: ticks('2026-08-27T17:00:00Z') },
     ], PRIORIDAD);
     expect(orden.map(p => p.itemId)).toEqual([8, 9]);
+  });
+});
+
+describe('agruparPorBoard', () => {
+  it('un lote por board, en el orden en que cada board aparece en la cola', () => {
+    // La cola ya viene ordenada (pipeline primero): el primer lote tiene que
+    // ser el del board del primer pendiente, o los catálogos se colarían
+    // antes que las oportunidades ahora que se relee por lotes.
+    const cola = ordenarCola([
+      { boardId: PRODUCTOS, itemId: 1, ticks: ticks('2026-09-01T17:00:00Z') },
+      { boardId: OPP, itemId: 2, ticks: ticks('2026-09-01T17:30:00Z') },
+      { boardId: LINEAS, itemId: 3, ticks: ticks('2026-09-01T17:20:00Z') },
+      { boardId: OPP, itemId: 4, ticks: ticks('2026-09-01T17:40:00Z') },
+      { boardId: PRODUCTOS, itemId: 5, ticks: ticks('2026-09-01T17:10:00Z') },
+    ], PRIORIDAD);
+    const lotes = agruparPorBoard(cola);
+    expect(lotes.map(l => l[0]!.boardId)).toEqual([LINEAS, OPP, PRODUCTOS]);
+    expect(lotes.map(l => l.map(p => p.itemId))).toEqual([[3], [2, 4], [1, 5]]);
+  });
+
+  it('cola vacía = sin lotes', () => {
+    expect(agruparPorBoard([])).toEqual([]);
   });
 });
 

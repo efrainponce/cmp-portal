@@ -2,6 +2,6 @@
 export { syncRoutes } from './webhook';
 export { reconcileBoard, reconcileAll } from './reconcile';
 export { deltaSync, deltaSyncIfStale } from './delta';
-export { refetchItem, refetchItemTree } from './refetch';
-export { confirmOutboxEcho } from './echo';
-export { upsertItem, mirrorUpsertStatement, emitItemSideEffects } from './upsert';
+export { refetchItem, refetchItemTree, refetchItems } from './refetch';
+export { confirmOutboxEcho, confirmOutboxEchoMany } from './echo';
+export { upsertItem, upsertItemsBulk, mirrorUpsertStatement, emitItemSideEffects } from './upsert';

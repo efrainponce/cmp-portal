@@ -265,26 +265,38 @@ export async function persistActivityEntries(env: Env, entries: ActivityLogEntry
   if (rows.length === 0) return 0;
   await ensureTable(env);
 
-  let inserted = 0;
+  // Los INSERT van por `env.DB.batch()` en lotes: un subrequest por lote, no
+  // uno por evento — una corrida con 59 eventos pagaba 59 round-trips a D1
+  // dentro del presupuesto del latido. `meta.changes` de cada statement sigue
+  // diciendo si la fila era nueva (INSERT OR IGNORE).
+  const statements: D1PreparedStatement[] = [];
   for (const r of rows) {
     try {
       const createdAt = ticksToIso(r.createdAtTicks);
       const slug = boardById(r.boardId)?.slug;
       if (slug && r.columnId && isPortalWriteColumn(slug, r.columnId)
           && await recentPortalWrite(env, r, createdAt)) continue;
-      const result = await env.DB.prepare(
+      statements.push(env.DB.prepare(
         `INSERT OR IGNORE INTO activity_log
           (board_id, item_id, event, column_id, column_title, previous_text, new_text, user_id, created_at, dedupe_key)
          VALUES (?,?,?,?,?,?,?,?,?,?)`,
       ).bind(
         r.boardId, r.itemId, r.event, r.columnId, r.columnTitle,
         r.previousText, r.newText, r.userId, createdAt, dedupeKey(r),
-      ).run();
-      if (result.meta.changes > 0) inserted++;
+      ));
     } catch { /* fila rara (tick no numérico, etc.) — se salta, no tumba el batch */ }
+  }
+  let inserted = 0;
+  for (let i = 0; i < statements.length; i += ACTIVITY_BATCH_CHUNK) {
+    const results = await env.DB.batch(statements.slice(i, i + ACTIVITY_BATCH_CHUNK));
+    for (const res of results) if (res.meta.changes > 0) inserted++;
   }
   return inserted;
 }
+
+// Statements por env.DB.batch() — acotado para no armar un payload gigante
+// tras un hueco largo (una corrida puede traer hasta 200 eventos por board).
+const ACTIVITY_BATCH_CHUNK = 100;
 
 export interface DirectChange {
   // 'delete_pulse' no existe en el activity_log de Monday (borrar un item se

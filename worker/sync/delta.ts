@@ -15,11 +15,19 @@
 // solo por este camino. Medido en prod ese día: las 12 oportunidades más
 // recientes tenían entre 6 y 18 min de retraso y TODAS caían exactamente en un
 // tick del cron. Con el latido el retraso típico baja a ~30 s.
+//
+// Refetch EN LOTE (2026-09-02): cada item que cambiaba costaba su propia
+// llamada a Monday (~1.5-6 s en prod), así que un latido de 6 s releía 0-3
+// items y dejaba el resto para el cron — medido en sync_log el 2026-09-01:
+// `events=52 refetched=0 pendientes=6`, `events=59 refetched=1 pendientes=7`.
+// Ahora los pendientes de cada board van en UNA llamada (`items(ids:)`, hasta
+// 100), así que un latido vacía la cola completa — Productos incluidos, que
+// por ir al final de la cola casi nunca alcanzaban turno.
 import type { Env } from '../env';
 import { fetchActivityLogs, type ActivityWindow } from '../lib/monday';
 import { persistActivityEntries } from '../lib/activityLog';
 import { BOARDS, boardById, type BoardSlug } from '../../shared/boards';
-import { refetchItem } from './refetch';
+import { refetchItems } from './refetch';
 import { logSync } from './log';
 
 // Checkpoint POR BOARD. Antes era uno solo y global (`delta_last_polled_at`),
@@ -55,24 +63,25 @@ const MAX_WINDOW_MS = 20 * 60 * 1000;
 const MIN_WINDOW_MS = 60 * 1000;
 const WINDOW_PREFIX = 'delta_window_ms:';
 
-// Tope de refetches por corrida. Cada refetch cuesta ~6-8 subrequests (1 a
-// Monday + varias a D1) y la invocación entera comparte el presupuesto de
-// Cloudflare con checkErrorsAndAlert — una ráfaga grande (backlog tras un
-// silencio, cmp-tallas reescribiendo subitems) tronaba TODOS los refetches
+// Tope de items releídos por corrida. Con el refetch en lote cada 100 items
+// cuestan ~5-8 subrequests (1 a Monday + un puñado a D1), no 6-8 POR item como
+// antes, así que el tope ya no es un cuello: 300 = tres llamadas a Monday por
+// board en el peor caso. La invocación comparte el presupuesto de Cloudflare
+// con checkErrorsAndAlert — una ráfaga grande tronaba TODOS los refetches
 // restantes con "Too many subrequests" (2026-08-14: 270 fallos en una hora).
 // El excedente no se pierde: el checkpoint de cada board solo avanza hasta su
 // primer evento no procesado y la siguiente corrida continúa desde ahí.
-const MAX_REFETCH_PER_RUN = 50;
-// El latido corre DENTRO de una petición de lista (waitUntil), no en el cron:
-// comparte presupuesto con la respuesta que el usuario está esperando, así que
-// se queda con un tope más chico. Lo que no alcance lo recoge el siguiente
-// latido 60 s después.
-const MAX_REFETCH_PER_HEARTBEAT = 15;
-// ...y con reloj: el "Actualizar" de la lista ESPERA al latido, y en prod cada
-// refetch tarda ~1.5 s, así que 15 seguidos serían 20 s de botón colgado. Al
-// vencer el plazo se corta y lo que falta queda pendiente — el checkpoint
-// parcial ya sabe reanudar (calcularCheckpoints), así que no se pierde nada.
-const HEARTBEAT_DEADLINE_MS = 6_000;
+const MAX_REFETCH_PER_RUN = 300;
+// El latido corre DENTRO de una petición (waitUntil), no en el cron: comparte
+// presupuesto con la respuesta que el usuario está esperando, así que se queda
+// con un tope más chico. Lo que no alcance lo recoge el siguiente latido.
+const MAX_REFETCH_PER_HEARTBEAT = 200;
+// ...y con reloj: el "Actualizar" de la lista ESPERA al latido. Los lotes (uno
+// por board, una llamada a Monday cada uno) salen en paralelo, así que el
+// plazo solo decide si se lanzan o no después de leer activity_logs: si ya
+// venció, todo queda pendiente — el checkpoint parcial ya sabe reanudar
+// (calcularCheckpoints), así que no se pierde nada.
+const HEARTBEAT_DEADLINE_MS = 8_000;
 
 // Orden de atención: primero el pipeline (lo que mira ventas y compras todo el
 // día), después los catálogos. Dentro de cada grupo se respeta el orden
@@ -85,10 +94,15 @@ const PRIORITY_BOARD_IDS = new Set(PRIORITY_SLUGS.map(s => BOARDS[s].id));
 
 interface Pendiente { boardId: number; itemId: number; ticks: string }
 
+// El CREATE TABLE se paga una vez por isolate, no en cada poll de cada
+// usuario (el latido cuelga de todos los GET autenticados).
+let stateTableReady = false;
 async function ensureStateTable(env: Env): Promise<void> {
+  if (stateTableReady) return;
   await env.DB.prepare(
     `CREATE TABLE IF NOT EXISTS sync_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)`,
   ).run();
+  stateTableReady = true;
 }
 
 async function readState(env: Env, keys: string[]): Promise<Map<string, string>> {
@@ -99,10 +113,13 @@ async function readState(env: Env, keys: string[]): Promise<Map<string, string>>
   return new Map((res.results ?? []).map(r => [r.key, r.value]));
 }
 
-async function writeState(env: Env, key: string, value: string): Promise<void> {
-  await env.DB.prepare(
+/** Todos los pares en UN batch (un subrequest), no un UPSERT por llave: los
+ * checkpoints y ventanas de los 8 boards se escriben juntos al final. */
+async function writeStateMany(env: Env, pairs: Array<[string, string]>): Promise<void> {
+  if (pairs.length === 0) return;
+  await env.DB.batch(pairs.map(([key, value]) => env.DB.prepare(
     `INSERT INTO sync_state (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-  ).bind(key, value).run();
+  ).bind(key, value)));
 }
 
 /** Orden de atención de la cola: pipeline primero, catálogos después,
@@ -168,9 +185,19 @@ export function calcularCheckpoints(
  * El lease se toma con un UPDATE condicional (`WHERE value < ?`), que en D1 es
  * atómico: dos peticiones simultáneas no pueden ganarlo las dos.
  */
+// Pista LOCAL del lease: si este isolate acaba de ganarlo (o de perderlo)
+// sabe que no tiene caso volver a preguntarle a D1 hasta entonces. El latido
+// cuelga de TODOS los GET autenticados (lista cada 5 s, campana cada 12 s,
+// inicio cada 30 s, de cada usuario), así que sin esto cada poll pagaba 2-3
+// statements de D1 solo para enterarse de que el lease sigue tomado. Es solo
+// una pista: D1 sigue siendo la verdad entre isolates.
+let leaseHintUntil = 0;
+const LEASE_HINT_LOST_MS = 10_000;
+
 export async function deltaSyncIfStale(env: Env, minIntervalMs: number): Promise<boolean> {
-  await ensureStateTable(env);
   const ahora = Date.now();
+  if (ahora < leaseHintUntil) return false;
+  await ensureStateTable(env);
   const proximo = String(ahora + minIntervalMs);
 
   // INSERT para el primer arranque; si ya existe, solo gana quien encuentre el
@@ -182,8 +209,14 @@ export async function deltaSyncIfStale(env: Env, minIntervalMs: number): Promise
     const tomado = await env.DB.prepare(
       `UPDATE sync_state SET value = ? WHERE key = ? AND CAST(value AS INTEGER) <= ?`,
     ).bind(proximo, LEASE_KEY, ahora).run();
-    if (tomado.meta.changes === 0) return false; // otro latido va en camino
+    if (tomado.meta.changes === 0) {
+      // Otro latido va en camino. No sabemos hasta cuándo tiene el lease
+      // (lo tomó otro isolate), así que la pista es corta.
+      leaseHintUntil = ahora + LEASE_HINT_LOST_MS;
+      return false;
+    }
   }
+  leaseHintUntil = ahora + minIntervalMs;
 
   await deltaSync(env, {
     maxRefetch: MAX_REFETCH_PER_HEARTBEAT,
@@ -268,38 +301,55 @@ export async function deltaSync(
   const queue = ordenarCola([...touched.values()], PRIORITY_BOARD_IDS);
   const batch = queue.slice(0, maxRefetch);
 
-  // Un solo item que truene (fetch/D1/ficha) NO debe tumbar el batch entero:
+  // Un lote por board, en el orden de la cola (pipeline primero): cada lote es
+  // UNA llamada a Monday para hasta 100 items (worker/sync/refetch.ts).
+  const lotes = agruparPorBoard(batch);
+
+  // Un lote que truene (Monday/D1/ficha) NO debe tumbar la corrida entera:
   // sin este try/catch, un throw aquí aborta la función ANTES de mover los
-  // checkpoints de abajo, así que la siguiente corrida vuelve a tocar el mismo
-  // item y truena igual — el delta sync se queda mudo para SIEMPRE, sin dejar
-  // ni un solo log de error (reproducido 2026-08-14: el checkpoint llevaba 3
-  // días congelado en 2026-08-11 sin ninguna fila en sync_log).
+  // checkpoints de abajo, así que la siguiente corrida vuelve a tocar lo mismo
+  // y truena igual — el delta sync se queda mudo para SIEMPRE, sin dejar ni un
+  // solo log de error (reproducido 2026-08-14: el checkpoint llevaba 3 días
+  // congelado en 2026-08-11 sin ninguna fila en sync_log). Un lote fallido se
+  // queda como PENDIENTE (no como visto): lo normal es un tropiezo transitorio
+  // de Monday, y darlo por visto perdería los 100 items hasta el reconcile.
+  // Si el fallo fuera persistente, el checkpoint clavado + la fila de error en
+  // sync_log lo hacen visible en el cron de alertas.
   let refetched = 0;
+  let cambiados = 0;
+  let borrados = 0;
   let failed = 0;
-  let atendidos = 0;   // cuántos del batch se intentaron (para saber qué queda)
-  let cortado = false; // presupuesto agotado: lo no atendido NO cuenta como visto
-  for (const { boardId, itemId } of batch) {
-    // Plazo vencido (solo el latido lo usa): corta limpio, lo que falta queda
-    // como pendiente y lo recoge la siguiente corrida.
-    if (Date.now() > vence) { cortado = true; break; }
-    try {
-      await refetchItem(env, boardId, itemId);
-      atendidos++;
-      refetched++;
-    } catch (e) {
-      // Presupuesto de la invocación agotado: TODOS los intentos que siguen
-      // fallarían igual (y cada logSync de fallo también gasta) — cortar ya;
-      // el item actual queda pendiente y lo cubren los checkpoints parciales.
-      if (String(e).includes('Too many subrequests')) {
-        await logSync(env, 'delta', boardId, itemId, false,
-          `refetch abortado: subrequests agotados tras ${atendidos}/${batch.length}`);
-        cortado = true;
-        break;
-      }
-      atendidos++;
-      failed++;
-      await logSync(env, 'delta', boardId, itemId, false, `refetch failed: ${e}`);
+  const noAtendidos: Pendiente[] = [];
+  // Los lotes van EN PARALELO (uno por board, boards distintos = filas
+  // distintas en D1): cada llamada a Monday tarda 1.5-3.5 s y en serie los 4
+  // boards del pipeline sumaban ~8 s — justo el plazo del latido, y Productos
+  // se quedaba sin turno. En paralelo el latido completo tarda lo que la
+  // llamada más lenta. El plazo (solo el latido lo usa) se revisa ANTES de
+  // lanzar: si la lectura de activity_logs ya se comió el tiempo, todo queda
+  // pendiente y lo recoge la siguiente corrida.
+  const lanzables = Date.now() > vence ? [] : lotes;
+  noAtendidos.push(...lotes.slice(lanzables.length).flat());
+  const resultados = await Promise.allSettled(lanzables.map(lote =>
+    refetchItems(env, lote[0]!.boardId, lote.map(p => p.itemId))));
+  for (let i = 0; i < resultados.length; i++) {
+    const res = resultados[i]!;
+    const lote = lanzables[i]!;
+    if (res.status === 'fulfilled') {
+      refetched += res.value.refetched;
+      cambiados += res.value.changed;
+      borrados += res.value.deleted;
+      continue;
     }
+    failed += lote.length;
+    noAtendidos.push(...lote);
+    const e = String(res.reason);
+    // Presupuesto de la invocación agotado: el lote entero queda pendiente y
+    // lo cubren los checkpoints parciales (un logSync más también gasta, pero
+    // es el único rastro del corte).
+    await logSync(env, 'delta', lote[0]!.boardId, null, false,
+      e.includes('Too many subrequests')
+        ? `refetch abortado: subrequests agotados (${lote.length} items del board quedan pendientes)`
+        : `refetch en lote failed (${lote.length} items): ${e}`);
   }
 
   // Checkpoint POR BOARD: `to` de su ventana si se procesó todo lo suyo; si
@@ -313,13 +363,14 @@ export async function deltaSync(
   // reciente, así que lo que falta es lo más VIEJO de la ventana y darlo por
   // visto es perderlo. Se queda en `from` y la ventana acotada hace que la
   // siguiente corrida pida el mismo tramo con presupuesto nuevo.
-  const pendientes = queue.slice(cortado ? atendidos : batch.length);
+  const pendientes = [...noAtendidos, ...queue.slice(batch.length)];
 
   // Ventana adaptativa + válvula de escape. Un board que satura encoge su
   // ventana; si YA está en el piso y sigue saturando (200 eventos en 60 s en un
   // solo board), quedarse ahí sería un ciclo infinito: se deja avanzar y se
   // grita en sync_log — el reconcile de 12h es la red para lo que se perdió.
   const atorados = new Set<number>();
+  const estado: Array<[string, string]> = [];
   for (const w of windows) {
     const ancho = anchoDe(w.boardId);
     if (saturated.has(w.boardId)) {
@@ -327,10 +378,10 @@ export async function deltaSync(
         atorados.add(w.boardId);
         saturated.delete(w.boardId); // deja que el checkpoint avance
       } else {
-        await writeState(env, WINDOW_PREFIX + w.boardId, String(Math.max(MIN_WINDOW_MS, Math.floor(ancho / 4))));
+        estado.push([WINDOW_PREFIX + w.boardId, String(Math.max(MIN_WINDOW_MS, Math.floor(ancho / 4)))]);
       }
     } else if (ancho < MAX_WINDOW_MS) {
-      await writeState(env, WINDOW_PREFIX + w.boardId, String(MAX_WINDOW_MS));
+      estado.push([WINDOW_PREFIX + w.boardId, String(MAX_WINDOW_MS)]);
     }
   }
   for (const boardId of atorados) {
@@ -342,12 +393,29 @@ export async function deltaSync(
   for (const [boardId, checkpoint] of checkpoints) {
     // Se escribe siempre, aunque no haya avanzado: así queda sembrado el
     // checkpoint por board y la próxima corrida ya no cae al `legacy`.
-    await writeState(env, STATE_PREFIX + boardId, checkpoint);
+    estado.push([STATE_PREFIX + boardId, checkpoint]);
   }
+  await writeStateMany(env, estado);
   const saturados = saturated.size + atorados.size;
 
   await logSync(env, 'delta', 0, null, true,
-    `[${trigger}] events=${entries.length} refetched=${refetched} failed=${failed} activity=${activityLogged}` +
+    `[${trigger}] events=${entries.length} refetched=${refetched} cambiados=${cambiados}` +
+    (borrados ? ` borrados=${borrados}` : '') +
+    ` failed=${failed} activity=${activityLogged}` +
     (pendientes.length ? ` pendientes=${pendientes.length}` : '') +
     (saturados ? ` saturados=${saturados}` : ''));
+}
+
+/** Parte la cola en lotes por board, conservando el orden de la cola (el
+ * primer lote es el del board cuyo primer pendiente va antes). Puro y con
+ * test: de esto depende que el pipeline siga saliendo antes que los catálogos
+ * ahora que se relee por lotes y no de a uno. */
+export function agruparPorBoard(cola: Pendiente[]): Pendiente[][] {
+  const porBoard = new Map<number, Pendiente[]>();
+  for (const p of cola) {
+    const lote = porBoard.get(p.boardId);
+    if (lote) lote.push(p);
+    else porBoard.set(p.boardId, [p]);
+  }
+  return [...porBoard.values()];
 }

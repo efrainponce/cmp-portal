@@ -414,6 +414,27 @@ export async function fetchItem(env: Env, itemId: number): Promise<MondayItem | 
   return { ...raw, column_values: normalizeCols(raw.column_values ?? []) };
 }
 
+/** Tope de ids por llamada de `items(ids:)` — documentado por Monday: máximo
+ * 100 ids y `limit` máximo 100 (el default de `limit` es 25, por eso va
+ * explícito: sin él, pedir 60 ids devolvía 25 en silencio). */
+export const ITEMS_BY_IDS_MAX = 100;
+
+/** Varios items en UNA llamada (hasta ITEMS_BY_IDS_MAX). Es la pieza que
+ * vuelve barato el delta sync: antes cada item que cambió en Monday costaba
+ * su propia llamada (~1.5-6 s cada una en prod), así que un latido de 6 s
+ * alcanzaba a releer 0-3 items y el resto esperaba al cron. Los ids que
+ * Monday NO devuelve (borrados) simplemente no vienen en el arreglo — el
+ * llamador decide qué hacer con ellos (worker/sync/refetch.ts los quita del
+ * espejo, igual que hacía el refetch de a uno). Ids nativos nunca deben
+ * llegar aquí (no existen en Monday). */
+export async function fetchItemsByIds(env: Env, itemIds: number[]): Promise<MondayItem[]> {
+  if (itemIds.length === 0) return [];
+  if (itemIds.length > ITEMS_BY_IDS_MAX) throw new Error(`fetchItemsByIds: máximo ${ITEMS_BY_IDS_MAX} ids por llamada`);
+  const query = `query($ids:[ID!]){ items(ids:$ids, limit:${ITEMS_BY_IDS_MAX}){ ${ITEM_FIELDS} } }`;
+  const data = await gql(env, query, { ids: itemIds.map(String) });
+  return ((data?.items ?? []) as any[]).map(raw => ({ ...raw, column_values: normalizeCols(raw.column_values ?? []) }));
+}
+
 /** Uploads a file to a file-type column — Monday's dedicated multipart endpoint
  * (v2/file), separate from the JSON /v2 endpoint every other mutation uses.
  * public_url is a presigned S3 link that expires in ~1h — fine for the upload

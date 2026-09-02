@@ -1,5 +1,61 @@
 # Log de commits
 
+## 2026-09-02
+
+- **Sync con Monday: refetch en LOTE, latido desde cualquier GET y cada 30 s**
+  (Efraín: "la sync con Monday es súper importante, es la primera falla que
+  los de compras me dicen, sobre todo oportunidades y productos"). Medido en
+  `sync_log` de producción el 2026-09-01 antes de tocar nada:
+  - El latido del delta sync corría **1-5 veces por HORA** en horario
+    laboral, no una por minuto: solo lo disparaba el poll de la lista, y la
+    lista se desmonta al abrir una oportunidad — que es donde compras pasa el
+    día. Con el portal en un drawer, nadie lo disparaba.
+  - Cuando sí corría, releía **0-3 items** (`events=52 refetched=0
+    pendientes=6`, `events=59 refetched=1 pendientes=7`): cada item era su
+    propia llamada a Monday (1.5-6 s en prod) y el plazo de 6 s se iba en la
+    primera. Lo demás esperaba al cron de 15 min. Productos, al final de la
+    cola a propósito, casi nunca alcanzaba turno.
+  - Presupuesto: ~1,000-1,800 llamadas/día de 25,000 (5-7 %). El tope no era
+    el límite; el diseño sí.
+- Tres cambios, todo en `worker/sync/`:
+  - **`refetchItems` (refetch.ts)**: `items(ids:[…], limit:100)` de Monday
+    (`fetchItemsByIds` en monday.ts; `limit` explícito porque el default es 25
+    y devolvía 25 en silencio) — los pendientes de cada board en UNA llamada.
+    Por lote: 1 llamada a Monday + 1 SELECT de hashes + 1 `DB.batch()` de
+    writes + 1 SELECT del outbox (`confirmOutboxEchoMany`), en vez de ~6-8
+    subrequests POR item. Los lotes de los distintos boards salen en paralelo
+    (`Promise.allSettled`): el latido tarda lo que la llamada más lenta. Un
+    lote que falla queda PENDIENTE (no "visto"): darlo por visto perdería 100
+    items hasta el reconcile por un tropiezo transitorio de Monday.
+  - **`upsertItemsBulk` (upsert.ts)**, compartido por el refetch en lote y el
+    reconcile. De paso arregla un drift real: el INSERT propio que tenía
+    `reconcile.ts` **no escribía los totales `t_*` de la línea**
+    (`lineaTotales.ts`), así que una línea cambiada por el reconcile dejaba
+    la lista con cifras viejas hasta que algo la refetcheara. Probado en local
+    contra Monday real: reconcile de `oportunidades_sub` (3.1k líneas, 1,497
+    upserts, 65 borrados) sin errores y con 0 líneas sin totales.
+  - **Latido desde cualquier GET autenticado** (middleware en
+    `worker/index.ts`, ya no en la ruta de la lista): la campana poletea cada
+    12 s aunque estés en el drawer, así que sincroniza mientras la gente
+    trabaja. Cadencia **60 s → 30 s** (Efraín eligió 30 entre 20/30/60: peor
+    caso ~2,500 llamadas/día, 10 % del tope). Con pista local del lease por
+    isolate, el poll normal ya no paga 2-3 statements de D1 para enterarse de
+    que el lease sigue tomado; el `CREATE TABLE` de `sync_state` se paga una
+    vez por isolate. `?fresh=1` (botón "actualizar") sigue ESPERANDO su
+    latido dentro de la ruta y el middleware lo deja pasar — si no, el de
+    fondo se llevaba el lease y el botón contestaba sin leer Monday.
+  - Topes: 15 → 200 por latido, 50 → 300 por cron; plazo del latido 6 → 8 s
+    pero revisado ANTES de lanzar los lotes, no entre items. Los
+    checkpoints/ventanas de los 8 boards se escriben en un solo batch, y los
+    INSERT de `activity_log` también van por lote (59 eventos eran 59
+    round-trips a D1 dentro del presupuesto del latido).
+- Medido en local contra Monday real: el botón "actualizar" con 4 boards
+  tocados pasó de **10.1 s con 1 pendiente** a **3.6 s con 0 pendientes**.
+  Con el lote, la cola que antes tardaba minutos (o el cron) se vacía en un
+  latido. Ojo, semántica que cambia a propósito: `sync_log` trae UNA fila
+  por lote (`refetched batch: N releídos, M cambiados, K borrados`) en vez de
+  una por item. Nuevo test `agruparPorBoard` en `delta.test.ts`.
+
 ## 2026-08-28
 
 - **En Validación de Costeo ya se editan TODOS los valores, no solo el Techo**

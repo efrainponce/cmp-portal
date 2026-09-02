@@ -7,7 +7,7 @@ import type { Env } from './env';
 import { access } from './mw/access';
 import { identity } from './mw/identity';
 import { accionLog } from './mw/accionLog';
-import { syncRoutes, reconcileAll, deltaSync } from './sync';
+import { syncRoutes, reconcileAll, deltaSync, deltaSyncIfStale } from './sync';
 import { BOARDS, type BoardSlug } from '../shared/boards';
 import { waRoutes } from './wa/routes';
 import { assistantRoutes } from './assistant/routes';
@@ -40,6 +40,30 @@ app.use('/api/*', access, identity);
 // identity porque necesita saber quién es, y antes de las rutas para que
 // también atrape lo que ellas rechazan.
 app.use('/api/*', accionLog);
+
+// LATIDO del delta sync (worker/sync/delta.ts). El portal no tiene webhooks de
+// cambio de columna desde 2026-07-31 (se comían ~80% de la cuota de acciones
+// de Monday), así que TODO lo que se edita dentro de Monday o lo que escribe
+// cmp-tallas entra al espejo por aquí (o por el cron de 15 min, que es el
+// piso). Desde 2026-08-27 colgaba SOLO del poll de la lista — y la lista se
+// desmonta al abrir una oportunidad, que es donde compras pasa el día: medido
+// en sync_log el 2026-09-01, el latido corrió 1-5 veces por HORA en horario
+// laboral, no una por minuto. Ahora cuelga de cualquier GET autenticado (la
+// campana poletea cada 12 s aunque estés en el drawer), así que sincroniza
+// mientras la gente trabaja. `deltaSyncIfStale` toma un lease en D1: corre
+// COMO MUCHO uno cada LATIDO_MS por más gente que esté poleando, y CERO cuando
+// nadie usa el portal — una llamada a Monday por intervalo de uso real, no por
+// usuario. 30 s (Efraín, 2026-09-02): peor caso ~2,500 llamadas/día, 10 % del
+// tope de 25,000. `?fresh=1` (botón "Actualizar") lo ESPERA dentro de su ruta
+// en vez de dispararlo aquí de fondo — si no, el de fondo se llevaría el lease
+// y el botón contestaría sin haber leído Monday.
+const LATIDO_MS = 30_000;
+app.use('/api/*', async (c, next) => {
+  if (c.req.method === 'GET' && !c.req.query('fresh')) {
+    c.executionCtx.waitUntil(deltaSyncIfStale(c.env, LATIDO_MS).catch(() => { /* best-effort */ }));
+  }
+  await next();
+});
 
 // Responses are scoped per viewer (see dal.ts scopeFor) and, since admin
 // impersonation lets one browser act as several identities in a session,

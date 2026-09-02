@@ -115,10 +115,112 @@ export function mirrorUpsertStatement(
   return { stmt, itemId, parentItemId, vendedorIds, contentHash, columnsJson };
 }
 
+// Statements por env.DB.batch() — cada llamada ES un solo subrequest sin
+// importar cuántos traiga, pero se acota igual para no armar un payload
+// gigante (primer reconcile tras un hueco largo).
+const BATCH_CHUNK = 100;
+// Parámetros ligados por UNA query — D1 rechaza más de ~100 (mismo tope que
+// documenta worker/lib/updateSeen.ts). 99 ids + el board_id = 100.
+const BIND_CHUNK = 99;
+
+function chunk<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
+export interface BulkUpsertOpts {
+  /** content_hash actual de los items del board, si el llamador ya lo trae (el
+   * reconcile lee el board completo una vez). Ausente = se consulta para los
+   * ids de este lote, en trozos de BIND_CHUNK. */
+  existingHash?: Map<number, string>;
+}
+
+export interface BulkUpsertResult {
+  /** ids que sí se escribieron (contenido distinto al del espejo, o nuevos). */
+  changed: number[];
+}
+
+/**
+ * Upsert de MUCHOS items del mismo board con un puñado de subrequests, no uno
+ * o dos por item: 1 SELECT de hashes (si no vienen), 1 SELECT de `columns`
+ * previas solo para los boards que las diffean (NEEDS_PREV_COLUMNS), y los
+ * writes por `env.DB.batch()`. Es el MISMO camino para el reconcile por lote
+ * y para el refetch en lote del delta sync (worker/sync/refetch.ts), así que
+ * los dos escriben exactamente lo mismo que `upsertItem` — incluidos los
+ * totales t_* de la línea (worker/lib/lineaTotales.ts), que el INSERT propio
+ * que tenía reconcile.ts NO escribía: una línea cambiada por el reconcile se
+ * quedaba con los totales viejos en la lista hasta que algo la refetcheara.
+ *
+ * Semántica idéntica a `upsertItem({ skipIfUnchanged: true })` por item:
+ * mismo hash → no se toca (ni `synced_at`, que es lo que mantiene válido el
+ * ETag de la lista para los demás); ficha comercial hidratada ANTES del hash;
+ * side effects (notificaciones de etapa/estado) solo para lo que cambió.
+ */
+export async function upsertItemsBulk(
+  env: Env,
+  slug: BoardSlug,
+  items: MondayItem[],
+  opts: BulkUpsertOpts = {},
+): Promise<BulkUpsertResult> {
+  if (items.length === 0) return { changed: [] };
+  const def = BOARDS[slug];
+  const needsPrev = NEEDS_PREV_COLUMNS.has(slug);
+  if (slug === 'oportunidades_sub') await hydrateFichaLineas(env, items);
+
+  const now = new Date().toISOString();
+  const writes = items.map(item => ({ item, write: mirrorUpsertStatement(env, slug, item, now) }));
+
+  let existingHash = opts.existingHash;
+  if (!existingHash) {
+    existingHash = new Map();
+    for (const ids of chunk(writes.map(w => w.write.itemId), BIND_CHUNK)) {
+      const placeholders = ids.map(() => '?').join(',');
+      const rows = await env.DB.prepare(
+        `SELECT item_id, content_hash FROM items WHERE board_id = ? AND item_id IN (${placeholders})`,
+      ).bind(def.id, ...ids).all<{ item_id: number; content_hash: string }>();
+      for (const r of rows.results ?? []) existingHash.set(r.item_id, r.content_hash);
+    }
+  }
+
+  const changed = writes.filter(w => existingHash!.get(w.write.itemId) !== w.write.contentHash);
+  if (changed.length === 0) return { changed: [] };
+
+  // Prev-columns solo para los boards que las necesitan, y solo para items que
+  // YA existían (los nuevos no tienen "antes" — mismo semantics que upsertItem).
+  const prevColumns = new Map<number, string>();
+  if (needsPrev) {
+    const needPrevIds = changed.filter(w => existingHash!.has(w.write.itemId)).map(w => w.write.itemId);
+    for (const ids of chunk(needPrevIds, BIND_CHUNK)) {
+      const placeholders = ids.map(() => '?').join(',');
+      const rows = await env.DB.prepare(
+        `SELECT item_id, columns FROM items WHERE board_id = ? AND item_id IN (${placeholders})`,
+      ).bind(def.id, ...ids).all<{ item_id: number; columns: string }>();
+      for (const r of rows.results ?? []) prevColumns.set(r.item_id, r.columns);
+    }
+  }
+
+  for (const group of chunk(changed, BATCH_CHUNK)) {
+    await env.DB.batch(group.map(w => w.write.stmt));
+  }
+
+  if (needsPrev) {
+    for (const { item, write } of changed) {
+      await emitItemSideEffects(
+        env, slug, write.itemId, item.name, write.parentItemId,
+        prevColumns.get(write.itemId) ?? null, write.columnsJson, write.vendedorIds,
+      );
+    }
+  }
+
+  return { changed: changed.map(w => w.write.itemId) };
+}
+
 /** Insert or update the mirror row. When `skipIfUnchanged`, a matching content_hash
  * short-circuits the write entirely. Single-item path (webhook/refresh/outbox echo) —
- * el reconcile por lote NO pasa por aquí, ver reconcile.ts (evita 1-2 round-trips
- * a D1 por item, que es justo lo que reventaba el límite de subrequests). */
+ * los caminos por lote (reconcile, refetch del delta) van por `upsertItemsBulk`
+ * (evita 1-2 round-trips a D1 por item, que es justo lo que reventaba el
+ * límite de subrequests). */
 export async function upsertItem(
   env: Env,
   slug: BoardSlug,

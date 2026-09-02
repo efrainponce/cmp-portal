@@ -1,14 +1,70 @@
 // Single-item refetch: never trust webhook/UI payloads — always re-pull from Monday.
 import type { Env } from '../env';
-import { fetchItem, fetchItemWithSubitems } from '../lib/monday';
+import { fetchItem, fetchItemWithSubitems, fetchItemsByIds, ITEMS_BY_IDS_MAX } from '../lib/monday';
 import { boardById, BOARDS, type BoardSlug } from '../../shared/boards';
-import { upsertItem, toRawColumns } from './upsert';
+import { upsertItem, upsertItemsBulk, toRawColumns } from './upsert';
 import { hydrateFichaLineas } from '../lib/ficha';
 import { rawHash } from '../lib/canon';
 import { isNativeId } from '../../shared/nativeId';
-import { confirmOutboxEcho } from './echo';
+import { confirmOutboxEcho, confirmOutboxEchoMany } from './echo';
 import { logSync } from './log';
 import { upsertMondayOrder } from '../lib/itemOrder';
+
+export interface RefetchManyResult {
+  /** ids releídos de Monday (existían allá). */
+  refetched: number;
+  /** ids que Monday ya no devolvió: se quitaron del espejo. */
+  deleted: number;
+  /** ids cuyo contenido cambió de verdad (se escribieron). */
+  changed: number;
+}
+
+/**
+ * Relee VARIOS items del mismo board en lotes de 100 por llamada a Monday
+ * (`fetchItemsByIds`) — la pieza que cambia el delta sync de "1 item por
+ * llamada, 0-3 por latido" a "toda la cola en 1-2 llamadas". Por lote:
+ * 1 llamada a Monday + 1 SELECT de hashes + 1 batch de writes + 1 SELECT del
+ * outbox (+ la SELECT de columnas previas y las notificaciones solo en los
+ * boards que las diffean), en vez de ~6-8 subrequests por item.
+ *
+ * Misma semántica que `refetchItem` repetido: contenido igual → no se toca;
+ * id que Monday no devuelve → se borra del espejo (igual que el `null` de
+ * fetchItem); ids nativos se ignoran. Lo que sí cambia: en vez de una fila de
+ * sync_log por item, una por lote — el detalle por item era ruido.
+ */
+export async function refetchItems(env: Env, boardId: number, itemIds: number[]): Promise<RefetchManyResult> {
+  const out: RefetchManyResult = { refetched: 0, deleted: 0, changed: 0 };
+  const def = boardById(boardId);
+  if (!def) {
+    await logSync(env, 'manual', boardId, null, false, 'unknown board_id');
+    return out;
+  }
+  const ids = [...new Set(itemIds.filter(id => !isNativeId(id)))];
+  for (let i = 0; i < ids.length; i += ITEMS_BY_IDS_MAX) {
+    const slice = ids.slice(i, i + ITEMS_BY_IDS_MAX);
+    const items = await fetchItemsByIds(env, slice);
+    const found = new Set(items.map(it => Number(it.id)));
+
+    const { changed } = await upsertItemsBulk(env, def.slug, items);
+    await confirmOutboxEchoMany(env, boardId, items.map(it => ({
+      itemId: Number(it.id), columns: it.column_values, name: it.name,
+    })));
+
+    const missing = slice.filter(id => !found.has(id));
+    if (missing.length) {
+      await env.DB.batch(missing.map(id =>
+        env.DB.prepare(`DELETE FROM items WHERE board_id = ? AND item_id = ?`).bind(boardId, id)));
+    }
+    out.refetched += items.length;
+    out.deleted += missing.length;
+    out.changed += changed.length;
+  }
+  if (ids.length) {
+    await logSync(env, 'manual', boardId, null, true,
+      `refetched batch: ${out.refetched} releídos, ${out.changed} cambiados, ${out.deleted} borrados en Monday`);
+  }
+  return out;
+}
 
 export async function refetchItem(env: Env, boardId: number, itemId: number): Promise<void> {
   // Item nativo (Zona Efrain): D1 ya es la fuente de verdad, no existe en Monday

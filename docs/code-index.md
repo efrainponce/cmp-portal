@@ -139,13 +139,13 @@ y `src/lib/estadoProductoBuckets.ts`.
 
 ### worker/sync/
 
-- [worker/sync/delta.ts](worker/sync/delta.ts) — Delta sync: jala activity_logs recientes de las 8 boards en UNA call (ventana propia por board) y refetchea solo los items que cambiaron. Dispara por el cron de 15 min Y por el LATIDO a demanda que cuelga del poll de la lista (`deltaSyncIfStale`, lease en D1 → 1 corrida por minuto de uso real, cero cuando nadie usa el portal). Checkpoint por board + prioridad al pipeline para que Productos no atrase a Oportunidades; ventana adaptativa contra el tope de 200 de activity_logs. Complementa al reconcile de 12h. Exports: deltaSync, deltaSyncIfStale, ordenarCola, calcularCheckpoints.
-- [worker/sync/echo.ts](worker/sync/echo.ts) — Outbox echo: ¿estado fresco de Monday coincide con lo que escribimos? Exports: confirmOutboxEcho.
+- [worker/sync/delta.ts](worker/sync/delta.ts) — Delta sync: jala activity_logs recientes de las 8 boards en UNA call (ventana propia por board) y relee EN LOTE solo los items que cambiaron (`refetchItems`, hasta 100 por llamada, un lote por board en paralelo). Dispara por el cron de 15 min Y por el LATIDO a demanda que cuelga de cualquier GET autenticado (`deltaSyncIfStale` desde el middleware de worker/index.ts, lease en D1 → 1 corrida cada 30 s de uso real, cero cuando nadie usa el portal; pista local del lease por isolate para no pagar D1 en cada poll). Checkpoint por board + prioridad al pipeline; ventana adaptativa contra el tope de 200 de activity_logs; un lote fallido queda pendiente, no visto. Complementa al reconcile de 12h. Exports: deltaSync, deltaSyncIfStale, ordenarCola, calcularCheckpoints, agruparPorBoard.
+- [worker/sync/echo.ts](worker/sync/echo.ts) — Outbox echo: ¿estado fresco de Monday coincide con lo que escribimos? `confirmOutboxEchoMany` = una consulta al outbox para todos los items de un lote. Exports: FreshItem, confirmOutboxEchoMany, confirmOutboxEcho.
 - [worker/sync/index.ts](worker/sync/index.ts) — Superficie pública del módulo A (ver docs/dev-contracts.md). Exports: (exports re-publicados).
 - [worker/sync/log.ts](worker/sync/log.ts) — Tiny sync_log writer compartido por helpers de sync. Exports: logSync.
-- [worker/sync/reconcile.ts](worker/sync/reconcile.ts) — Reconciliación full-board y full-mirror (cron + manual). Exports: reconcileBoard, reconcileAll.
-- [worker/sync/refetch.ts](worker/sync/refetch.ts) — Single-item refetch: nunca confiar en payloads, siempre re-pullear de Monday. Exports: refetchItem, refetchItemTree.
-- [worker/sync/upsert.ts](worker/sync/upsert.ts) — Upsert un item de Monday en el mirror D1. Exports: UpsertResult, UpsertOpts, upsertItem.
+- [worker/sync/reconcile.ts](worker/sync/reconcile.ts) — Reconciliación full-board y full-mirror (cron + manual), página por página vía `upsertItemsBulk` (mismo upsert que el refetch en lote, incluidos los totales t_* de la línea). Exports: reconcileBoard, reconcileAll.
+- [worker/sync/refetch.ts](worker/sync/refetch.ts) — Refetch de items: nunca confiar en payloads, siempre re-pullear de Monday. `refetchItems` relee VARIOS del mismo board en lotes de 100 por llamada (la pieza que hizo útil el delta sync); `refetchItemTree` trae item + subitems en una llamada. Exports: refetchItem, refetchItemTree, refetchItems, RefetchManyResult.
+- [worker/sync/upsert.ts](worker/sync/upsert.ts) — Upsert de items de Monday en el mirror D1: `upsertItem` (uno, webhook/refresh) y `upsertItemsBulk` (muchos del mismo board con un puñado de subrequests — hashes en una SELECT, writes por `DB.batch()`, side effects solo para lo que cambió; lo usan reconcile y refetchItems). Exports: extractVendedorIds, UpsertResult, UpsertOpts, toRawColumns, NEEDS_PREV_COLUMNS, emitItemSideEffects, MirrorUpsert, mirrorUpsertStatement, BulkUpsertOpts, BulkUpsertResult, upsertItemsBulk, upsertItem.
 - [worker/sync/webhook.ts](worker/sync/webhook.ts) — POST /api/sync/webhook/:token — intake de webhooks Monday. Exports: syncRoutes.
 
 ### worker/wa/
@@ -229,6 +229,7 @@ y `src/lib/estadoProductoBuckets.ts`.
 - [src/components/core/Badges.tsx](src/components/core/Badges.tsx) — Badge de status. Exports: StatusBadge.
 - [src/components/core/Button.tsx](src/components/core/Button.tsx) — Botón con variantes. Exports: Button.
 - [src/components/core/ConfirmButton.tsx](src/components/core/ConfirmButton.tsx) — Botón confirmación 2-paso. Exports: ConfirmButton.
+- [src/components/core/ActionMenu.tsx](src/components/core/ActionMenu.tsx) — Menú "⋯" de acciones secundarias (header del drawer, "Generar OC ▾" por proveedor): cada entrada puede pedir confirmación en dos pasos dentro del menú, como ConfirmButton; se ancla al lado que cabe (móvil). Exports: ActionMenuItem, ActionMenu.
 - [src/components/core/Modal.tsx](src/components/core/Modal.tsx) — Diálogo centrado (no fullscreen como OpportunityDrawer). Exports: Modal.
 - [src/components/core/PdfCanvasPreview.tsx](src/components/core/PdfCanvasPreview.tsx) — Renderiza TODAS las páginas de un PDF a canvas con pdfjs, una debajo de otra. Exports: warmPdfWorker, PdfCanvasPreview.
 - [src/components/core/FilePreviewModal.tsx](src/components/core/FilePreviewModal.tsx) — Visor de archivos en modal: imágenes inline y PDFs vía PdfCanvasPreview (lazy), con descarga para lo que el navegador no dibuja. Exports: FilePreviewModal.
