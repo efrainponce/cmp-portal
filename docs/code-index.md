@@ -185,7 +185,7 @@ y `src/lib/estadoProductoBuckets.ts`.
 
 ### src/lib/
 
-- [src/lib/api.ts](src/lib/api.ts) — ETag-aware polling hooks sobre apiClient; fallback a mock offline. `usePoll` devuelve además `refrescar()`/`refrescando` — el botón "actualizar" de la lista, que pide `?fresh=1` y obliga al worker a leer Monday antes de contestar. Exports: (re-exports), PollStatus, PollResult, queryLista, SOLO_NOMBRE.
+- [src/lib/api.ts](src/lib/api.ts) — ETag-aware polling hooks sobre apiClient; fallback a mock offline. `usePoll` re-polea cada 5 s (pickers de catálogo cada 60 s) y desde 2026-09-02 pide la lista INCREMENTAL (`?since=` marca de agua + `?tv=` versión de totales): `fusionarIncremental` arma la lista final conservando la identidad de los renglones que no cambiaron (memo de Row intacto). `refrescar()`/`refrescando` = botón "actualizar" (`?fresh=1`, obliga al worker a leer Monday antes de contestar). Exports: (re-exports), PollStatus, PollResult, queryLista, marcaDeAgua, fusionarIncremental, SOLO_NOMBRE.
 - [src/lib/apiClient.ts](src/lib/apiClient.ts) — Cliente tipado (no-hook) para worker API (ver docs/dev-contracts.md). Exports: BoardMeta, AccessError, logout.
 - [src/lib/telemetry.ts](src/lib/telemetry.ts) — Buffer en memoria de eventos de interacción; sale en lote (~5s / 20 eventos / pagehide) con sendBeacon. Nunca bloquea la UI ni propaga errores. Los GET van muestreados al 2% (la lista poletea cada 5s). Exports: uxNav, uxEdit, uxClick, uxAck, uxError, uxAction, uxClickBusy, uxApiLatency.
 - [src/lib/costeoCalc.ts](src/lib/costeoCalc.ts) — Fórmulas de costeo para preview local (1:1 con Monday). Exports: COL, cellNumber, CostChain, computeCostChain.

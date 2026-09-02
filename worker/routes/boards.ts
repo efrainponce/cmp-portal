@@ -32,7 +32,7 @@ import { listActivity, actorNameResolver } from '../lib/activityLog';
 import { cachedFetchUsers } from '../lib/rosterCache';
 import { getBoardAccess } from '../lib/boardAccess';
 import { isZonaPrivadaAdminPermitido } from '../lib/zonas';
-import { refetchItem, refetchItemTree, deltaSyncIfStale } from '../sync';
+import { refetchItem, refetchItemTree, deltaSyncIfStale, mirrorVerificadoAt } from '../sync';
 import { jsonStatus, rejectUnknownQuery, contentDisposition } from '../lib/http';
 import { nombreDescarga, extensionDe } from '../../shared/nombreArchivo';
 import { totalesPorOportunidad, totalesPorProyecto, totalesVersion } from '../lib/totales';
@@ -99,6 +99,10 @@ async function autoVersionLineaCosteada(
 // + relectura). Corta, porque la garantía que pide el negocio es que al ABRIR
 // una oportunidad se vea exactamente lo que Monday tiene (Efraín, 2026-07-30).
 const FRESH_WINDOW_MS = 3_000;
+// Edad máxima del último latido completo para dar el espejo por verificado
+// al abrir (ver GET /items/:id). Igual a la cadencia del latido: si corrió
+// hace menos que eso, corrió lo más reciente que puede haber corrido.
+const FRESCO_POR_LATIDO_MS = 30_000;
 
 // El botón "Actualizar" de la lista puede apurar el latido del delta sync
 // hasta cada 20 s (el de fondo, LATIDO_MS, vive en worker/index.ts: cuelga de
@@ -241,7 +245,7 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
     // lista devuelve el board completo, y quien la usa para decidir sobre qué
     // items actuar (borrar, por ejemplo) se llevaría todo. Ver el porqué en
     // worker/lib/http.ts.
-    const queryMala = rejectUnknownQuery(c.req.url, ['q', 'cols', 'totales', 'fresh']);
+    const queryMala = rejectUnknownQuery(c.req.url, ['q', 'cols', 'totales', 'fresh', 'since', 'tv']);
     if (queryMala) return queryMala;
     const viewer = c.get('viewer');
     const q = c.req.query('q');
@@ -291,7 +295,8 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
       await deltaSyncIfStale(c.env, LATIDO_FORZADO_MS);
     }
 
-    const variante = conTotales ? `${colsParam ?? ''}|t${await totalesVersion(c.env)}` : colsParam;
+    const tvServer = conTotales ? await totalesVersion(c.env) : null;
+    const variante = conTotales ? `${colsParam ?? ''}|t${tvServer}` : colsParam;
     const etag = await etagFor(c.env, slug, viewer, variante);
     c.header('ETag', etag);
     if (c.req.header('If-None-Match') === etag) return c.body(null, 304);
@@ -300,16 +305,54 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
       listItems(c.env, slug, viewer, q),
       pendingItemIds(c.env, BOARDS[slug].id),
     ]);
-    const items = rows.map(r => toItemDTO(r, slug, viewer.role, pending.has(r.item_id), only, viewer.email));
-    const body: ListResponse = { board: slug, items, total: items.length, etag };
+    // ?since=<synced_at> — respuesta INCREMENTAL (2026-09-02): el cliente ya
+    // tiene la lista y solo quiere lo que cambió desde su marca. Medido antes:
+    // cada vez que CUALQUIER item del board se sincronizaba, cada usuario
+    // re-bajaba los 86 KB (gz) de la lista y React re-pintaba los 628
+    // renglones (285 ms de hilo trabado con CPU 4×), ~45 veces al día. Aquí
+    // el costo de D1 es el mismo (se leen las mismas filas: el filtrado por
+    // renglón sigue siendo el de dal.ts); lo que se ahorra es serializar y
+    // transportar lo que no cambió. `>=` y no `>`: varias filas comparten el
+    // `synced_at` de un mismo batch, y repetir una es gratis. Los totales
+    // viajan completos (una línea BORRADA cambia los del padre sin mover
+    // ningún synced_at); el cliente los fusiona conservando identidad.
+    const since = c.req.query('since');
+    const incremental = since !== undefined && Number.isFinite(Date.parse(since));
+    const enviar = incremental ? rows.filter(r => r.synced_at >= since) : rows;
+    const items = enviar.map(r => toItemDTO(r, slug, viewer.role, pending.has(r.item_id), only, viewer.email));
+    const body: ListResponse = { board: slug, items, total: rows.length, etag };
+    if (incremental) {
+      body.incremental = {
+        since,
+        ids: rows.map(r => String(r.item_id)),
+        pendingIds: rows.filter(r => pending.has(r.item_id)).map(r => String(r.item_id)),
+      };
+    }
     // Después del 304: el agregado solo corre cuando de verdad hay respuesta
     // nueva que mandar.
     // Solo de las oportunidades que este viewer YA recibió: `rows` viene
     // scopeado por dal.ts y el agregado no repite ese filtro por su cuenta.
     if (conTotales) {
-      body.totales = slug === 'proyectos'
-        ? await totalesPorProyecto(c.env, viewer, rows)
-        : await totalesPorOportunidad(c.env, viewer.role, new Set(rows.map(r => r.item_id)), viewer.email);
+      body.totalesVersion = tvServer!;
+      // Incremental: los totales son la mitad del peso de la lista, así que
+      // también se recortan. `?tv=` es la versión que el cliente ya tiene
+      // (conteo.max_synced_at de las líneas): igual → no viajan; mismo conteo
+      // pero otra marca → solo los de las oportunidades con líneas movidas;
+      // conteo distinto (se borró una línea, que no mueve ningún synced_at) →
+      // completos. Proyectos siempre completos: son pocos y van por otra vía.
+      const tvCliente = c.req.query('tv');
+      const modo: NonNullable<NonNullable<ListResponse['incremental']>['totales']> =
+        !incremental || slug === 'proyectos' || !tvCliente ? 'completo'
+          : tvCliente === tvServer ? 'igual'
+          : tvCliente.split('.')[0] === tvServer!.split('.')[0] ? 'parcial'
+          : 'completo';
+      if (modo !== 'igual') {
+        body.totales = slug === 'proyectos'
+          ? await totalesPorProyecto(c.env, viewer, rows)
+          : await totalesPorOportunidad(c.env, viewer.role, new Set(rows.map(r => r.item_id)), viewer.email,
+              modo === 'parcial' ? since : undefined);
+      }
+      if (body.incremental) body.incremental.totales = modo;
     }
     return c.json(body);
   });
@@ -329,15 +372,26 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
     // reconcile cada 6h — abrir una oportunidad recién costeada mostraba costos
     // viejos o en 0 (OPP-0795, Efraín 2026-07-30). El scoping por viewer se
     // aplica ANTES: nadie dispara refetches de items que no puede ver.
+    const childSlug = childSlugOf(slug);
     let verificadoAt: string | null = null;
     if (c.req.query('fresh')) {
       const known = await getItem(c.env, slug, itemId, viewer);
-      if (known && await pullFromMonday(c.env, slug, itemId, known.synced_at)) {
-        verificadoAt = new Date().toISOString();
+      if (known) {
+        // Si el latido del delta sync (worker/index.ts, cada 30 s) acaba de
+        // dejar este board —y el de sus líneas— sin pendientes, el espejo YA
+        // es Monday: releer el item costaba 1.5-7 s de "verificando con
+        // Monday…" y una llamada por apertura para no cambiar nada. La
+        // garantía de Efraín (2026-07-30: "al abrir se ve exactamente lo que
+        // Monday tiene") se cumple igual, ahora por el latido; con backlog o
+        // sin latido reciente se relee como siempre, y el botón "Actualizar"
+        // del drawer sigue forzando la relectura.
+        const boardsDelItem = [BOARDS[slug].id, ...(childSlug ? [BOARDS[childSlug].id] : [])];
+        const verificado = isNativeId(itemId) ? null : await mirrorVerificadoAt(c.env, boardsDelItem, FRESCO_POR_LATIDO_MS);
+        if (verificado) verificadoAt = verificado;
+        else if (await pullFromMonday(c.env, slug, itemId, known.synced_at)) verificadoAt = new Date().toISOString();
       }
     }
 
-    const childSlug = childSlugOf(slug);
     const [row, pending, children, childPending] = await Promise.all([
       getItem(c.env, slug, itemId, viewer),
       pendingItemIds(c.env, BOARDS[slug].id),

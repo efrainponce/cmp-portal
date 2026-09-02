@@ -57,6 +57,11 @@ export async function totalesPorOportunidad(
    * hereda de `canRead` en vez de repetirse aquí — igual que el de rol. Sin
    * correo, esas tres cifras no viajan. */
   email?: string | null,
+  /** Solo las oportunidades con alguna línea sincronizada desde esta marca
+   * (poll incremental, worker/routes/boards.ts). Una línea BORRADA no mueve
+   * ningún synced_at — ese caso lo detecta la ruta por el conteo de líneas
+   * (`totalesVersion`) y pide el mapa completo. */
+  since?: string,
 ): Promise<Record<string, TotalesDTO>> {
   const puede = (colId: string) => canRead('oportunidades_sub', colId, role, email);
   // Sin una sola métrica legible (almacén) no hay nada que mandar ni que consultar.
@@ -72,8 +77,8 @@ export async function totalesPorOportunidad(
             COUNT(*)                       AS lineas
        FROM items
       WHERE board_id = ? AND parent_item_id IS NOT NULL
-      GROUP BY parent_item_id`,
-  ).bind(BOARDS.oportunidades_sub.id).all<Fila>();
+      GROUP BY parent_item_id${since ? ' HAVING MAX(synced_at) >= ?' : ''}`,
+  ).bind(BOARDS.oportunidades_sub.id, ...(since ? [since] : [])).all<Fila>();
 
   const out: Record<string, TotalesDTO> = {};
   for (const f of res.results ?? []) {

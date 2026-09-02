@@ -269,7 +269,8 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, openTab, onTabCha
       .then(r => { if (cancelled) return; setCosteoReady(r); ready = r.ok; })
       .catch(() => { if (!cancelled) { setCosteoReady({ ok: true }); ready = true; } }); // el server re-valida al enviar
     check();
-    const interval = setInterval(() => { if (!ready) check(); }, 8000);
+    // Pestaña oculta: no gastes requests (mismo criterio que usePoll).
+    const interval = setInterval(() => { if (!ready && !document.hidden) check(); }, 8000);
     return () => { cancelled = true; clearInterval(interval); };
   }, [id, stage, item, boardKey]);
 
@@ -286,7 +287,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, openTab, onTabCha
       .then(r => { if (cancelled) return; setValidacionReady(r); ready = r.ok; })
       .catch(() => { if (!cancelled) { setValidacionReady({ ok: true }); ready = true; } }); // el server re-valida al enviar
     check();
-    const interval = setInterval(() => { if (!ready) check(); }, 8000);
+    const interval = setInterval(() => { if (!ready && !document.hidden) check(); }, 8000);
     return () => { cancelled = true; clearInterval(interval); };
   }, [id, stage, item, boardKey]);
 

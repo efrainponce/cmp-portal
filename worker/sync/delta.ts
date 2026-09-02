@@ -122,6 +122,33 @@ async function writeStateMany(env: Env, pairs: Array<[string, string]>): Promise
   ).bind(key, value)));
 }
 
+/**
+ * ¿El espejo de estos boards fue verificado contra Monday hace menos de
+ * `maxAgeMs`? Devuelve el instante de esa verificación (el más viejo de los
+ * boards pedidos) o null. Lo usa `?fresh=1` al abrir una oportunidad (worker/
+ * routes/boards.ts): si el latido acaba de correr y dejó a ese board sin
+ * pendientes, el espejo YA es lo que Monday tiene y la relectura de un item
+ * (1.5-7 s de "verificando con Monday…" + una llamada) no compra nada.
+ *
+ * El checkpoint sirve como prueba porque `calcularCheckpoints` solo lo
+ * avanza hasta `to` cuando TODO lo tocado en la ventana se releyó (sin
+ * pendientes ni saturación); con backlog se queda atrás y esto devuelve null
+ * — o sea, ante la duda se relee, como antes.
+ */
+export async function mirrorVerificadoAt(env: Env, boardIds: number[], maxAgeMs: number): Promise<string | null> {
+  if (boardIds.length === 0) return null;
+  await ensureStateTable(env);
+  const state = await readState(env, boardIds.map(id => STATE_PREFIX + id));
+  let oldest: string | null = null;
+  for (const id of boardIds) {
+    const at = state.get(STATE_PREFIX + id);
+    if (!at) return null;
+    if (Date.now() - Date.parse(at) > maxAgeMs) return null;
+    if (!oldest || at < oldest) oldest = at;
+  }
+  return oldest;
+}
+
 /** Orden de atención de la cola: pipeline primero, catálogos después,
  * cronológico dentro de cada grupo. Puro y con test (delta.test.ts) porque de
  * esto depende que un board ruidoso no atrase al que sí se está mirando. */

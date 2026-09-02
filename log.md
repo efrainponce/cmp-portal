@@ -2,6 +2,47 @@
 
 ## 2026-09-02
 
+- **Segunda ronda de optimización** (Efraín: "lanza todos o los que me
+  recomiendes"; de las 5 opciones, 1-2-3 hechas, 4 medida y descartada, 5 no
+  porque quita una red de seguridad por casi nada).
+  - **Lista incremental (`?since=` + `?tv=`)**. Medido antes: cada vez que
+    CUALQUIER item del board se sincronizaba, cada usuario re-bajaba los
+    **87 KB** (gz) de la lista y React re-pintaba los 628 renglones (una tarea
+    larga de ~285 ms con CPU 4×), ~45 veces al día. Ahora el poll manda su
+    marca de agua (`syncedAt` más reciente) y la versión de totales que ya
+    tiene; el worker contesta SOLO los renglones sincronizados desde ahí +
+    la lista completa de ids en orden (`ListResponse.incremental`) y los
+    totales 'igual' / 'parcial' (solo oportunidades con líneas movidas) /
+    'completo' (se borró una línea: el conteo cambia y no mueve ningún
+    synced_at). El cliente (`fusionarIncremental`, `src/lib/api.ts`) arma la
+    lista final conservando la IDENTIDAD de los objetos que no cambiaron, así
+    el `memo` de Row de verdad corta el re-render. Medido con Playwright y
+    CPU 4×: un cambio en una oportunidad pasó de **87 KB → 4.2 KB** y de una
+    tarea larga de ~285 ms a **0 tareas largas**; un cambio en una línea →
+    10 KB crudos con 1 solo totales. El costo en D1 es el mismo (se leen las
+    mismas filas con el mismo scoping de dal.ts): se ahorra transporte y
+    pintura, no consulta. Si el server nombra un id que el cliente no tiene
+    (cambió el alcance del viewer) se pide la lista completa. Tests en
+    `src/lib/apiIncremental.test.ts`. El primer request nunca lleva `since`,
+    así que sigue calcando la URL de la precarga de index.html.
+  - **Relectura al abrir (`?fresh=1`) solo cuando el latido no la hizo ya**:
+    si el checkpoint del delta sync del board (y del de sus líneas) es de hace
+    < 30 s, el espejo YA es Monday y el drawer se ahorra los 1.5-7 s de
+    "verificando con Monday…" y una llamada por apertura (`mirrorVerificadoAt`
+    en delta.ts). El checkpoint sirve de prueba porque solo avanza a `to`
+    cuando no quedó nada pendiente; con backlog se relee como siempre. Ojo:
+    esto revisa la decisión del 2026-08-13 de releer SIEMPRE — la premisa
+    cambió con el latido de 30 s y Efraín aprobó la ronda completa. El botón
+    "Actualizar desde Monday" del drawer sigue forzando. Items nativos no
+    entran (no hay nada que releer).
+  - **Polls de fondo más baratos**: `costeo-check`/`validacion-check` (cada
+    8 s en el drawer) ya no corren con la pestaña oculta; los pickers de
+    catálogo (`usePoll(..., SOLO_NOMBRE)`: proveedores, instituciones,
+    contactos, productos) poletean cada 60 s en vez de 5 — el detalle de una
+    línea montaba uno por línea expandida.
+  - **Inicio (opción 4), medido y descartado**: 31 ms para compras y 150 ms
+    para admin en local con el espejo completo. No hay nada que ganar ahí.
+
 - **Menos botones, mismas funciones** (Efraín: "tenemos muchísimos botones";
   eligió "header + ocultar grises" entre las tres opciones). Inventario
   previo: el header del drawer llegaba a **7 botones en una fila (8 con un

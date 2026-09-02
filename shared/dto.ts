@@ -54,6 +54,26 @@ export interface ListResponse {
    * (por PROYECTO, vía la Oportunidad ligada, solo admin — ver
    * worker/lib/totales.ts). Ausente en el resto de los boards. */
   totales?: Record<string, TotalesDTO>;
+  /** Respuesta INCREMENTAL (`?since=<marca>`, 2026-09-02): `items` trae SOLO los
+   * renglones cuyo `syncedAt` es >= la marca; `ids` es la lista completa y en
+   * orden de lo que el viewer ve (con eso el cliente arma la lista final,
+   * detecta borrados y conserva la identidad de los objetos que no cambiaron
+   * — el memo por renglón deja de re-pintar 628 filas por un cambio en una) y
+   * `pendingIds` los que tienen writes en vuelo (ese flag cambia sin mover
+   * `syncedAt`). Ausente = respuesta completa de siempre. */
+  incremental?: {
+    since: string; ids: string[]; pendingIds: string[];
+    /** Qué traen los `totales` de esta respuesta: 'igual' = no cambiaron
+     * desde la versión que mandó el cliente (`?tv=`), quédate con los tuyos;
+     * 'parcial' = solo los de las oportunidades con líneas sincronizadas
+     * desde la marca, fusiónalos; 'completo' = reemplázalos (una línea se
+     * borró, o el cliente no mandó versión). */
+    totales?: 'igual' | 'parcial' | 'completo';
+  };
+  /** Versión de los totales (conteo + último synced_at del board de líneas):
+   * el cliente la devuelve en `?tv=` para que el server sepa si puede omitir
+   * o recortar `totales`. Solo cuando se piden totales. */
+  totalesVersion?: string;
 }
 
 export interface MeDTO {
