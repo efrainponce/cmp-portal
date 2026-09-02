@@ -7,7 +7,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/core/Button';
 import { ConfirmButton } from '../../components/core/ConfirmButton';
-import { IconBack, IconEdit, IconLink } from '../../components/icons';
+import { IconBack, IconEdit } from '../../components/icons';
+import { ActionMenu } from '../../components/core/ActionMenu';
 import { SyncIndicator } from '../../components/board/SyncIndicator';
 import { StatusBadge } from '../../components/core/Badges';
 import { EtapaAdminSelect } from './EtapaAdminSelect';
@@ -705,18 +706,8 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, openTab, onTabCha
         <div onClick={onBack} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, cursor: 'pointer', color: 'var(--ink-secondary)', font: 'var(--text-label-strong)' }}>
           <IconBack /> {backLabel}
         </div>
-        {canDuplicate && !ajena && (
-          <div
-            onClick={duplicating ? undefined : () => setShowDuplicar(true)}
-            title="Crea una oportunidad nueva con los mismos productos vigentes, embellecimientos y costeo (sin cotizaciones ni documentos)"
-            style={{
-              font: 'var(--text-label-strong)', color: 'var(--accent)',
-              cursor: duplicating ? 'default' : 'pointer', opacity: duplicating ? 0.6 : 1,
-            }}
-          >
-            {duplicating ? 'Duplicando…' : 'Duplicar'}
-          </div>
-        )}
+        {/* "Duplicar" vivía aquí como link; desde 2026-09-02 está en el menú ⋯
+            del header con el resto de acciones secundarias. */}
       </div>
 
       {/* En cel el header se apila: meta arriba y botones de acción abajo a lo
@@ -836,52 +827,51 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, openTab, onTabCha
               onConfirm={onGenerarCotizacion}
             />
           )}
-          {stage && !['1', '2', '5'].includes(stage) && !ajena && (
-            <>
-              {stage !== '4' && (
-                <ConfirmButton
-                  label="Perder"
-                  confirmLabel="¿Marcar como perdida?"
-                  busyLabel="Marcando…"
-                  onConfirm={onPerderOportunidad}
-                  style={{ fontSize: '11px', padding: '6px 11px' }}
-                />
-              )}
-              {/* Desde "Costeo Confirmado", no desde "Cotización": Monday ordena
-                  Cotización DESPUÉS de Costeo Confirmado, así que el umbral en
-                  '6' dejaba sin botón "Ganar" justo a las oportunidades ya
-                  costeadas y confirmadas (Efraín, 2026-08-14). */}
-              {stageAtOrAfter(stage, '9') && (
-                <ConfirmButton
-                  label="Ganar"
-                  confirmLabel="¿Marcar como ganada?"
-                  busyLabel="Marcando…"
-                  onConfirm={onGanarOportunidad}
-                  style={{ fontSize: '11px', padding: '6px 11px' }}
-                />
-              )}
-              <ConfirmButton
-                label="Archivar"
-                confirmLabel="¿Archivar esta oportunidad?"
-                busyLabel="Archivando…"
-                onConfirm={onCancelarOportunidad}
-                style={{ fontSize: '11px', padding: '6px 11px' }}
-              />
-            </>
-          )}
-          {stage && ['1', '2', '5'].includes(stage) && !ajena && (
+          {/* Desde "Costeo Confirmado", no desde "Cotización": Monday ordena
+              Cotización DESPUÉS de Costeo Confirmado, así que el umbral en
+              '6' dejaba sin botón "Ganar" justo a las oportunidades ya
+              costeadas y confirmadas (Efraín, 2026-08-14). Se queda a la
+              vista: es el paso de flujo de esas etapas. */}
+          {stage && !['1', '2', '5'].includes(stage) && !ajena && stageAtOrAfter(stage, '9') && (
             <ConfirmButton
-              label="Reabrir"
-              confirmLabel="¿Reabrir esta oportunidad?"
-              busyLabel="Reabriendo…"
-              onConfirm={onReabrirOportunidad}
+              label="Ganar"
+              confirmLabel="¿Marcar como ganada?"
+              busyLabel="Marcando…"
+              onConfirm={onGanarOportunidad}
               style={{ fontSize: '11px', padding: '6px 11px' }}
             />
           )}
-          <Button variant="secondary" onClick={onCopyLink}>
-            <IconLink /> {linkCopied ? 'Copiado' : 'Copiar link'}
-          </Button>
-          <Button variant="secondary" onClick={onRefresh}>{refreshing ? 'Actualizando…' : 'Actualizar'}</Button>
+          {/* Lo que no es el paso de flujo de la etapa va en el menú ⋯ (2026-09-02):
+              Duplicar, Copiar link, Actualizar y Perder/Archivar/Reabrir. Mismas
+              condiciones y misma confirmación en dos pasos que tenían como
+              botones sueltos — el header llegaba a 7-8 botones en una fila. */}
+          {linkCopied && <span style={{ alignSelf: 'center', font: 'var(--text-caption)', color: 'var(--status-ganada)' }}>Link copiado</span>}
+          <ActionMenu
+            items={[
+              ...(canDuplicate && !ajena ? [{
+                key: 'duplicar', label: 'Duplicar oportunidad',
+                title: 'Crea una oportunidad nueva con los mismos productos vigentes, embellecimientos y costeo (sin cotizaciones ni documentos)',
+                disabled: duplicating,
+                onSelect: () => setShowDuplicar(true),
+              }] : []),
+              { key: 'link', label: 'Copiar link', onSelect: onCopyLink },
+              { key: 'refresh', label: refreshing ? 'Actualizando…' : 'Actualizar desde Monday', disabled: refreshing, busyLabel: 'Actualizando…', onSelect: onRefresh },
+              ...(stage && !['1', '2', '5'].includes(stage) && !ajena ? [
+                ...(stage !== '4' ? [{
+                  key: 'perder', label: 'Marcar como perdida', danger: true,
+                  confirmLabel: '¿Marcar como perdida?', busyLabel: 'Marcando…', onSelect: onPerderOportunidad,
+                }] : []),
+                {
+                  key: 'archivar', label: 'Archivar', danger: true,
+                  confirmLabel: '¿Archivar esta oportunidad?', busyLabel: 'Archivando…', onSelect: onCancelarOportunidad,
+                },
+              ] : []),
+              ...(stage && ['1', '2', '5'].includes(stage) && !ajena ? [{
+                key: 'reabrir', label: 'Reabrir oportunidad',
+                confirmLabel: '¿Reabrir esta oportunidad?', busyLabel: 'Reabriendo…', onSelect: onReabrirOportunidad,
+              }] : []),
+            ]}
+          />
         </div>
       </div>
 

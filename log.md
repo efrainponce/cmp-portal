@@ -2,6 +2,42 @@
 
 ## 2026-09-02
 
+- **Menos botones, mismas funciones** (Efraín: "tenemos muchísimos botones";
+  eligió "header + ocultar grises" entre las tres opciones). Inventario
+  previo: el header del drawer llegaba a **7 botones en una fila (8 con un
+  ConfirmButton armado)**; cada tarjeta de proveedor traía 3 "Generar OC…"
+  seguidos; y varios botones se pintaban siempre en gris para el rol que los
+  veía. Cero funciones quitadas — cada acción sigue en el mismo endpoint y
+  con la misma confirmación en dos pasos:
+  - `src/components/core/ActionMenu.tsx` (nuevo): menú "⋯" con entradas que
+    pueden pedir confirmación DENTRO del menú (¿…? Sí / No, se desarma solo a
+    los 6 s como ConfirmButton); el disparador muestra el `busyLabel`
+    mientras corre; se ancla al lado que cabe (en cel el header se apila y el
+    botón queda a la izquierda — anclado a la derecha se salía de pantalla).
+  - Header del drawer de Oportunidad: a la vista quedan SOLO los pasos de
+    flujo de la etapa (Mandar a costeo / Mandar a Validación / Validar costeo
+    / Generar cotización / Ganar). Al ⋯ se van Duplicar (antes era un link
+    arriba a la derecha), Copiar link, Actualizar desde Monday, Marcar como
+    perdida, Archivar y Reabrir — mismas condiciones por etapa y por `ajena`.
+    Verificado con capturas: etapa 4 = "Mandar a costeo" + ⋯ (antes 4);
+    etapa 15 en Costeo = "Mandar a Validación" + ⋯ (antes 5); menú en cel sin
+    recorte; confirmar/cancelar/Escape sin disparar ninguna mutación.
+  - Tarjeta de proveedor (Órdenes de compra): "Ver OC" + un solo
+    **"Generar OC ▾"** con las 3 variantes (portal / con imágenes / Monday con
+    firmas). La tarjeta "Sin proveedor asignado" ya no pinta tres botones que
+    nacían deshabilitados el 100 % del tiempo: un renglón dice qué falta.
+  - `ProyectoActionBar`: "Validar tallas (vendedor)" solo se pinta a
+    vendedor/admin e "Importar tallas a Monday (compras)" y "Generar todas las
+    OC pendientes" solo a compras/admin — antes cada rol veía el del otro en
+    gris con tooltip "Solo el vendedor…". Lo que depende del ESTADO del
+    proyecto (falta el archivo de tallas, falta la OC del cliente) sigue
+    saliendo deshabilitado con su motivo, porque ahí sí le dice a quien puede
+    usarlo qué le falta. El gate real sigue en el server.
+  - Documentación: fuera los 3 dropzones "(próximamente)" que no hacían nada.
+  - Sin tocar a propósito: los iconos por fila de la cotización (✎ es acción
+    frecuente; un menú le agrega un clic) y los chips ".1 .2" de ajustes (ya
+    se ven distintos a los chips clicables).
+
 - **Sync con Monday: refetch en LOTE, latido desde cualquier GET y cada 30 s**
   (Efraín: "la sync con Monday es súper importante, es la primera falla que
   los de compras me dicen, sobre todo oportunidades y productos"). Medido en

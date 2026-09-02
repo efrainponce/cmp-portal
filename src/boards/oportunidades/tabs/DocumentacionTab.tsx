@@ -78,15 +78,15 @@ function toR2Files(files: DocFile[], oppId: string, categoria: string): DocFile[
 export function DocumentacionTab({ item, proyecto }: { item: ItemDetailDTO; proyecto?: ProyectoState }) {
   return (
     <div style={{ padding: '24px 32px 40px', maxWidth: 920, width: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 20 }}>
-      <DocSection title="Solicitudes de costeo" signable files={toR2Files(parseFiles(item.cols[SOLICITUDES_COL]?.text), item.id, 'solicitud-costeo')} uploadLabel="Subir solicitud de costeo" />
+      <DocSection title="Solicitudes de costeo" signable files={toR2Files(parseFiles(item.cols[SOLICITUDES_COL]?.text), item.id, 'solicitud-costeo')} />
 
       <div>
         <SectionTitle>Cotizaciones</SectionTitle>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 10 }}>
           {/* Las generadas se pueden firmar electrónicamente aquí mismo: el PDF
               se sella (SHA-256) y la firma queda en su constancia. */}
-          <DocSection title={null} accentColor="var(--status-esperando)" label="No firmadas por vendedor" signable files={toR2Files(parseFiles(item.cols[NO_FIRMADAS_COL]?.text), item.id, 'cotizacion-no-firmada')} uploadLabel="Subir cotización" />
-          <DocSection title={null} accentColor="var(--status-ganada)" label="Firmadas por vendedor" files={toR2Files(parseFiles(item.cols[FIRMADAS_COL]?.text), item.id, 'cotizacion-firmada')} uploadLabel="Subir cotización firmada" />
+          <DocSection title={null} accentColor="var(--status-esperando)" label="No firmadas por vendedor" signable files={toR2Files(parseFiles(item.cols[NO_FIRMADAS_COL]?.text), item.id, 'cotizacion-no-firmada')} />
+          <DocSection title={null} accentColor="var(--status-ganada)" label="Firmadas por vendedor" files={toR2Files(parseFiles(item.cols[FIRMADAS_COL]?.text), item.id, 'cotizacion-firmada')} />
         </div>
       </div>
 
@@ -119,9 +119,9 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
   return <div style={{ font: 'var(--text-small-strong)', color: 'var(--ink)' }}>{children}</div>;
 }
 
-function DocSection({ title, subtitle, label, accentColor, files, uploadLabel, signable }: {
+function DocSection({ title, subtitle, label, accentColor, files, signable }: {
   title: string | null; subtitle?: string; label?: string; accentColor?: string;
-  files: DocFile[]; uploadLabel: string; signable?: boolean;
+  files: DocFile[]; signable?: boolean;
 }) {
   return (
     <div>
@@ -132,13 +132,13 @@ function DocSection({ title, subtitle, label, accentColor, files, uploadLabel, s
           {label}
         </div>
       )}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 10, border: '1px dashed var(--ink-faint)', borderRadius: 'var(--radius-lg)',
-        padding: '10px 12px', marginTop: title || label ? 6 : 0, marginBottom: 10, background: 'var(--bg)', opacity: .6,
-      }}>
-        <span style={{ font: 'var(--text-label)', color: 'var(--ink-secondary)' }}>{uploadLabel} (próximamente)</span>
+      {/* Aquí había un dropzone "(próximamente)" inerte por sección (tres en
+          el tab). Se quitó el 2026-09-02: era un control que no hacía nada. Las
+          solicitudes y cotizaciones las GENERA el flujo (cmp-tallas/portal); si
+          algún día se suben a mano, se agrega la subida real, no el cascarón. */}
+      <div style={{ marginTop: title || label ? 6 : 0 }}>
+        <FileListOrEmpty files={files} />
       </div>
-      <FileListOrEmpty files={files} />
       {signable && files.map((f) => (
         f.key ? <FileSignature key={f.key} file={{ ...f, key: f.key }} /> : null
       ))}

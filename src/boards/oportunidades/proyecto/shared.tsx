@@ -217,6 +217,13 @@ export function ProyectoActionBar({ proyecto, reload, actions }: {
   const canVendedor = role === 'vendedor' || role === 'admin';
   const canCompras = role === 'compras' || role === 'admin';
 
+  // Un botón que ESTE rol jamás puede usar no se pinta (Efraín, 2026-09-02,
+  // "tenemos muchísimos botones"): compras veía "Validar tallas (vendedor)"
+  // siempre en gris y el vendedor "Importar tallas (compras)" igual. El gate
+  // real sigue en el server (worker/routes/oportunidades.ts PROYECTO_ACTIONS);
+  // lo que sí depende del estado del proyecto (falta el archivo, falta la OC
+  // del cliente) sigue saliendo deshabilitado con su motivo, porque ahí el
+  // botón le dice a quien SÍ puede usarlo qué le falta.
   return (
     <div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -229,35 +236,34 @@ export function ProyectoActionBar({ proyecto, reload, actions }: {
             onConfirm={run('tallas-regenerar')}
           />
         )}
-        {actions.includes('tallas-confirmar') && (
+        {actions.includes('tallas-confirmar') && canVendedor && (
           <ConfirmButton
             label="Validar tallas (vendedor)"
             confirmLabel="¿Validar y mandar a firma?"
             busyLabel="Validando… puede tardar unos minutos, no cierres esta pantalla"
-            disabled={!canVendedor || !ocCliente || (!native && !sheetUrl)}
-            title={!canVendedor ? 'Solo el vendedor valida las tallas' : !ocCliente ? 'Falta subir la orden de compra / cotización firmada / contrato del cliente (pestaña Documentación)' : (!native && !sheetUrl) ? 'Primero crea el archivo de tallas' : 'Valida el desglose y genera el PDF a firma'}
+            disabled={!ocCliente || (!native && !sheetUrl)}
+            title={!ocCliente ? 'Falta subir la orden de compra / cotización firmada / contrato del cliente (pestaña Documentación)' : (!native && !sheetUrl) ? 'Primero crea el archivo de tallas' : 'Valida el desglose y genera el PDF a firma'}
             onConfirm={run('tallas-confirmar')}
           />
         )}
-        {actions.includes('tallas-importar') && (
+        {actions.includes('tallas-importar') && canCompras && (
           <ConfirmButton
             label="Importar tallas a Monday (compras)"
             confirmLabel="¿Importar? Reemplaza las líneas del proyecto"
             busyLabel="Importando…"
             variant="secondary"
-            disabled={!canCompras || !sheetUrl}
-            title={!canCompras ? 'Solo Compras importa las tallas' : !sheetUrl ? 'Primero crea el archivo de tallas' : 'Borra y recrea los subitems del proyecto desde el archivo'}
+            disabled={!sheetUrl}
+            title={!sheetUrl ? 'Primero crea el archivo de tallas' : 'Borra y recrea los subitems del proyecto desde el archivo'}
             onConfirm={run('tallas-importar')}
           />
         )}
-        {actions.includes('generar-oc') && (
+        {actions.includes('generar-oc') && canCompras && (
           <ConfirmButton
             label="Generar todas las OC pendientes (Monday)"
             confirmLabel="¿Generar? Se manda a firmas"
             busyLabel="Generando órdenes… puede tardar unos minutos, no cierres esta pantalla"
             variant="secondary"
-            disabled={!canCompras}
-            title={!canCompras ? 'Solo Compras genera órdenes de compra' : 'Una OC por proveedor + firmas Elaborado→Revisado→Autorizado'}
+            title="Una OC por proveedor + firmas Elaborado→Revisado→Autorizado"
             onConfirm={run('generar-oc')}
           />
         )}

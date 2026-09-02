@@ -26,7 +26,7 @@ import {
   type OcEmitidaDTO, type ProyectoImagenDTO,
 } from '../../../lib/api';
 import { useMe } from '../../../lib/useMe';
-import { ConfirmButton } from '../../../components/core/ConfirmButton';
+import { ActionMenu } from '../../../components/core/ActionMenu';
 import { Button } from '../../../components/core/Button';
 import { StatusBadge } from '../../../components/core/Badges';
 import { Modal } from '../../../components/core/Modal';
@@ -1085,35 +1085,41 @@ function ProveedorCard({ group, proyecto, oppId, reload, canEdit, activity, nota
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           <NativeOcButton proyectoId={proyecto.id} proveedorId={group.proveedorId} />
-          <ConfirmButton
-            label="Generar OC (portal)"
-            confirmLabel="¿Emitir la OC de este proveedor? Sin firmas"
-            busyLabel="Generando OC…"
-            disabled={!group.proveedorId}
-            title={!group.proveedorId
-              ? 'Asigna un proveedor a estas líneas primero'
-              : 'Emite la OC con el motor del portal: toma folio y la guarda en el Proyecto. Sin firma electrónica — se firma a mano.'}
-            onConfirm={onGenerarPortal}
-          />
-          <ConfirmButton
-            label="Generar OC con imágenes"
-            confirmLabel="¿Emitir la OC con foto por producto? Sin firmas"
-            busyLabel="Generando OC…"
-            disabled={!group.proveedorId}
-            title={!group.proveedorId
-              ? 'Asigna un proveedor a estas líneas primero'
-              : 'La misma OC del portal pero con una ficha de media hoja por producto, con su foto — para que el proveedor vea cuál variante es'}
-            onConfirm={onGenerarImagenes}
-          />
-          <ConfirmButton
-            label="Generar OC (Monday)"
-            confirmLabel="¿Generar la OC de este proveedor? Se manda a firmas"
-            busyLabel="Generando… puede tardar unos minutos, no cierres esta pantalla"
-            variant="secondary"
-            disabled={!group.proveedorId}
-            title={!group.proveedorId ? 'Asigna un proveedor a estas líneas primero' : 'Una OC de este proveedor por el flujo de Monday/cmp-tallas + firmas Elaborado→Revisado→Autorizado'}
-            onConfirm={onGenerar}
-          />
+          {/* Un solo "Generar OC ▾" con las tres variantes (2026-09-02: eran
+              tres botones seguidos por tarjeta). Misma confirmación en dos
+              pasos y mismos endpoints. En la tarjeta "Sin proveedor" no se
+              pinta: sus tres botones nacían deshabilitados el 100 % del
+              tiempo — el aviso de abajo dice qué falta. */}
+          {group.proveedorId ? (
+            <ActionMenu
+              label="Generar OC ▾"
+              title="Emite la orden de compra de este proveedor"
+              items={[
+                {
+                  key: 'portal', label: 'Generar OC (portal)',
+                  title: 'Emite la OC con el motor del portal: toma folio y la guarda en el Proyecto. Sin firma electrónica — se firma a mano.',
+                  confirmLabel: '¿Emitir la OC de este proveedor? Sin firmas', busyLabel: 'Generando OC…',
+                  onSelect: onGenerarPortal,
+                },
+                {
+                  key: 'imagenes', label: 'Generar OC con imágenes',
+                  title: 'La misma OC del portal pero con una ficha de media hoja por producto, con su foto — para que el proveedor vea cuál variante es',
+                  confirmLabel: '¿Emitir la OC con foto por producto? Sin firmas', busyLabel: 'Generando OC…',
+                  onSelect: onGenerarImagenes,
+                },
+                {
+                  key: 'monday', label: 'Generar OC (Monday, con firmas)',
+                  title: 'Una OC de este proveedor por el flujo de Monday/cmp-tallas + firmas Elaborado→Revisado→Autorizado',
+                  confirmLabel: '¿Generar la OC de este proveedor? Se manda a firmas', busyLabel: 'Generando… puede tardar unos minutos',
+                  onSelect: onGenerar,
+                },
+              ]}
+            />
+          ) : (
+            <span style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)' }}>
+              Asigna un proveedor a estas líneas para poder generar su OC
+            </span>
+          )}
         </div>
       </div>
       {canEdit && (
