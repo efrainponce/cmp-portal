@@ -39,7 +39,18 @@ export function EditContactoModal({ contact, onClose, onSaved }: Props) {
   const vendedorOptions = vendedores.filter((v) => v.nombre.toLowerCase().includes(vendQ.trim().toLowerCase()));
 
   const save = (colId: string, value: string, applyLocal: () => void) => run(async () => {
-    await patchItem('contactos', contact.id, { [colId]: value });
+    try {
+      await patchItem('contactos', contact.id, { [colId]: value });
+    } catch (e) {
+      // El write path pide scope 'own' (worker/lib/outbox.ts): un contacto que
+      // se LEE por la zona pero pertenece a otro vendedor responde 404. Antes
+      // salía "PATCH item failed: 404" a secas y nadie sabía qué hacer (caso
+      // Ricardo, 2026-09-03: el contacto se le había ido a otro vendedor).
+      if (e instanceof Error && /\b404\b/.test(e.message)) {
+        throw new Error(`Este contacto está asignado a ${currentVendedor}, no a ti; solo su vendedor o un admin pueden cambiarlo. Pídele a un admin que te lo reasigne.`);
+      }
+      throw e;
+    }
     applyLocal();
     onSaved();
   }, colId);

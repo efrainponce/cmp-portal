@@ -1,5 +1,6 @@
 // worker/lib/createRecord.ts — synchronous item creation (no outbox: there's no
 // item_id to key on until Monday responds). Mirrors outbox.ts's validation shape.
+import type { ExecutionContext } from 'hono';
 import type { Env } from '../env';
 import type { Identity } from '../../shared/types';
 import type { CreateResponse } from '../../shared/dto';
@@ -7,7 +8,7 @@ import { BOARDS, type BoardSlug } from '../../shared/boards';
 import { CREATE_DEFAULTS, CREATE_FIELDS, isCreatable } from '../../shared/createFields';
 import { COLUMN_META } from '../../shared/column-meta.gen';
 import { encodeColumnValue } from './columnEncode';
-import { createItem } from './monday';
+import { createItem, fetchItem, firstPersonId, updateItemColumns } from './monday';
 import { upsertItem } from '../sync';
 import { reserveNativeId } from './nativeSeq';
 import { assertNoNativeLink, NativeLinkError } from './nativeItems';
@@ -37,7 +38,17 @@ const PROYECTO_COMPRAS = 'project_owner';
 const PROYECTO_ELABORADO_POR = 'multiple_person_mm164em1';
 // Grupo "Nuevos" del board, el mismo al que Ganar manda el Proyecto. Sin esto
 // el item cae en el primer grupo del board, que no es ese.
-const CREATE_GROUP: Record<string, string> = { proyectos: 'new_group29179' };
+// Contactos: "Clientes Activos" (`topics`). Sin grupo explícito caían en el
+// primero del board, "Descarga Catálogo 2026", que es la bandeja de leads del
+// formulario web — un contacto capturado a mano por un vendedor no es eso
+// (hallazgo del caso Ricardo, 2026-09-03).
+const CREATE_GROUP: Record<string, string> = { proyectos: 'new_group29179', contactos: 'topics' };
+
+/** Cuántas veces y con qué espera se re-verifica el Vendedor de un contacto
+ * recién creado (ver reafirmarVendedorContacto). La automatización de Monday
+ * pegó ~2 s después del create en todos los casos vistos; el segundo intento
+ * cubre a Monday con cola. */
+const REAFIRMAR_ESPERAS_MS = [4_000, 15_000];
 
 export async function submitCreate(
   env: Env,
@@ -45,6 +56,7 @@ export async function submitCreate(
   name: string,
   cols: Record<string, string>,
   viewer: Identity,
+  ctx?: ExecutionContext,
 ): Promise<CreateResponse> {
   if (!isCreatable(slug)) throw new CreateError(404, 'not found');
   // Zona Efrain (Efraín, 2026-08-18): los contactos e instituciones que dan de
@@ -133,7 +145,57 @@ export async function submitCreate(
   }
 
   await upsertItem(env, slug, item);
+
+  // El board Contactos tiene una automatización de Monday ("When an item is
+  // created → assign creator as Vendedor", id 530044968, de 2026-02-03, pensada
+  // para los leads del formulario web). Para Monday el CREADOR de todo lo que
+  // hace el portal es el dueño del token de servicio (Efraín), así que ~2 s
+  // después de crear, la automatización pisaba el Vendedor que el portal
+  // acababa de estampar y el contacto se le "iba" a Efraín: quien lo capturó
+  // ya no lo veía en su lista ni podía ligarlo a una oportunidad, y el PATCH
+  // para corregirlo daba 404 porque el renglón ya no era suyo (Ricardo,
+  // 2026-09-03; 8 contactos desde el 2026-08-12). Aquí se re-verifica y se
+  // vuelve a estampar lo que el portal mandó. Con ctx (ruta HTTP) corre en
+  // segundo plano; sin él (bot de WhatsApp) se espera en línea, un intento.
+  const vendedorEsperado = personIdFromEncoded(columnValues[CONTACTO_VENDEDOR]);
+  if (slug === 'contactos' && vendedorEsperado) {
+    const tarea = reafirmarVendedorContacto(env, Number(item.id), vendedorEsperado, ctx ? REAFIRMAR_ESPERAS_MS : REAFIRMAR_ESPERAS_MS.slice(0, 1));
+    if (ctx) ctx.waitUntil(tarea);
+    else await tarea;
+  }
   return { ok: true, id: item.id };
+}
+
+function personIdFromEncoded(encoded: unknown): number | null {
+  const p = (encoded as { personsAndTeams?: Array<{ id: number | string }> } | undefined)?.personsAndTeams?.[0];
+  const id = p ? Number(p.id) : NaN;
+  return Number.isFinite(id) && id > 0 ? id : null;
+}
+
+/** Relee el contacto de Monday tras cada espera; si el Vendedor ya no es el
+ * que el portal estampó, lo vuelve a escribir y asienta el mirror. Best-effort:
+ * un fallo aquí nunca convierte un create exitoso en error. */
+export async function reafirmarVendedorContacto(
+  env: Env,
+  itemId: number,
+  vendedorId: number,
+  esperasMs: readonly number[],
+): Promise<void> {
+  for (const ms of esperasMs) {
+    await new Promise(r => setTimeout(r, ms));
+    try {
+      const vivo = await fetchItem(env, itemId);
+      if (!vivo) return; // borrado mientras tanto
+      if (firstPersonId(vivo.column_values, CONTACTO_VENDEDOR) === vendedorId) continue;
+      console.warn(`[createRecord] contacto ${itemId}: Vendedor cambiado por Monday a ${vivo.column_values.find(c => c.id === CONTACTO_VENDEDOR)?.text ?? '?'} tras crear; se reafirma ${vendedorId}`);
+      const actualizado = await updateItemColumns(env, BOARDS.contactos.id, itemId, {
+        [CONTACTO_VENDEDOR]: { personsAndTeams: [{ id: vendedorId, kind: 'person' }] },
+      });
+      await upsertItem(env, 'contactos', actualizado ?? (await fetchItem(env, itemId)) ?? vivo);
+    } catch (err) {
+      console.warn(`[createRecord] reafirmar Vendedor de ${itemId} falló: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
 }
 
 /** Boards que pueden nacer 100% en D1. Contactos e Instituciones se sumaron el

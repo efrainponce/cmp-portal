@@ -1,5 +1,31 @@
 # Log de commits
 
+## 2026-09-03
+
+- **Contactos: el Vendedor ya no se le "va" a Efraín al crear desde el
+  portal.** Ricardo creó el contacto FAUSTO MORENO SALAZAR, quedó asignado a
+  Efraín y al intentar corregirlo salía "PATCH item failed: 404". El portal
+  SÍ mandaba a Ricardo como Vendedor (activity log de Monday, 22:48:11 UTC);
+  2 s después una automatización del board Contactos ("When an item is
+  created → assign creator as Vendedor", id 530044968, del 2026-02-03, para
+  los leads del formulario web) lo pisaba: para Monday el creador de todo lo
+  que hace el portal es el dueño del token de servicio. Pasó con 8 contactos
+  desde el 2026-08-12 (7 de Ricardo/Juan Carlos, 1 de Elisa) — todos
+  regresados hoy a su vendedor original vía API. Fix en
+  `worker/lib/createRecord.ts`: tras crear un contacto se relee de Monday a
+  los 4 s y a los 15 s (en `waitUntil`; el bot de WhatsApp, sin ctx, espera
+  en línea un intento) y si el Vendedor ya no es el que el portal mandó se
+  vuelve a estampar y se asienta el mirror. Queda **apagar la automatización
+  en Monday** (es "legacy", el MCP no la puede tocar) — con el fix el portal
+  se defiende aunque siga encendida.
+- **Contactos nuevos caen en "Clientes Activos"** (`topics`), no en "Descarga
+  Catálogo 2026": sin grupo explícito Monday los ponía en el primero del
+  board, que es la bandeja de leads del sitio.
+- **EditContactoModal: el 404 del PATCH ya dice qué pasa** ("Este contacto
+  está asignado a X, no a ti; solo su vendedor o un admin pueden cambiarlo")
+  en vez de "PATCH item failed: 404" — el write path pide scope `own` y un
+  contacto que se lee por la zona pero es de otro responde 404 a propósito.
+
 ## 2026-09-02
 
 - **Sync: el latido relee también al PADRE de cada línea cambiada**

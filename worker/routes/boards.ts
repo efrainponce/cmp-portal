@@ -201,7 +201,7 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
       // `native:true` fuera de lugar 403ea en vez de crear en Monday a escondidas.
       const result = body.native && isNativeCreatable(slug)
         ? await submitCreateNative(c.env, slug, body.name, body.cols, viewer)
-        : await submitCreate(c.env, slug, body.name, body.cols, viewer);
+        : await submitCreate(c.env, slug, body.name, body.cols, viewer, c.executionCtx);
       return c.json(result);
     } catch (err) {
       if (err instanceof CreateError) {
