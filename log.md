@@ -1,5 +1,18 @@
 # Log de commits
 
+## 2026-09-07
+
+- **Proyectos: selector "Agrupar: Estado / Zona" junto al buscador.** Efraín
+  lo pidió desde Documentación y Tallas (captura de WhatsApp, "se puede
+  agregar un filtro por zona?"). Vive en `ProyectoBoardList`, así que sale en
+  los 5 accesos de Proyectos: Documentación y Tallas, Órdenes de Compra y
+  Logística arrancan por Estado (el funnel); Reporte de Proyectos sigue
+  arrancando por Zona, como nació. La elección se guarda por persona y board
+  en `useSavedView` (localStorage, junto a los grupos colapsados). Al agrupar
+  por Zona cada renglón pinta el chip de etapa — lo que ya hacía el Reporte —
+  porque si no no hay dónde leer en qué paso va el proyecto. Verificado con
+  Playwright en local: escritorio, móvil (390px) y que persiste tras recargar.
+
 ## 2026-09-03
 
 - **Contactos: el Vendedor ya no se le "va" a Efraín al crear desde el

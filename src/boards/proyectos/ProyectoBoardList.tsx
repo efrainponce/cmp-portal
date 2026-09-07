@@ -1,7 +1,8 @@
 // Lista de Proyectos (post-venta) para los accesos del sidebar (Documentación y
 // Tallas / Órdenes de Compra / Logística / Reporte de Proyectos) — agrupada por
-// project_status y filtrada por config.statuses; sin `statuses` no se filtra
-// nada. Fuente: board Proyectos directo, nunca vía el board_relation hacia la
+// project_status o por Zona (selector "Agrupar" junto al buscador, guardado por
+// persona; Efraín, 2026-09-07) y filtrada por config.statuses; sin `statuses`
+// no se filtra nada. Fuente: board Proyectos directo, nunca vía el board_relation hacia la
 // Oportunidad (Efraín, 2026-07-17 — ver dal.ts).
 import { useEffect, useMemo, useRef } from 'react';
 import { useBoards, usePoll, colForBoard, type ItemDTO } from '../../lib/api';
@@ -36,6 +37,21 @@ const VENDEDOR_COL = 'multiple_person_mm0hrnqq';
 const ESTADO_PRODUCTOS_COL = 'lookup_mm20g4n6';
 const STATUS_COL = 'project_status';
 const ZONA_COL = 'dropdown_mm0hnyv';
+
+/** Criterios de agrupación de la lista. Reporte de Proyectos arranca por Zona
+ * (así nació, Efraín 2026-08-05); los demás accesos por Estado, que es el
+ * funnel del post-venta. */
+type GroupBy = 'estado' | 'zona';
+const GROUP_BY_OPTIONS: { value: GroupBy; label: string }[] = [
+  { value: 'estado', label: 'Estado' },
+  { value: 'zona', label: 'Zona' },
+];
+function defaultGroupBy(config: ProjectBoardConfig): GroupBy {
+  return config.key === 'ejecucion' ? 'zona' : 'estado';
+}
+function parseGroupBy(raw: string | undefined, config: ProjectBoardConfig): GroupBy {
+  return raw === 'zona' || raw === 'estado' ? raw : defaultGroupBy(config);
+}
 
 /** ¿El Vendedor del proyecto es uno de estos nombres? Sin lista, pasa todo.
  * Proyectos tiene UNA sola columna de dueño (shared/boards.ts authzCols), a
@@ -119,7 +135,8 @@ export function ProyectoBoardList({ config, q, onSearch, onOpen, onReady, header
     .filter((it) => vendedorNamesMatch(it, config.vendedorNames));
   const sync = lastMondayUpdateFromItems(statusItems);
 
-  const { collapsedGroups, toggleGroup } = useSavedView(config.key);
+  const { collapsedGroups, toggleGroup, groupBy: groupBySaved, setGroupBy } = useSavedView(config.key);
+  const groupBy = parseGroupBy(groupBySaved, config);
 
   const items = statusItems.filter((it) => {
     if (!q.trim()) return true;
@@ -132,7 +149,7 @@ export function ProyectoBoardList({ config, q, onSearch, onOpen, onReady, header
     return textIncludes(haystack, q);
   });
 
-  const groups = config.key === 'ejecucion'
+  const groups = groupBy === 'zona'
     ? groupByZona(items)
     : groupByColumn(items, statusCol, undefined, undefined, PROJECT_STATUS_ORDER);
 
@@ -165,6 +182,23 @@ export function ProyectoBoardList({ config, q, onSearch, onOpen, onReady, header
             placeholder="Buscar proyecto, folio o institución…"
             style={isMobile ? { maxWidth: '100%', flexBasis: '100%' } : undefined}
           />
+          {/* Mismo look que los selects de FilterBar (StageBoardList). Al
+              agrupar por Zona, el renglón pinta la etapa (ver Row.statusCol):
+              si no, no habría dónde leer en qué paso va cada proyecto. */}
+          <select
+            aria-label="Agrupar por"
+            value={groupBy}
+            onChange={(e) => setGroupBy(e.target.value)}
+            style={{
+              height: 36, font: 'var(--text-label)', color: 'var(--ink)',
+              border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '0 10px',
+              boxSizing: 'border-box', background: 'var(--bg-raised)', cursor: 'pointer',
+            }}
+          >
+            {GROUP_BY_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>Agrupar: {o.label}</option>
+            ))}
+          </select>
         </div>
       </div>
 
@@ -192,7 +226,7 @@ export function ProyectoBoardList({ config, q, onSearch, onOpen, onReady, header
                 <Row
                   key={item.id} item={item} estadoProductosCol={estadoProductosCol}
                   showBattery={config.key === 'ejecucion'}
-                  statusCol={config.key === 'ejecucion' ? statusCol : undefined}
+                  statusCol={groupBy === 'zona' ? statusCol : undefined}
                   totales={totales?.[item.id]} metricas={metricas}
                   onClick={() => onOpen(item.id)}
                 />
@@ -215,10 +249,9 @@ function Row({ item, estadoProductosCol, showBattery, statusCol, totales, metric
    * oportunidad, o sin líneas todavía: las celdas se pintan en "—" para no
    * romper la columna, igual que en Validación de Costeo. */
   totales?: TotalesDTO; metricas: ReturnType<typeof metricasVisibles>;
-  /** Solo el Reporte de Proyectos lo manda: al agrupar por Zona (y no por etapa)
-   * el renglón era el único lugar donde se puede leer en qué etapa va el
-   * proyecto — sin esto, un "Proyecto Terminado" se ve igual que uno en
-   * Ejecución (Efraín, 2026-08-14). */
+  /** Solo llega al agrupar por Zona (y no por etapa): ahí el renglón es el
+   * único lugar donde se puede leer en qué etapa va el proyecto — sin esto, un
+   * "Proyecto Terminado" se ve igual que uno en Ejecución (Efraín, 2026-08-14). */
   statusCol?: ReturnType<typeof colForBoard>[number];
   onClick: () => void;
 }) {

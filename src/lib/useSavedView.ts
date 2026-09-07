@@ -15,6 +15,9 @@ export interface SavedViewFilters {
 interface SavedViewState {
   filters: SavedViewFilters;
   collapsedGroups: Record<string, boolean>;
+  /** Criterio de agrupación elegido por la persona (p.ej. 'estado' | 'zona' en
+   * las listas de Proyectos). `undefined` = el default del board. */
+  groupBy?: string;
 }
 
 const DEFAULT_FILTERS: SavedViewFilters = { vendedor: ALL_VALUE, compras: ALL_VALUE, etapa: ALL_VALUE };
@@ -32,6 +35,7 @@ function load(email: string, boardKey: string): SavedViewState {
     return {
       filters: { ...DEFAULT_FILTERS, ...parsed.filters },
       collapsedGroups: parsed.collapsedGroups ?? {},
+      groupBy: typeof parsed.groupBy === 'string' ? parsed.groupBy : undefined,
     };
   } catch {
     return DEFAULT_STATE;
@@ -69,11 +73,17 @@ export function useSavedView(boardKey: string) {
     });
   };
 
+  const setGroupBy = (groupBy: string) => {
+    setState((s) => ({ ...(s ?? DEFAULT_STATE), groupBy }));
+  };
+
   return {
     filters: state?.filters ?? DEFAULT_FILTERS,
     collapsedGroups: state?.collapsedGroups ?? {},
+    groupBy: state?.groupBy,
     setFilters,
     clearFilters,
     toggleGroup,
+    setGroupBy,
   };
 }
