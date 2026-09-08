@@ -3,7 +3,7 @@
 // readableCols(). Un cambio accidental aquí no lo atrapa el typecheck (todo son
 // strings), así que estos tests anclan las reglas que importan.
 import { describe, it, expect } from 'vitest';
-import { VISIBILITY, canRead, canReadActivity, canReadBoard, canWrite, readableCols, puedeCapturarEnValidacion, puedeVerUtilidades } from './visibility';
+import { VISIBILITY, canRead, canReadActivity, canReadBoard, canWrite, readableCols, puedeCapturarEnValidacion, puedeVerUtilidades, puedeVerEstadoCuenta } from './visibility';
 import { COLUMN_META } from './column-meta.gen';
 import type { BoardSlug } from './boards';
 import type { Role } from './types';
@@ -422,6 +422,16 @@ describe('utilidades: whitelist por correo', () => {
   it('la whitelist normaliza espacios y mayúsculas', () => {
     expect(puedeVerUtilidades('  Administracion@Mexicanadeproteccion.com ')).toBe(true);
     for (const email of FUERA) expect(puedeVerUtilidades(email), email).toBe(false);
+  });
+
+  // Board "Estado de Cuenta" (Efraín, 2026-09-08: "solo para admin: Elisa y el
+  // CEO"): misma lista, mismo criterio — PAM es admin y queda fuera.
+  it('el Estado de Cuenta lo ven exactamente las mismas personas que las utilidades', () => {
+    for (const email of PERMITIDOS) expect(puedeVerEstadoCuenta(email), email).toBe(true);
+    for (const email of FUERA) expect(puedeVerEstadoCuenta(email), email).toBe(false);
+    expect(puedeVerEstadoCuenta(null)).toBe(false);
+    expect(puedeVerEstadoCuenta(undefined)).toBe(false);
+    expect(puedeVerEstadoCuenta('')).toBe(false);
   });
 
   it('sin correo NO se ven — el default es el seguro', () => {

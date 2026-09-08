@@ -1,5 +1,50 @@
 # Log de commits
 
+## 2026-09-08
+
+- **Nuevo board "Estado de Cuenta" en Proyectos** (Efraín: "retoma lo que
+  hicimos en janing… es solo para admin: Elisa y el CEO"). Cobros y pagos por
+  proyecto, portado de janing-portal: un CONCEPTO (la factura, el compromiso
+  con el proveedor) con su total y sus COBROS/PAGOS en partes; un cobro con
+  fecha ya entró, sin ella está PROGRAMADO para su fecha estimada — de ahí la
+  gráfica de flujo por mes (lo estimado rayado), lo vencido en rojo y el
+  aviso "sin fecha estimada — no entra al flujo por mes". Factura del concepto
+  y comprobante de cada cobro se suben ahí mismo (PDF/XML/imagen, 10 MB) y se
+  abren en el visor del portal. `shared/estadoCuenta.ts` y su test son los
+  mismos de janing (misma definición de "liquidado", medio centavo de
+  tolerancia, hoy en hora local).
+- **Quién lo ve: la misma whitelist por CORREO que las utilidades**
+  (`puedeVerEstadoCuenta` = Elisa, el CEO y Efraín). PAM es admin y queda
+  fuera. Gatea el acceso del sidebar (`me.estadoCuentaAccess`, por-usuario
+  como Zona Efrain — no vive en `role_board_access`) Y cada ruta del worker
+  (403 al resto). Anclado en `shared/visibility.test.ts`.
+- **100 % nativo en D1 + R2, nada toca Monday.** Tablas `estado_cuenta`,
+  `estado_cuenta_abono` y `estado_cuenta_borrado` (lazy, documentadas en
+  `worker/schema.sql`); `proyecto_id` es el item id del Proyecto. Respaldo
+  del renglón completo ANTES de cada borrado o edición (mismo espíritu que
+  `item_borrado`); los bytes en R2 nunca se borran. Las rutas rechazan query
+  params desconocidos y piden scope `own` en lo que muta. Se registran ANTES
+  de `oportunidadRoutes` porque el comodín `POST /api/proyectos/:id/:action`
+  se habría comido el alta de conceptos.
+- **La lista trae las columnas de janing**: Cobrado / Por cobrar / Pagado /
+  Por pagar / Saldo por proyecto (vencido en rojo debajo), suma por grupo y
+  gran total, agrupada por Zona como el Reporte. Sin movimientos = guion, no
+  $0. Muestra TODOS los proyectos sin filtro de etapa: una obra terminada es
+  justo la que sigue cobrándose.
+- **Exportar**: por proyecto, PDF (motor de bloques del portal — la gráfica
+  va como tabla "Flujo por mes") y Excel (3 hojas); y desde la lista,
+  **"Exportar Excel" con todos los proyectos** (Efraín: "poder descargar todos
+  los proyectos a excel") — un renglón por proyecto con las columnas del
+  board + hojas de conceptos y de cobros/pagos con el folio en cada fila.
+  `shared/xlsxWrite.ts` (escritor .xlsx sin dependencias) viene de janing;
+  su test aquí recorre el zip a mano porque no hay lector.
+- Verificado en local (D1 de miniflare, dev servers propios): alta de
+  conceptos/cobros, validaciones (monto, fecha ISO, cobro sin fecha), 403 a
+  PAM, 400 a `?parent=`, subida y lectura de archivos, `.exe` rechazado, PDF y
+  Excel abren bien (fecha de corte en hora local, columnas de dinero sin
+  recortar); capturas Playwright escritorio y 390 px de lista y drawer. Lo
+  sembrado se borró al terminar.
+
 ## 2026-09-07
 
 - **Proyectos: selector "Agrupar: Estado / Zona" junto al buscador.** Efraín

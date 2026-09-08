@@ -720,3 +720,57 @@ CREATE TABLE IF NOT EXISTS item_borrado (
   PRIMARY KEY (board_id, item_id)
 );
 CREATE INDEX IF NOT EXISTS idx_item_borrado_email_fecha ON item_borrado (by_email, deleted_at);
+
+-- Estado de cuenta del Proyecto (board "Estado de Cuenta", 2026-09-08 —
+-- worker/lib/estadoCuenta.ts; portado de janing-portal). Nativo en D1, sin
+-- columna de Monday: `proyecto_id` es el item id del Proyecto en `items` (o
+-- el id nativo ≥ 9e11 de Zona Efrain). Un CONCEPTO (factura/compromiso) con
+-- su total y sus ABONOS (cobros/pagos): abono con `fecha` = ya se movió; sin
+-- ella = PROGRAMADO para `fecha_estimada`. Los archivos (factura del
+-- concepto, comprobante del abono) viven en R2 bajo `estado-cuenta/…` y la
+-- fila guarda su key. Se crean LAZY en runtime (ensureEstadoCuentaTables).
+CREATE TABLE IF NOT EXISTS estado_cuenta (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  proyecto_id    INTEGER NOT NULL,
+  tipo           TEXT NOT NULL CHECK (tipo IN ('ingreso','egreso')),
+  total          REAL NOT NULL DEFAULT 0,
+  fecha          TEXT,
+  concepto       TEXT,
+  archivo_key    TEXT,
+  archivo_nombre TEXT,
+  archivo_tipo   TEXT,
+  archivo_bytes  INTEGER,
+  created_by     TEXT NOT NULL,
+  created_at     TEXT NOT NULL,
+  updated_at     TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_estado_cuenta_proyecto ON estado_cuenta(proyecto_id);
+CREATE TABLE IF NOT EXISTS estado_cuenta_abono (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  concepto_id    INTEGER NOT NULL,
+  proyecto_id    INTEGER NOT NULL,
+  monto          REAL NOT NULL DEFAULT 0,
+  fecha          TEXT,
+  fecha_estimada TEXT,
+  nota           TEXT,
+  archivo_key    TEXT,
+  archivo_nombre TEXT,
+  archivo_tipo   TEXT,
+  archivo_bytes  INTEGER,
+  created_by     TEXT NOT NULL,
+  created_at     TEXT NOT NULL,
+  updated_at     TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_estado_cuenta_abono_concepto ON estado_cuenta_abono(concepto_id);
+CREATE INDEX IF NOT EXISTS idx_estado_cuenta_abono_proyecto ON estado_cuenta_abono(proyecto_id);
+-- Respaldo ANTES de cada DELETE/UPDATE (mismo espíritu que item_borrado): el
+-- renglón completo en JSON, con sus abonos si era un concepto.
+CREATE TABLE IF NOT EXISTS estado_cuenta_borrado (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  tabla       TEXT NOT NULL,
+  row_id      INTEGER NOT NULL,
+  proyecto_id INTEGER NOT NULL,
+  fila        TEXT NOT NULL,
+  borrado_por TEXT NOT NULL,
+  borrado_en  TEXT NOT NULL
+);

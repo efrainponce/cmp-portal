@@ -23,10 +23,11 @@ import { ProyectoTallasSection, ProyectoOrdenesSection, EjecucionSection, Logist
 import { CotizacionVirtualTab } from './CotizacionVirtualTab';
 import { CosteoProyectoTab } from './CosteoProyectoTab';
 import { EmbellecimientosVirtualTab } from './EmbellecimientosVirtualTab';
+import { EstadoCuentaTab } from './EstadoCuentaTab';
 import type { ProjectBoardKey } from '../../lib/projectStages';
 import { canReadActivity } from '../../../shared/visibility';
 
-type ProyectoTabKey = 'actualizaciones' | 'actividad' | 'cotizacion' | 'costeo' | 'embellecimientos' | 'documentacion' | 'tallas' | 'ordenes' | 'ejecucion' | 'logistica';
+type ProyectoTabKey = 'estadocuenta' | 'actualizaciones' | 'actividad' | 'cotizacion' | 'costeo' | 'embellecimientos' | 'documentacion' | 'tallas' | 'ordenes' | 'ejecucion' | 'logistica';
 
 const FOLIO_COL = 'pulse_id_mm1a12gy';
 const INSTITUCION_COL = 'lookup_mm1dwn6';
@@ -34,6 +35,11 @@ const FECHA_ENTREGA_COL = 'date_mm0m1vfv';
 const VENDEDOR_COL = 'multiple_person_mm0hrnqq';
 
 const TABS: { key: ProyectoTabKey; label: string }[] = [
+  // Cobros y pagos del proyecto (Efraín, 2026-09-08). Va primero porque SOLO
+  // se lista en el board "Estado de Cuenta" (TABS_BY_BOARD) y ahí es la
+  // pestaña principal; en los demás accesos ni aparece. Por-usuario: la
+  // whitelist de shared/visibility.ts puedeVerEstadoCuenta.
+  { key: 'estadocuenta', label: 'Estado de cuenta' },
   { key: 'actualizaciones', label: 'Actualizaciones' },
   // Log de cambios del Proyecto y de sus líneas — el costeo de la OC se edita
   // desde el portal y Monday lo atribuiría todo al usuario del token, así que
@@ -71,6 +77,9 @@ function esTab(v: string | null | undefined): v is ProyectoTabKey {
 const TABS_BY_BOARD: Partial<Record<ProjectBoardKey, ProyectoTabKey[]>> = {
   doctallas: ['actualizaciones', 'actividad', 'cotizacion', 'embellecimientos', 'documentacion', 'tallas'],
   ordenescompra: ['actualizaciones', 'actividad', 'cotizacion', 'embellecimientos', 'documentacion', 'tallas', 'ordenes'],
+  // Estado de Cuenta: lo suyo más la cotización (qué se vendió) y las
+  // actualizaciones. Sin OC/tallas/logística: aquí se cobra, no se produce.
+  estadocuenta: ['estadocuenta', 'cotizacion', 'actualizaciones'],
 };
 
 interface Props {
@@ -120,6 +129,11 @@ export function ProyectoDrawer({ id, boardKey, backLabel, defaultTab, openTab, o
   // quien no le toca. El server filtra las columnas de costo por rol de todos
   // modos (shared/visibility.ts), esto es lo que se PINTA.
   const puedeVerCosteo = boardKey === 'ejecucion' && me?.role === 'admin';
+  // Estado de cuenta: solo en su board y solo para la whitelist por correo
+  // (me.estadoCuentaAccess). Gatea tab Y contenido — la URL
+  // /estadocuenta/<id>/estadocuenta es copiable; el worker responde 403 al
+  // resto de todos modos, esto es lo que se PINTA.
+  const puedeVerEstadoCuenta = boardKey === 'estadocuenta' && !!me?.estadoCuentaAccess;
   const [oportunidadId, setOportunidadId] = useState<string | null>(null);
   // Tri-estado a mano: `oportunidadId === null` significa las DOS cosas
   // (todavía no llega la respuesta / no hay oportunidad ligada) y Cotización y
@@ -233,6 +247,7 @@ export function ProyectoDrawer({ id, boardKey, backLabel, defaultTab, openTab, o
           // columnas de costo por rol de todos modos (shared/visibility.ts),
           // pero el tab no tiene por qué asomarse en los demás accesos.
           .filter((t) => t.key !== 'costeo' || puedeVerCosteo)
+          .filter((t) => t.key !== 'estadocuenta' || puedeVerEstadoCuenta)
           .map((t) => (
           <div
             key={t.key}
@@ -248,6 +263,17 @@ export function ProyectoDrawer({ id, boardKey, backLabel, defaultTab, openTab, o
         ))}
       </div>
 
+      {tab === 'estadocuenta' && (
+        me == null ? <Cargando />
+          : !puedeVerEstadoCuenta ? (
+            <div style={{ padding: 24, font: 'var(--text-label)', color: 'var(--ink-quiet)' }}>
+              {me.estadoCuentaAccess
+                ? 'El estado de cuenta se consulta desde el acceso «Estado de Cuenta» del menú.'
+                : 'El estado de cuenta solo lo ve dirección.'}
+            </div>
+          )
+            : <EstadoCuentaTab proyectoId={id} editable={item.ownedByViewer !== false} />
+      )}
       {tab === 'actualizaciones' && <ActualizacionesTab slug="proyectos" itemId={id} />}
       {tab === 'actividad' && <ActividadTab slug="proyectos" itemId={id} />}
       {tab === 'cotizacion' && (

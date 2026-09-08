@@ -4,7 +4,7 @@
 // persona; Efraín, 2026-09-07) y filtrada por config.statuses; sin `statuses`
 // no se filtra nada. Fuente: board Proyectos directo, nunca vía el board_relation hacia la
 // Oportunidad (Efraín, 2026-07-17 — ver dal.ts).
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useBoards, usePoll, colForBoard, type ItemDTO } from '../../lib/api';
 import { groupByColumn } from '../../lib/groupBy';
 import { GroupCard } from '../../components/layout/GroupCard';
@@ -29,6 +29,12 @@ import {
   TotalesCells, TotalesChips, TotalesGranTotal, TotalesGrupo, TotalesHeader,
   metricasVisibles, sumaTotales,
 } from '../oportunidades/TotalesCells';
+import {
+  EstadoCuentaCells, EstadoCuentaChips, EstadoCuentaGranTotal, EstadoCuentaGrupo, EstadoCuentaHeader,
+  ecMetricas, sumarResumenes,
+} from './EstadoCuentaCells';
+import { getEstadoCuentaResumen } from '../../lib/estadoCuentaApi';
+import type { ResumenEstadoCuenta } from '../../../shared/estadoCuenta';
 
 const FOLIO_COL = 'pulse_id_mm1a12gy';
 const INSTITUCION_COL = 'lookup_mm1dwn6';
@@ -47,7 +53,9 @@ const GROUP_BY_OPTIONS: { value: GroupBy; label: string }[] = [
   { value: 'zona', label: 'Zona' },
 ];
 function defaultGroupBy(config: ProjectBoardConfig): GroupBy {
-  return config.key === 'ejecucion' ? 'zona' : 'estado';
+  // Estado de Cuenta también por Zona: la pregunta ahí es "cuánto falta por
+  // cobrar en tal plaza", no en qué etapa va la obra.
+  return config.key === 'ejecucion' || config.key === 'estadocuenta' ? 'zona' : 'estado';
 }
 function parseGroupBy(raw: string | undefined, config: ProjectBoardConfig): GroupBy {
   return raw === 'zona' || raw === 'estado' ? raw : defaultGroupBy(config);
@@ -120,6 +128,20 @@ export function ProyectoBoardList({ config, q, onSearch, onOpen, onReady, header
   // así que esto es nada más no pedir lo que no se va a recibir.
   const conTotales = config.key === 'ejecucion' && me?.role === 'admin';
   const { status, data } = usePoll('proyectos', q, undefined, conTotales);
+  // Board "Estado de Cuenta" (Efraín, 2026-09-08): el resumen de cobros y
+  // pagos de cada proyecto, en UNA consulta agregada aparte de la lista (no
+  // viaja en /items: es otra fuente, D1 nativa, y solo para la whitelist).
+  // Se pide al montar y se refresca cada 30 s — es lo que se suma por zona.
+  const esEstadoCuenta = config.key === 'estadocuenta';
+  const [ecResumen, setEcResumen] = useState<Record<string, ResumenEstadoCuenta> | null>(null);
+  useEffect(() => {
+    if (!esEstadoCuenta || !me?.estadoCuentaAccess) return;
+    let vivo = true;
+    const cargar = () => { getEstadoCuentaResumen().then((r) => { if (vivo) setEcResumen(r); }).catch(() => {}); };
+    cargar();
+    const t = setInterval(cargar, 30_000);
+    return () => { vivo = false; clearInterval(t); };
+  }, [esEstadoCuenta, me?.estadoCuentaAccess]);
 
   // Igual que StageBoardList: avisa una sola vez que ya hay datos pintados,
   // para que el wrapper precargue el drawer sin estorbarle a esta carga.
@@ -162,7 +184,16 @@ export function ProyectoBoardList({ config, q, onSearch, onOpen, onReady, header
     () => (metricas.length ? sumaTotales(items.map((it) => totales?.[it.id])) : null),
     [metricas.length, items, totales],
   );
-  const hayHeader = !isMobile && metricas.length > 0;
+  const ecCols = useMemo(() => (esEstadoCuenta ? ecMetricas(isMobile) : []), [esEstadoCuenta, isMobile]);
+  // Suma por grupo y gran total del Estado de cuenta, sobre lo FILTRADO (igual
+  // que las métricas de costeo): un proyecto sin movimientos no aporta nada.
+  // Sin un solo proyecto con movimientos, undefined: guiones, no ceros.
+  const sumaEc = (lista: ItemDTO[]): ResumenEstadoCuenta | undefined => {
+    const partes = lista.map((it) => ecResumen?.[it.id]).filter((r): r is ResumenEstadoCuenta => !!r);
+    return partes.length ? sumarResumenes(partes) : undefined;
+  };
+  const ecGranTotal = useMemo(() => (esEstadoCuenta ? sumaEc(items) : undefined), [esEstadoCuenta, items, ecResumen]); // eslint-disable-line react-hooks/exhaustive-deps
+  const hayHeader = !isMobile && (metricas.length > 0 || esEstadoCuenta);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -208,6 +239,7 @@ export function ProyectoBoardList({ config, q, onSearch, onOpen, onReady, header
       <div style={{ overflowY: 'auto', padding: isMobile ? '12px 0 16px' : `${hayHeader ? 0 : 16}px 0 24px`, flex: 1 }}>
         <BoardStatus status={status}>
           <TotalesHeader metricas={metricas} isMobile={isMobile} />
+          {esEstadoCuenta && <EstadoCuentaHeader metricas={ecCols} isMobile={isMobile} />}
           {groups.length === 0 && (
             <div style={{ padding: 24, font: 'var(--text-label)', color: 'var(--ink-quiet)' }}>Sin proyectos.</div>
           )}
@@ -220,6 +252,8 @@ export function ProyectoBoardList({ config, q, onSearch, onOpen, onReady, header
                   totales={sumaTotales(g.items.map((it) => totales?.[it.id]))}
                   metricas={metricas} isMobile={isMobile}
                 />
+              ) : esEstadoCuenta ? (
+                <EstadoCuentaGrupo resumen={sumaEc(g.items)} metricas={ecCols} isMobile={isMobile} />
               ) : undefined}
             >
               {g.items.map((item) => (
@@ -228,6 +262,7 @@ export function ProyectoBoardList({ config, q, onSearch, onOpen, onReady, header
                   showBattery={config.key === 'ejecucion'}
                   statusCol={groupBy === 'zona' ? statusCol : undefined}
                   totales={totales?.[item.id]} metricas={metricas}
+                  ecResumen={esEstadoCuenta ? ecResumen?.[item.id] : undefined} ecCols={ecCols}
                   onClick={() => onOpen(item.id)}
                 />
               ))}
@@ -236,13 +271,16 @@ export function ProyectoBoardList({ config, q, onSearch, onOpen, onReady, header
           {granTotal && groups.length > 0 && (
             <TotalesGranTotal totales={granTotal} metricas={metricas} isMobile={isMobile} />
           )}
+          {ecGranTotal && groups.length > 0 && (
+            <EstadoCuentaGranTotal resumen={ecGranTotal} metricas={ecCols} isMobile={isMobile} />
+          )}
         </BoardStatus>
       </div>
     </div>
   );
 }
 
-function Row({ item, estadoProductosCol, showBattery, statusCol, totales, metricas, onClick }: {
+function Row({ item, estadoProductosCol, showBattery, statusCol, totales, metricas, ecResumen, ecCols, onClick }: {
   item: ItemDTO; estadoProductosCol?: ReturnType<typeof colForBoard>[number]; showBattery: boolean;
   /** Métricas de la cotización de la Oportunidad ligada — solo el Reporte de
    * Proyectos las recibe (y solo para admin). Ausentes = proyecto sin
@@ -253,6 +291,9 @@ function Row({ item, estadoProductosCol, showBattery, statusCol, totales, metric
    * único lugar donde se puede leer en qué etapa va el proyecto — sin esto, un
    * "Proyecto Terminado" se ve igual que uno en Ejecución (Efraín, 2026-08-14). */
   statusCol?: ReturnType<typeof colForBoard>[number];
+  /** Cobrado / por cobrar / pagado / por pagar / saldo del proyecto — solo en
+   * el board Estado de Cuenta. `ecCols` vacío = no se pintan. */
+  ecResumen?: ResumenEstadoCuenta; ecCols: ReturnType<typeof ecMetricas>;
   onClick: () => void;
 }) {
   const isMobile = useIsMobile();
@@ -264,7 +305,7 @@ function Row({ item, estadoProductosCol, showBattery, statusCol, totales, metric
   const battery = showBattery ? batteryFromMirrorText(estadoVal?.text) : null;
   const etapaVal = statusCol ? item.cols[statusCol.id] : undefined;
   const etapa = statusCol && etapaVal?.text ? chipFor(statusCol, etapaVal) : null;
-  const conMetricas = metricas.length > 0;
+  const conMetricas = metricas.length > 0 || ecCols.length > 0;
 
   if (isMobile) {
     return (
@@ -294,6 +335,7 @@ function Row({ item, estadoProductosCol, showBattery, statusCol, totales, metric
           </div>
         </div>
         <TotalesChips totales={totales} metricas={metricas} />
+        {ecCols.length > 0 && <EstadoCuentaChips resumen={ecResumen} metricas={ecCols} />}
       </div>
     );
   }
@@ -348,6 +390,7 @@ function Row({ item, estadoProductosCol, showBattery, statusCol, totales, metric
         ) : null}
         <MonoTag>{folio}</MonoTag>
         <TotalesCells totales={totales} metricas={metricas} />
+        {ecCols.length > 0 && <EstadoCuentaCells resumen={ecResumen} metricas={ecCols} />}
         <div style={{ font: 'var(--text-caption)', color: 'var(--ink-faint)', width: 70, textAlign: 'right' }}>
           {item.mondayUpdatedAt ? fmtSyncAgo(item.mondayUpdatedAt) : '—'}
         </div>

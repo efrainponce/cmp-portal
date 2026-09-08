@@ -2,7 +2,7 @@
 // directamente por su propio id — nunca vía el board_relation hacia la
 // Oportunidad (frágil, ver worker/lib/dal.ts linkedItemId). Agrupa/filtra por
 // `project_status`, no por `deal_stage` de Oportunidades (Efraín, 2026-07-17).
-export type ProjectBoardKey = 'doctallas' | 'ordenescompra' | 'ejecucion' | 'logistica' | 'zona_efrain_proy';
+export type ProjectBoardKey = 'doctallas' | 'ordenescompra' | 'ejecucion' | 'logistica' | 'zona_efrain_proy' | 'estadocuenta';
 
 export interface ProjectBoardConfig {
   key: ProjectBoardKey;
@@ -56,4 +56,12 @@ export const PROJECT_BOARDS: Record<ProjectBoardKey, ProjectBoardConfig> = {
     key: 'zona_efrain_proy', title: 'Zona Efrain',
     vendedorNames: ['Efrain Ponce'], defaultTab: 'documentacion',
   },
+  // "Estado de Cuenta" (Efraín, 2026-09-08, "retoma lo que hicimos en
+  // janing"): cobros y pagos por proyecto — facturas con sus abonos, lo
+  // vencido, el flujo por mes. TODOS los proyectos sin filtro de etapa (una
+  // obra terminada es justo la que sigue cobrándose). Por-USUARIO como Zona
+  // Efrain: solo Elisa, el CEO y Efraín (me.estadoCuentaAccess, la whitelist
+  // de shared/visibility.ts puedeVerEstadoCuenta); el worker responde 403 al
+  // resto en cada ruta de /estado-cuenta.
+  estadocuenta: { key: 'estadocuenta', title: 'Estado de Cuenta', defaultTab: 'estadocuenta' },
 };

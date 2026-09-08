@@ -1,6 +1,7 @@
 // Generic role-scoped DTOs. The serializer (worker/lib/serialize.ts) is the ONLY
 // producer; it emits exactly the whitelisted columns for the viewer's role.
 import type { Role } from './types';
+import type { ResumenEstadoCuenta } from './estadoCuenta';
 import type { BoardSlug } from './boards';
 
 export interface ColVal {
@@ -94,6 +95,11 @@ export interface MeDTO {
   // Igual que boardAccess, solo declutter: la protección real de los datos ya
   // la hace dal.ts hidden_owner_ids sin importar este flag.
   zonaEfrainAccess: boolean;
+  // ¿Este viewer ve el board "Estado de Cuenta" de Proyectos? Por-USUARIO
+  // (shared/visibility.ts puedeVerEstadoCuenta: Elisa, el CEO y Efraín),
+  // igual que zonaEfrainAccess. Declutter del nav: el worker vuelve a checar
+  // el correo en cada ruta de /estado-cuenta.
+  estadoCuentaAccess: boolean;
 }
 
 export interface WriteRequest { cols: Record<string, string> }  // colId -> new raw value
@@ -586,3 +592,80 @@ export interface CrearAnuncioRequest {
   notificarWa?: boolean;        // casilla explícita del admin — nunca implícito por severidad
 }
 export interface CrearAnuncioResponse { anuncio: AnuncioDTO }
+
+// ── Estado de cuenta del Proyecto (board "Estado de Cuenta", 2026-09-08) ────
+// Nativo en D1 (worker/lib/estadoCuenta.ts), sin columna de Monday detrás —
+// portado de janing-portal. Un CONCEPTO es el compromiso (la factura, la
+// estimación) con su total; los COBROS/PAGOS (abonos) son el dinero que se
+// movió, en una o varias partes. Un abono con `fecha` ya entró; sin ella está
+// PROGRAMADO para su `fechaEstimada`. La factura del concepto y el
+// comprobante de cada abono viven en R2 y se sirven por el worker.
+export type EstadoCuentaTipo = 'ingreso' | 'egreso';
+
+export interface EstadoCuentaArchivoDTO {
+  nombre: string;
+  contentType: string;
+  bytes: number;
+}
+
+export interface EstadoCuentaAbonoDTO {
+  id: string;
+  monto: number;
+  /** Cuándo se movió el dinero. Null = todavía no: está programado. */
+  fecha: string | null;
+  /** Cuándo se espera. Solo aplica mientras `fecha` sea null. */
+  fechaEstimada: string | null;
+  nota: string | null;
+  /** El comprobante (transferencia, cheque). Null = sin archivo. */
+  archivo: EstadoCuentaArchivoDTO | null;
+  createdBy: string;
+  createdAt: string;
+}
+
+export interface EstadoCuentaConceptoDTO {
+  id: string;
+  tipo: EstadoCuentaTipo;
+  concepto: string | null;
+  total: number;
+  /** Fecha del concepto (emisión de la factura). */
+  fecha: string | null;
+  /** La factura. Null = sin archivo. */
+  archivo: EstadoCuentaArchivoDTO | null;
+  createdBy: string;
+  createdAt: string;
+  abonos: EstadoCuentaAbonoDTO[];
+  /** Derivados por shared/estadoCuenta.ts; el server los manda ya resueltos
+   * para que la UI, el PDF y el Excel muestren exactamente el mismo número. */
+  abonado: number;
+  programado: number;
+  vencido: number;
+  saldo: number;
+  sinProgramar: number;
+  proximaFecha: string | null;
+  liquidado: boolean;
+}
+
+export interface ListEstadoCuentaResponse { conceptos: EstadoCuentaConceptoDTO[] }
+
+/** Estado de cuenta de TODOS los proyectos visibles, resumido por proyecto y
+ * keyed por su id (Monday item id) — la lista del board lo suma por grupo. Un
+ * proyecto sin movimientos NO aparece en el mapa. */
+export interface EstadoCuentaResumenResponse { resumen: Record<string, ResumenEstadoCuenta> }
+
+export interface AddEstadoCuentaRequest {
+  tipo: EstadoCuentaTipo; total: number; fecha?: string; concepto?: string;
+  /** Primer cobro YA recibido, para el caso de una sola exhibición. */
+  abonoInicial?: number;
+  /** Programa el total para esa fecha (si no se marcó como ya pagado). */
+  fechaEstimada?: string;
+}
+export interface AddEstadoCuentaResponse { ok: boolean; id?: string; error?: string }
+
+/** Un cobro/pago: con `fecha` ya entró, con `fechaEstimada` está programado. */
+export interface AddAbonoRequest { monto: number; fecha?: string; fechaEstimada?: string; nota?: string }
+export interface AddAbonoResponse { ok: boolean; id?: string; error?: string }
+
+/** Sobre todo para marcar un programado como ya cobrado (llega `fecha`, y el
+ * monto si entró distinto de lo acordado). */
+export interface UpdateAbonoRequest { monto?: number; fecha?: string | null; fechaEstimada?: string | null; nota?: string }
+export interface UpdateAbonoResponse { ok: boolean; error?: string }

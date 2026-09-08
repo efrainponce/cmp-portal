@@ -349,6 +349,16 @@ const UTILIDADES_EMAILS: ReadonlySet<string> = new Set([
 export const puedeVerUtilidades = (email: string | null | undefined): boolean =>
   !!email && UTILIDADES_EMAILS.has(email.trim().toLowerCase());
 
+/** Board "Estado de Cuenta" de Proyectos (Efraín, 2026-09-08: "es solo para
+ * admin: Elisa y el CEO"). Misma whitelist por correo que las utilidades —
+ * son las mismas tres personas y por el mismo motivo (dinero cobrado y
+ * pagado por proyecto es información de dirección, no de operación). Gatea
+ * el acceso del sidebar (MeDTO.estadoCuentaAccess) Y cada ruta del worker
+ * (worker/routes/estadoCuenta.ts responde 403 al resto, admin incluido). Si
+ * un día la lista deja de coincidir con la de utilidades, aquí se separa. */
+export const puedeVerEstadoCuenta = (email: string | null | undefined): boolean =>
+  puedeVerUtilidades(email);
+
 /** El `email` es OPCIONAL y su ausencia OCULTA (no muestra): un camino que se
  * me pase de actualizar deja las utilidades fuera, que es el error barato. Si
  * algún día alguien de la whitelist no ve sus cifras, el bug es aquí: falta

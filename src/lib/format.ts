@@ -12,6 +12,14 @@ export function fmtMoney(n: number): string {
   return '$' + Math.round(n).toLocaleString('es-MX');
 }
 
+/** Con centavos, para el Estado de cuenta: una factura de $907,224.86 se
+ * concilia contra el comprobante centavo a centavo, y redondearla a $907,225
+ * (fmtMoney) haría que el saldo "no cuadre" por 14 centavos que sí existen. */
+export function fmtMoney2(n: number): string {
+  const signo = n < 0 ? '-' : '';
+  return `${signo}$${Math.abs(n).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
 /** Semáforo de la Utilidad %: rojo si se pierde dinero, ámbar abajo del 20%,
  * verde arriba. La misma escala en la grid de Cotización y en la lista, para
  * que un renglón no cambie de color al abrirlo. */

@@ -14,6 +14,7 @@ import { assistantRoutes } from './assistant/routes';
 import { boardRoutes } from './routes/boards';
 import { adminRoutes } from './routes/admin';
 import { oportunidadRoutes } from './routes/oportunidades';
+import { estadoCuentaRoutes } from './routes/estadoCuenta';
 import { inventarioRoutes } from './routes/inventario';
 import { notificationRoutes } from './routes/notifications';
 import { documentRoutes } from './routes/documents';
@@ -78,6 +79,10 @@ app.use('/api/*', async (c, next) => {
 assistantRoutes(app);
 boardRoutes(app);
 adminRoutes(app);
+// ANTES de oportunidadRoutes: allá vive el comodín POST /api/proyectos/:id/:action
+// y Hono resuelve por orden de registro — si no, se comería el POST de
+// /api/proyectos/:id/estado-cuenta.
+estadoCuentaRoutes(app);
 oportunidadRoutes(app);
 inventarioRoutes(app);
 notificationRoutes(app);

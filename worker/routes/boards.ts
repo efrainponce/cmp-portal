@@ -16,7 +16,7 @@ import {
   ownsItem, leadsOthers, hasPendingWrites, upsertIdentity,
 } from '../lib/dal';
 import { toItemDTO, toColMeta, itemDetailEtag } from '../lib/serialize';
-import { canRead, canReadActivity, canReadBoard, canWrite } from '../../shared/visibility';
+import { canRead, canReadActivity, canReadBoard, canWrite, puedeVerEstadoCuenta } from '../../shared/visibility';
 import { submitWrite, OutboxError } from '../lib/outbox';
 import { submitCreate, submitCreateNative, isNativeCreatable, CreateError } from '../lib/createRecord';
 import { esDraftVigente, LINE_DEFINING_COLS, autoVersionSiCosteada } from '../lib/quoteVersions';
@@ -127,6 +127,7 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
       impersonatedBy: admin ? { email: admin.email, nombre: admin.nombre ?? admin.email } : null,
       boardAccess: await getBoardAccess(c.env, viewer.role),
       zonaEfrainAccess: isZonaPrivadaAdminPermitido(viewer.email),
+      estadoCuentaAccess: puedeVerEstadoCuenta(viewer.email),
     };
     return c.json(dto);
   });

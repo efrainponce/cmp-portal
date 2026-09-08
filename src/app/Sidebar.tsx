@@ -18,7 +18,7 @@ export type BoardKey =
   | 'home' | 'anuncios'
   | 'oportunidades' | 'oportunidades_web' | 'costeo' | 'validacion' | 'doctallas' | 'ordenescompra' | 'ejecucion' | 'logistica'
   | 'productos' | 'instituciones' | 'contactos' | 'proveedores' | 'inventario' | 'settings' | 'analisis'
-  | 'zona_efrain' | 'zona_efrain_proy';
+  | 'zona_efrain' | 'zona_efrain_proy' | 'estadocuenta';
 
 type NavIcon = (p: { style?: React.CSSProperties }) => React.ReactElement;
 interface NavItemConfig { key: BoardKey; label: string; icon: NavIcon }
@@ -40,6 +40,12 @@ const ZONA_EFRAIN_ITEM: NavItemConfig = { key: 'zona_efrain', label: 'Zona Efrai
 // su propia vista privada en vez de quedar revuelto en los 4 accesos normales.
 // Misma whitelist, misma etiqueta — lo que cambia es el grupo del sidebar.
 const ZONA_EFRAIN_PROYECTOS_ITEM: NavItemConfig = { key: 'zona_efrain_proy', label: 'Zona Efrain', icon: IconLock };
+// "Estado de Cuenta" (Efraín, 2026-09-08): cobros y pagos por proyecto, solo
+// para Elisa, el CEO y Efraín — por-USUARIO (me.estadoCuentaAccess, la
+// whitelist de shared/visibility.ts puedeVerEstadoCuenta), igual que Zona
+// Efrain: NO vive en shared/boardAccess.ts porque ahí admin ve todo y PAM es
+// admin. Mismo tratamiento en el sidebar: se agrega condicionalmente abajo.
+const ESTADO_CUENTA_ITEM: NavItemConfig = { key: 'estadocuenta', label: 'Estado de Cuenta', icon: IconCuentas };
 
 // Un solo grupo: post-venta es el flujo del Proyecto — subir documentación y
 // tallas, generar las órdenes de compra y hacer el fulfillment (Efraín, 2026-07-17).
@@ -64,7 +70,7 @@ const INVENTARIO_ITEMS: NavItemConfig[] = [
 /** Label por board para headers fuera del sidebar (p.ej. la barra superior móvil). */
 export const BOARD_LABELS: Record<BoardKey, string> = {
   ...Object.fromEntries(
-    [...VENTAS_ITEMS, ...PROYECTOS_ITEMS, ...CATALOG_ITEMS, ...INVENTARIO_ITEMS, ZONA_EFRAIN_ITEM, ZONA_EFRAIN_PROYECTOS_ITEM]
+    [...VENTAS_ITEMS, ...PROYECTOS_ITEMS, ...CATALOG_ITEMS, ...INVENTARIO_ITEMS, ZONA_EFRAIN_ITEM, ZONA_EFRAIN_PROYECTOS_ITEM, ESTADO_CUENTA_ITEM]
       .map((i) => [i.key, i.label]),
   ),
   home: 'Inicio',
@@ -93,9 +99,11 @@ export function Sidebar({ activeBoard, onSelectBoard, collapsed, onToggleCollaps
   const { noLeidos } = useAnuncios();
   const visible = (items: NavItemConfig[]) => items.filter((item) => me?.boardAccess.includes(item.key));
   const ventasItems = me?.zonaEfrainAccess ? [...visible(VENTAS_ITEMS), ZONA_EFRAIN_ITEM] : visible(VENTAS_ITEMS);
-  const proyectosItems = me?.zonaEfrainAccess
-    ? [...visible(PROYECTOS_ITEMS), ZONA_EFRAIN_PROYECTOS_ITEM]
-    : visible(PROYECTOS_ITEMS);
+  const proyectosItems = [
+    ...visible(PROYECTOS_ITEMS),
+    ...(me?.estadoCuentaAccess ? [ESTADO_CUENTA_ITEM] : []),
+    ...(me?.zonaEfrainAccess ? [ZONA_EFRAIN_PROYECTOS_ITEM] : []),
+  ];
   const inventarioItems = visible(INVENTARIO_ITEMS);
   const catalogItems = visible(CATALOG_ITEMS);
   return (

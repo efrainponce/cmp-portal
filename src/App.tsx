@@ -69,7 +69,7 @@ function App() {
         <StageBoard key={activeBoard} boardKey={activeBoard} openId={itemId} openTab={openTab} onTabChange={setTab} onOpenChange={onOpenChange} onDuplicated={onDuplicated} />
       )}
       {(activeBoard === 'doctallas' || activeBoard === 'ordenescompra' || activeBoard === 'ejecucion'
-        || activeBoard === 'logistica' || activeBoard === 'zona_efrain_proy') && (
+        || activeBoard === 'logistica' || activeBoard === 'zona_efrain_proy' || activeBoard === 'estadocuenta') && (
         <ProyectoBoard
           key={activeBoard}
           boardKey={activeBoard}

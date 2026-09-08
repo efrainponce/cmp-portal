@@ -4,6 +4,7 @@ import { usePrefetchOnIdle } from '../../lib/lazyPrefetch';
 import { PROJECT_BOARDS, type ProjectBoardKey } from '../../lib/projectStages';
 import { Button } from '../../components/core/Button';
 import { IconPlus } from '../../components/icons';
+import { carteraXlsx, downloadBlob } from '../../lib/estadoCuentaApi';
 
 // El modal solo pesa cuando alguien lo abre (igual que "Nueva oportunidad").
 const CrearProyectoModal = lazy(() => import('./CrearProyectoModal'));
@@ -49,17 +50,35 @@ export function ProyectoBoard({ boardKey, openId, openTab, onTabChange, onOpenCh
   const [listaLista, setListaLista] = useState(false);
   const [creating, setCreating] = useState(false);
   usePrefetchOnIdle(cargarDrawer, listaLista);
+  // Estado de Cuenta: "descargar todos los proyectos a excel" (Efraín,
+  // 2026-09-08) — la lista completa que el viewer ve, un renglón por proyecto.
+  const [exportando, setExportando] = useState(false);
+  const exportarCartera = async () => {
+    setExportando(true);
+    try {
+      downloadBlob(await carteraXlsx(), 'Estado-de-cuenta-proyectos.xlsx');
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : 'No se pudo exportar.');
+    } finally {
+      setExportando(false);
+    }
+  };
+  const headerAction = CREAR_EN.includes(boardKey) ? (
+    <Button variant="primary" onClick={() => setCreating(true)}>
+      <IconPlus /> Nuevo proyecto
+    </Button>
+  ) : boardKey === 'estadocuenta' ? (
+    <Button variant={exportando ? 'disabled' : 'secondary'} onClick={exportarCartera}>
+      {exportando ? 'Generando…' : 'Exportar Excel'}
+    </Button>
+  ) : undefined;
 
   return (
     <div style={{ position: 'relative', height: '100%', width: '100%' }}>
       {!openId && (
         <ProyectoBoardList
           config={config} q={q} onSearch={setQ} onOpen={onOpenChange} onReady={() => setListaLista(true)}
-          headerAction={CREAR_EN.includes(boardKey) ? (
-            <Button variant="primary" onClick={() => setCreating(true)}>
-              <IconPlus /> Nuevo proyecto
-            </Button>
-          ) : undefined}
+          headerAction={headerAction}
         />
       )}
       {openId && (
