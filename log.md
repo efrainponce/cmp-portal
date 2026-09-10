@@ -1,5 +1,61 @@
 # Log de commits
 
+## 2026-09-10
+
+- **OPP-0970 / PRO-0171 (Fiscalía de Veracruz): la división caballero/dama
+  "no se reflejaba en la cotización"** (Pam por WhatsApp; Efraín: "necesito un
+  fix ya"). Lo que pasó, con el activity log de Monday en la mano: el 26 de
+  agosto a las 10:28 (CDMX) Pam dividió 4 líneas desde el Proyecto (650
+  caballero + 250 dama en Taclite Pro 72175 Black/TDU Khaki y Polo 71049
+  Black/silver tan); las 4 líneas nuevas nacieron bien en Monday, pero a las
+  16:38 del mismo día su propio usuario de Monday (LILIANA CHALE /
+  cotizaciones3@) las borró en lote DIRECTO en Monday (`delete_pulse`,
+  `is_batch_action: true`, sin renglón en `item_borrado` — el portal no fue).
+  Como el portal y Monday son 1-1, la cotización se quedó con las origen ya
+  recortadas a 650 y sin las de dama, y nadie lo vio porque la origen seguía
+  diciendo "Dividida". Se notó dos semanas después: el archivo de tallas (que
+  cmp-tallas generó cuando las líneas aún existían) sí traía los modelos de
+  mujer y las tallas del Proyecto ya estaban capturadas contra ellos.
+- **Bug real que sí era del portal: el SKU de la línea nueva.** `copyRemainingCols`
+  arrastraba el SKU texto (`text_mm0bxy39`) de la línea origen, así que la
+  línea de dama nacía como "Women's Performance Short Sleeve POLO / SKU 71049"
+  (el de caballero) — por eso el archivo de tallas decía "Women's… SKU: 71049"
+  y las tallas del Proyecto quedaron con ese SKU. Desde hoy, al cambiar de
+  producto (dividir o editar) el SKU y el nombre de la línea salen del
+  CATÁLOGO (`textosDeProducto`: `product_and_service_sku` + `name` del
+  producto); si el producto no cambia, se copia el SKU de la origen. Anclado en
+  `worker/lib/lineaAjustes.test.ts`. Nota: la automatización de Monday que
+  llena Producto/SKU al ligar la relación NO dispara en `create_subitem` con
+  valores iniciales — el activity log de las 4 líneas no trae ningún
+  `update_column_value` después de crearlas.
+- **La cotización avisa cuando la parte nueva de una división ya no existe**
+  (`listAjustesConEstado` → `AjusteDTO.lineaBorrada`, con quién/cuándo si se
+  borró desde el portal vía `item_borrado`; sin eso, "borrada directo en
+  Monday"). Banner rojo `DivisionesBorradas` en la Cotización de la
+  Oportunidad y en la del Proyecto, con **"Restaurar línea"**: vuelve a crear
+  la línea a partir del ajuste (producto/color/cantidad/embellecimiento) sobre
+  la línea origen ACTUAL (precio, costeo, Etapa Costeo, imagen de
+  embellecimiento…), SIN volver a restar de la origen; el ajuste original pasa
+  a apuntar a la línea nueva y queda un ajuste más ("Línea restaurada"). Rutas
+  `POST /api/oportunidades/:id/ajustes/:subversion/restaurar` (dueño de la
+  Oportunidad) y `POST /api/proyectos/:id/cotizacion-virtual/ajustes/:subversion/restaurar`
+  (dueño del Proyecto). `crearLineaHermana` es ahora el único lugar que arma
+  la línea hermana (dividir y restaurar).
+- **Datos arreglados en producción** corriendo el worker local con bindings
+  remotos (`wrangler dev --config <copia con "remote": true en D1/R2> --var
+  ENVIRONMENT:dev`, como Efraín; `--remote` no sirve porque el workers.dev del
+  worker está detrás de Access): las 4 líneas de dama restauradas en OPP-0970
+  (13021052094, 13021078174, 13021039341, 13021040148; total de la cotización
+  de vuelta a $13,914,000 = 900 × 5 partidas × 2 colores) y las 24 líneas de
+  tallas de mujer del Proyecto cambiadas al producto correcto con "Cambiar
+  producto…" (61165 Women's Performance Short Sleeve POLO ×14, 62070ABR Camisa
+  Taclite Pro Manga Larga Mujer ×10; respaldo en `linea_producto_cambio`).
+  OJO Compras: esas 24 líneas ya iban en "Pendiente de Recolectar" — la OC al
+  proveedor salió con los SKU de caballero y hay que corregirla con el
+  proveedor. El archivo de tallas (Sheet) sigue diciendo 71049/72175 hasta que
+  se regenere. Las tallas de la Camisa Mujer suman 248 (no 250) por color: es
+  como Pam las capturó.
+
 ## 2026-09-08
 
 - **Nuevo board "Estado de Cuenta" en Proyectos** (Efraín: "retoma lo que

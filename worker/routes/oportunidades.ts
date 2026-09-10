@@ -21,8 +21,8 @@ import {
 import { enviarACosteo, enviarAValidacion, confirmarCosteo, checkCosteo, checkValidacion, CosteoError } from '../lib/costeo';
 import { generarCotizacionNative, generarCotizacionNativeD1, CotizacionError } from '../lib/cotizacion';
 import { listVersions, duplicateVersion, restoreVersion, recordFirstVersion, QuoteVersionError, autoVersionSiCosteada } from '../lib/quoteVersions';
-import { ajustarLinea, AjusteLineaError } from '../lib/lineaAjustes';
-import { listCotizacionVirtual, ajustarLineaVirtual, ProyectoCotizacionError } from '../lib/proyectoCotizacionVirtual';
+import { ajustarLinea, restaurarLineaDividida, AjusteLineaError } from '../lib/lineaAjustes';
+import { listCotizacionVirtual, ajustarLineaVirtual, restaurarLineaVirtual, ProyectoCotizacionError } from '../lib/proyectoCotizacionVirtual';
 import { capturarTallas, reportarTallasIncorrectas, checkOcCliente, confirmTallasNative, confirmTallasNativeD1 } from '../lib/proyectoTallas';
 import { cambiarProductoLineas, listCambiosProducto, CambiarProductoError } from '../lib/proyectoLineaProducto';
 import {
@@ -721,6 +721,28 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     }
   });
 
+  // "Restaurar línea" (OPP-0970, 2026-09-10): la línea hermana de un 'dividir'
+  // (ajuste .{subversion} de la versión vigente) se borró directo en Monday y
+  // la cotización quedó recortada; se vuelve a crear a partir del ajuste y de
+  // la línea origen actual — worker/lib/lineaAjustes.ts restaurarLineaDividida.
+  // :id es la OPORTUNIDAD (el ajuste vive en su historial). Regresa `versions`
+  // como 'eliminar', para refrescar los chips y las marcas de la grid.
+  app.post('/api/oportunidades/:id/ajustes/:subversion/restaurar', async c => {
+    const itemId = Number(c.req.param('id'));
+    const subversion = Number(c.req.param('subversion'));
+    if (!Number.isFinite(itemId) || !Number.isFinite(subversion)) return c.json({ error: 'not found' }, 404);
+    const viewer = c.get('viewer');
+    try {
+      const result = await restaurarLineaDividida(c.env, itemId, subversion, viewer);
+      await refetchItemTree(c.env, BOARDS.oportunidades.id, result.itemId);
+      const versions = await listVersions(c.env, itemId, viewer);
+      return c.json({ ok: true, lineaId: result.lineaId, nuevaLineaId: result.nuevaLineaId, versions } satisfies AjustarLineaResponse);
+    } catch (err) {
+      if (err instanceof AjusteLineaError) return jsonStatus({ ok: false, error: err.message } satisfies AjustarLineaResponse, err.status);
+      return jsonStatus({ ok: false, error: 'internal error' } satisfies AjustarLineaResponse, 500);
+    }
+  });
+
   // Imágenes de referencia por zona de embellecimiento — :id es la línea
   // (subitem de oportunidades_sub), no la oportunidad. Monday no tiene una
   // columna por zona; la zona va codificada en el nombre del archivo
@@ -1329,6 +1351,25 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       const result = await ajustarLineaVirtual(c.env, c.executionCtx, proyectoId, lineaId, viewer, body);
       if (result.itemId != null) await refetchItemTree(c.env, BOARDS.oportunidades.id, result.itemId);
       return c.json({ ok: result.ok, lineaId: result.lineaId, nuevaLineaId: result.nuevaLineaId, costoDivergente: result.costoDivergente } satisfies AjustarLineaResponse);
+    } catch (err) {
+      if (err instanceof ProyectoCotizacionError) return jsonStatus({ ok: false, error: err.message } satisfies AjustarLineaResponse, err.status);
+      if (err instanceof AjusteLineaError) return jsonStatus({ ok: false, error: err.message } satisfies AjustarLineaResponse, err.status);
+      return jsonStatus({ ok: false, error: 'internal error' } satisfies AjustarLineaResponse, 500);
+    }
+  });
+
+  // "Restaurar línea" desde el Proyecto (OPP-0970 / PRO-0171, 2026-09-10) —
+  // mismo motor que POST /api/oportunidades/:id/ajustes/:subversion/restaurar,
+  // autorizado contra el dueño del Proyecto (worker/lib/proyectoCotizacionVirtual.ts).
+  app.post('/api/proyectos/:id/cotizacion-virtual/ajustes/:subversion/restaurar', async c => {
+    const proyectoId = Number(c.req.param('id'));
+    const subversion = Number(c.req.param('subversion'));
+    if (!Number.isFinite(proyectoId) || !Number.isFinite(subversion)) return c.json({ error: 'not found' }, 404);
+    const viewer = c.get('viewer');
+    try {
+      const result = await restaurarLineaVirtual(c.env, proyectoId, subversion, viewer);
+      if (result.itemId != null) await refetchItemTree(c.env, BOARDS.oportunidades.id, result.itemId);
+      return c.json({ ok: result.ok, lineaId: result.lineaId, nuevaLineaId: result.nuevaLineaId } satisfies AjustarLineaResponse);
     } catch (err) {
       if (err instanceof ProyectoCotizacionError) return jsonStatus({ ok: false, error: err.message } satisfies AjustarLineaResponse, err.status);
       if (err instanceof AjusteLineaError) return jsonStatus({ ok: false, error: err.message } satisfies AjustarLineaResponse, err.status);

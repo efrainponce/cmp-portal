@@ -188,6 +188,14 @@ export interface AjusteDTO {
   /** Solo en 'dividir': línea de la que se partió — esa línea origen también
    * se pinta como "Dividida" aunque no tenga su propio registro de ajuste. */
   lineaOrigenId?: number;
+  /** Solo en 'dividir' (worker/lib/lineaAjustes.ts marcarDivisionesBorradas,
+   * 2026-09-10): la línea hermana ya NO existe — la origen se quedó recortada
+   * y la parte nueva desapareció de la cotización. El front avisa y ofrece
+   * "Restaurar línea". `borradaPor`/`borradaEn` solo si se borró desde el
+   * portal (item_borrado); sin ellos, se borró directo en Monday. */
+  lineaBorrada?: boolean;
+  borradaPor?: string;
+  borradaEn?: string;
 }
 
 export interface QuoteVersionDTO {

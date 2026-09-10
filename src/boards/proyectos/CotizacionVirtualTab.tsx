@@ -7,10 +7,11 @@
 // sobre QuoteLineSnapshot.
 import { useEffect, useState } from 'react';
 import type { AjusteDTO, CostoDivergenciaDTO, ItemDTO, QuoteLineSnapshot } from '../../lib/api';
-import { getCotizacionVirtual, listItems } from '../../lib/apiClient';
+import { getCotizacionVirtual, listItems, restaurarLineaDivididaVirtual } from '../../lib/apiClient';
 import { useMe } from '../../lib/useMe';
 import { fmtMoney } from '../../lib/format';
 import { AjusteLabelBadge } from '../../components/core/Badges';
+import { DivisionesBorradas } from '../oportunidades/tabs/cotizacion/DivisionesBorradas';
 import { AjustarLineaVirtualModal } from './AjustarLineaVirtualModal';
 
 function rowStyle(kind: 'header' | 'body' | 'footer'): React.CSSProperties {
@@ -72,6 +73,18 @@ export function CotizacionVirtualTab({ proyectoId }: { proyectoId: string }) {
           {notice}
         </div>
       )}
+
+      <DivisionesBorradas
+        ajustes={ajustes}
+        canRestaurar={canAjustar}
+        onRestaurar={async (subversion) => {
+          const res = await restaurarLineaDivididaVirtual(proyectoId, subversion);
+          if (!res.ok) return res.error ?? 'No se pudo restaurar la línea.';
+          setNotice('Línea restaurada — ya vuelve a contar en la cotización y en Monday.');
+          load();
+          return undefined;
+        }}
+      />
 
       {lines.length === 0 ? (
         <div style={{ padding: 24, color: 'var(--ink-quiet)', font: 'var(--text-label)' }}>Sin líneas de cotización.</div>

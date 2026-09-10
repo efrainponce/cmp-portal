@@ -30,13 +30,27 @@
 // una versión real (no pasa por costeo), solo trazabilidad de que la vigente
 // tuvo retoques; quoteVersions.ts (listVersions) la adjunta a la vigente para
 // mostrarla en VersionChips.
+//
+// Lo que dejó OPP-0970 (Pam, 2026-08-26 → reportado 2026-09-10):
+//   - Al cambiar de producto (caballero → dama) el SKU y el nombre de la línea
+//     nueva salen del CATÁLOGO, nunca copiados de la línea origen. Antes
+//     `copyRemainingCols` arrastraba el SKU texto (`text_mm0bxy39`) y la línea
+//     de dama nacía como "Women's … POLO / SKU 71049" — así salió en el archivo
+//     de tallas y así se capturaron las tallas del Proyecto.
+//   - Si la línea hermana de un 'dividir' desaparece (alguien la borra directo
+//     en Monday — el portal nunca esconde una línea, worker/lib/itemBorrado.ts),
+//     la cotización se queda con la origen ya recortada y SIN la parte nueva,
+//     y nadie lo ve: la origen sigue diciendo "Dividida". `listAjustesConEstado`
+//     marca esos ajustes (`lineaBorrada`) y `restaurarLineaDividida` vuelve a
+//     crear la línea a partir del ajuste + la origen actual, sin restar de nuevo.
 import type { ExecutionContext } from 'hono';
 import type { Env } from '../env';
 import { registrarArchivo } from './archivoLog';
 import { BOARDS } from '../../shared/boards';
 import type { Identity, MirrorItem } from '../../shared/types';
 import type { AjusteDTO, AjustarLineaRequest, CostoDivergenciaDTO } from '../../shared/dto';
-import { getItem } from './dal';
+import { getItem, getItemTrusted } from './dal';
+import { ensureItemBorradoTable } from './itemBorrado';
 import { submitWrite, flushOutbox } from './outbox';
 import { createSubitem, addFileToColumn, fetchAssetPublicUrls } from './monday';
 import { upsertItem } from '../sync';
@@ -64,6 +78,14 @@ const SUB_CANTIDAD = 'numeric_mkzm6399';
 const SUB_EMB_STATUS = 'color_mm1b34bg';
 const SUB_EMB_DESC = 'long_text_mm1bj4pt';
 const SUB_FILE = 'file_mm5akjy5'; // Imagen embellecimiento
+// SKU texto de la línea: es el que cmp-tallas imprime en el archivo de tallas y
+// el que el Proyecto hereda al capturar tallas — por eso va del catálogo, no
+// copiado, cuando la línea cambia de producto.
+const SUB_SKU_TXT = 'text_mm0bxy39';
+// Catálogo de Productos (18395657591): SKU propio del producto. El nombre del
+// producto es el `name` del item ("61165 - Women's Performance Short Sleeve
+// POLO"), mismo formato que Monday deja en `text_mm0bkm1j` al ligar la relación.
+const PRODUCTO_SKU = 'product_and_service_sku';
 
 // "dividir" clona la línea entera, no solo producto/color/cantidad/embellecimiento
 // (Pam, 2026-08-11: Costo Distr. C/U y demás campos de Compras salían vacíos en
@@ -73,9 +95,10 @@ const SUB_FILE = 'file_mm5akjy5'; // Imagen embellecimiento
 // nunca algo que tenga sentido copiar.
 const COPY_COL_TYPES = new Set(['numbers', 'text', 'long_text', 'status']);
 // Ya tienen su propio manejo explícito abajo (con override de `input` o lógica
-// especial) — el copiado genérico no debe pisarlos.
+// especial) — el copiado genérico no debe pisarlos. El SKU texto entra aquí
+// desde 2026-09-10: se copia SOLO si el producto no cambia (crearLineaHermana).
 const DIVIDIR_EXPLICIT_IDS = new Set([
-  'name', SUB_PRODUCTO_REL, SUB_PRODUCTO_TXT, SUB_PRODUCTO_NOMBRE,
+  'name', SUB_PRODUCTO_REL, SUB_PRODUCTO_TXT, SUB_PRODUCTO_NOMBRE, SUB_SKU_TXT,
   SUB_COLOR, SUB_CANTIDAD, SUB_EMB_STATUS, SUB_EMB_DESC, SUB_FILE,
 ]);
 
@@ -129,6 +152,89 @@ async function copyEmbellecimientoImage(env: Env, sourceCols: Map<string, RawCol
       // imagen individual falla -> se omite, el resto de la línea sigue
     }
   }
+}
+
+/** SKU y nombre que la línea toma del catálogo al cambiar de producto. Puro
+ * (recibe el renglón del espejo de Productos) para test unitario. El SKU sale
+ * de `product_and_service_sku`; si el catálogo no lo trae, del prefijo
+ * "SKU - Nombre" con el que se nombran los productos. */
+export function textosDeProducto(producto: { name: string; columns: string }): { nombre: string; sku: string } {
+  const nombre = producto.name.trim();
+  let sku = '';
+  try {
+    const cols: RawCol[] = JSON.parse(producto.columns || '[]');
+    sku = (cols.find(c => c.id === PRODUCTO_SKU)?.text ?? '').trim();
+  } catch {
+    // sin columnas parseables: cae al prefijo del nombre
+  }
+  if (!sku) {
+    const m = /^(\S+)\s+-\s+/.exec(nombre);
+    if (m) sku = m[1];
+  }
+  return { nombre, sku };
+}
+
+/** Item del catálogo cuyo nombre es exactamente `nombre` (sin distinguir
+ * mayúsculas) — para 'restaurar', que solo tiene el nombre registrado en el
+ * ajuste. undefined si no hay uno: el llamador conserva el producto de la
+ * línea origen. */
+async function productoIdPorNombre(env: Env, nombre: string): Promise<number | undefined> {
+  const row = await env.DB
+    .prepare('SELECT item_id FROM items WHERE board_id = ? AND lower(trim(name)) = lower(?) LIMIT 1')
+    .bind(BOARDS.productos.id, nombre.trim())
+    .first<{ item_id: number }>();
+  return row?.item_id;
+}
+
+interface LineaHermanaParams {
+  cantidad: number;
+  color: string;
+  embLabel: string;
+  embDesc: string;
+  productoId?: number;
+  productoNombre?: string;
+}
+
+/** Crea la línea hermana de un 'dividir' (y la vuelve a crear en 'restaurar'):
+ * copia la línea origen entera (copyRemainingCols + relación/textos de producto
+ * + imagen de embellecimiento) y encima pone lo que cambió. Si el producto
+ * cambia, SKU y nombre vienen del CATÁLOGO — antes se copiaban de la origen y
+ * la línea de dama nacía con el SKU de caballero (OPP-0970, 2026-08-26: el
+ * archivo de tallas salió con 71049 para el polo de mujer 61165). No toca la
+ * cantidad de la origen: eso es del llamador. */
+async function crearLineaHermana(
+  env: Env, itemId: number, cols: Map<string, RawCol>, p: LineaHermanaParams,
+): Promise<{ nuevaLineaId: number; nombre: string }> {
+  const subCols: Record<string, unknown> = {
+    ...copyRemainingCols(cols),
+    [SUB_CANTIDAD]: String(p.cantidad),
+    [SUB_COLOR]: p.color,
+    [SUB_EMB_STATUS]: { label: p.embLabel },
+  };
+  if (p.embDesc) subCols[SUB_EMB_DESC] = p.embDesc;
+
+  let nombre = p.productoNombre?.trim() || productoNombre(cols) || 'Producto';
+  if (p.productoId != null) {
+    subCols[SUB_PRODUCTO_REL] = { item_ids: [p.productoId] };
+    const producto = await getItemTrusted(env, 'productos', p.productoId);
+    if (producto) {
+      const t = textosDeProducto(producto);
+      subCols[SUB_PRODUCTO_TXT] = t.nombre;
+      if (t.sku) subCols[SUB_SKU_TXT] = t.sku;
+      if (!p.productoNombre?.trim()) nombre = t.nombre;
+    }
+  } else {
+    const relId = linkedProductoId(cols.get(SUB_PRODUCTO_REL));
+    if (relId != null) subCols[SUB_PRODUCTO_REL] = { item_ids: [relId] };
+    else if (cols.get(SUB_PRODUCTO_TXT)?.text) subCols[SUB_PRODUCTO_TXT] = cols.get(SUB_PRODUCTO_TXT)!.text;
+    const sku = cols.get(SUB_SKU_TXT)?.text?.trim();
+    if (sku) subCols[SUB_SKU_TXT] = sku;
+  }
+
+  const nuevaLinea = await createSubitem(env, itemId, nombre, subCols);
+  await upsertItem(env, 'oportunidades_sub', nuevaLinea);
+  await copyEmbellecimientoImage(env, cols, Number(nuevaLinea.id));
+  return { nuevaLineaId: Number(nuevaLinea.id), nombre };
 }
 
 const EMB_LABEL_CON = 'Con Embellecimiento';
@@ -343,26 +449,11 @@ export async function applyAjusteLinea(
     const embDesc = input.embellecimiento?.descripcion ?? antes.descripcionEmbellecimiento;
     const color = input.color ?? antes.color;
 
-    const subCols: Record<string, unknown> = {
-      ...copyRemainingCols(cols),
-      [SUB_CANTIDAD]: String(cantidadInput),
-      [SUB_COLOR]: color,
-      [SUB_EMB_STATUS]: { label: embLabel },
-    };
-    if (embDesc) subCols[SUB_EMB_DESC] = embDesc;
-
-    if (input.productoId != null) {
-      subCols[SUB_PRODUCTO_REL] = { item_ids: [input.productoId] };
-    } else {
-      const relId = linkedProductoId(cols.get(SUB_PRODUCTO_REL));
-      if (relId != null) subCols[SUB_PRODUCTO_REL] = { item_ids: [relId] };
-      else if (cols.get(SUB_PRODUCTO_TXT)?.text) subCols[SUB_PRODUCTO_TXT] = cols.get(SUB_PRODUCTO_TXT)!.text;
-    }
-
-    const nombreNueva = (input.productoId != null ? input.productoNombre : antes.producto) || antes.producto || 'Producto';
-    const nuevaLinea = await createSubitem(env, itemId, nombreNueva, subCols);
-    await upsertItem(env, 'oportunidades_sub', nuevaLinea);
-    await copyEmbellecimientoImage(env, cols, Number(nuevaLinea.id));
+    const { nuevaLineaId, nombre: nombreNueva } = await crearLineaHermana(env, itemId, cols, {
+      cantidad: cantidadInput, color, embLabel, embDesc,
+      productoId: input.productoId ?? undefined,
+      productoNombre: input.productoId != null ? input.productoNombre : antes.producto,
+    });
 
     // Resta de la línea origen la cantidad que se movió a la nueva — trusted:
     // esto es parte de la misma operación compuesta, no un PATCH suelto del
@@ -370,7 +461,6 @@ export async function applyAjusteLinea(
     await submitWrite(env, ctx, 'oportunidades_sub', lineaId, { [SUB_CANTIDAD]: String(antes.cantidad - cantidadInput) }, viewer, { trusted: true, skipFlush: true });
     await flushOutbox(env);
 
-    const nuevaLineaId = Number(nuevaLinea.id);
     const despues: LineaSnapshot = { producto: nombreNueva, color, cantidad: cantidadInput, embellecimiento: embLabel, descripcionEmbellecimiento: embDesc };
     await registrarAjuste(env, itemId, nuevaLineaId, lineaId, antes, despues, viewer);
 
@@ -388,7 +478,18 @@ export async function applyAjusteLinea(
     writeCols[SUB_EMB_STATUS] = input.embellecimiento.estado === 'con' ? EMB_LABEL_CON : EMB_LABEL_SIN;
   }
   if (input.embellecimiento?.descripcion !== undefined) writeCols[SUB_EMB_DESC] = input.embellecimiento.descripcion;
-  if (input.productoId != null) writeCols[SUB_PRODUCTO_REL] = String(input.productoId);
+  if (input.productoId != null) {
+    writeCols[SUB_PRODUCTO_REL] = String(input.productoId);
+    // SKU y nombre del catálogo, no los que la línea traía del producto
+    // anterior (mismo criterio que crearLineaHermana; cmp-tallas lee el SKU
+    // texto, no la relación).
+    const producto = await getItemTrusted(env, 'productos', input.productoId);
+    if (producto) {
+      const t = textosDeProducto(producto);
+      writeCols[SUB_PRODUCTO_TXT] = t.nombre;
+      if (t.sku) writeCols[SUB_SKU_TXT] = t.sku;
+    }
+  }
 
   if (Object.keys(writeCols).length === 0) throw new AjusteLineaError(400, 'Nada que ajustar.');
 
@@ -423,4 +524,131 @@ export async function listAjustes(env: Env, itemId: number, version: number): Pr
     subversion: r.subversion, resumen: r.resumen, viewerEmail: r.viewer_email, createdAt: r.created_at,
     lineaId: r.linea_id, lineaOrigenId: r.linea_origen_id ?? undefined,
   }));
+}
+
+/** Marca los 'dividir' cuya línea hermana ya no está entre las líneas vivas:
+ * la cotización se quedó recortada (la origen ya perdió esa cantidad) y sin
+ * la parte nueva — lo que le pasó a OPP-0970 sin que nadie lo viera hasta el
+ * archivo de tallas. Puro para test; `borrados` es lo que item_borrado sabe
+ * (borradas desde el portal, con quién y cuándo); sin renglón ahí, la línea
+ * se borró directo en Monday. */
+export function marcarDivisionesBorradas(
+  lines: { subitemId?: number }[], ajustes: AjusteDTO[], borrados: Map<number, { email: string; at: string }> = new Map(),
+): AjusteDTO[] {
+  const vivas = new Set(lines.map(l => l.subitemId).filter((id): id is number => id != null));
+  return ajustes.map(a => {
+    if (a.lineaOrigenId == null || vivas.has(a.lineaId)) return a;
+    const b = borrados.get(a.lineaId);
+    return { ...a, lineaBorrada: true, ...(b ? { borradaPor: b.email, borradaEn: b.at } : {}) };
+  });
+}
+
+/** listAjustes + la marca de "línea hermana borrada" contra las líneas vivas
+ * de la vigente. Lo usan listVersions (Oportunidad) y getVirtualLines
+ * (Proyecto) — las dos superficies donde la cotización se ve. */
+export async function listAjustesConEstado(
+  env: Env, itemId: number, version: number, lines: { subitemId?: number }[],
+): Promise<AjusteDTO[]> {
+  const ajustes = await listAjustes(env, itemId, version);
+  const vivas = new Set(lines.map(l => l.subitemId));
+  const candidatas = ajustes.filter(a => a.lineaOrigenId != null && !vivas.has(a.lineaId)).map(a => a.lineaId);
+  if (candidatas.length === 0) return ajustes;
+  await ensureItemBorradoTable(env);
+  const placeholders = candidatas.map(() => '?').join(',');
+  const { results } = await env.DB.prepare(
+    `SELECT item_id, by_email, deleted_at FROM item_borrado WHERE board_id = ? AND item_id IN (${placeholders})`,
+  ).bind(BOARDS.oportunidades_sub.id, ...candidatas).all<{ item_id: number; by_email: string | null; deleted_at: string }>();
+  const borrados = new Map((results ?? []).map(r => [r.item_id, { email: r.by_email ?? '', at: r.deleted_at }] as const));
+  return marcarDivisionesBorradas(lines, ajustes, borrados);
+}
+
+export interface RestaurarLineaResult { itemId: number; lineaId: number; nuevaLineaId: number }
+
+interface AjusteRow {
+  id: number; version: number; subversion: number; linea_id: number; linea_origen_id: number | null;
+  resumen: string; campos_despues: string;
+}
+
+/** "Restaurar línea" (OPP-0970, 2026-09-10): la línea hermana de un 'dividir'
+ * ya no existe — alguien la borró directo en Monday (el portal nunca la
+ * esconde: worker/lib/itemBorrado.ts) — y la cotización se quedó con la
+ * origen recortada y sin la parte nueva. La vuelve a crear con lo registrado
+ * en el ajuste (producto/color/cantidad/embellecimiento) sobre la línea origen
+ * ACTUAL (precio, costeo, Etapa Costeo, imagen…), SIN volver a restar la
+ * cantidad de la origen (eso ya pasó al dividir). El ajuste original pasa a
+ * apuntar a la línea nueva y se asienta un ajuste más ("Línea restaurada").
+ * Autoriza contra la Oportunidad (dueño); el Proyecto tiene su propio camino
+ * en proyectoCotizacionVirtual.ts y reusa `applyRestaurarLinea`. */
+export async function restaurarLineaDividida(
+  env: Env, itemId: number, subversion: number, viewer: Identity,
+): Promise<RestaurarLineaResult> {
+  if (!AJUSTE_ROLES.includes(viewer.role)) throw new AjusteLineaError(403, 'forbidden');
+  const opp = await getItem(env, 'oportunidades', itemId, viewer, 'own');
+  if (!opp) throw new AjusteLineaError(404, 'not found');
+  return applyRestaurarLinea(env, itemId, subversion, viewer);
+}
+
+export async function applyRestaurarLinea(
+  env: Env, itemId: number, subversion: number, viewer: Identity,
+): Promise<RestaurarLineaResult> {
+  await ensureAjustesTable(env);
+  const version = await currentMajorVersion(env, itemId);
+  const ajuste = await env.DB.prepare(
+    'SELECT id, version, subversion, linea_id, linea_origen_id, resumen, campos_despues FROM cotizacion_ajustes WHERE item_id = ? AND version = ? AND subversion = ?',
+  ).bind(itemId, version, subversion).first<AjusteRow>();
+  if (!ajuste || ajuste.linea_origen_id == null) throw new AjusteLineaError(404, 'Ese ajuste no es una división.');
+
+  const viva = await getItemTrusted(env, 'oportunidades_sub', ajuste.linea_id);
+  if (viva && viva.parent_item_id === itemId) {
+    throw new AjusteLineaError(409, 'La línea de esa división sigue existiendo; no hay nada que restaurar.');
+  }
+  const origen = await getItemTrusted(env, 'oportunidades_sub', ajuste.linea_origen_id);
+  if (!origen || origen.parent_item_id !== itemId) {
+    throw new AjusteLineaError(404, 'La línea origen de la división ya no existe; agrega la línea a mano.');
+  }
+
+  let despues: Partial<LineaSnapshot> = {};
+  try {
+    despues = JSON.parse(ajuste.campos_despues) as Partial<LineaSnapshot>;
+  } catch {
+    // sin datos registrados: cae a la validación de cantidad
+  }
+  const cantidad = Number(despues.cantidad) || 0;
+  if (cantidad <= 0) throw new AjusteLineaError(400, 'El ajuste no registró la cantidad de la línea dividida.');
+
+  const cols = colsOf(origen);
+  const antes = snapshot(cols);
+  const producto = (despues.producto ?? '').trim();
+  // Solo si el nombre registrado es un item del catálogo se re-liga a él (y
+  // SKU/nombre salen de ahí); si no (división por color, mismo producto), la
+  // línea nueva conserva el producto de la origen.
+  const productoId = producto ? await productoIdPorNombre(env, producto) : undefined;
+  const color = despues.color ?? antes.color;
+  const nueva = await crearLineaHermana(env, itemId, cols, {
+    cantidad, color,
+    embLabel: despues.embellecimiento || antes.embellecimiento || EMB_LABEL_SIN,
+    embDesc: despues.descripcionEmbellecimiento ?? antes.descripcionEmbellecimiento,
+    productoId,
+    productoNombre: producto || undefined,
+  });
+
+  // El ajuste original apunta ahora a la línea que sí existe (así el label
+  // "Dividida" y la marca de "línea borrada" quedan coherentes) y el restaurado
+  // queda como su propio renglón del historial.
+  const restaurada: LineaSnapshot = {
+    producto: nueva.nombre, color, cantidad,
+    embellecimiento: despues.embellecimiento || antes.embellecimiento,
+    descripcionEmbellecimiento: despues.descripcionEmbellecimiento ?? antes.descripcionEmbellecimiento,
+  };
+  await env.DB.prepare('UPDATE cotizacion_ajustes SET linea_id = ? WHERE id = ?').bind(nueva.nuevaLineaId, ajuste.id).run();
+  const nextSub = await nextSubversion(env, itemId, version);
+  await env.DB.prepare(
+    `INSERT INTO cotizacion_ajustes (item_id, version, subversion, linea_id, linea_origen_id, resumen, campos_antes, campos_despues, viewer_email, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).bind(
+    itemId, version, nextSub, nueva.nuevaLineaId, ajuste.linea_origen_id,
+    `Línea restaurada (${cantidad} uds) — ${nueva.nombre}${color ? ` · Color: ${color}` : ''} (la de la .${subversion} la habían borrado en Monday)`,
+    JSON.stringify(despues), JSON.stringify(restaurada), viewer.email, new Date().toISOString(),
+  ).run();
+  return { itemId, lineaId: ajuste.linea_origen_id, nuevaLineaId: nueva.nuevaLineaId };
 }

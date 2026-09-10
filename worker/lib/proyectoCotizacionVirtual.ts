@@ -26,7 +26,7 @@ import type { Identity } from '../../shared/types';
 import type { AjusteDTO, AjustarLineaRequest, AjustarLineaResponse, CotizacionVirtualDTO, QuoteLineSnapshot } from '../../shared/dto';
 import { getItem, getItemTrusted, childrenOf, linkedItemId, PROYECTO_OPP_REL } from './dal';
 import { snapshotLine } from './quoteVersions';
-import { applyAjusteLinea, currentMajorVersion, listAjustes } from './lineaAjustes';
+import { applyAjusteLinea, applyRestaurarLinea, currentMajorVersion, listAjustesConEstado } from './lineaAjustes';
 
 export class ProyectoCotizacionError extends Error {
   status: number;
@@ -79,7 +79,9 @@ export async function getVirtualLines(env: Env, oportunidadId: number, viewer: I
   const base = lineasReales.map(snapshotLine);
 
   const vigenteVersion = await currentMajorVersion(env, oportunidadId);
-  const ajustes = await listAjustes(env, oportunidadId, vigenteVersion);
+  // Con la marca de "línea hermana borrada" (lineaBorrada): una división cuya
+  // parte nueva ya no existe se avisa aquí igual que en Oportunidades.
+  const ajustes = await listAjustesConEstado(env, oportunidadId, vigenteVersion, base);
 
   return { lines: labelLines(base, ajustes), ajustes };
 }
@@ -106,4 +108,19 @@ export async function ajustarLineaVirtual(
 
   const result = await applyAjusteLinea(env, ctx, oportunidadId, lineaId, linea, viewer, input);
   return { ok: true, itemId: result.itemId, lineaId: result.lineaId, nuevaLineaId: result.nuevaLineaId, costoDivergente: result.costoDivergente };
+}
+
+/** "Restaurar línea" desde el Proyecto (OPP-0970 / PRO-0171, 2026-09-10): la
+ * línea hermana de un 'dividir' se borró directo en Monday y la cotización se
+ * quedó recortada — mismo motor que en Oportunidades
+ * (worker/lib/lineaAjustes.ts applyRestaurarLinea), autorizado contra el
+ * dueño del Proyecto igual que ajustarLineaVirtual. `subversion` es el
+ * ".n" del ajuste marcado `lineaBorrada`. */
+export async function restaurarLineaVirtual(
+  env: Env, proyectoId: number, subversion: number, viewer: Identity,
+): Promise<AjustarLineaResponse & { itemId?: number }> {
+  if (!AJUSTE_ROLES.includes(viewer.role)) throw new ProyectoCotizacionError(403, 'forbidden');
+  const oportunidadId = await resolveOportunidadId(env, proyectoId, viewer, 'own');
+  const result = await applyRestaurarLinea(env, oportunidadId, subversion, viewer);
+  return { ok: true, itemId: result.itemId, lineaId: result.lineaId, nuevaLineaId: result.nuevaLineaId };
 }

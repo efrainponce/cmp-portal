@@ -15,8 +15,9 @@
 // the mirror catches up on refetch.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ColMeta, ColVal, ItemDetailDTO, ItemDTO, QuoteVersionDTO } from '../../../lib/api';
-import { patchItem, apiFetch, getCatalogoProductos, getProductoGenero, patchProductoGenero } from '../../../lib/apiClient';
+import { patchItem, apiFetch, getCatalogoProductos, getProductoGenero, patchProductoGenero, restaurarLineaDividida } from '../../../lib/apiClient';
 import { Button } from '../../../components/core/Button';
+import { DivisionesBorradas } from './cotizacion/DivisionesBorradas';
 import { previewRow, COL } from '../../../lib/costeoCalc';
 import { isNativeId } from '../../../../shared/nativeId';
 import { useIsMobile } from '../../../lib/useIsMobile';
@@ -703,6 +704,21 @@ export function CotizacionTab({
           <ColumnVisibilityPicker columns={gridCols.slice(1)} hidden={hiddenCols} onToggle={onToggleColumn} />
         )}
       </div>
+      {/* Una división cuya línea nueva se borró (directo en Monday) deja la
+          cotización recortada sin aviso — OPP-0970, 2026-09-10. Mismo rol que
+          "Ajustar línea"; aquí no importa si la grid está en edición libre. */}
+      <DivisionesBorradas
+        ajustes={versions.find((v) => v.status === 'vigente')?.ajustes ?? []}
+        canRestaurar={!soloLectura && (me?.role === 'vendedor' || me?.role === 'compras' || me?.role === 'admin')}
+        onRestaurar={async (subversion) => {
+          if (!oppId) return 'Esta cotización no tiene oportunidad.';
+          const res = await restaurarLineaDividida(oppId, subversion);
+          if (!res.ok) return res.error ?? 'No se pudo restaurar la línea.';
+          if (res.versions) onVersioned?.(res.versions);
+          onSaved?.();
+          return undefined;
+        }}
+      />
       {divergenciaNotice && (
         <div style={{
           margin: '10px 0', padding: '10px 14px', border: '1px solid var(--accent)',

@@ -21,7 +21,7 @@ import { createSubitem } from './monday';
 import { borrarItem } from './itemBorrado';
 import { upsertItem } from '../sync';
 import type { RawCol } from './serialize';
-import { listAjustes } from './lineaAjustes';
+import { listAjustesConEstado } from './lineaAjustes';
 import { emitNotification, resolveRecipients, personIdsFromColumns } from './notify';
 import { BOARDS } from '../../shared/boards';
 
@@ -189,7 +189,9 @@ export async function listVersions(env: Env, itemId: number, viewer: Identity): 
     status: 'vigente',
     total: totalOf(vigenteProducts),
     products: vigenteProducts,
-    ajustes: await listAjustes(env, itemId, vigenteId),
+    // Con la marca de "línea hermana borrada" (lineaBorrada) — la división
+    // cuya parte nueva ya no existe se avisa en la grid (OPP-0970, 2026-09-10).
+    ajustes: await listAjustesConEstado(env, itemId, vigenteId, vigenteProducts),
   };
   return [...archived, vigente];
 }

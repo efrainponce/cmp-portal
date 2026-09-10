@@ -502,6 +502,25 @@ export async function ajustarLineaVirtual(
   return body;
 }
 
+/** "Restaurar línea" (OPP-0970, 2026-09-10): la línea hermana de un 'dividir'
+ * (ajuste `.subversion` de la vigente, marcado `lineaBorrada`) se borró directo
+ * en Monday; se vuelve a crear tal como se dividió — worker/lib/lineaAjustes.ts.
+ * Trae `versions` para refrescar chips y marcas, como 'eliminar'. */
+export async function restaurarLineaDividida(oppId: string, subversion: number): Promise<AjustarLineaResponse> {
+  const res = await apiFetch(`/oportunidades/${oppId}/ajustes/${subversion}/restaurar`, { method: 'POST' });
+  const body: AjustarLineaResponse = await res.json();
+  if (!res.ok && !body.error) throw new Error('restaurar línea failed: ' + res.status);
+  return body;
+}
+
+/** Lo mismo desde el Proyecto (autoriza contra su dueño). */
+export async function restaurarLineaDivididaVirtual(proyectoId: string, subversion: number): Promise<AjustarLineaResponse> {
+  const res = await apiFetch(`/proyectos/${proyectoId}/cotizacion-virtual/ajustes/${subversion}/restaurar`, { method: 'POST' });
+  const body: AjustarLineaResponse = await res.json();
+  if (!res.ok && !body.error) throw new Error('restaurar línea virtual failed: ' + res.status);
+  return body;
+}
+
 /** Zona -> URL de imagen (firmada, corta vigencia) para una línea de oportunidad. */
 export async function getZoneImages(lineaId: string): Promise<Record<string, string>> {
   const res = await apiFetch(`/oportunidades/lineas/${lineaId}/embellecimiento-imagenes`);
