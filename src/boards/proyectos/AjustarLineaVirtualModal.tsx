@@ -82,13 +82,21 @@ export function AjustarLineaVirtualModal({
     setSaving(true);
     setError(undefined);
     try {
+      // Solo lo que el usuario CAMBIÓ (mismo criterio que AjustarLineaModal):
+      // mandar todo pisaba cambios hechos por otros mientras el modal estaba
+      // abierto. 'dividir' sí manda todo: describe la línea nueva completa.
+      const productoNuevo = producto && 'item' in producto ? producto.item : undefined;
+      const dividir = modo === 'dividir';
+      const cambiaEmb = dividir || conEmbellecimiento !== linea.embellecimiento
+        || (conEmbellecimiento && descripcion !== (linea.descripcionEmbellecimiento ?? ''));
       const res = await ajustarLineaVirtual(proyectoId, lineaId, {
         modo,
-        cantidad: cantidadNum,
-        productoId: producto && 'item' in producto ? Number(producto.item.id) : undefined,
-        productoNombre: producto && 'item' in producto ? producto.item.name : undefined,
-        color,
-        embellecimiento: { estado: conEmbellecimiento ? 'con' : 'sin', descripcion },
+        ...(dividir || cantidadNum !== cantidadActual ? { cantidad: cantidadNum } : {}),
+        ...(productoNuevo ? { productoId: Number(productoNuevo.id), productoNombre: productoNuevo.name } : {}),
+        ...(dividir || color.trim() !== (linea.color ?? '').trim() ? { color: color.trim() } : {}),
+        ...(cambiaEmb
+          ? { embellecimiento: conEmbellecimiento ? { estado: 'con' as const, descripcion } : { estado: 'sin' as const } }
+          : {}),
       });
       if (!res.ok) { setError(res.error ?? 'No se pudo guardar.'); return; }
       onSaved(res.costoDivergente);

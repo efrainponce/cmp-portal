@@ -7,6 +7,7 @@ import { BOARDS } from '../../shared/boards';
 import { EMB_LABEL_CON, EMB_LABEL_SIN, serializeEmbellecimiento } from '../../shared/embellecimiento';
 import { createItem, createSubitem, gql } from './monday';
 import { upsertItem } from '../sync';
+import { textosDerivadosDeProducto } from './lineaAjustes';
 
 export class OportunidadError extends Error {
   status: number;
@@ -102,7 +103,15 @@ export async function createOportunidad(
   // latencia total; el orden de lineas/warnings sigue el orden del input.
   const results = await Promise.all(input.lineas.map(async l => {
     const subCols: Record<string, unknown> = { [SUB_CANTIDAD]: String(l.cantidad) };
-    if (l.productoItemId) subCols[SUB_PRODUCTO_REL] = { item_ids: [Number(l.productoItemId)] };
+    if (l.productoItemId) {
+      subCols[SUB_PRODUCTO_REL] = { item_ids: [Number(l.productoItemId)] };
+      // SKU y Producto en texto desde el catálogo: la automatización de Monday
+      // que los llena NO corre con create_subitem y cmp-tallas los lee de ahí
+      // (worker/lib/lineaAjustes.ts textosDerivadosDeProducto).
+      for (const [k, v] of Object.entries(await textosDerivadosDeProducto(env, { [SUB_PRODUCTO_REL]: String(l.productoItemId) }))) {
+        if (v) subCols[k] = v;
+      }
+    }
     if (l.color?.trim()) subCols[SUB_COLOR] = l.color.trim();
     const zonasTexto = serializeEmbellecimiento(l.embellecimientoZonas ?? {});
     subCols[SUB_EMB_STATUS] = { label: zonasTexto ? EMB_LABEL_CON : EMB_LABEL_SIN };

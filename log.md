@@ -2,6 +2,75 @@
 
 ## 2026-09-10
 
+- **Revisión de dividir / editar / borrar líneas y arreglo de todo lo que salió**
+  (Efraín: "muchísimos errores, repara todo"). Tres revisores de código en
+  paralelo + pruebas en vivo sobre OPP-0840 y OPP-0940 (oportunidades de
+  prueba). Lo que se arregló:
+  - **Cambiar el producto desde la grid no actualizaba SKU ni Producto en
+    texto** (confirmado en vivo: relación al 48359, texto seguía en 48360). La
+    automatización de Monday que los llena NO corre con los writes del portal
+    (9 de 228 cambios de relación del portal la dispararon) y cmp-tallas los
+    lee: el archivo de tallas (`generate_sheet.py`, SKU) y la cotización al
+    cliente (`generate_cotizacion.py`, nombre). Ahora el server los DERIVA del
+    catálogo en todo camino que elige producto: PATCH de la grid
+    (`submitWrite` con `derived`, que no pasa por canWrite: el vendedor no
+    teclea el SKU, pero sí elige el producto), "Ajustar → editar", restaurar
+    versión y el alta de líneas (`createOportunidad`). Helper único:
+    `textosDerivadosDeProducto`. Texto libre sobre una línea con relación
+    ahora también quita la relación vieja. Nota en `debeEstamparSnapshot`: esas
+    columnas son también el snapshot de costeo; en prod no cambia nada porque
+    cmp-tallas re-sella toda línea en "No iniciado".
+  - **Dividir desde el Proyecto duplicaba cantidades** si quien divide es
+    dueño del Proyecto pero no de la Oportunidad: `submitWrite` volvía a exigir
+    ser dueño de la Oportunidad y tronaba DESPUÉS de crear la línea nueva.
+    Opción nueva `scopeChecked` en el outbox para llamadores que ya autorizaron.
+  - **Dividir no era atómico.** Ahora primero resta la origen DIRECTO en Monday
+    (esperando respuesta, no por el outbox) y luego crea la línea nueva; si la
+    creación falla, la origen regresa a su cantidad. Sin borrar nada (la regla
+    de `monday.destructivo.test.ts`: Ajustar línea nunca quita líneas). Lee la
+    línea FRESCA de Monday antes de calcular (el espejo atrasado pisaba cambios).
+    Dividir solo por color ya no deja vacío el Producto en texto; la imagen de
+    embellecimiento solo se copia si la línea nueva lleva embellecimiento.
+  - **"Editar" desde el modal mandaba todos los campos** y regresaba sin aviso
+    una cantidad que Compras acababa de cambiar. Los dos modales mandan solo lo
+    que el usuario cambió y el server solo escribe lo que difiere de Monday; sin
+    cambios → 400, sin subversión vacía. Si el catálogo no trae SKU, el del
+    producto anterior se limpia; una línea que se llama como su producto se
+    renombra al nuevo ("PARTIDA 2.1" se respeta).
+  - **Editar una línea costeada no la regresaba a costeo si ya había otra
+    pendiente** (`autoVersionSiCosteada` salía sin tocarla): ahora la tocada
+    regresa a "No iniciado" aunque no se archive versión.
+  - **Borrar**: la ruta genérica `DELETE /api/boards/:slug/items/:id` aceptaba
+    cualquier board (una Oportunidad padre se llevaba sus líneas en cascada sin
+    respaldo; los catálogos los podía borrar cualquiera): ahora solo
+    `oportunidades_sub` y solo vendedor/compras/admin. El 🗑 pide confirmación,
+    muestra el error en la fila y lleva un "borrando" por línea. El 🗑 y
+    "Ajustar → Eliminar" comparten `borrarLineaCotizacion`: revisa el tope ANTES
+    de archivar la versión y la retira si Monday no deja borrar. `borrarItem`
+    deshace el respaldo si Monday rechaza el borrado y el item sigue vivo, y el
+    respaldo de un segundo intento guarda el renglón completo. Restaurar versión
+    revisa el tope para todas las líneas que va a quitar antes de empezar.
+  - **Líneas borradas que reaparecían en el espejo sin padre**: `items(ids:)`
+    de Monday SÍ devuelve items borrados/archivados (`state`). `fetchItem`,
+    `fetchItemsByIds` y `fetchItemWithSubitems` los tratan como inexistentes.
+  - **Aviso de divisiones borradas**: ya no marca las borradas desde el portal
+    (fueron a propósito), ni las que ya no tienen línea origen, ni repite la
+    misma línea; botón nuevo **"Ya no aplica"** (tabla `ajuste_descartado`,
+    rutas `.../ajustes/:subversion/descartar` en Oportunidad y Proyecto).
+    Restaurar ya no deja dos ajustes con la misma origen y guarda el id del
+    producto (`productoItemId`) en vez de buscarlo por nombre.
+  - Menores: editar/dividir en la Oportunidad regresa `versions` (chips y
+    etiquetas al instante); errores del outbox con su mensaje en vez de
+    "internal error"; choque de dos versiones simultáneas → 409 con mensaje;
+    la cantidad del PATCH se valida (≥ 0, sin comas); el preview de fórmulas
+    se recalcula si el usuario borra lo que tecleó. CLAUDE.md corregido: la
+    edición inline ya no es "solo en stage 4".
+  - No se tocó (decisión de negocio): al cambiar de producto con "Ajustar
+    línea" la línea conserva el costeo del producto anterior y solo se avisa a
+    Compras si difiere > 10%; y borrar en una cotización costeada sigue
+    archivando una versión por línea borrada (regla "versión es después de
+    costeo").
+
 - **"Nueva oportunidad": alta de Contacto e Institución sin salir del form**
   (Efraín: "necesito poder crear institución y contacto aquí dentro de la
   nueva oportunidad"). Junto a cada picker hay un «+ Nuevo»/«+ Nueva» que abre

@@ -7,7 +7,7 @@
 // sobre QuoteLineSnapshot.
 import { useEffect, useState } from 'react';
 import type { AjusteDTO, CostoDivergenciaDTO, ItemDTO, QuoteLineSnapshot } from '../../lib/api';
-import { getCotizacionVirtual, listItems, restaurarLineaDivididaVirtual } from '../../lib/apiClient';
+import { getCotizacionVirtual, listItems, restaurarLineaDivididaVirtual, descartarAvisoDivisionVirtual } from '../../lib/apiClient';
 import { useMe } from '../../lib/useMe';
 import { fmtMoney } from '../../lib/format';
 import { AjusteLabelBadge } from '../../components/core/Badges';
@@ -81,6 +81,12 @@ export function CotizacionVirtualTab({ proyectoId }: { proyectoId: string }) {
           const res = await restaurarLineaDivididaVirtual(proyectoId, subversion);
           if (!res.ok) return res.error ?? 'No se pudo restaurar la línea.';
           setNotice('Línea restaurada — ya vuelve a contar en la cotización y en Monday.');
+          load();
+          return undefined;
+        }}
+        onDescartar={async (subversion) => {
+          const res = await descartarAvisoDivisionVirtual(proyectoId, subversion);
+          if (!res.ok) return res.error ?? 'No se pudo descartar el aviso.';
           load();
           return undefined;
         }}

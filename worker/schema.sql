@@ -721,6 +721,19 @@ CREATE TABLE IF NOT EXISTS item_borrado (
 );
 CREATE INDEX IF NOT EXISTS idx_item_borrado_email_fecha ON item_borrado (by_email, deleted_at);
 
+-- "Ya no aplica" sobre el aviso de una división cuya línea nueva se borró
+-- directo en Monday (worker/lib/lineaAjustes.ts applyDescartarAviso,
+-- 2026-09-10): el borrado fue a propósito y el aviso no vuelve a salir para
+-- esa subversión de cotizacion_ajustes. Se crea LAZY en runtime.
+CREATE TABLE IF NOT EXISTS ajuste_descartado (
+  item_id    INTEGER NOT NULL,
+  version    INTEGER NOT NULL,
+  subversion INTEGER NOT NULL,
+  by_email   TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (item_id, version, subversion)
+);
+
 -- Estado de cuenta del Proyecto (board "Estado de Cuenta", 2026-09-08 —
 -- worker/lib/estadoCuenta.ts; portado de janing-portal). Nativo en D1, sin
 -- columna de Monday: `proyecto_id` es el item id del Proyecto en `items` (o

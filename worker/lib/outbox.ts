@@ -14,7 +14,7 @@ import { COLUMN_META } from '../../shared/column-meta.gen';
 import { canonValue, writeHash } from './canon';
 import { encodeColumnValue } from './columnEncode';
 import { refetchItem, upsertItem, confirmOutboxEcho } from '../sync';
-import { getItem } from './dal';
+import { getItem, getItemTrusted } from './dal';
 import { fichasDeProductos, productoIdDeWrite, SUB_FICHA, SUB_PRODUCTO_REL } from './ficha';
 import type { RawCol } from './serialize';
 import type { MondayItem, MondayCol } from './monday';
@@ -66,7 +66,17 @@ export async function submitWrite(
   // a route that forwards client-chosen column ids.
   // skipFlush: caller batches several writes and will `await flushOutbox`
   // itself before anything downstream reads Monday (see quoteVersions).
-  opts: { trusted?: boolean; skipFlush?: boolean } = {},
+  // scopeChecked: el llamador YA autorizó al viewer sobre este item por otra vía
+  // (p.ej. "Ajustar línea" desde el Proyecto autoriza contra el dueño del
+  // PROYECTO, que puede no ser dueño de la Oportunidad). Sin esto, el
+  // getItem(..., 'own') de abajo rechazaba con 404 a medio camino y "Dividir"
+  // dejaba la línea nueva creada sin restarle a la origen (2026-09-10).
+  // derived: columnas que CALCULA el server a partir de lo que mandó el
+  // cliente (SKU/Producto en texto a partir del producto elegido,
+  // worker/lib/lineaAjustes.ts textosDerivadosDeProducto). No pasan por
+  // canWrite —el vendedor no puede teclear el SKU, pero sí elegir el producto
+  // del que sale— y nunca pisan una columna que el cliente mandó explícita.
+  opts: { trusted?: boolean; skipFlush?: boolean; scopeChecked?: boolean; derived?: Record<string, string> } = {},
 ): Promise<WriteResponse> {
   // `name` no es una columna de Monday: es el nombre del item. Se acepta como
   // pseudo-columna dentro del mismo PATCH (change_multiple_column_values la
@@ -82,17 +92,27 @@ export async function submitWrite(
     cols = { ...cols, name: nombre };
   }
 
-  const colIds = Object.keys(cols ?? {});
+  let colIds = Object.keys(cols ?? {});
   if (colIds.length === 0) throw new OutboxError(400, 'no columns');
   if (!opts.trusted) {
     for (const colId of colIds) {
       if (!canWrite(slug, colId, viewer.role)) throw new OutboxError(403, `cannot write ${colId}`);
     }
   }
+  if (opts.derived) {
+    const extra = Object.fromEntries(Object.entries(opts.derived).filter(([k]) => !(k in cols)));
+    if (Object.keys(extra).length > 0) {
+      cols = { ...cols, ...extra };
+      colIds = Object.keys(cols);
+    }
+  }
 
   // scope 'own', no 'read': un líder de zona VE las oportunidades de su equipo pero
   // no las escribe (worker/lib/zonas.ts). 404 y no 403 — la propiedad no se filtra.
-  const row = await getItem(env, slug, itemId, viewer, 'own');
+  // Con `scopeChecked` el llamador ya autorizó (ver arriba): solo se exige que exista.
+  const row = opts.scopeChecked
+    ? await getItemTrusted(env, slug, itemId)
+    : await getItem(env, slug, itemId, viewer, 'own');
   if (!row) throw new OutboxError(404, 'not found');
 
   const board = BOARDS[slug];

@@ -92,13 +92,25 @@ export function AjustarLineaModal({
     setSaving(true);
     setError(undefined);
     try {
+      // Solo se manda lo que el usuario CAMBIÓ respecto a como abrió el modal
+      // (revisión 2026-09-10): antes iban todos los campos, y un modal abierto
+      // desde antes regresaba sin aviso una cantidad que Compras acababa de
+      // cambiar inline, además de asentar una subversión "Línea ajustada" sin
+      // cambio real. 'dividir' sí manda todo: describe la línea nueva completa.
+      const productoNuevo = producto && 'item' in producto ? producto.item : undefined;
+      const dividir = modo === 'dividir';
+      const colorInicial = (linea.cols[COLOR_COL]?.text ?? '').trim();
+      const embInicial = linea.cols[EMB_STATUS_COL]?.text === EMB_LABEL_CON;
+      const descInicial = linea.cols[EMB_DESC_COL]?.text ?? '';
+      const cambiaEmb = dividir || conEmbellecimiento !== embInicial || (conEmbellecimiento && descripcion !== descInicial);
       const res = await ajustarLinea(linea.id, modo === 'eliminar' ? { modo } : {
         modo,
-        cantidad: cantidadNum,
-        productoId: producto && 'item' in producto ? Number(producto.item.id) : undefined,
-        productoNombre: producto && 'item' in producto ? producto.item.name : undefined,
-        color,
-        embellecimiento: { estado: conEmbellecimiento ? 'con' : 'sin', descripcion },
+        ...(dividir || cantidadNum !== cantidadActual ? { cantidad: cantidadNum } : {}),
+        ...(productoNuevo ? { productoId: Number(productoNuevo.id), productoNombre: productoNuevo.name } : {}),
+        ...(dividir || color.trim() !== colorInicial ? { color: color.trim() } : {}),
+        ...(cambiaEmb
+          ? { embellecimiento: conEmbellecimiento ? { estado: 'con' as const, descripcion } : { estado: 'sin' as const } }
+          : {}),
       });
       if (!res.ok) { setError(res.error ?? 'No se pudo guardar.'); return; }
       if (res.versions) onVersioned?.(res.versions);
@@ -130,7 +142,7 @@ export function AjustarLineaModal({
     >
       <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)', marginBottom: 16 }}>
         {modo === 'eliminar'
-          ? 'Elimina la línea por completo — a diferencia de editar/dividir, esto SÍ crea una versión nueva (la vigente actual queda archivada) y la cotización vuelve a costeo.'
+          ? 'Elimina la línea por completo, también en Monday. Si la cotización ya estaba costeada, la versión actual queda archivada con esa línea; las demás líneas no se descostean.'
           : 'Cambia producto, color, embellecimiento o cantidad sin crear una versión nueva ni volver a costear — el precio de venta no se toca.'}
       </div>
 

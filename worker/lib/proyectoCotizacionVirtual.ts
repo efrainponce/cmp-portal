@@ -26,7 +26,7 @@ import type { Identity } from '../../shared/types';
 import type { AjusteDTO, AjustarLineaRequest, AjustarLineaResponse, CotizacionVirtualDTO, QuoteLineSnapshot } from '../../shared/dto';
 import { getItem, getItemTrusted, childrenOf, linkedItemId, PROYECTO_OPP_REL } from './dal';
 import { snapshotLine } from './quoteVersions';
-import { applyAjusteLinea, applyRestaurarLinea, currentMajorVersion, listAjustesConEstado } from './lineaAjustes';
+import { applyAjusteLinea, applyRestaurarLinea, applyDescartarAviso, currentMajorVersion, listAjustesConEstado } from './lineaAjustes';
 
 export class ProyectoCotizacionError extends Error {
   status: number;
@@ -123,4 +123,15 @@ export async function restaurarLineaVirtual(
   const oportunidadId = await resolveOportunidadId(env, proyectoId, viewer, 'own');
   const result = await applyRestaurarLinea(env, oportunidadId, subversion, viewer);
   return { ok: true, itemId: result.itemId, lineaId: result.lineaId, nuevaLineaId: result.nuevaLineaId };
+}
+
+/** "Ya no aplica" desde el Proyecto: mismo motor que en Oportunidades
+ * (applyDescartarAviso), autorizado contra el dueño del Proyecto igual que
+ * ajustarLineaVirtual. */
+export async function descartarAvisoVirtual(
+  env: Env, proyectoId: number, subversion: number, viewer: Identity,
+): Promise<void> {
+  if (!AJUSTE_ROLES.includes(viewer.role)) throw new ProyectoCotizacionError(403, 'forbidden');
+  const oportunidadId = await resolveOportunidadId(env, proyectoId, viewer, 'own');
+  await applyDescartarAviso(env, oportunidadId, subversion, viewer);
 }

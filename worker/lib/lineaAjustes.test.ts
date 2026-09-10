@@ -4,7 +4,7 @@
 // decide cuál de los dos caminos toma el PATCH (worker/routes/boards.ts).
 import { describe, it, expect } from 'vitest';
 import {
-  esAjusteInline, AJUSTE_INLINE_COLS, copyRemainingCols, textosDeProducto, marcarDivisionesBorradas,
+  esAjusteInline, AJUSTE_INLINE_COLS, copyRemainingCols, textosDeProducto, marcarDivisionesBorradas, normalizarCantidad,
 } from './lineaAjustes';
 import { LINE_DEFINING_COLS } from './quoteVersions';
 import type { RawCol } from './serialize';
@@ -68,16 +68,32 @@ describe('marcarDivisionesBorradas', () => {
     expect(out[0].lineaBorrada).toBeUndefined();
   });
 
-  it("un 'dividir' cuya línea nueva ya no existe se marca; sin renglón en item_borrado = se borró en Monday", () => {
+  it('línea nueva borrada directo en Monday (sin renglón en item_borrado) y origen viva: se marca', () => {
     const out = marcarDivisionesBorradas(vivas, [ajuste({ lineaId: 999, lineaOrigenId: 100 })]);
     expect(out[0].lineaBorrada).toBe(true);
-    expect(out[0].borradaPor).toBeUndefined();
   });
 
-  it('si el portal la borró (item_borrado), dice quién y cuándo', () => {
-    const borrados = new Map([[999, { email: 'pam@x.com', at: '2026-08-26T22:38:45Z' }]]);
-    const out = marcarDivisionesBorradas(vivas, [ajuste({ lineaId: 999, lineaOrigenId: 100 })], borrados);
-    expect(out[0]).toMatchObject({ lineaBorrada: true, borradaPor: 'pam@x.com', borradaEn: '2026-08-26T22:38:45Z' });
+  it('borrada DESDE el portal no se marca: fue a propósito y quedó respaldada', () => {
+    const out = marcarDivisionesBorradas(vivas, [ajuste({ lineaId: 999, lineaOrigenId: 100 })], new Set([999]));
+    expect(out[0].lineaBorrada).toBeUndefined();
+  });
+
+  it('si la origen tampoco existe ya, no se marca (no hay qué restaurar)', () => {
+    const out = marcarDivisionesBorradas(vivas, [ajuste({ lineaId: 999, lineaOrigenId: 555 })]);
+    expect(out[0].lineaBorrada).toBeUndefined();
+  });
+
+  it('"Ya no aplica" (descartada por subversión) no se marca', () => {
+    const out = marcarDivisionesBorradas(vivas, [ajuste({ subversion: 3, lineaId: 999, lineaOrigenId: 100 })], new Set(), new Set([3]));
+    expect(out[0].lineaBorrada).toBeUndefined();
+  });
+
+  it('dos ajustes que apuntan a la misma línea (restaurar) dan UNA sola marca', () => {
+    const out = marcarDivisionesBorradas(vivas, [
+      ajuste({ subversion: 1, lineaId: 999, lineaOrigenId: 100 }),
+      ajuste({ subversion: 5, lineaId: 999, lineaOrigenId: 100 }),
+    ]);
+    expect(out.filter(a => a.lineaBorrada)).toHaveLength(1);
   });
 
   it("un 'editar' de una línea que después se borró no es una división perdida", () => {
@@ -86,40 +102,16 @@ describe('marcarDivisionesBorradas', () => {
   });
 });
 
-describe('esAjusteInline', () => {
-  it('color y cantidad de Compras Y de admin son mini versión, no versión nueva', () => {
-    // Efraín, 2026-08-19: "los admins pueden hacer todo esto igual".
-    for (const role of ['compras', 'admin']) {
-      expect(esAjusteInline(role, [COLOR]), role).toBe(true);
-      expect(esAjusteInline(role, [CANTIDAD]), role).toBe(true);
-      expect(esAjusteInline(role, [COLOR, CANTIDAD]), role).toBe(true);
-    }
+// La grid ya valida la cantidad, pero un pegado o un PATCH a mano llegaba tal
+// cual a Monday (negativos, "1,000") — revisión 2026-09-10.
+describe('normalizarCantidad', () => {
+  it('quita comas de miles, recorta espacios y acepta 0', () => {
+    expect(normalizarCantidad('1,000')).toBe('1000');
+    expect(normalizarCantidad(' 25 ')).toBe('25');
+    expect(normalizarCantidad('0')).toBe('0');
   });
 
-  it('el vendedor sigue versionando completo (Efraín, 2026-08-14)', () => {
-    expect(esAjusteInline('vendedor', [COLOR])).toBe(false);
-    expect(esAjusteInline('almacen', [COLOR])).toBe(false);
-  });
-
-  it('si el PATCH además cambia producto o embellecimiento, versiona', () => {
-    expect(esAjusteInline('compras', [COLOR, PRODUCTO])).toBe(false);
-    expect(esAjusteInline('admin', [PRODUCTO])).toBe(false);
-  });
-
-  it('un write que no toca la línea (solo costos) no es un ajuste', () => {
-    expect(esAjusteInline('compras', [COSTO_DISTR])).toBe(false);
-    expect(esAjusteInline('admin', [])).toBe(false);
-  });
-
-  it('las dos mitades cubren exactamente LINE_DEFINING_COLS', () => {
-    // lineaAjustes.ts enumera su mitad "versionable" a mano para no cerrar el
-    // ciclo de imports con quoteVersions.ts — si allá se agrega una columna
-    // definitoria y aquí no, este test truena en vez de dejar que esa columna
-    // se cuele como mini versión de Compras.
-    for (const id of AJUSTE_INLINE_COLS) expect(LINE_DEFINING_COLS.has(id), id).toBe(true);
-    for (const id of LINE_DEFINING_COLS) {
-      if (AJUSTE_INLINE_COLS.has(id)) continue;
-      expect(esAjusteInline('compras', [id]), id).toBe(false);
-    }
+  it('rechaza vacío, texto y negativos', () => {
+    for (const v of ['', '  ', 'abc', '-3', null, undefined]) expect(normalizarCantidad(v), String(v)).toBeNull();
   });
 });

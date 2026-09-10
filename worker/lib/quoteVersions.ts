@@ -18,10 +18,10 @@ import type { QuoteLineSnapshot, QuoteVersionDTO } from '../../shared/dto';
 import { getItem, childrenOf, listItems } from './dal';
 import { submitWrite, flushOutbox } from './outbox';
 import { createSubitem } from './monday';
-import { borrarItem } from './itemBorrado';
+import { borrarItem, verificarTopeBorrado } from './itemBorrado';
 import { upsertItem } from '../sync';
 import type { RawCol } from './serialize';
-import { listAjustesConEstado } from './lineaAjustes';
+import { listAjustesConEstado, textosDerivadosDeProducto } from './lineaAjustes';
 import { emitNotification, resolveRecipients, personIdsFromColumns } from './notify';
 import { BOARDS } from '../../shared/boards';
 
@@ -159,7 +159,7 @@ async function archivedVersions(env: Env, itemId: number): Promise<QuoteVersionD
   }));
 }
 
-async function maxVersion(env: Env, itemId: number): Promise<number> {
+export async function maxVersion(env: Env, itemId: number): Promise<number> {
   const row = await env.DB
     .prepare('SELECT MAX(version) as m FROM cotizacion_versions WHERE item_id = ?')
     .bind(itemId)
@@ -262,12 +262,61 @@ export async function autoVersionSiCosteada(
   resetear: 'todas' | number[],
 ): Promise<QuoteVersionError | null> {
   const lineas = await childrenOf(env, 'oportunidades', parentItemId, viewer);
-  if (lineas.length === 0 || hayLineaPendiente(lineas)) return null;
+  if (lineas.length === 0) return null;
+  if (hayLineaPendiente(lineas)) {
+    // Ya hay trabajo pendiente de costeo: no se apila otra versión, PERO la
+    // línea que se está editando igual regresa a costeo si estaba costeada.
+    // Antes se quedaba en "Listo" con el costo del producto anterior y, como
+    // "Mandar a costeo" solo manda las pendientes, Compras nunca la volvía a
+    // ver (revisión 2026-09-10).
+    if (Array.isArray(resetear) && resetear.length > 0) {
+      const ids = lineasAResetear(lineas.map(snapshotLine), resetear);
+      for (const subitemId of ids) {
+        await submitWrite(env, ctx, 'oportunidades_sub', subitemId, { [SUB_ETAPA_COSTEO]: ETAPA_NO_INICIADO }, viewer, { skipFlush: true, trusted: true });
+      }
+      if (ids.length > 0) await flushOutbox(env);
+    }
+    return null;
+  }
   try {
     await duplicateVersion(env, ctx, parentItemId, viewer, { resetear });
     return null;
   } catch (err) {
     if (err instanceof QuoteVersionError) return err;
+    throw err;
+  }
+}
+
+/**
+ * Borrar UNA línea de cotización: el camino común del 🗑 de la fila
+ * (DELETE /api/boards/oportunidades_sub/items/:id) y de "Ajustar línea →
+ * Eliminar". Antes cada ruta lo hacía por su lado y las dos archivaban la
+ * versión ANTES de saber si el borrado iba a pasar: con el tope de borrados o
+ * un error de Monday quedaba una versión idéntica a la vigente, más su aviso,
+ * por un borrado que nunca ocurrió (revisión 2026-09-10). Ahora: primero el
+ * tope, luego la versión (solo si la cotización ya está costeada, la regla de
+ * siempre) y, si Monday no deja borrar, la versión recién archivada se retira.
+ * `versionar`: false para oportunidades NATIVAS en el 🗑, igual que antes.
+ */
+export async function borrarLineaCotizacion(
+  env: Env, ctx: ExecutionContext, lineaId: number, parentItemId: number, viewer: Identity, versionar: boolean,
+): Promise<void> {
+  await verificarTopeBorrado(env, viewer.email);
+  const versionAntes = versionar ? await maxVersion(env, parentItemId) : 0;
+  if (versionar) {
+    const versionError = await autoVersionSiCosteada(env, ctx, parentItemId, viewer, []);
+    if (versionError) throw versionError;
+  }
+  try {
+    await borrarItem(env, BOARDS.oportunidades_sub.id, lineaId, viewer.email);
+  } catch (err) {
+    if (versionar) {
+      const versionDespues = await maxVersion(env, parentItemId);
+      if (versionDespues > versionAntes) {
+        await env.DB.prepare('DELETE FROM cotizacion_versions WHERE item_id = ? AND version = ?')
+          .bind(parentItemId, versionDespues).run();
+      }
+    }
     throw err;
   }
 }
@@ -297,11 +346,22 @@ export async function duplicateVersion(
 
   const currentLines = lineas.map(snapshotLine);
   const version = (await maxVersion(env, itemId)) + 1;
-  await env.DB
-    .prepare(`INSERT INTO cotizacion_versions (item_id, version, label, folio, total_fmt, products, created_at)
-      VALUES (?, ?, ?, NULL, ?, ?, ?)`)
-    .bind(itemId, version, `V${version}`, String(totalOf(currentLines)), JSON.stringify(currentLines), new Date().toISOString())
-    .run();
+  try {
+    await env.DB
+      .prepare(`INSERT INTO cotizacion_versions (item_id, version, label, folio, total_fmt, products, created_at)
+        VALUES (?, ?, ?, NULL, ?, ?, ?)`)
+      .bind(itemId, version, `V${version}`, String(totalOf(currentLines)), JSON.stringify(currentLines), new Date().toISOString())
+      .run();
+  } catch (err) {
+    // Dos writes casi simultáneos de la misma cotización (blur de cantidad +
+    // cambio de color, o dos pestañas) calculan la misma versión y el segundo
+    // choca con la llave (item_id, version). Antes eso era un 500 sin mensaje
+    // y la edición se perdía en silencio (revisión 2026-09-10).
+    if (/UNIQUE|constraint/i.test(String(err))) {
+      throw new QuoteVersionError(409, 'Se acaba de crear otra versión de esta cotización al mismo tiempo. Vuelve a intentar.');
+    }
+    throw err;
+  }
 
   // Reset del ciclo de costeo — `trusted` porque es una decisión del server (el
   // vendedor no puede escribir Etapa Costeo por su cuenta), mismo criterio que
@@ -395,6 +455,13 @@ export async function restoreVersion(
   const lineas = await childrenOf(env, 'oportunidades', itemId, viewer);
   const currentLines = lineas.map(snapshotLine);
 
+  // Antes de archivar nada: ¿alcanza el tope de borrados para quitar las
+  // líneas que la versión elegida no tiene? Si no, se avisa sin tocar nada;
+  // antes se quedaba a medias a mitad del ciclo (revisión 2026-09-10).
+  const idsDestino = new Set(target.filter(l => l.subitemId != null).map(l => l.subitemId));
+  const porBorrar = currentLines.filter(l => l.subitemId != null && !idsDestino.has(l.subitemId)).length;
+  if (porBorrar > 0) await verificarTopeBorrado(env, viewer.email, porBorrar);
+
   // Archiva la vigente ANTES de tocar nada — nunca se pierde estado.
   const version = (await maxVersion(env, itemId)) + 1;
   await env.DB
@@ -433,7 +500,16 @@ export async function restoreVersion(
       if (norm(cur.producto) !== norm(t.producto)) {
         const rel = await resolveProductoId(t);
         if (rel) writeCols[SUB_PRODUCTO_REL] = String(rel);
-        else writeCols[SUB_PRODUCTO_TXT] = t.producto;
+        else {
+          // Producto fuera de catálogo: se quita la relación del actual, o el
+          // espejo seguiría mostrando (y cotizando) el de antes.
+          writeCols[SUB_PRODUCTO_REL] = '';
+          writeCols[SUB_PRODUCTO_TXT] = t.producto;
+        }
+        // SKU y Producto en texto desde el catálogo: cmp-tallas los lee de ahí.
+        for (const [k, v] of Object.entries(await textosDerivadosDeProducto(env, writeCols))) {
+          if (!(k in writeCols)) writeCols[k] = v;
+        }
       }
       await submitWrite(env, ctx, 'oportunidades_sub', t.subitemId!, writeCols, viewer, { skipFlush: true, trusted: true });
       continue;
@@ -448,8 +524,12 @@ export async function restoreVersion(
     if (t.descripcionEmbellecimiento) subCols[SUB_EMB_DESC] = t.descripcionEmbellecimiento;
     if (t.precioUnitario) subCols[SUB_PRECIO] = String(t.precioUnitario);
     const rel = await resolveProductoId(t);
-    if (rel) subCols[SUB_PRODUCTO_REL] = { item_ids: [rel] };
-    else subCols[SUB_PRODUCTO_TXT] = t.producto;
+    if (rel) {
+      subCols[SUB_PRODUCTO_REL] = { item_ids: [rel] };
+      for (const [k, v] of Object.entries(await textosDerivadosDeProducto(env, { [SUB_PRODUCTO_REL]: String(rel) }))) {
+        if (v) subCols[k] = v;
+      }
+    } else subCols[SUB_PRODUCTO_TXT] = t.producto;
     const sub = await createSubitem(env, itemId, t.producto.trim() || 'Producto', subCols);
     await upsertItem(env, 'oportunidades_sub', sub);
   }

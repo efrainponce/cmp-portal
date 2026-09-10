@@ -15,7 +15,7 @@
 // the mirror catches up on refetch.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ColMeta, ColVal, ItemDetailDTO, ItemDTO, QuoteVersionDTO } from '../../../lib/api';
-import { patchItem, apiFetch, getCatalogoProductos, getProductoGenero, patchProductoGenero, restaurarLineaDividida } from '../../../lib/apiClient';
+import { patchItem, apiFetch, getCatalogoProductos, getProductoGenero, patchProductoGenero, restaurarLineaDividida, descartarAvisoDivision } from '../../../lib/apiClient';
 import { Button } from '../../../components/core/Button';
 import { DivisionesBorradas } from './cotizacion/DivisionesBorradas';
 import { previewRow, COL } from '../../../lib/costeoCalc';
@@ -403,17 +403,32 @@ export function CotizacionTab({
     }
   };
 
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  // Un borrado en curso por LÍNEA: antes era uno solo para toda la grid, y
+  // borrar B mientras A seguía en vuelo reactivaba el 🗑 de A (un segundo clic
+  // mandaba otro DELETE y podía versionar dos veces).
+  const [deletingIds, setDeletingIds] = useState<ReadonlySet<string>>(() => new Set());
   const onDeleteLine = async (productId: string) => {
-    setDeletingId(productId);
+    if (deletingIds.has(productId)) return;
+    // Borra en Monday al instante y, si la cotización no estaba costeada, sin
+    // versión que la conserve: un dedazo (en móvil el 🗑 está junto al nombre)
+    // no puede costar una línea. Confirmación explícita (revisión 2026-09-10).
+    const producto = products.find((p) => p.id === productId);
+    const nombre = producto ? displayProducto(producto, rowState(productId).preview) : '';
+    if (!window.confirm(`¿Eliminar ${nombre ? `"${nombre}"` : 'esta línea'} de la cotización? También se borra en Monday.`)) return;
+    setDeletingIds((s) => new Set(s).add(productId));
+    patchRow(productId, { error: undefined });
     try {
       const res = await apiFetch(`/boards/oportunidades_sub/items/${productId}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error('No se pudo eliminar la línea');
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(body.error || 'No se pudo eliminar la línea.');
+      }
       onSaved?.();
     } catch (e) {
-      console.error('Error eliminando línea:', e);
+      // El error se ve en la fila; antes solo iba a la consola y parecía que no pasaba nada.
+      patchRow(productId, { error: e instanceof Error ? e.message : 'No se pudo eliminar la línea.' });
     } finally {
-      setDeletingId(null);
+      setDeletingIds((s) => { const n = new Set(s); n.delete(productId); return n; });
     }
   };
 
@@ -506,7 +521,15 @@ export function CotizacionTab({
     if (raw.trim() === '' || raw === current) {
       const editing = { ...state.editing };
       delete editing[colId];
-      patchRow(product.id, { editing });
+      // El preview de fórmulas se calculó con lo tecleado; si no se guarda
+      // nada se recalcula sin ese valor (antes se quedaban el Subtotal, Total y
+      // Utilidad de un número que el usuario ya borró).
+      const edited: Record<string, number> = {};
+      for (const [k, v] of Object.entries(editing)) {
+        const n = parseFloat(v);
+        if (Number.isFinite(n)) edited[k] = n;
+      }
+      patchRow(product.id, { editing, preview: { ...state.preview, ...previewRow(product, edited, nativo) } });
       return;
     }
     if (!Number.isFinite(parseFloat(raw))) {
@@ -590,7 +613,9 @@ export function CotizacionTab({
       product.id, PRODUCTO_COL,
       'item' in choice
         ? { [PRODUCTO_REL_COL]: choice.item.id, [COLOR_COL]: '' }
-        : { [PRODUCTO_TXT_COL]: nombre, [COLOR_COL]: '' },
+        // Texto libre: también se quita la relación del producto anterior; si
+        // no, el espejo seguía mostrando (y cotizando) el de antes.
+        : { [PRODUCTO_TXT_COL]: nombre, [PRODUCTO_REL_COL]: '', [COLOR_COL]: '' },
       {
         clearEditing: true,
         alsoClear: [COLOR_COL],
@@ -718,6 +743,13 @@ export function CotizacionTab({
           onSaved?.();
           return undefined;
         }}
+        onDescartar={async (subversion) => {
+          if (!oppId) return 'Esta cotización no tiene oportunidad.';
+          const res = await descartarAvisoDivision(oppId, subversion);
+          if (!res.ok) return res.error ?? 'No se pudo descartar el aviso.';
+          if (res.versions) onVersioned?.(res.versions);
+          return undefined;
+        }}
       />
       {divergenciaNotice && (
         <div style={{
@@ -767,7 +799,7 @@ export function CotizacionTab({
               proveedorError={proveedorError[String(linkedProductoId(p))]}
               onEditProveedor={sEditProveedor}
               canDelete={canAddLines}
-              deleting={deletingId === p.id}
+              deleting={deletingIds.has(p.id)}
               onDeleteLine={sDeleteLine}
               canAjustar={canAjustar}
               onAjustarLinea={sAjustarLinea}
@@ -849,7 +881,7 @@ export function CotizacionTab({
               proveedorError={proveedorError[String(linkedProductoId(p))]}
               onEditProveedor={sEditProveedor}
               canDelete={canAddLines}
-              deleting={deletingId === p.id}
+              deleting={deletingIds.has(p.id)}
               onDeleteLine={sDeleteLine}
               canAjustar={canAjustar}
               onAjustarLinea={sAjustarLinea}

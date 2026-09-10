@@ -83,7 +83,16 @@ export function computeSnapshot(cols: MondayCol[]): SnapshotValues {
  * negociado es mucho más caro que reestampar uno de más.
  *
  * OJO: nada de esto toca `numeric_mkzneg3d` (Precio de Venta C/U, el que valida
- * dirección). El snapshot escribe `numeric_mm2qzzbe`, que es otra columna. */
+ * dirección). El snapshot escribe `numeric_mm2qzzbe`, que es otra columna.
+ *
+ * OJO 2 (2026-09-10): desde que el portal escribe SNAP_NOMBRE/SNAP_SKU al
+ * elegir producto (worker/lib/lineaAjustes.ts textosDerivadosDeProducto, porque
+ * cmp-tallas imprime el archivo de tallas y la cotización con esos textos), la
+ * detección de "cambió el producto" por texto ya no dispara con los cambios
+ * hechos desde el portal. En producción no importa: el flujo real
+ * (cmp-tallas validar_costeo) re-sella TODA línea en "No iniciado" sin mirar
+ * esto, y un cambio de producto siempre regresa la línea a "No iniciado"
+ * (autoVersionSiCosteada). Solo importaría con COSTEO_NATIVE=1. */
 export function debeEstamparSnapshot(cols: MondayCol[]): boolean {
   if (!cvNum(cols, SNAP_COSTO)) return true;
   const distinto = (congelado: string, actual: string) => {

@@ -522,6 +522,24 @@ export async function restaurarLineaDivididaVirtual(proyectoId: string, subversi
   return body;
 }
 
+/** "Ya no aplica": el borrado en Monday de la línea nueva de una división fue a
+ * propósito — descarta el aviso de esa división para siempre. Trae `versions`
+ * para refrescar el aviso en la grid. */
+export async function descartarAvisoDivision(oppId: string, subversion: number): Promise<AjustarLineaResponse> {
+  const res = await apiFetch(`/oportunidades/${oppId}/ajustes/${subversion}/descartar`, { method: 'POST' });
+  const body: AjustarLineaResponse = await res.json();
+  if (!res.ok && !body.error) throw new Error('descartar aviso failed: ' + res.status);
+  return body;
+}
+
+/** Lo mismo desde el Proyecto. */
+export async function descartarAvisoDivisionVirtual(proyectoId: string, subversion: number): Promise<AjustarLineaResponse> {
+  const res = await apiFetch(`/proyectos/${proyectoId}/cotizacion-virtual/ajustes/${subversion}/descartar`, { method: 'POST' });
+  const body: AjustarLineaResponse = await res.json();
+  if (!res.ok && !body.error) throw new Error('descartar aviso virtual failed: ' + res.status);
+  return body;
+}
+
 /** Zona -> URL de imagen (firmada, corta vigencia) para una línea de oportunidad. */
 export async function getZoneImages(lineaId: string): Promise<Record<string, string>> {
   const res = await apiFetch(`/oportunidades/lineas/${lineaId}/embellecimiento-imagenes`);

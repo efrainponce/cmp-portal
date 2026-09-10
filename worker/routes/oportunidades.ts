@@ -20,9 +20,9 @@ import {
 } from '../lib/automations';
 import { enviarACosteo, enviarAValidacion, confirmarCosteo, checkCosteo, checkValidacion, CosteoError } from '../lib/costeo';
 import { generarCotizacionNative, generarCotizacionNativeD1, CotizacionError } from '../lib/cotizacion';
-import { listVersions, duplicateVersion, restoreVersion, recordFirstVersion, QuoteVersionError, autoVersionSiCosteada } from '../lib/quoteVersions';
-import { ajustarLinea, restaurarLineaDividida, AjusteLineaError } from '../lib/lineaAjustes';
-import { listCotizacionVirtual, ajustarLineaVirtual, restaurarLineaVirtual, ProyectoCotizacionError } from '../lib/proyectoCotizacionVirtual';
+import { listVersions, duplicateVersion, restoreVersion, recordFirstVersion, QuoteVersionError, autoVersionSiCosteada, borrarLineaCotizacion } from '../lib/quoteVersions';
+import { ajustarLinea, restaurarLineaDividida, descartarAvisoDivision, AjusteLineaError } from '../lib/lineaAjustes';
+import { listCotizacionVirtual, ajustarLineaVirtual, restaurarLineaVirtual, descartarAvisoVirtual, ProyectoCotizacionError } from '../lib/proyectoCotizacionVirtual';
 import { folioDe, puedeVerOportunidadLigada } from '../lib/oportunidadLigada';
 import { capturarTallas, reportarTallasIncorrectas, checkOcCliente, confirmTallasNative, confirmTallasNativeD1 } from '../lib/proyectoTallas';
 import { cambiarProductoLineas, listCambiosProducto, CambiarProductoError } from '../lib/proyectoLineaProducto';
@@ -582,6 +582,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     } catch (err) {
       if (err instanceof QuoteVersionError) return jsonStatus({ ok: false, error: err.message } satisfies DuplicarVersionResponse, err.status);
       if (err instanceof OutboxError) return jsonStatus({ ok: false, error: err.message } satisfies DuplicarVersionResponse, err.status);
+      if (err instanceof BorradoError) return jsonStatus({ ok: false, error: err.message } satisfies DuplicarVersionResponse, err.status);
       return jsonStatus({ ok: false, error: 'internal error' } satisfies DuplicarVersionResponse, 500);
     }
   });
@@ -690,18 +691,19 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     // eliminada, `resetear: []` = ninguna línea viva se descostea); si aún hay
     // líneas sin costear, solo se borra. Antes este camino versionaba siempre.
     if (body.modo === 'eliminar') {
+      if (!['vendedor', 'compras', 'admin'].includes(viewer.role)) {
+        return jsonStatus({ ok: false, error: 'forbidden' } satisfies AjustarLineaResponse, 403);
+      }
       const linea = await getItem(c.env, 'oportunidades_sub', lineaId, viewer, 'own');
       if (!linea || linea.parent_item_id == null) return c.json({ error: 'not found' }, 404);
       const itemId = linea.parent_item_id;
       try {
-        const versionError = await autoVersionSiCosteada(c.env, c.executionCtx, itemId, viewer, []);
-        if (versionError) throw versionError;
-        // Se borra en Monday y en el mirror (worker/lib/itemBorrado.ts): una
-        // línea que solo se esconde del portal sigue contando en costeo y en la
-        // cotización, que leen Monday directo (Efraín, 2026-08-19). Sigue
-        // siendo recuperable: la versión que acaba de archivar duplicateVersion
-        // la conserva, y el renglón completo queda en `item_borrado`.
-        await borrarItem(c.env, BOARDS.oportunidades_sub.id, lineaId, viewer.email);
+        // Mismo camino que el 🗑 de la fila (worker/lib/quoteVersions.ts
+        // borrarLineaCotizacion): tope primero, versión solo si ya estaba
+        // costeada, y esa versión se retira si Monday no deja borrar. Se borra
+        // en Monday y en el mirror (Efraín, 2026-08-19) y sigue siendo
+        // recuperable: versión archivada + renglón completo en `item_borrado`.
+        await borrarLineaCotizacion(c.env, c.executionCtx, lineaId, itemId, viewer, true);
         await refetchItemTree(c.env, BOARDS.oportunidades.id, itemId);
         const versions = await listVersions(c.env, itemId, viewer);
         return c.json({ ok: true, lineaId, versions } satisfies AjustarLineaResponse);
@@ -715,9 +717,14 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     try {
       const result = await ajustarLinea(c.env, c.executionCtx, lineaId, viewer, body);
       await refetchItemTree(c.env, BOARDS.oportunidades.id, result.itemId);
-      return c.json({ ok: true, lineaId: result.lineaId, nuevaLineaId: result.nuevaLineaId, costoDivergente: result.costoDivergente } satisfies AjustarLineaResponse);
+      // `versions` para que el drawer pinte de inmediato los chips .n, las
+      // etiquetas Dividida/Editada y el aviso de divisiones; antes solo se
+      // veían al reabrir la oportunidad (revisión 2026-09-10).
+      const versions = await listVersions(c.env, result.itemId, viewer);
+      return c.json({ ok: true, lineaId: result.lineaId, nuevaLineaId: result.nuevaLineaId, costoDivergente: result.costoDivergente, versions } satisfies AjustarLineaResponse);
     } catch (err) {
       if (err instanceof AjusteLineaError) return jsonStatus({ ok: false, error: err.message } satisfies AjustarLineaResponse, err.status);
+      if (err instanceof OutboxError) return jsonStatus({ ok: false, error: err.message } satisfies AjustarLineaResponse, err.status);
       return jsonStatus({ ok: false, error: 'internal error' } satisfies AjustarLineaResponse, 500);
     }
   });
@@ -738,6 +745,25 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       await refetchItemTree(c.env, BOARDS.oportunidades.id, result.itemId);
       const versions = await listVersions(c.env, itemId, viewer);
       return c.json({ ok: true, lineaId: result.lineaId, nuevaLineaId: result.nuevaLineaId, versions } satisfies AjustarLineaResponse);
+    } catch (err) {
+      if (err instanceof AjusteLineaError) return jsonStatus({ ok: false, error: err.message } satisfies AjustarLineaResponse, err.status);
+      if (err instanceof OutboxError) return jsonStatus({ ok: false, error: err.message } satisfies AjustarLineaResponse, err.status);
+      return jsonStatus({ ok: false, error: 'internal error' } satisfies AjustarLineaResponse, 500);
+    }
+  });
+
+  // "Ya no aplica" (2026-09-10): el borrado en Monday de la línea nueva de una
+  // división fue a propósito; se descarta su aviso para siempre
+  // (worker/lib/lineaAjustes.ts descartarAvisoDivision). :id es la OPORTUNIDAD.
+  app.post('/api/oportunidades/:id/ajustes/:subversion/descartar', async c => {
+    const itemId = Number(c.req.param('id'));
+    const subversion = Number(c.req.param('subversion'));
+    if (!Number.isFinite(itemId) || !Number.isFinite(subversion)) return c.json({ error: 'not found' }, 404);
+    const viewer = c.get('viewer');
+    try {
+      await descartarAvisoDivision(c.env, itemId, subversion, viewer);
+      const versions = await listVersions(c.env, itemId, viewer);
+      return c.json({ ok: true, versions } satisfies AjustarLineaResponse);
     } catch (err) {
       if (err instanceof AjusteLineaError) return jsonStatus({ ok: false, error: err.message } satisfies AjustarLineaResponse, err.status);
       return jsonStatus({ ok: false, error: 'internal error' } satisfies AjustarLineaResponse, 500);
@@ -1360,6 +1386,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       return c.json({ ok: result.ok, lineaId: result.lineaId, nuevaLineaId: result.nuevaLineaId, costoDivergente: result.costoDivergente } satisfies AjustarLineaResponse);
     } catch (err) {
       if (err instanceof ProyectoCotizacionError) return jsonStatus({ ok: false, error: err.message } satisfies AjustarLineaResponse, err.status);
+      if (err instanceof OutboxError) return jsonStatus({ ok: false, error: err.message } satisfies AjustarLineaResponse, err.status);
       if (err instanceof AjusteLineaError) return jsonStatus({ ok: false, error: err.message } satisfies AjustarLineaResponse, err.status);
       return jsonStatus({ ok: false, error: 'internal error' } satisfies AjustarLineaResponse, 500);
     }
@@ -1377,6 +1404,24 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       const result = await restaurarLineaVirtual(c.env, proyectoId, subversion, viewer);
       if (result.itemId != null) await refetchItemTree(c.env, BOARDS.oportunidades.id, result.itemId);
       return c.json({ ok: result.ok, lineaId: result.lineaId, nuevaLineaId: result.nuevaLineaId } satisfies AjustarLineaResponse);
+    } catch (err) {
+      if (err instanceof ProyectoCotizacionError) return jsonStatus({ ok: false, error: err.message } satisfies AjustarLineaResponse, err.status);
+      if (err instanceof AjusteLineaError) return jsonStatus({ ok: false, error: err.message } satisfies AjustarLineaResponse, err.status);
+      if (err instanceof OutboxError) return jsonStatus({ ok: false, error: err.message } satisfies AjustarLineaResponse, err.status);
+      return jsonStatus({ ok: false, error: 'internal error' } satisfies AjustarLineaResponse, 500);
+    }
+  });
+
+  // "Ya no aplica" desde el Proyecto — mismo motor que en Oportunidades,
+  // autorizado contra el dueño del Proyecto (worker/lib/proyectoCotizacionVirtual.ts).
+  app.post('/api/proyectos/:id/cotizacion-virtual/ajustes/:subversion/descartar', async c => {
+    const proyectoId = Number(c.req.param('id'));
+    const subversion = Number(c.req.param('subversion'));
+    if (!Number.isFinite(proyectoId) || !Number.isFinite(subversion)) return c.json({ error: 'not found' }, 404);
+    const viewer = c.get('viewer');
+    try {
+      await descartarAvisoVirtual(c.env, proyectoId, subversion, viewer);
+      return c.json({ ok: true } satisfies AjustarLineaResponse);
     } catch (err) {
       if (err instanceof ProyectoCotizacionError) return jsonStatus({ ok: false, error: err.message } satisfies AjustarLineaResponse, err.status);
       if (err instanceof AjusteLineaError) return jsonStatus({ ok: false, error: err.message } satisfies AjustarLineaResponse, err.status);

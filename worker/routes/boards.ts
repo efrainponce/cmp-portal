@@ -19,10 +19,10 @@ import { toItemDTO, toColMeta, itemDetailEtag } from '../lib/serialize';
 import { canRead, canReadActivity, canReadBoard, canWrite, puedeVerEstadoCuenta } from '../../shared/visibility';
 import { submitWrite, OutboxError } from '../lib/outbox';
 import { submitCreate, submitCreateNative, isNativeCreatable, CreateError } from '../lib/createRecord';
-import { esDraftVigente, LINE_DEFINING_COLS, autoVersionSiCosteada } from '../lib/quoteVersions';
+import { esDraftVigente, LINE_DEFINING_COLS, autoVersionSiCosteada, borrarLineaCotizacion, QuoteVersionError } from '../lib/quoteVersions';
 import { addFileToUpdate, fetchAssetPublicUrls, type MentionInput } from '../lib/monday';
-import { borrarItem, BorradoError } from '../lib/itemBorrado';
-import { esAjusteInline, registrarAjusteInline } from '../lib/lineaAjustes';
+import { BorradoError } from '../lib/itemBorrado';
+import { esAjusteInline, registrarAjusteInline, normalizarCantidad, textosDerivadosDeProducto } from '../lib/lineaAjustes';
 // Los updates de un item nativo (Zona Efrain) viven en D1, no en Monday — estas
 // dos funciones eligen el lado por el id, así que la ruta no lo decide.
 import {
@@ -438,6 +438,18 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
     const viewer = c.get('viewer');
     const body = await c.req.json<WriteRequest>();
 
+    // Cantidad de una línea: número ≥ 0 y sin comas de miles. La grid ya lo
+    // valida, pero un pegado o un PATCH a mano llegaba tal cual a Monday
+    // (negativos, "1,000") — revisión 2026-09-10.
+    const SUB_CANTIDAD_COL = 'numeric_mkzm6399';
+    if (slug === 'oportunidades_sub' && body.cols && SUB_CANTIDAD_COL in body.cols) {
+      const cantidad = normalizarCantidad(body.cols[SUB_CANTIDAD_COL]);
+      if (cantidad === null) {
+        return jsonStatus({ ok: false, pending: false, error: 'La cantidad debe ser un número mayor o igual a cero.' } satisfies WriteResponse, 400);
+      }
+      body.cols = { ...body.cols, [SUB_CANTIDAD_COL]: cantidad };
+    }
+
     // Cambio de Compras que se asienta como mini versión en vez de versionar —
     // se resuelve aquí (con la línea ANTES del write) y se registra después de
     // que el write salió bien.
@@ -474,7 +486,11 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
     }
 
     try {
-      const result = await submitWrite(c.env, c.executionCtx, slug, itemId, body.cols, viewer);
+      // Elegir producto en la grid manda solo la relación; SKU y Producto en
+      // texto los deriva el server del catálogo (cmp-tallas los lee de ahí y la
+      // automatización de Monday no corre con los writes del portal).
+      const derived = slug === 'oportunidades_sub' ? await textosDerivadosDeProducto(c.env, body.cols) : undefined;
+      const result = await submitWrite(c.env, c.executionCtx, slug, itemId, body.cols, viewer, { derived });
       if (ajusteCompras && result.ok) {
         // Best-effort: la mini versión es trazabilidad, no debe convertir un
         // write ya aplicado en un 500. Sin subversión sobre un borrador todavía
@@ -502,33 +518,33 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
     const itemId = Number(c.req.param('id'));
     if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
 
-    // El borrado era la única ruta de /api/boards que no miraba al viewer:
-    // cualquier autenticado podía borrar CUALQUIER item de Monday sabiendo su
-    // id. Mismo guard de scoping que refresh/updates (dal.getItem), con scope
-    // 'own': borrar es escribir, y un líder de zona solo LEE lo de su equipo.
-    const viewer = c.get('viewer');
-    const row = await getItem(c.env, slug, itemId, viewer, 'own');
-    if (!row) return c.json({ error: 'not found' }, 404);
-
-    if (slug === 'oportunidades_sub' && row.parent_item_id != null && !isNativeId(row.parent_item_id)) {
-      // Borrar no descostea nada: la línea se va y las que quedan siguen
-      // costeadas igual. La versión archivada conserva la que se borró.
-      const versionError = await autoVersionSiCosteada(c.env, c.executionCtx, row.parent_item_id, viewer, []);
-      if (versionError) return jsonStatus({ ok: false, error: versionError.message }, versionError.status);
+    // SOLO líneas de cotización (revisión 2026-09-10). La ruta aceptaba
+    // cualquier board: borrar una Oportunidad padre se llevaba en cascada todas
+    // sus líneas en Monday sin respaldo en item_borrado, y productos/
+    // instituciones/proveedores (sin authzCols) los podía borrar cualquiera que
+    // los leyera. Nada del portal borra otra cosa por aquí: las líneas de
+    // Proyecto tienen su ruta con candado de Compras/admin.
+    if (slug !== 'oportunidades_sub') {
+      return jsonStatus({ ok: false, error: 'Por aquí solo se pueden borrar líneas de cotización.' }, 403);
     }
+    const viewer = c.get('viewer');
+    if (!['vendedor', 'compras', 'admin'].includes(viewer.role)) return jsonStatus({ ok: false, error: 'forbidden' }, 403);
+
+    // Mismo guard de scoping que refresh/updates (dal.getItem), con scope
+    // 'own': borrar es escribir, y un líder de zona solo LEE lo de su equipo.
+    const row = await getItem(c.env, slug, itemId, viewer, 'own');
+    if (!row || row.parent_item_id == null) return c.json({ error: 'not found' }, 404);
 
     // Borra en Monday Y en el mirror (worker/lib/itemBorrado.ts): lo que se
-    // quita del portal tiene que desaparecer de Monday, o los flujos que leen
-    // Monday directo —costeo, cotización, tallas, OC— siguen viendo la línea
-    // (Efraín, 2026-08-19). El mirror se limpia aquí mismo y no se espera al
-    // webhook subitem_deleted: con su debounce de 10s más la latencia de
-    // Monday la línea seguía en el drawer minutos después (Efraín,
-    // 2026-08-13: "tarda muchísimo"). Si el webhook llega luego, su DELETE
-    // sobre una fila que ya no existe es un no-op.
+    // quita del portal tiene que desaparecer de Monday, o costeo, cotización,
+    // tallas y OC —que leen Monday directo— siguen viendo la línea (Efraín,
+    // 2026-08-19). Archiva antes la versión si la cotización ya está costeada
+    // (la versión conserva la línea); todo vive en borrarLineaCotizacion
+    // (worker/lib/quoteVersions.ts), compartido con "Ajustar línea → Eliminar".
     try {
-      await borrarItem(c.env, BOARDS[slug].id, itemId, viewer.email);
+      await borrarLineaCotizacion(c.env, c.executionCtx, itemId, row.parent_item_id, viewer, !isNativeId(row.parent_item_id));
     } catch (err) {
-      if (err instanceof BorradoError) return jsonStatus({ ok: false, error: err.message }, err.status);
+      if (err instanceof BorradoError || err instanceof QuoteVersionError) return jsonStatus({ ok: false, error: err.message }, err.status);
       throw err;
     }
     return c.json({ ok: true });

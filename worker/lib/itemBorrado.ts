@@ -28,7 +28,7 @@
 // Items NATIVOS (Zona Efrain, ids >= 900000000000): no existen en Monday, así
 // que solo se borra la fila de D1 — D1 es su sistema de registro.
 import type { Env } from '../env';
-import { gql } from './monday';
+import { gql, fetchItem } from './monday';
 import { isNativeId } from '../../shared/nativeId';
 
 export class BorradoError extends Error {
@@ -77,39 +77,79 @@ async function borradosRecientes(env: Env, byEmail?: string): Promise<number> {
   return row?.n ?? 0;
 }
 
+/** Lanza BorradoError(429) si esta persona ya llegó al tope de la hora. Se
+ * exporta para que un camino que hace algo irreversible ANTES de borrar
+ * (archivar una versión de la cotización, worker/lib/quoteVersions.ts
+ * borrarLineaCotizacion) pueda revisar el tope primero, en vez de archivar y
+ * luego toparse con el 429. */
+export async function verificarTopeBorrado(env: Env, byEmail?: string, cuantos = 1): Promise<void> {
+  await ensureItemBorradoTable(env);
+  if (await borradosRecientes(env, byEmail) + cuantos > TOPE_POR_HORA) {
+    throw new BorradoError(429,
+      `Se alcanzó el tope de ${TOPE_POR_HORA} borrados por hora. Si de verdad hay que quitar más, avísale a Efraín.`);
+  }
+}
+
+interface RespaldoPrevio { parent_item_id: number | null; name: string | null; columns: string | null; deleted_at: string; by_email: string | null }
+
 /** Borra el item en Monday y en el mirror, dejando copia del renglón en
  * `item_borrado`. Idempotente hacia afuera: si Monday ya no lo tiene, la fila de
  * D1 se limpia igual (el webhook `subitem_deleted` puede habérsele adelantado).
  *
  * El orden importa: primero el respaldo, luego Monday, al final D1. Si Monday
- * falla, no se pierde nada; si Monday borra y D1 falla, el reconcile arregla el
- * mirror solo. */
+ * falla y el item SIGUE vivo allá, el respaldo se deshace (no debe contar contra
+ * el tope ni fingir un borrado que no pasó) y se lanza BorradoError(502); si
+ * Monday borra y D1 falla, el reconcile arregla el mirror solo. */
 export async function borrarItem(
   env: Env, boardId: number, itemId: number, byEmail?: string,
 ): Promise<void> {
-  await ensureItemBorradoTable(env);
-
-  if (await borradosRecientes(env, byEmail) >= TOPE_POR_HORA) {
-    throw new BorradoError(429,
-      `Se alcanzó el tope de ${TOPE_POR_HORA} borrados por hora. Si de verdad hay que quitar más, avísale a Efraín.`);
-  }
+  await verificarTopeBorrado(env, byEmail);
 
   const row = await env.DB
     .prepare('SELECT parent_item_id, name, columns FROM items WHERE board_id = ? AND item_id = ?')
     .bind(boardId, itemId)
     .first<{ parent_item_id: number | null; name: string; columns: string }>();
+  const previo = await env.DB
+    .prepare('SELECT parent_item_id, name, columns, deleted_at, by_email FROM item_borrado WHERE board_id = ? AND item_id = ?')
+    .bind(boardId, itemId)
+    .first<RespaldoPrevio>();
 
+  // Un segundo intento sobre el mismo item actualiza TODO el respaldo (antes
+  // solo la fecha y el correo, y se quedaba guardado el renglón del primer
+  // intento); COALESCE para no perder datos si el espejo ya no tiene la fila.
   await env.DB.prepare(
     `INSERT INTO item_borrado (board_id, item_id, parent_item_id, name, columns, deleted_at, by_email)
      VALUES (?,?,?,?,?,?,?)
-     ON CONFLICT(board_id, item_id) DO UPDATE SET deleted_at = excluded.deleted_at, by_email = excluded.by_email`,
+     ON CONFLICT(board_id, item_id) DO UPDATE SET
+       parent_item_id = COALESCE(excluded.parent_item_id, item_borrado.parent_item_id),
+       name = COALESCE(excluded.name, item_borrado.name),
+       columns = COALESCE(excluded.columns, item_borrado.columns),
+       deleted_at = excluded.deleted_at, by_email = excluded.by_email`,
   ).bind(
     boardId, itemId, row?.parent_item_id ?? null, row?.name ?? null, row?.columns ?? null,
     new Date().toISOString(), byEmail ?? null,
   ).run();
 
   if (!isNativeId(itemId)) {
-    await gql(env, `mutation($i:ID!){ delete_item(item_id:$i){ id } }`, { i: String(itemId) });
+    try {
+      await gql(env, `mutation($i:ID!){ delete_item(item_id:$i){ id } }`, { i: String(itemId) });
+    } catch (err) {
+      // ¿Ya no existía allá (el webhook o alguien en Monday se adelantó)? Entonces
+      // el borrado sí quedó hecho y solo falta limpiar D1.
+      let sigueViva = true;
+      try { sigueViva = (await fetchItem(env, itemId)) !== null; } catch { /* sin respuesta: se asume viva */ }
+      if (sigueViva) {
+        if (previo) {
+          await env.DB.prepare(
+            'UPDATE item_borrado SET parent_item_id = ?, name = ?, columns = ?, deleted_at = ?, by_email = ? WHERE board_id = ? AND item_id = ?',
+          ).bind(previo.parent_item_id, previo.name, previo.columns, previo.deleted_at, previo.by_email, boardId, itemId).run();
+        } else {
+          await env.DB.prepare('DELETE FROM item_borrado WHERE board_id = ? AND item_id = ?').bind(boardId, itemId).run();
+        }
+        const detalle = err instanceof Error ? err.message : String(err);
+        throw new BorradoError(502, `Monday no dejó borrar el elemento; no se borró nada. (${detalle})`);
+      }
+    }
   }
 
   await env.DB.prepare('DELETE FROM items WHERE board_id = ? AND item_id = ?').bind(boardId, itemId).run();

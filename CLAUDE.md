@@ -123,8 +123,15 @@ con el Worker (`/api/*`). Bot de WhatsApp + chat del portal comparten agente Cla
 - Mandar a costeo / generar cotización / tallas / OC = endpoints de cmp-tallas
   (`worker/lib/automations.ts`) — el portal los dispara y refetchea el mirror; nunca
   cambia el stage por su cuenta (excepción: enviar-validacion 15→7, sin endpoint).
-- Ediciones de líneas: inline solo en stage 4; en otras etapas vía "Nueva versión"
-  (`worker/lib/quoteVersions.ts`). **Precio de Venta C/U (`numeric_mkzneg3d`): solo
+- Ediciones de líneas: inline en CUALQUIER etapa, Ganada/Perdida incluidas (Efraín,
+  2026-08-14). Si la cotización ya está costeada, cambiar producto/color/cantidad/
+  embellecimiento archiva una versión automática (`autoVersionSiCosteada`,
+  `worker/lib/quoteVersions.ts`) y solo la línea tocada regresa a costeo; si ya había
+  líneas pendientes no se archiva, pero la tocada igual regresa a costeo. Compras/admin
+  cambiando color o cantidad = mini versión V{n}.{m}, sin descostear. Cambiar el
+  producto escribe también SKU y Producto en texto desde el catálogo
+  (`textosDerivadosDeProducto`): cmp-tallas los lee de ahí y la automatización de
+  Monday NO los llena cuando escribe el portal. **Precio de Venta C/U (`numeric_mkzneg3d`): solo
   admin lo escribe** (`w: WA`); vendedor y compras lo VEN pero no lo editan (Efraín,
   2026-07-24). Anclado en `shared/visibility.test.ts`.
 - Writes: front → `PATCH /api/boards/:slug/items/:id` → outbox D1 → Monday → echo/refetch.

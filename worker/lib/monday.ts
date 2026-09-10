@@ -405,12 +405,24 @@ export async function createNotification(env: Env, userId: number, targetItemId:
   await gql(env, query, { userId: String(userId), targetId: String(targetItemId), text });
 }
 
-/** Single item by id (used by refetchItem — webhook/refresh never trust the payload). */
+/** `items(ids:)` devuelve TAMBIÉN items borrados (`state: "deleted"`) y
+ * archivados — no solo los vivos, como se creía. Consecuencia real
+ * (2026-09-10): el webhook de un borrado llegaba, la fila ya no estaba en D1,
+ * `refetchItem` pedía el item, Monday lo regresaba borrado y el espejo lo
+ * volvía a insertar sin padre (una línea "fantasma" hasta el reconcile). Todo
+ * lo que lee por id pasa por aquí: un item que no está activo cuenta como
+ * inexistente, igual que en el reconcile (items_page no trae borrados). */
+function esActivo(raw: { state?: string | null }): boolean {
+  return !raw.state || raw.state === 'active';
+}
+
+/** Single item by id (used by refetchItem — webhook/refresh never trust the payload).
+ * null si no existe o si está borrado/archivado en Monday (ver esActivo). */
 export async function fetchItem(env: Env, itemId: number): Promise<MondayItem | null> {
-  const query = `query($id:[ID!]){ items(ids:$id){ ${ITEM_FIELDS} } }`;
+  const query = `query($id:[ID!]){ items(ids:$id){ state ${ITEM_FIELDS} } }`;
   const data = await gql(env, query, { id: [String(itemId)] });
   const raw = data?.items?.[0];
-  if (!raw) return null;
+  if (!raw || !esActivo(raw)) return null;
   return { ...raw, column_values: normalizeCols(raw.column_values ?? []) };
 }
 
@@ -423,16 +435,19 @@ export const ITEMS_BY_IDS_MAX = 100;
  * vuelve barato el delta sync: antes cada item que cambió en Monday costaba
  * su propia llamada (~1.5-6 s cada una en prod), así que un latido de 6 s
  * alcanzaba a releer 0-3 items y el resto esperaba al cron. Los ids que
- * Monday NO devuelve (borrados) simplemente no vienen en el arreglo — el
+ * no están vivos en Monday (borrados o archivados: Monday SÍ los devuelve,
+ * con `state` distinto de "active" — ver esActivo) se omiten del arreglo — el
  * llamador decide qué hacer con ellos (worker/sync/refetch.ts los quita del
  * espejo, igual que hacía el refetch de a uno). Ids nativos nunca deben
  * llegar aquí (no existen en Monday). */
 export async function fetchItemsByIds(env: Env, itemIds: number[]): Promise<MondayItem[]> {
   if (itemIds.length === 0) return [];
   if (itemIds.length > ITEMS_BY_IDS_MAX) throw new Error(`fetchItemsByIds: máximo ${ITEMS_BY_IDS_MAX} ids por llamada`);
-  const query = `query($ids:[ID!]){ items(ids:$ids, limit:${ITEMS_BY_IDS_MAX}){ ${ITEM_FIELDS} } }`;
+  const query = `query($ids:[ID!]){ items(ids:$ids, limit:${ITEMS_BY_IDS_MAX}){ state ${ITEM_FIELDS} } }`;
   const data = await gql(env, query, { ids: itemIds.map(String) });
-  return ((data?.items ?? []) as any[]).map(raw => ({ ...raw, column_values: normalizeCols(raw.column_values ?? []) }));
+  return ((data?.items ?? []) as any[])
+    .filter(esActivo)
+    .map(raw => ({ ...raw, column_values: normalizeCols(raw.column_values ?? []) }));
 }
 
 /** Uploads a file to a file-type column — Monday's dedicated multipart endpoint
@@ -508,10 +523,10 @@ export async function fetchItemWithSubitems(
   env: Env,
   itemId: number,
 ): Promise<{ item: MondayItem; subitems: MondayItem[] } | null> {
-  const query = `query($id:[ID!]){ items(ids:$id){ ${ITEM_FIELDS} subitems{ ${ITEM_FIELDS} } } }`;
+  const query = `query($id:[ID!]){ items(ids:$id){ state ${ITEM_FIELDS} subitems{ state ${ITEM_FIELDS} } } }`;
   const data = await gql(env, query, { id: [String(itemId)] });
   const raw = data?.items?.[0];
-  if (!raw) return null;
+  if (!raw || !esActivo(raw)) return null;
   const norm = (it: any): MondayItem => ({ ...it, column_values: normalizeCols(it.column_values ?? []) });
-  return { item: norm(raw), subitems: (raw.subitems ?? []).map(norm) };
+  return { item: norm(raw), subitems: (raw.subitems ?? []).filter(esActivo).map(norm) };
 }
