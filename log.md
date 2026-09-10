@@ -29,6 +29,7 @@
     encontró dos líneas de OPP-1047 creadas a mano en Monday a las que la
     automatización de Monday no les llenó el SKU. Un 'conflict' del outbox
     que el portal volvió a escribir después tampoco cuenta (los 7 de hoy eran así).
+    Ni uno sobre un item que ya no está en el espejo (se borró después).
   - `node scripts/salud.mjs [--horas N]`: el mismo resumen desde la terminal,
     leyendo D1 de producción. Sección nueva "Diagnóstico" en CLAUDE.md.
   - Datos corregidos hoy (sin código): 152 líneas con producto ligado y

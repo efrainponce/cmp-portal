@@ -341,6 +341,9 @@ async function outboxProblemas(env: Env, ahora: Date): Promise<Hallazgo[]> {
         detalle: { enviado, autor: r.author_email }, boardId: r.board_id, itemId: r.item_id,
       });
     } else {
+      // El item ya no está en el espejo (se borró después): no hay contra qué
+      // comparar y un dato de una línea que ya no existe no es un dato perdido.
+      if (r.columnas == null) continue;
       const difs = diferenciasOutbox(enviado, r.nombre, r.columnas);
       for (const w of reescritas.get(r.item_id) ?? []) {
         if (w.id > r.id) for (const col of w.cols) delete difs[col];
