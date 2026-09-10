@@ -105,9 +105,12 @@ export interface MeDTO {
 export interface WriteRequest { cols: Record<string, string> }  // colId -> new raw value
 export interface WriteResponse { ok: boolean; pending: boolean; error?: string }
 
-// native: "salir de Monday" (Zona Efrain) — solo lo honra el server para
-// slug 'oportunidades' y viewers de la whitelist de zona privada; cualquier
-// otro caso lo ignora y crea normal (worker/routes/boards.ts).
+// native: "salir de Monday" (Zona Efrain), worker/routes/boards.ts.
+// `true`: nace en D1 — oportunidades, contactos e instituciones, y solo para
+// viewers de la whitelist de zona privada (fuera de ella 403). `false`
+// explícito: el contacto/institución que da de alta alguien de la whitelist
+// nace en Monday, no nativo — lo manda el alta dentro de una oportunidad de
+// Monday (worker/lib/zonas.ts catalogoNaceNativo). Sin él, decide el server.
 export interface CreateRequest { name: string; cols: Record<string, string>; native?: boolean }
 export interface CreateResponse { ok: boolean; id?: string; error?: string }
 

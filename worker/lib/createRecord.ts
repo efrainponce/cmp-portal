@@ -14,7 +14,7 @@ import { reserveNativeId } from './nativeSeq';
 import { assertNoNativeLink, NativeLinkError } from './nativeItems';
 import { rawHash, type RawColumn } from './canon';
 import { cachedFetchUsers } from './rosterCache';
-import { isZonaPrivadaAdminPermitido } from './zonas';
+import { catalogoNaceNativo, isZonaPrivadaAdminPermitido } from './zonas';
 import { stampInstitucionDeContacto, OPP_CONTACTO_REL } from './nativeMirrors';
 import { dealStageValue } from '../../shared/dealStages';
 import { boardRelationValue } from './outbox';
@@ -57,6 +57,9 @@ export async function submitCreate(
   cols: Record<string, string>,
   viewer: Identity,
   ctx?: ExecutionContext,
+  /** `native` tal cual llegó en el request — aquí solo cuenta `false`
+   * explícito (ver catalogoNaceNativo). */
+  opts: { native?: boolean } = {},
 ): Promise<CreateResponse> {
   if (!isCreatable(slug)) throw new CreateError(404, 'not found');
   // Zona Efrain (Efraín, 2026-08-18): los contactos e instituciones que dan de
@@ -67,8 +70,10 @@ export async function submitCreate(
   // comportan como cualquier otro registro (Contactos sigue scopeado por
   // Vendedor); lo único que cambia es que no existen del lado de Monday.
   // Oportunidades NO entra aquí: ahí la decisión es explícita del tab de la
-  // zona (`native: true`, ver la ruta de creación).
-  if ((slug === 'contactos' || slug === 'instituciones') && isZonaPrivadaAdminPermitido(viewer.email)) {
+  // zona (`native: true`, ver la ruta de creación). Y lo que se da de alta
+  // DENTRO de una oportunidad de Monday (`native: false`) nace en Monday: la
+  // oportunidad no podría ligarlo (2026-09-10).
+  if ((slug === 'contactos' || slug === 'instituciones') && catalogoNaceNativo(viewer.email, opts.native)) {
     return submitCreateNative(env, slug, name, cols, viewer);
   }
   if (!CREATOR_ROLES.includes(viewer.role)) throw new CreateError(403, 'cannot create');

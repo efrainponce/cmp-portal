@@ -3,16 +3,20 @@
 // productos? y fecha límite. Las líneas de producto se capturan después; la
 // validación de enviar-costeo impide avanzar sin ellas. Cargado lazy desde
 // OportunidadesBoard para no pesar en el bundle inicial.
+// Contacto e Institución se dan de alta aquí mismo con «+ Nuevo» (Efraín,
+// 2026-09-10): abre encima el form de los catálogos (CreateRecordModal).
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Modal } from '../../components/core/Modal';
 import { Button } from '../../components/core/Button';
 import { SearchableSelect, type SearchableOption } from '../../components/forms/SearchableSelect';
 import { ChipSelect } from '../../components/forms/ChipSelect';
+import { CreateRecordModal, type RecordCreado } from '../generic/CreateRecordModal';
 import { useMe } from '../../lib/useMe';
 import {
   apiFetch, useBoards, colForBoard, createItem, getVendedores, patchItem, vendedorKey, vendedorIdFromKey,
   type ColMeta, type ItemDTO, type ListResponse, type VendedorDTO,
 } from '../../lib/api';
+import { isNativeId } from '../../../shared/nativeId';
 
 // Ids reales de Monday (docs/monday-column-map.md) — nunca fabricar.
 const COL_VENDEDOR = 'deal_owner';
@@ -54,6 +58,20 @@ function personIds(item: ItemDTO, colId: string): number[] {
   return value?.personsAndTeams?.map((p) => p.id) ?? [];
 }
 
+/** Renglón armado en el cliente para lo que se acaba de dar de alta en este
+ * form: las listas se bajan una vez al abrirlo y no se vuelven a pedir
+ * (Instituciones son 3k registros). Solo trae lo que este form lee. */
+function itemLocal(id: string, name: string, cols: ItemDTO['cols'] = {}): ItemDTO {
+  return { id, name, cols, syncedAt: new Date().toISOString(), mondayUpdatedAt: null };
+}
+
+/** Lo del server más lo dado de alta aquí que el server aún no traía — por si
+ * la lista llega después del alta. */
+function juntar(delServer: ItemDTO[], locales: ItemDTO[]): ItemDTO[] {
+  const ids = new Set(delServer.map((i) => i.id));
+  return [...delServer, ...locales.filter((i) => !ids.has(i.id))];
+}
+
 function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
   return (
     <div>
@@ -61,6 +79,21 @@ function Field({ label, required, children }: { label: string; required?: boolea
         {label}{required ? ' *' : ''}
       </div>
       {children}
+    </div>
+  );
+}
+
+/** Picker + botón de alta en el mismo renglón — el acomodo del «+ Nueva» de
+ * Institución en CreateRecordModal. */
+function ConAlta({ label, activo, onClick, children }: {
+  label: string; activo: boolean; onClick: () => void; children: React.ReactNode;
+}) {
+  return (
+    <div style={{ display: 'flex', gap: 8 }}>
+      <div style={{ flex: 1, minWidth: 0 }}>{children}</div>
+      <Button variant={activo ? 'secondary' : 'disabled'} onClick={onClick} style={{ flex: 'none', whiteSpace: 'nowrap' }}>
+        {label}
+      </Button>
     </div>
   );
 }
@@ -89,6 +122,8 @@ export default function CreateOportunidadModal({
   // contacto) y el create fail-closed rechazaría cualquier id que no esté en
   // shared/createFields.ts.
   const [institucionId, setInstitucionId] = useState('');
+  // Alta en línea abierta encima de este form (CreateRecordModal).
+  const [alta, setAlta] = useState<'contacto' | 'institucion' | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fechaLimiteRef = useRef<HTMLInputElement>(null);
@@ -98,14 +133,14 @@ export default function CreateOportunidadModal({
     getVendedores('compras').then(setCompras);
     apiFetch('/boards/contactos/items')
       .then((r) => (r.ok ? (r.json() as Promise<ListResponse>) : Promise.reject()))
-      .then((json) => setContactos(json.items))
-      .catch(() => setContactos([]));
+      .then((json) => setContactos((locales) => juntar(json.items, locales)))
+      .catch(() => {});
     // Solo nombre (?cols=): el picker no pinta nada más y el board completo
     // pesa de más — misma proyección que usePoll(SOLO_NOMBRE).
     apiFetch('/boards/instituciones/items?cols=')
       .then((r) => (r.ok ? (r.json() as Promise<ListResponse>) : Promise.reject()))
-      .then((json) => setInstituciones(json.items))
-      .catch(() => setInstituciones([]));
+      .then((json) => setInstituciones((locales) => juntar(json.items, locales)))
+      .catch(() => {});
   }, []);
 
   // El vendedor que crea es el dueño por default (igual que el bot de WhatsApp).
@@ -149,6 +184,36 @@ export default function CreateOportunidadModal({
   }, [institucionDelContacto]);
 
   const set = (id: string) => (value: string) => setCols((c) => ({ ...c, [id]: value }));
+
+  const agregarInstitucion = (inst: { id: string; name: string }) => {
+    setInstituciones((is) => juntar(is, [itemLocal(inst.id, inst.name)]));
+  };
+
+  // El contacto nuevo entra a la lista con lo que este form lee de él —su
+  // vendedor, para el filtro de arriba, y su institución— y queda elegido; la
+  // Institución la toma de ahí como con cualquier otro contacto.
+  const onContactoCreado = (creado?: RecordCreado) => {
+    if (!creado) return;
+    const inst = creado.institucion;
+    const nuevo = itemLocal(creado.id, creado.name, {
+      [COL_CONTACTO_VENDEDOR]: {
+        type: 'people', text: '',
+        value: { personsAndTeams: [{ id: Number(creado.cols[COL_CONTACTO_VENDEDOR]), kind: 'person' }] },
+      },
+      ...(inst && {
+        [COL_CONTACTO_INSTITUCION]: { type: 'board_relation', text: inst.name, value: { linked_item_ids: [inst.id] } },
+      }),
+    });
+    setContactos((cs) => juntar(cs, [nuevo]));
+    if (inst) agregarInstitucion(inst);
+    setCols((c) => ({ ...c, [COL_CONTACTO]: creado.id }));
+  };
+
+  const onInstitucionCreada = (creada?: RecordCreado) => {
+    if (!creada) return;
+    agregarInstitucion(creada);
+    setInstitucionId(creada.id);
+  };
 
   const onSubmit = async () => {
     if (!name.trim()) { setError('El nombre es obligatorio.'); return; }
@@ -218,22 +283,27 @@ export default function CreateOportunidadModal({
           />
         </Field>
         <Field label="Contacto (cliente)">
-          <SearchableSelect
-            value={cols[COL_CONTACTO] ?? ''} onChange={set(COL_CONTACTO)} options={contactOptions}
-            placeholder="Buscar contacto…"
-            disabled={!selectedVendedorKey}
-            disabledMessage="Elige primero un vendedor…"
-            emptyMessage="Este vendedor no tiene contactos asignados."
-          />
+          <ConAlta label="+ Nuevo" activo={!!selectedVendedorKey} onClick={() => setAlta('contacto')}>
+            <SearchableSelect
+              value={cols[COL_CONTACTO] ?? ''} onChange={set(COL_CONTACTO)} options={contactOptions}
+              placeholder="Buscar contacto…"
+              disabled={!selectedVendedorKey}
+              disabledMessage="Elige primero un vendedor…"
+              emptyMessage="Sin contactos de este vendedor. Usa «+ Nuevo» para darlo de alta."
+            />
+          </ConAlta>
         </Field>
         <Field label="Institución">
-          <SearchableSelect
-            value={institucionId} onChange={setInstitucionId}
-            options={instituciones.map((i) => ({ value: i.id, label: i.name }))}
-            placeholder="Buscar institución…"
-            disabled={!cols[COL_CONTACTO]}
-            disabledMessage="Elige primero un contacto…"
-          />
+          <ConAlta label="+ Nueva" activo={!!cols[COL_CONTACTO]} onClick={() => setAlta('institucion')}>
+            <SearchableSelect
+              value={institucionId} onChange={setInstitucionId}
+              options={instituciones.map((i) => ({ value: i.id, label: i.name }))}
+              placeholder="Buscar institución…"
+              disabled={!cols[COL_CONTACTO]}
+              disabledMessage="Elige primero un contacto…"
+              emptyMessage="Sin resultados. Usa «+ Nueva» para crearla."
+            />
+          </ConAlta>
           <div style={{ font: 'var(--text-caption)', color: 'var(--ink-quiet)', marginTop: 4 }}>
             {institucionId && institucionDelContacto && institucionId !== institucionDelContacto
               ? '⚠ También cambia la institución del contacto (de ahí la toma la oportunidad).'
@@ -260,6 +330,32 @@ export default function CreateOportunidadModal({
           />
         </Field>
         {error && <div style={{ color: 'var(--status-perdida)', font: 'var(--text-label)' }}>{error}</div>}
+
+        {/* El contacto nace donde vive la oportunidad: una de Monday no puede
+            ligar uno nativo (assertNoNativeLink) y el de una nativa no debe
+            existir en Monday (worker/lib/zonas.ts catalogoNaceNativo). Es del
+            vendedor de la oportunidad — si no, el filtro de arriba lo escondería. */}
+        {alta === 'contacto' && (
+          <CreateRecordModal
+            slug="contactos"
+            title={native ? 'Nuevo contacto (Zona Efrain — nativo)' : 'Nuevo contacto'}
+            native={!!native}
+            fijos={{ cols: { [COL_CONTACTO_VENDEDOR]: selectedVendedorKey }, motivo: 'Es el vendedor de la oportunidad.' }}
+            onClose={() => setAlta(null)}
+            onCreated={onContactoCreado}
+          />
+        )}
+        {/* La institución se liga desde el contacto: si el contacto vive en
+            Monday, ella también; si es nativo, decide el server. */}
+        {alta === 'institucion' && (
+          <CreateRecordModal
+            slug="instituciones"
+            title="Nueva institución"
+            native={isNativeId(Number(cols[COL_CONTACTO])) ? undefined : false}
+            onClose={() => setAlta(null)}
+            onCreated={onInstitucionCreada}
+          />
+        )}
       </div>
     </Modal>
   );

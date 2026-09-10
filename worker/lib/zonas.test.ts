@@ -3,7 +3,7 @@
 // shared/visibility.test.ts: quién está dentro es decisión de Efraín, no del
 // código que la consulta.
 import { describe, it, expect } from 'vitest';
-import { isZonaPrivadaAdminPermitido } from './zonas';
+import { catalogoNaceNativo, isZonaPrivadaAdminPermitido } from './zonas';
 
 describe('whitelist de la zona privada', () => {
   it('las tres personas de siempre siguen dentro (CEO, Elisa, quien mantiene el portal)', () => {
@@ -43,5 +43,28 @@ describe('whitelist de la zona privada', () => {
 
   it('no distingue mayúsculas ni espacios (el correo llega de Access)', () => {
     expect(isZonaPrivadaAdminPermitido(' Efrain.Ponces@Gmail.com ')).toBe(true);
+  });
+});
+
+// Efraín, 2026-09-10: alta de Contacto e Institución DENTRO de "Nueva
+// oportunidad". Desde los catálogos, lo que captura la whitelist sigue naciendo
+// nativo sin preguntar (2026-08-18); desde una oportunidad de Monday el form
+// manda `native: false`, porque una oportunidad real no puede ligar nada
+// nativo (assertNoNativeLink) y tronaría al guardarla.
+describe('¿nace nativo el contacto o institución que se da de alta?', () => {
+  it('la whitelist, desde los catálogos (sin `native`): nativo, como siempre', () => {
+    expect(catalogoNaceNativo('compras@mexicanadeproteccion.com')).toBe(true);
+    expect(catalogoNaceNativo('efrain.ponces@gmail.com', true)).toBe(true);
+  });
+
+  it('la whitelist, desde una oportunidad de Monday (`native: false`): en Monday', () => {
+    expect(catalogoNaceNativo('compras@mexicanadeproteccion.com', false)).toBe(false);
+    expect(catalogoNaceNativo('administracion@mexicanadeproteccion.com', false)).toBe(false);
+  });
+
+  it('fuera de la whitelist nunca nace nativo por esta vía, pida lo que pida', () => {
+    expect(catalogoNaceNativo('otro.vendedor@mexicanadeproteccion.com')).toBe(false);
+    expect(catalogoNaceNativo('otro.vendedor@mexicanadeproteccion.com', true)).toBe(false);
+    expect(catalogoNaceNativo(null)).toBe(false);
   });
 });

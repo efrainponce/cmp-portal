@@ -197,12 +197,14 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
       // "Salir de Monday" (Zona Efrain): oportunidades pide `native` explícito
       // (lo manda el tab de la zona); contactos e instituciones ya no pasan por
       // aquí para decidirlo — submitCreate los deriva solo cuando el creador
-      // está en la whitelist (Efraín, 2026-08-18: "que sea algo normal").
+      // está en la whitelist (Efraín, 2026-08-18: "que sea algo normal"), salvo
+      // `native:false` explícito: el alta nace dentro de una oportunidad de
+      // Monday y tiene que poder ligarse a ella (zonas.ts catalogoNaceNativo).
       // submitCreateNative revalida la whitelist por su cuenta, así que un
       // `native:true` fuera de lugar 403ea en vez de crear en Monday a escondidas.
       const result = body.native && isNativeCreatable(slug)
         ? await submitCreateNative(c.env, slug, body.name, body.cols, viewer)
-        : await submitCreate(c.env, slug, body.name, body.cols, viewer, c.executionCtx);
+        : await submitCreate(c.env, slug, body.name, body.cols, viewer, c.executionCtx, { native: body.native });
       return c.json(result);
     } catch (err) {
       if (err instanceof CreateError) {

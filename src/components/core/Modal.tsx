@@ -1,7 +1,7 @@
 // Centered dialog — distinct from OpportunityDrawer's full-screen overlay, this is
 // for compact forms (create record, etc). Uses the --overlay-scrim/--shadow-modal
 // tokens already reserved in tokens/colors.css for exactly this.
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 
 interface ModalProps {
   title: string;
@@ -11,12 +11,30 @@ interface ModalProps {
   width?: number;
 }
 
+// Modales abiertos, del de hasta abajo al de hasta arriba. Escape cierra SOLO
+// el de hasta arriba: "Nueva oportunidad" → «+ Nuevo» contacto → «+ Nueva»
+// institución apila tres, y un Escape los cerraba todos de un jalón — con la
+// oportunidad a medio capturar (2026-09-10).
+const abiertos: object[] = [];
+
 export function Modal({ title, onClose, children, footer, width = 480 }: ModalProps) {
+  // Por ref: `onClose` suele ser una flecha nueva en cada render, y volver a
+  // suscribir en cada render movería este modal al tope de la pila.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; });
+
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const yo = {};
+    abiertos.push(yo);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && abiertos[abiertos.length - 1] === yo) onCloseRef.current();
+    };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      abiertos.splice(abiertos.indexOf(yo), 1);
+    };
+  }, []);
 
   return (
     <div

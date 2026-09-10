@@ -2,6 +2,40 @@
 
 ## 2026-09-10
 
+- **"Nueva oportunidad": alta de Contacto e Institución sin salir del form**
+  (Efraín: "necesito poder crear institución y contacto aquí dentro de la
+  nueva oportunidad"). Junto a cada picker hay un «+ Nuevo»/«+ Nueva» que abre
+  encima el mismo form de los catálogos (`CreateRecordModal`, que ya traía su
+  propio «+ Nueva» de institución); lo recién creado queda elegido. El renglón
+  se arma en el cliente (vendedor e institución del contacto) en vez de volver
+  a bajar las listas: Instituciones son 3k registros, y el mirror puede traer
+  unos segundos el Vendedor que pisa la automatización de Monday (2026-09-03).
+  - El contacto nuevo es del **vendedor de la oportunidad** y el form lo
+    muestra fijo (`fijos`): el prellenado normal es "el que crea", así que un
+    admin capturando para otro vendedor lo dejaba a su nombre y el picker de
+    la oportunidad —que filtra por vendedor— no lo podía elegir.
+  - «+ Nueva» junto a Institución (con contacto elegido) reasigna el contacto
+    a una que aún no existe; como antes, se guarda en el contacto al crear la
+    oportunidad.
+- **Dónde nace lo que da de alta la whitelist de Zona Efrain.** Desde los
+  catálogos, igual que siempre: nativo sin preguntar. Desde una oportunidad de
+  **Monday** el form manda `native: false` y el contacto/institución nace en
+  Monday — una oportunidad real no puede ligar nada nativo
+  (`assertNoNativeLink`) y a Efraín, Elisa, el CEO, PAM o EMY les habría
+  tronado al guardar. Desde una oportunidad nativa manda `native: true`: el
+  contacto de un negocio oculto sigue oculto. La institución que se crea para
+  reasignar sigue al contacto (de Monday → Monday; nativo → decide el server).
+  Regla en `catalogoNaceNativo` (`worker/lib/zonas.ts`), anclada en
+  `zonas.test.ts`.
+- **Escape cierra solo el modal de hasta arriba** (`Modal.tsx`, pila de
+  abiertos): oportunidad → contacto → institución apila tres, y un Escape los
+  cerraba todos con la oportunidad a medio capturar.
+- Verificado en local con Playwright (dev servers propios, D1 de miniflare):
+  en una oportunidad de Monday solo se abrieron los modales, sin guardar (iría
+  a Monday) — botones apagados/encendidos, vendedor fijo, tres modales y
+  Escape de uno en uno; en Zona Efrain, alta real de institución + contacto,
+  ambos quedan elegidos en la oportunidad; 390 px sin scroll horizontal. Lo
+  sembrado se borró al terminar.
 - **OPP-0970 / PRO-0171 (Fiscalía de Veracruz): la división caballero/dama
   "no se reflejaba en la cotización"** (Pam por WhatsApp; Efraín: "necesito un
   fix ya"). Lo que pasó, con el activity log de Monday en la mano: el 26 de

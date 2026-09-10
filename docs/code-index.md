@@ -69,7 +69,7 @@ y `src/lib/estadoProductoBuckets.ts`.
 - [worker/lib/cotizacionPdfs.ts](worker/lib/cotizacionPdfs.ts) — Resuelve PDFs de cotización (solicitud, sin firmar, firmada) de columnas Oportunidades. Exports: CotizacionPdfError, PdfKind, resolveCotizacionPdfUrl.
 - [worker/lib/cotizacionPreviewPdf.ts](worker/lib/cotizacionPreviewPdf.ts) — Arma los datos de la Cotización vista previa (portal) desde las líneas vigentes de la Oportunidad; solo lectura, no reemplaza la cotización oficial de Eledo. Exports: CotizacionPreviewPdfError, generarCotizacionPreviewPdf.
 - [worker/lib/createOportunidad.ts](worker/lib/createOportunidad.ts) — Crear Oportunidad + subitems de línea de producto. Exports: OportunidadError, LineaInput, OportunidadInput, OportunidadResult.
-- [worker/lib/createRecord.ts](worker/lib/createRecord.ts) — Creación síncrona de item genérico (no outbox, sin echo necesario). Estampa lo que el form no manda: Vendedor del contacto, "Elaborado por" del Proyecto (firmante de la OC) y el grupo destino del board. Exports: CreateError, submitCreate.
+- [worker/lib/createRecord.ts](worker/lib/createRecord.ts) — Creación síncrona de item genérico (no outbox, sin echo necesario). Estampa lo que el form no manda: Vendedor del contacto, "Elaborado por" del Proyecto (firmante de la OC) y el grupo destino del board. Contacto/Institución de la whitelist de Zona Efrain nace nativo salvo `native:false` (alta dentro de una oportunidad de Monday — ver `catalogoNaceNativo` en zonas.ts). Exports: CreateError, submitCreate.
 - [worker/lib/dal.ts](worker/lib/dal.ts) — All reads scoped by viewer; handlers no pueden bypassear estos predicados. El scope de LECTURA incluye la zona que el viewer lidera; el de escritura ('own') nunca. Exports: ScopeMode, ownerIdsFor, leadsOthers, scopeFor, childSlugOf, listItems, getItem, ownsItem, childrenOf.
 - [worker/lib/docuseal.ts](worker/lib/docuseal.ts) — Cliente delgado de DocuSeal para pedir firma electrónica (1 o varias, en orden) sobre un PDF ya subido a Monday. Exports: DocuSealError, DocuSealSigner, CreateSubmissionInput, createDocuSealSubmission.
 - [worker/lib/drive.ts](worker/lib/drive.ts) — Cliente REST delgado de Google Drive (Fase 5): crea/cachea la carpeta raíz + 12 subcarpetas de licitación de una Oportunidad y sube los PDFs generados ahí. Exports: DriveError, OPORTUNIDADES_PARENT_FOLDER_ID, SUBFOLDERS, OportunidadFolder, ensureOportunidadFolder, uploadPdfToDrive, getOrCreateDriveFolder, oportunidadRootFolderName, getOrCreateDriveFolderForOportunidad, createOportunidadFolderOnCreate.
@@ -121,7 +121,7 @@ y `src/lib/estadoProductoBuckets.ts`.
 - [worker/lib/r2.ts](worker/lib/r2.ts) — Helpers mínimos sobre binding FILES (bucket R2 para documentos). Dos namespaces de key: colgado de la Oportunidad, o del PROYECTO cuando no hay una ligada (2026-08-26) — sin el segundo, la OC de un proyecto hecho desde cero solo existía como link `protected_static` de Monday, que pide sesión de Monday para abrirse. Exports: oportunidadFileKey, proyectoFileKey, putFile.
 - [worker/lib/rosterCache.ts](worker/lib/rosterCache.ts) — Cache D1 del roster de usuarios de Monday con TTL configurable. Exports: cachedFetchUsers.
 - [worker/lib/serialize.ts](worker/lib/serialize.ts) — Mirror row → DTOs filtrados por rol Y por correo (utilidades): único productor de ItemDTO/ColMeta. Todo llamador debe pasarle `viewer.email` — omitirlo tapa las utilidades. Exports: RawCol, toItemDTO, toColMeta.
-- [worker/lib/zonas.ts](worker/lib/zonas.ts) — Zonas de ventas: el líder LEE las oportunidades de sus miembros (solo lectura; el write path pide scope 'own'). La zona privada 'Efrain' se autoriza por CORREO (no por monday_user_id, que se presta). Exports: Zona, ZonaError, ensureZonaTables, readableUserIds, zonaPrivadaMemberIds, hiddenOwnerIdsFor, isZonaPrivadaAdminPermitido, ZONA_PRIVADA_BOARDS, listZonas, createZona, updateZona, deleteZona.
+- [worker/lib/zonas.ts](worker/lib/zonas.ts) — Zonas de ventas: el líder LEE las oportunidades de sus miembros (solo lectura; el write path pide scope 'own'). La zona privada 'Efrain' se autoriza por CORREO (no por monday_user_id, que se presta). `catalogoNaceNativo`: si lo que da de alta la whitelist en Contactos/Instituciones nace nativo — no cuando viene de una oportunidad de Monday. Exports: Zona, ZonaError, ensureZonaTables, readableUserIds, zonaPrivadaMemberIds, hiddenOwnerIdsFor, isZonaPrivadaAdminPermitido, catalogoNaceNativo, ZONA_PRIVADA_BOARDS, listZonas, createZona, updateZona, deleteZona.
 
 ### worker/mw/
 
@@ -236,7 +236,7 @@ y `src/lib/estadoProductoBuckets.ts`.
 - [src/components/core/Button.tsx](src/components/core/Button.tsx) — Botón con variantes. Exports: Button.
 - [src/components/core/ConfirmButton.tsx](src/components/core/ConfirmButton.tsx) — Botón confirmación 2-paso. Exports: ConfirmButton.
 - [src/components/core/ActionMenu.tsx](src/components/core/ActionMenu.tsx) — Menú "⋯" de acciones secundarias (header del drawer, "Generar OC ▾" por proveedor): cada entrada puede pedir confirmación en dos pasos dentro del menú, como ConfirmButton; se ancla al lado que cabe (móvil). Exports: ActionMenuItem, ActionMenu.
-- [src/components/core/Modal.tsx](src/components/core/Modal.tsx) — Diálogo centrado (no fullscreen como OpportunityDrawer). Exports: Modal.
+- [src/components/core/Modal.tsx](src/components/core/Modal.tsx) — Diálogo centrado (no fullscreen como OpportunityDrawer). Se apilan (oportunidad → contacto → institución): Escape cierra solo el de hasta arriba. Exports: Modal.
 - [src/components/core/PdfCanvasPreview.tsx](src/components/core/PdfCanvasPreview.tsx) — Renderiza TODAS las páginas de un PDF a canvas con pdfjs, una debajo de otra. Exports: warmPdfWorker, PdfCanvasPreview.
 - [src/components/core/FilePreviewModal.tsx](src/components/core/FilePreviewModal.tsx) — Visor de archivos en modal: imágenes inline y PDFs vía PdfCanvasPreview (lazy), con descarga para lo que el navegador no dibuja. Exports: FilePreviewModal.
 - [src/components/core/PersonAvatar.tsx](src/components/core/PersonAvatar.tsx) — Avatar circular de iniciales. Exports: PersonAvatar, PersonPair.
@@ -262,7 +262,7 @@ y `src/lib/estadoProductoBuckets.ts`.
 
 ### src/boards/generic/
 
-- [src/boards/generic/CreateRecordModal.tsx](src/boards/generic/CreateRecordModal.tsx) — Formulario crear registro genérico (via createFields whitelist). Exports: CreateRecordModal.
+- [src/boards/generic/CreateRecordModal.tsx](src/boards/generic/CreateRecordModal.tsx) — Formulario crear registro genérico (via createFields whitelist). Lo abren los catálogos y "Nueva oportunidad": `native` (dónde nace si lo crea la whitelist de Zona Efrain), `fijos` (columnas que decide quien lo abre; solo se muestran) y `onCreated` recibe lo creado. Exports: RecordCreado, CreateRecordModal.
 - [src/boards/generic/EditContactoModal.tsx](src/boards/generic/EditContactoModal.tsx) — Vendedor relinquea Institución de Contacto. Exports: EditContactoModal.
 - [src/boards/generic/GenericBoardView.tsx](src/boards/generic/GenericBoardView.tsx) — Tabla full-board + búsqueda (Productos, Instituciones, Contactos). Exports: GenericBoardView.
 - [src/boards/generic/ProductoActividadDrawer.tsx](src/boards/generic/ProductoActividadDrawer.tsx) — Drawer lateral mínimo al hacer click en un producto (Productos no tiene detalle propio) — hoy solo la pestaña Actividad. Exports: ProductoActividadDrawer.
@@ -281,7 +281,7 @@ y `src/lib/estadoProductoBuckets.ts`.
 ### src/boards/oportunidades/
 
 - [src/boards/oportunidades/BoardTabsBar.tsx](src/boards/oportunidades/BoardTabsBar.tsx) — Tabs subrayadas del diseño: Ventas-side + opcionalmente post-venta. Exports: DrawerTabKey.
-- [src/boards/oportunidades/CreateOportunidadModal.tsx](src/boards/oportunidades/CreateOportunidadModal.tsx) — Formulario "Nueva oportunidad" (deliberadamente mínimo). Exports: default.
+- [src/boards/oportunidades/CreateOportunidadModal.tsx](src/boards/oportunidades/CreateOportunidadModal.tsx) — Formulario "Nueva oportunidad" (deliberadamente mínimo). «+ Nuevo» contacto (del vendedor de la oportunidad) y «+ Nueva» institución abren CreateRecordModal encima; lo creado queda elegido sin volver a bajar las listas. Exports: default.
 - [src/boards/oportunidades/EditClienteModal.tsx](src/boards/oportunidades/EditClienteModal.tsx) — Vendedor relinquea Cliente de Oportunidad. Exports: EditClienteModal.
 - [src/boards/oportunidades/EditPersonaModal.tsx](src/boards/oportunidades/EditPersonaModal.tsx) — Reasigna Vendedor o Comprador de Oportunidad. Exports: EditPersonaModal.
 - [src/boards/oportunidades/OportunidadesBoard.tsx](src/boards/oportunidades/OportunidadesBoard.tsx) — Orquestador de vistas de Oportunidades (stages + drawer). Exports: OportunidadesBoard.

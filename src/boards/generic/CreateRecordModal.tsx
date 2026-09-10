@@ -10,7 +10,7 @@ import { PickerRow } from '../../components/forms/PickerRow';
 import { IconBack } from '../../components/icons';
 import {
   useBoards, usePoll, colForBoard, createItem, getVendedores, vendedorKey, vendedorIdFromKey,
-  SOLO_NOMBRE, type BoardSlug, type VendedorDTO,
+  SOLO_NOMBRE, type BoardSlug, type ColMeta, type VendedorDTO,
 } from '../../lib/api';
 import { useMe } from '../../lib/useMe';
 import { CREATE_FIELDS } from '../../../shared/createFields';
@@ -18,17 +18,36 @@ import { CREATE_FIELDS } from '../../../shared/createFields';
 const CONTACTO_VENDEDOR = 'multiple_person_mm03vqwx';
 const CONTACTO_INSTITUCION = 'contact_account';
 
+/** Lo que recibe `onCreated`: `cols` tal cual se mandaron (personas ya como id
+ * numérico) y, en un contacto, la institución elegida con su nombre — que
+ * `cols` no trae. */
+export interface RecordCreado {
+  id: string;
+  name: string;
+  cols: Record<string, string>;
+  institucion?: { id: string; name: string };
+}
+
 interface Props {
   slug: 'instituciones' | 'contactos';
   title: string;
   onClose: () => void;
-  // El quick-create de Institución (abajo) necesita el id/nombre recién creado
-  // para autoseleccionarlo en el combobox — GenericBoardView le pasa `refetch`,
-  // que ignora argumentos de sobra, así que este parámetro no rompe ese uso.
-  onCreated: (created?: { id: string; name: string }) => void;
+  // El quick-create de Institución (abajo) y el alta desde "Nueva oportunidad"
+  // necesitan lo recién creado para autoseleccionarlo — GenericBoardView le
+  // pasa `refetch`, que ignora argumentos de sobra, así que este parámetro no
+  // rompe ese uso.
+  onCreated: (created?: RecordCreado) => void;
+  /** Dónde nace lo que da de alta alguien de la whitelist de Zona Efrain (ver
+   * CreateRequest en shared/dto.ts). Sin él decide el server — lo normal desde
+   * los catálogos; "Nueva oportunidad" lo manda según dónde vive la oportunidad. */
+  native?: boolean;
+  /** Columnas que ya decidió quien abre el form: se muestran sin poder
+   * cambiarse, con `motivo` debajo. El contacto que nace desde "Nueva
+   * oportunidad" es del vendedor de esa oportunidad. */
+  fijos?: { cols: Record<string, string>; motivo: string };
 }
 
-export function CreateRecordModal({ slug, title, onClose, onCreated }: Props) {
+export function CreateRecordModal({ slug, title, onClose, onCreated, native, fijos }: Props) {
   const me = useMe();
   const { boards } = useBoards();
   const allCols = colForBoard(boards, slug as BoardSlug);
@@ -40,7 +59,7 @@ export function CreateRecordModal({ slug, title, onClose, onCreated }: Props) {
   const optionalFields = allFields.filter((f) => !f.required);
 
   const [name, setName] = useState('');
-  const [cols, setCols] = useState<Record<string, string>>({});
+  const [cols, setCols] = useState<Record<string, string>>(() => ({ ...fijos?.cols }));
   const [vendedores, setVendedores] = useState<VendedorDTO[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -86,6 +105,27 @@ export function CreateRecordModal({ slug, title, onClose, onCreated }: Props) {
     setCols((c) => ({ ...c, [id]: value }));
   };
 
+  // Un campo fijo se pinta como texto y no como input. Personas viajan como
+  // `id::email` (vendedorKey), así que el nombre sale de la misma lista.
+  const campo = (col: ColMeta) => {
+    const fijo = fijos?.cols[col.id];
+    if (fijo === undefined) {
+      return <FormField col={col} value={cols[col.id] ?? ''} onChange={setCol(col.id)} vendedores={vendedores} />;
+    }
+    const texto = col.type === 'people' ? (vendedores.find((v) => vendedorKey(v) === fijo)?.nombre ?? '…') : fijo;
+    return (
+      <>
+        <div style={{
+          border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '8px 10px',
+          background: 'var(--bg-sunken)', font: 'var(--text-body)', color: 'var(--ink)', boxSizing: 'border-box',
+        }}>
+          {texto}
+        </div>
+        <div style={{ font: 'var(--text-caption)', color: 'var(--ink-quiet)', marginTop: 4 }}>{fijos?.motivo}</div>
+      </>
+    );
+  };
+
   const onSubmit = async () => {
     if (!name.trim()) { setError('El nombre es obligatorio.'); return; }
     if (slug === 'contactos' && !(cols[CONTACTO_INSTITUCION] ?? '').trim()) {
@@ -109,8 +149,14 @@ export function CreateRecordModal({ slug, title, onClose, onCreated }: Props) {
           nonEmpty[f.id] = vendedorIdFromKey(nonEmpty[f.id]);
         }
       }
-      const res = await createItem(slug, name.trim(), nonEmpty);
-      onCreated(res.id ? { id: res.id, name: name.trim() } : undefined);
+      const res = await createItem(slug, name.trim(), nonEmpty, { native });
+      const institucionId = nonEmpty[CONTACTO_INSTITUCION];
+      onCreated(res.id ? {
+        id: res.id,
+        name: name.trim(),
+        cols: nonEmpty,
+        institucion: institucionId ? { id: institucionId, name: institucionLabel } : undefined,
+      } : undefined);
       onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo crear el registro.');
@@ -182,10 +228,12 @@ export function CreateRecordModal({ slug, title, onClose, onCreated }: Props) {
           </div>
         )}
 
+        {/* La institución se liga DESDE este registro, así que nace donde nace él. */}
         {showInstModal && (
           <CreateRecordModal
             slug="instituciones"
             title="Nueva institución"
+            native={native}
             onClose={() => setShowInstModal(false)}
             onCreated={(created) => { if (created) selectInstitucion(created.id, created.name); }}
           />
@@ -197,7 +245,7 @@ export function CreateRecordModal({ slug, title, onClose, onCreated }: Props) {
           return (
             <div key={f.id}>
               <div style={{ font: 'var(--text-label-strong)', color: 'var(--ink-secondary)', marginBottom: 6 }}>{col.title} *</div>
-              <FormField col={col} value={cols[f.id] ?? ''} onChange={setCol(f.id)} vendedores={vendedores} />
+              {campo(col)}
             </div>
           );
         })}
@@ -219,7 +267,7 @@ export function CreateRecordModal({ slug, title, onClose, onCreated }: Props) {
           return (
             <div key={f.id}>
               <div style={{ font: 'var(--text-label-strong)', color: 'var(--ink-secondary)', marginBottom: 6 }}>{col.title}</div>
-              <FormField col={col} value={cols[f.id] ?? ''} onChange={setCol(f.id)} vendedores={vendedores} />
+              {campo(col)}
             </div>
           );
         })}

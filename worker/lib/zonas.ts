@@ -61,6 +61,16 @@ export function isZonaPrivadaAdminPermitido(email: string | null | undefined): b
   return !!email && ZONA_PRIVADA_ADMINS_PERMITIDOS.has(email.trim().toLowerCase());
 }
 
+/** ¿Nace nativo (solo D1) el Contacto o Institución que da de alta este
+ * correo? Lo que captura la whitelist nace nativo sin preguntar (Efraín,
+ * 2026-08-18: "que sea algo normal") — salvo `native: false` explícito, que
+ * manda el alta DENTRO de una oportunidad de Monday (CreateOportunidadModal):
+ * una oportunidad real no puede ligar nada nativo (assertNoNativeLink) y
+ * tronaría al guardarla. Fuera de la whitelist, nunca por esta vía. */
+export function catalogoNaceNativo(email: string | null | undefined, native?: boolean): boolean {
+  return native !== false && isZonaPrivadaAdminPermitido(email);
+}
+
 export interface Zona {
   id: number;
   nombre: string;
