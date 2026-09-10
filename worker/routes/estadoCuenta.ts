@@ -23,6 +23,7 @@ import { getItem, scopeFor, type ScopeMode } from '../lib/dal';
 import { BOARDS } from '../../shared/boards';
 import type { MirrorItem } from '../../shared/types';
 import { jsonStatus, rejectUnknownQuery, contentDisposition } from '../lib/http';
+import { errorInterno } from '../lib/errores';
 import {
   EstadoCuentaError, ARCHIVO_MAX_BYTES,
   addConcepto, removeConcepto, addAbono, updateAbono, removeAbono,
@@ -34,8 +35,10 @@ type Ctx = Context<{ Bindings: Env }>;
 
 const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
-function fail(err: unknown): Response {
+function fail(err: unknown, c?: Parameters<typeof errorInterno>[0]): Response {
   if (err instanceof EstadoCuentaError) return jsonStatus({ ok: false, error: err.message }, err.status);
+  // Con `c`, el error real queda en sync_log (worker/lib/errores.ts); sin él, solo en los logs del Worker.
+  if (c) return errorInterno(c, err, { ok: false, error: 'internal error' });
   console.log('[estado-cuenta] ' + String(err));
   return jsonStatus({ ok: false, error: 'internal error' }, 500);
 }
@@ -83,7 +86,7 @@ export function estadoCuentaRoutes(app: Hono<{ Bindings: Env }>) {
       const response: EstadoCuentaResumenResponse = { resumen: await resumenPorProyecto(c.env, viewer) };
       return c.json(response);
     } catch (err) {
-      return fail(err);
+      return fail(err, c);
     }
   });
 
@@ -117,7 +120,7 @@ export function estadoCuentaRoutes(app: Hono<{ Bindings: Env }>) {
         },
       });
     } catch (err) {
-      return fail(err);
+      return fail(err, c);
     }
   });
 
@@ -131,7 +134,7 @@ export function estadoCuentaRoutes(app: Hono<{ Bindings: Env }>) {
       const response: ListEstadoCuentaResponse = { conceptos: await listEstadoCuenta(c.env, auth.id) };
       return c.json(response);
     } catch (err) {
-      return fail(err);
+      return fail(err, c);
     }
   });
 
@@ -147,7 +150,7 @@ export function estadoCuentaRoutes(app: Hono<{ Bindings: Env }>) {
         fechaEstimada: body.fechaEstimada,
       }, c.get('viewer')));
     } catch (err) {
-      return fail(err);
+      return fail(err, c);
     }
   });
 
@@ -172,7 +175,7 @@ export function estadoCuentaRoutes(app: Hono<{ Bindings: Env }>) {
         },
       });
     } catch (err) {
-      return fail(err);
+      return fail(err, c);
     }
   });
 
@@ -194,7 +197,7 @@ export function estadoCuentaRoutes(app: Hono<{ Bindings: Env }>) {
         },
       });
     } catch (err) {
-      return fail(err);
+      return fail(err, c);
     }
   });
 
@@ -207,7 +210,7 @@ export function estadoCuentaRoutes(app: Hono<{ Bindings: Env }>) {
       await removeConcepto(c.env, auth.id, conceptoId, c.get('viewer'));
       return c.json({ ok: true });
     } catch (err) {
-      return fail(err);
+      return fail(err, c);
     }
   });
 
@@ -227,7 +230,7 @@ export function estadoCuentaRoutes(app: Hono<{ Bindings: Env }>) {
       const archivo = await guardarArchivo(c.env, destino, new Uint8Array(buf), c.req.query('nombre') ?? '', c.get('viewer'));
       return c.json({ ok: true, archivo });
     } catch (err) {
-      return fail(err);
+      return fail(err, c);
     }
   });
 
@@ -256,7 +259,7 @@ export function estadoCuentaRoutes(app: Hono<{ Bindings: Env }>) {
         monto: Number(body.monto), fecha: body.fecha, fechaEstimada: body.fechaEstimada, nota: body.nota,
       }, c.get('viewer')));
     } catch (err) {
-      return fail(err);
+      return fail(err, c);
     }
   });
 
@@ -275,7 +278,7 @@ export function estadoCuentaRoutes(app: Hono<{ Bindings: Env }>) {
         fecha: body.fecha, fechaEstimada: body.fechaEstimada, nota: body.nota,
       }, c.get('viewer')));
     } catch (err) {
-      return fail(err);
+      return fail(err, c);
     }
   });
 
@@ -289,7 +292,7 @@ export function estadoCuentaRoutes(app: Hono<{ Bindings: Env }>) {
       await removeAbono(c.env, auth.id, conceptoId, abonoId, c.get('viewer'));
       return c.json({ ok: true });
     } catch (err) {
-      return fail(err);
+      return fail(err, c);
     }
   });
 
@@ -309,7 +312,7 @@ export function estadoCuentaRoutes(app: Hono<{ Bindings: Env }>) {
       const archivo = await guardarArchivo(c.env, destino, new Uint8Array(buf), c.req.query('nombre') ?? '', c.get('viewer'));
       return c.json({ ok: true, archivo });
     } catch (err) {
-      return fail(err);
+      return fail(err, c);
     }
   });
 

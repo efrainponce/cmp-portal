@@ -734,6 +734,26 @@ CREATE TABLE IF NOT EXISTS ajuste_descartado (
   PRIMARY KEY (item_id, version, subversion)
 );
 
+-- Revisión de SALUD del portal (worker/lib/salud.ts, 2026-09-10): hallazgos de
+-- integridad y de errores recientes, con clave estable. `ultima_vez` se
+-- actualiza en cada corrida que lo vuelve a ver; si deja de aparecer, se llena
+-- `resuelto_at` (y se borra 30 días después). `notificado_at`: ya se avisó.
+-- Se crea LAZY en runtime (ensureSaludTable). Leer: node scripts/salud.mjs.
+CREATE TABLE IF NOT EXISTS salud_hallazgo (
+  clave         TEXT PRIMARY KEY,
+  tipo          TEXT NOT NULL,
+  severidad     TEXT NOT NULL,     -- alta|media|baja
+  titulo        TEXT NOT NULL,
+  detalle       TEXT,              -- JSON
+  board_id      INTEGER,
+  item_id       INTEGER,
+  primera_vez   TEXT NOT NULL,
+  ultima_vez    TEXT NOT NULL,
+  resuelto_at   TEXT,
+  notificado_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_salud_abiertos ON salud_hallazgo (resuelto_at, severidad);
+
 -- Estado de cuenta del Proyecto (board "Estado de Cuenta", 2026-09-08 —
 -- worker/lib/estadoCuenta.ts; portado de janing-portal). Nativo en D1, sin
 -- columna de Monday: `proyecto_id` es el item id del Proyecto en `items` (o

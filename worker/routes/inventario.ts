@@ -11,6 +11,7 @@ import type {
 import { listWarehouses, listMovements, listStock, createMovement, createWarehouse, InventoryError } from '../lib/inventory';
 import { getBoardAccess } from '../lib/boardAccess';
 import { jsonStatus } from '../lib/http';
+import { errorInterno } from '../lib/errores';
 
 async function requireInventoryAccess(c: Context<{ Bindings: Env }>): Promise<Response | null> {
   const viewer = c.get('viewer');
@@ -37,7 +38,7 @@ export function inventarioRoutes(app: Hono<{ Bindings: Env }>) {
       if (err instanceof InventoryError) {
         return jsonStatus({ ok: false, error: err.message } satisfies CreateWarehouseResponse, err.status);
       }
-      return jsonStatus({ ok: false, error: 'internal error' } satisfies CreateWarehouseResponse, 500);
+      return errorInterno(c, err, { ok: false, error: 'internal error' } satisfies CreateWarehouseResponse);
     }
   });
 
@@ -64,7 +65,7 @@ export function inventarioRoutes(app: Hono<{ Bindings: Env }>) {
       if (err instanceof InventoryError) {
         return jsonStatus({ ok: false, error: err.message } satisfies CreateMovementResponse, err.status);
       }
-      return jsonStatus({ ok: false, error: 'internal error' } satisfies CreateMovementResponse, 500);
+      return errorInterno(c, err, { ok: false, error: 'internal error' } satisfies CreateMovementResponse);
     }
   });
 }

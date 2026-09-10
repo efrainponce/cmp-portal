@@ -675,7 +675,7 @@ let descartadasReady = false;
 /** Divisiones cuyo aviso alguien descartó con "Ya no aplica" (el borrado en
  * Monday de su línea nueva fue a propósito). Lazy; documentada en
  * worker/schema.sql. */
-async function ensureDescartadasTable(env: Env): Promise<void> {
+export async function ensureDescartadasTable(env: Env): Promise<void> {
   if (descartadasReady) return;
   await env.DB.prepare(`CREATE TABLE IF NOT EXISTS ajuste_descartado (
     item_id    INTEGER NOT NULL,

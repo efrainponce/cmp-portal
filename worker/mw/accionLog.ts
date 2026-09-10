@@ -11,7 +11,7 @@ import { logAccion } from '../lib/accionLog';
 // Los GET no entran (ver la regla 1 del lib). `/api/telemetry` tampoco: es el
 // beacon de la propia telemetría —un POST cada 5s por pestaña abierta— y
 // registrarlo llenaría la bitácora de su propio ruido.
-const IGNORADAS = new Set(['/api/telemetry']);
+const IGNORADAS = new Set(['/api/telemetry', '/api/telemetry/error']);
 
 /** Motivo del rechazo tal cual lo devolvió la ruta, para no tener que
  * adivinarlo después. Solo se lee en respuestas de error: en un 200 el cuerpo

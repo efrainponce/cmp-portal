@@ -2,6 +2,42 @@
 
 ## 2026-09-10
 
+- **Telemetría para ver cuándo algo no funciona** (Efraín: "haz lo necesario
+  para tener telemetría o algo que puedas ver cuando las cosas no funcionan
+  correctamente"). Ya había registros de eventos (sync_log, accion_log,
+  ux_event, outbox), pero con huecos: 31 rutas respondían "internal error" sin
+  guardar el error real, el front no reportaba excepciones de JavaScript, las
+  alertas de WhatsApp están pausadas desde el 15-ago y nada revisaba la
+  INTEGRIDAD de los datos (los bugs de dividir/SKU no tiraban ningún error).
+  - `worker/lib/errores.ts`: `errorInterno(c, err, body)` en las 31 rutas (y en
+    los `fail()` de documentos y estado de cuenta) y en `app.onError`: el
+    error queda en `sync_log` (kind 'error') con mensaje, pila, ruta y quién.
+  - Errores de JavaScript del front: `instalarCapturaDeErrores` (error +
+    unhandledrejection, tope 20 por pestaña, sin repetir) →
+    `POST /api/telemetry/error` → sync_log con origen "front <ruta>".
+  - `worker/lib/salud.ts`: revisión de salud cada hora dentro del cron de 15
+    min (no hay cupo para otro cron) → tabla `salud_hallazgo` con clave
+    estable, se resuelve sola cuando deja de aparecer. Revisa: divisiones
+    cuya línea nueva se borró en Monday, SKU/Producto en texto vacío o de otro
+    producto, líneas fantasma, outbox atorado/fallido/con valor distinto en
+    Monday (un 'conflict' que al final quedó igual no cuenta), tallas del
+    Proyecto contra la cotización por SKU+color, errores de la última hora.
+    Los graves nuevos → UNA notificación del portal a Efraín por corrida
+    (sin WhatsApp). Admin: `GET /api/admin/salud`, `POST /api/admin/salud/revisar`.
+    Los SKU/Producto en texto VACÍOS de líneas con producto se rellenan solos
+    del catálogo (tope 25 por corrida, rastro en sync_log): la primera corrida
+    encontró dos líneas de OPP-1047 creadas a mano en Monday a las que la
+    automatización de Monday no les llenó el SKU. Un 'conflict' del outbox
+    que el portal volvió a escribir después tampoco cuenta (los 7 de hoy eran así).
+  - `node scripts/salud.mjs [--horas N]`: el mismo resumen desde la terminal,
+    leyendo D1 de producción. Sección nueva "Diagnóstico" en CLAUDE.md.
+  - Datos corregidos hoy (sin código): 152 líneas con producto ligado y
+    SKU/Producto en texto vacío rellenadas del catálogo (solo campos vacíos,
+    oportunidades no cerradas); 4 líneas con SKU heredado de otro producto
+    (OPP-0724 ×2, OPP-0897 ×2) y sus tallas en los Proyectos (OPP-0724: 5 + 8
+    líneas; OPP-0897: 4 + 5) vía "Cambiar producto…". OJO Compras: esas tallas
+    ya iban en "Pendiente de Recolectar", las OC salieron con el SKU anterior.
+
 - **Revisión de dividir / editar / borrar líneas y arreglo de todo lo que salió**
   (Efraín: "muchísimos errores, repara todo"). Tres revisores de código en
   paralelo + pruebas en vivo sobre OPP-0840 y OPP-0940 (oportunidades de

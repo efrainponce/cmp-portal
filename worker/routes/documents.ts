@@ -15,9 +15,12 @@ import {
   signatureImage, DocumentError,
 } from '../lib/documents';
 import { jsonStatus, contentDisposition } from '../lib/http';
+import { errorInterno } from '../lib/errores';
 
-function fail(err: unknown): Response {
+function fail(err: unknown, c?: Parameters<typeof errorInterno>[0]): Response {
   if (err instanceof DocumentError) return jsonStatus({ ok: false, error: err.message }, err.status);
+  // Con `c`, el error real queda en sync_log (worker/lib/errores.ts); sin él, solo en los logs del Worker.
+  if (c) return errorInterno(c, err, { ok: false, error: 'internal error' });
   console.log('[documents] ' + String(err));
   return jsonStatus({ ok: false, error: 'internal error' }, 500);
 }
@@ -46,7 +49,7 @@ export function documentRoutes(app: Hono<{ Bindings: Env }>) {
       const documents = await listDocuments(c.env, c.get('viewer'), sourceKind, sourceId);
       return c.json({ documents } satisfies DocumentsResponse);
     } catch (err) {
-      return fail(err);
+      return fail(err, c);
     }
   });
 
@@ -62,7 +65,7 @@ export function documentRoutes(app: Hono<{ Bindings: Env }>) {
       });
       return c.json({ ok: true, document } satisfies CreateDocumentResponse);
     } catch (err) {
-      return fail(err);
+      return fail(err, c);
     }
   });
 
@@ -72,7 +75,7 @@ export function documentRoutes(app: Hono<{ Bindings: Env }>) {
       if (!document) return c.json({ error: 'not found' }, 404);
       return c.json({ document });
     } catch (err) {
-      return fail(err);
+      return fail(err, c);
     }
   });
 
@@ -84,7 +87,7 @@ export function documentRoutes(app: Hono<{ Bindings: Env }>) {
       const { bytes, filename } = await documentPdf(c.env, c.req.param('id'), c.get('viewer'), signed);
       return pdfResponse(bytes, filename);
     } catch (err) {
-      return fail(err);
+      return fail(err, c);
     }
   });
 
@@ -103,7 +106,7 @@ export function documentRoutes(app: Hono<{ Bindings: Env }>) {
         },
       });
     } catch (err) {
-      return fail(err);
+      return fail(err, c);
     }
   });
 
@@ -121,7 +124,7 @@ export function documentRoutes(app: Hono<{ Bindings: Env }>) {
       });
       return c.json({ ok: true, document } satisfies SignDocumentResponse);
     } catch (err) {
-      return fail(err);
+      return fail(err, c);
     }
   });
 }

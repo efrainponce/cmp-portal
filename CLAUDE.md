@@ -24,6 +24,28 @@ con el Worker (`/api/*`). Bot de WhatsApp + chat del portal comparten agente Cla
 - Screenshots de verificación: Playwright + Chromium ya instalados
   (`node_modules/playwright`, import por ruta absoluta en scripts sueltos).
 
+## Diagnóstico: cuando algo no funciona
+
+- **Primero `node scripts/salud.mjs`** (o `--horas 72`): resume de D1 de producción
+  los hallazgos abiertos de la revisión de salud, las excepciones reales del servidor
+  y del front, las acciones rechazadas y el outbox. No necesita dev server.
+- La revisión de salud (`worker/lib/salud.ts`) corre cada hora (dentro del cron de
+  15 min) y guarda en `salud_hallazgo`: divisiones cuya línea nueva se borró en
+  Monday, SKU/Producto en texto vacío o de otro producto, líneas fantasma, outbox
+  atorado/fallido/con un valor distinto en Monday, tallas del Proyecto que no cuadran
+  con la cotización, y errores de la última hora. Los graves nuevos le llegan a
+  Efraín como notificación del portal (sin WhatsApp). Admin: `GET /api/admin/salud`,
+  `POST /api/admin/salud/revisar`. Si arreglas un bug que deja datos mal sin tirar
+  error, agrega aquí la revisión que lo habría detectado.
+- Toda ruta que responde 500 usa `errorInterno(c, err, body)` (`worker/lib/errores.ts`),
+  nunca `jsonStatus({ error: 'internal error' }, 500)` a secas: sin eso el error real se
+  pierde (accion_log solo guarda "internal error"). Los errores de JavaScript del front
+  llegan por `POST /api/telemetry/error` a `sync_log` (kind 'error', origen "front …").
+- Para seguir un caso concreto: el activity log de Monday por item (vía API, día por
+  día: la consulta se capa en 10,000 eventos y además `items(ids:)` devuelve items
+  borrados con `state`), `item_borrado` (qué borró el portal), `cotizacion_ajustes`
+  (dividir/editar/restaurar), `accion_log` (quién intentó qué) y `outbox`.
+
 ## Reglas duras
 
 - **NUNCA inventes IDs de columnas de Monday** — vienen de `docs/monday-column-map.md`

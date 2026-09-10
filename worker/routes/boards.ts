@@ -34,6 +34,7 @@ import { getBoardAccess } from '../lib/boardAccess';
 import { isZonaPrivadaAdminPermitido } from '../lib/zonas';
 import { refetchItem, refetchItemTree, deltaSyncIfStale, mirrorVerificadoAt } from '../sync';
 import { jsonStatus, rejectUnknownQuery, contentDisposition } from '../lib/http';
+import { errorInterno } from '../lib/errores';
 import { nombreDescarga, extensionDe } from '../../shared/nombreArchivo';
 import { totalesPorOportunidad, totalesPorProyecto, totalesVersion } from '../lib/totales';
 import { oportunidadesLigadas } from '../lib/oportunidadLigada';
@@ -211,7 +212,7 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
       if (err instanceof CreateError) {
         return jsonStatus({ ok: false, error: err.message } satisfies CreateResponse, err.status);
       }
-      return jsonStatus({ ok: false, error: 'internal error' } satisfies CreateResponse, 500);
+      return errorInterno(c, err, { ok: false, error: 'internal error' } satisfies CreateResponse);
     }
   });
 
@@ -508,7 +509,7 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
       if (err instanceof OutboxError) {
         return jsonStatus({ ok: false, pending: false, error: err.message } satisfies WriteResponse, err.status);
       }
-      return jsonStatus({ ok: false, pending: false, error: 'internal error' } satisfies WriteResponse, 500);
+      return errorInterno(c, err, { ok: false, pending: false, error: 'internal error' } satisfies WriteResponse);
     }
   });
 

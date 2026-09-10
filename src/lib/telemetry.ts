@@ -201,3 +201,41 @@ export function uxApiLatency(method: string, path: string, latencyMs: number, ok
     });
   } catch { /* nunca debe romper una petición real */ }
 }
+
+// Errores de JavaScript (2026-09-10, Efraín: "telemetría o algo que puedas ver
+// cuando las cosas no funcionan"). `ux_event` no puede llevar mensajes (su meta
+// solo acepta números/slugs, a propósito), así que los errores sin atrapar de
+// la página van por su propia ruta (POST /api/telemetry/error) al mismo
+// registro que los del servidor (worker/lib/errores.ts). Mismas reglas de
+// forma: nunca bloquea ni rompe nada; tope por pestaña y sin repetir mensaje.
+const ERRORES_MAX_POR_PESTANA = 20;
+let capturaLista = false;
+
+export function instalarCapturaDeErrores(): void {
+  if (capturaLista || typeof window === 'undefined') return;
+  capturaLista = true;
+  const vistos = new Set<string>();
+  let enviados = 0;
+  const enviar = (tipo: 'error' | 'promesa', mensaje: string, pila: string) => {
+    try {
+      if (getImpersonateTarget()) return;
+      const clave = `${tipo}:${mensaje}`.slice(0, 200);
+      if (!mensaje || vistos.has(clave) || enviados >= ERRORES_MAX_POR_PESTANA) return;
+      vistos.add(clave);
+      enviados++;
+      void fetch('/api/telemetry/error', {
+        method: 'POST', keepalive: true, credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tipo, mensaje: mensaje.slice(0, 500), pila: pila.slice(0, 1500), ruta: location.pathname }),
+      }).catch(() => {});
+    } catch { /* la captura de errores jamás debe causar otro */ }
+  };
+  window.addEventListener('error', (e) => {
+    const err = e.error as Error | undefined;
+    enviar('error', e.message || err?.message || 'error', err?.stack ?? `${e.filename}:${e.lineno}:${e.colno}`);
+  });
+  window.addEventListener('unhandledrejection', (e) => {
+    const r: unknown = e.reason;
+    enviar('promesa', r instanceof Error ? r.message : String(r), r instanceof Error ? (r.stack ?? '') : '');
+  });
+}

@@ -8,6 +8,7 @@ import type { Env } from '../env';
 import { UX_MAX_BATCH } from '../../shared/telemetry';
 import { ingestUxEvents } from '../lib/telemetry';
 import { buildUxReport } from '../lib/uxMetrics';
+import { registrarError } from '../lib/errores';
 
 // Ventana por defecto del reporte. Cap duro de 180 días: la retención de
 // ux_event es de 90 (shared/telemetry.ts), pero activity_log llega más atrás y
@@ -34,6 +35,28 @@ export function telemetryRoutes(app: Hono<{ Bindings: Env }>) {
       // `viewer` va del identity del SERVIDOR. Si el body trae user_id/role, ni
       // se leen: serían falsificables y además saldrían mal.
       c.executionCtx.waitUntil(ingestUxEvents(c.env, viewer, sessionId, events));
+    }
+    return c.body(null, 204);
+  });
+
+  // Errores de JavaScript del front (src/lib/telemetry.ts instalarCapturaDeErrores,
+  // 2026-09-10). Van a sync_log por el mismo registro que los del servidor
+  // (worker/lib/errores.ts), con origen "front <ruta>". 204 antes de tocar D1,
+  // igual que el lote de ux_event; bajo suplantación se tira.
+  app.post('/api/telemetry/error', async c => {
+    if (c.get('impersonatedBy')) return c.body(null, 204);
+    let body: { tipo?: unknown; mensaje?: unknown; pila?: unknown; ruta?: unknown } | null = null;
+    try { body = await c.req.json(); } catch { /* ilegible — se ignora */ }
+    const mensaje = typeof body?.mensaje === 'string' ? body.mensaje.slice(0, 500) : '';
+    if (mensaje) {
+      const tipo = body?.tipo === 'promesa' ? 'Promesa sin manejar' : 'Error de JavaScript';
+      const pila = typeof body?.pila === 'string'
+        ? body.pila.split('\n').slice(0, 4).map(l => l.trim()).filter(Boolean).join(' ← ').slice(0, 800)
+        : '';
+      const ruta = typeof body?.ruta === 'string' ? body.ruta.slice(0, 120) : '';
+      c.executionCtx.waitUntil(registrarError(
+        c.env, `front ${ruta}`, `${tipo}: ${mensaje}${pila ? ` [${pila}]` : ''}`, { quien: c.get('viewer').email },
+      ));
     }
     return c.body(null, 204);
   });

@@ -60,6 +60,7 @@ import { putFile, oportunidadFileKey, proyectoFileKey } from '../lib/r2';
 import { resolveCotizacionPdfUrl, nativeCotizacionPdf, CotizacionPdfError, ETIQUETA_BY_KIND, type PdfKind } from '../lib/cotizacionPdfs';
 import { refetchItem, refetchItemTree, upsertItem } from '../sync';
 import { jsonStatus, contentDisposition, rejectUnknownQuery } from '../lib/http';
+import { errorInterno } from '../lib/errores';
 import { contentTypeFor, isGenericType } from '../lib/mime';
 import { canWrite } from '../../shared/visibility';
 import { reserveNativeId } from '../lib/nativeSeq';
@@ -228,7 +229,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       return c.json(await checkCosteo(c.env, itemId, c.get('viewer')));
     } catch (err) {
       if (err instanceof CosteoError) return jsonStatus({ ok: false, errors: [err.message] }, err.status);
-      return jsonStatus({ ok: false, errors: ['internal error'] }, 500);
+      return errorInterno(c, err, { ok: false, errors: ['internal error'] });
     }
   });
 
@@ -243,7 +244,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       return c.json(await checkValidacion(c.env, itemId, c.get('viewer')));
     } catch (err) {
       if (err instanceof CosteoError) return jsonStatus({ ok: false, errors: [err.message] }, err.status);
-      return jsonStatus({ ok: false, errors: ['internal error'] }, 500);
+      return errorInterno(c, err, { ok: false, errors: ['internal error'] });
     }
   });
 
@@ -277,7 +278,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       }
       if (err instanceof AutomationError) return jsonStatus({ ok: false, errors: [err.message] }, err.status);
       if (err instanceof OutboxError) return jsonStatus({ ok: false, errors: [err.message] }, err.status);
-      return jsonStatus({ ok: false, errors: ['internal error'] }, 500);
+      return errorInterno(c, err, { ok: false, errors: ['internal error'] });
     }
   });
 
@@ -296,7 +297,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     } catch (err) {
       if (err instanceof CosteoError) return jsonStatus({ ok: false, errors: [err.message] }, err.status);
       if (err instanceof OutboxError) return jsonStatus({ ok: false, errors: [err.message] }, err.status);
-      return jsonStatus({ ok: false, errors: ['internal error'] }, 500);
+      return errorInterno(c, err, { ok: false, errors: ['internal error'] });
     }
   });
 
@@ -326,7 +327,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     } catch (err) {
       if (err instanceof CosteoError) return jsonStatus({ ok: false, errors: [err.message] }, err.status);
       if (err instanceof OutboxError) return jsonStatus({ ok: false, errors: [err.message] }, err.status);
-      return jsonStatus({ ok: false, errors: ['internal error'] }, 500);
+      return errorInterno(c, err, { ok: false, errors: ['internal error'] });
     }
   });
 
@@ -402,7 +403,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
           : err.message;
         return jsonStatus({ ok: false, error }, err.status === 404 ? 403 : err.status);
       }
-      return jsonStatus({ ok: false, error: 'internal error' }, 500);
+      return errorInterno(c, err, { ok: false, error: 'internal error' });
     }
 
     const institucion = await stampInstitucionEnOpsDeContacto(c.env, contactoId, institucionId);
@@ -424,7 +425,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       return c.json({ ok: true, proyectoId: String(result.proyectoId) });
     } catch (err) {
       if (err instanceof GanarOportunidadError) return jsonStatus({ ok: false, error: err.message }, err.status);
-      return jsonStatus({ ok: false, error: 'internal error' }, 500);
+      return errorInterno(c, err, { ok: false, error: 'internal error' });
     }
   });
 
@@ -444,7 +445,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       if (err instanceof DuplicateOportunidadError) {
         return jsonStatus({ ok: false, error: err.message } satisfies DuplicarOportunidadResponse, err.status);
       }
-      return jsonStatus({ ok: false, error: 'internal error' } satisfies DuplicarOportunidadResponse, 500);
+      return errorInterno(c, err, { ok: false, error: 'internal error' } satisfies DuplicarOportunidadResponse);
     }
   });
 
@@ -519,7 +520,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     } catch (err) {
       if (err instanceof AutomationError) return jsonStatus({ ok: false, reason: err.message }, err.status);
       if (err instanceof CotizacionError) return jsonStatus({ ok: false, reason: err.message }, err.status);
-      return jsonStatus({ ok: false, reason: 'internal error' }, 500);
+      return errorInterno(c, err, { ok: false, reason: 'internal error' });
     }
   });
 
@@ -558,7 +559,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     } catch (err) {
       if (err instanceof QuoteVersionError) return jsonStatus({ ok: false, error: err.message } satisfies DuplicarVersionResponse, err.status);
       if (err instanceof OutboxError) return jsonStatus({ ok: false, error: err.message } satisfies DuplicarVersionResponse, err.status);
-      return jsonStatus({ ok: false, error: 'internal error' } satisfies DuplicarVersionResponse, 500);
+      return errorInterno(c, err, { ok: false, error: 'internal error' } satisfies DuplicarVersionResponse);
     }
   });
 
@@ -583,7 +584,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       if (err instanceof QuoteVersionError) return jsonStatus({ ok: false, error: err.message } satisfies DuplicarVersionResponse, err.status);
       if (err instanceof OutboxError) return jsonStatus({ ok: false, error: err.message } satisfies DuplicarVersionResponse, err.status);
       if (err instanceof BorradoError) return jsonStatus({ ok: false, error: err.message } satisfies DuplicarVersionResponse, err.status);
-      return jsonStatus({ ok: false, error: 'internal error' } satisfies DuplicarVersionResponse, 500);
+      return errorInterno(c, err, { ok: false, error: 'internal error' } satisfies DuplicarVersionResponse);
     }
   });
 
@@ -710,7 +711,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       } catch (err) {
         if (err instanceof QuoteVersionError) return jsonStatus({ ok: false, error: err.message } satisfies AjustarLineaResponse, err.status);
         if (err instanceof BorradoError) return jsonStatus({ ok: false, error: err.message } satisfies AjustarLineaResponse, err.status);
-        return jsonStatus({ ok: false, error: 'internal error' } satisfies AjustarLineaResponse, 500);
+        return errorInterno(c, err, { ok: false, error: 'internal error' } satisfies AjustarLineaResponse);
       }
     }
 
@@ -725,7 +726,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     } catch (err) {
       if (err instanceof AjusteLineaError) return jsonStatus({ ok: false, error: err.message } satisfies AjustarLineaResponse, err.status);
       if (err instanceof OutboxError) return jsonStatus({ ok: false, error: err.message } satisfies AjustarLineaResponse, err.status);
-      return jsonStatus({ ok: false, error: 'internal error' } satisfies AjustarLineaResponse, 500);
+      return errorInterno(c, err, { ok: false, error: 'internal error' } satisfies AjustarLineaResponse);
     }
   });
 
@@ -748,7 +749,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     } catch (err) {
       if (err instanceof AjusteLineaError) return jsonStatus({ ok: false, error: err.message } satisfies AjustarLineaResponse, err.status);
       if (err instanceof OutboxError) return jsonStatus({ ok: false, error: err.message } satisfies AjustarLineaResponse, err.status);
-      return jsonStatus({ ok: false, error: 'internal error' } satisfies AjustarLineaResponse, 500);
+      return errorInterno(c, err, { ok: false, error: 'internal error' } satisfies AjustarLineaResponse);
     }
   });
 
@@ -766,7 +767,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       return c.json({ ok: true, versions } satisfies AjustarLineaResponse);
     } catch (err) {
       if (err instanceof AjusteLineaError) return jsonStatus({ ok: false, error: err.message } satisfies AjustarLineaResponse, err.status);
-      return jsonStatus({ ok: false, error: 'internal error' } satisfies AjustarLineaResponse, 500);
+      return errorInterno(c, err, { ok: false, error: 'internal error' } satisfies AjustarLineaResponse);
     }
   });
 
@@ -784,7 +785,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       return c.json(images);
     } catch (err) {
       if (err instanceof EmbellImageError) return jsonStatus({ error: err.message }, err.status);
-      return c.json({ error: 'internal error' }, 500);
+      return errorInterno(c, err);
     }
   });
 
@@ -842,7 +843,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       });
     } catch (err) {
       if (err instanceof CotizacionPdfError) return jsonStatus({ error: err.message }, err.status);
-      return c.json({ error: 'internal error' }, 500);
+      return errorInterno(c, err);
     }
   });
 
@@ -918,8 +919,8 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
         ?? (legado ? await resolveMondayAsset(c.env, legado, viewer) : null);
       if (assetId == null) return c.json({ error: 'not found' }, 404);
       return await proxyMondayAsset(c.env, assetId, key, disposition);
-    } catch {
-      return c.json({ error: 'internal error' }, 500);
+    } catch (err) {
+      return errorInterno(c, err);
     }
   });
 
@@ -940,7 +941,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       return c.json({ ok: true, ...result });
     } catch (err) {
       if (err instanceof EmbellImageError) return jsonStatus({ error: err.message }, err.status);
-      return c.json({ error: 'internal error' }, 500);
+      return errorInterno(c, err);
     }
   });
 
@@ -958,7 +959,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       return c.json({ productos } satisfies ProposedProductsResponse);
     } catch (err) {
       if (err instanceof ProposedProductError) return jsonStatus({ error: err.message }, err.status);
-      return c.json({ error: 'internal error' }, 500);
+      return errorInterno(c, err);
     }
   });
 
@@ -977,7 +978,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       return c.json({ ok: true, producto } satisfies AddProposedProductResponse);
     } catch (err) {
       if (err instanceof ProposedProductError) return jsonStatus({ error: err.message }, err.status);
-      return c.json({ error: 'internal error' }, 500);
+      return errorInterno(c, err);
     }
   });
 
@@ -1081,7 +1082,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       });
     } catch (err) {
       if (err instanceof OcProveedorPdfError) return jsonStatus({ error: err.message }, err.status);
-      return jsonStatus({ error: 'internal error' }, 500);
+      return errorInterno(c, err, { error: 'internal error' });
     }
   });
 
@@ -1189,7 +1190,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       return c.json({ imagen: meta });
     } catch (err) {
       if (err instanceof OcImagenError) return jsonStatus({ error: err.message }, err.status);
-      return jsonStatus({ error: 'internal error' }, 500);
+      return errorInterno(c, err, { error: 'internal error' });
     }
   });
 
@@ -1206,7 +1207,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       return c.json({ imagen: meta });
     } catch (err) {
       if (err instanceof OcImagenError) return jsonStatus({ error: err.message }, err.status);
-      return jsonStatus({ error: 'internal error' }, 500);
+      return errorInterno(c, err, { error: 'internal error' });
     }
   });
 
@@ -1306,7 +1307,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       });
     } catch (err) {
       if (err instanceof CotizacionPreviewPdfError) return jsonStatus({ error: err.message }, err.status);
-      return jsonStatus({ error: 'internal error' }, 500);
+      return errorInterno(c, err, { error: 'internal error' });
     }
   });
 
@@ -1367,7 +1368,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       return c.json(data satisfies CotizacionVirtualDTO);
     } catch (err) {
       if (err instanceof ProyectoCotizacionError) return jsonStatus({ error: err.message }, err.status);
-      return jsonStatus({ error: 'internal error' }, 500);
+      return errorInterno(c, err, { error: 'internal error' });
     }
   });
 
@@ -1388,7 +1389,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       if (err instanceof ProyectoCotizacionError) return jsonStatus({ ok: false, error: err.message } satisfies AjustarLineaResponse, err.status);
       if (err instanceof OutboxError) return jsonStatus({ ok: false, error: err.message } satisfies AjustarLineaResponse, err.status);
       if (err instanceof AjusteLineaError) return jsonStatus({ ok: false, error: err.message } satisfies AjustarLineaResponse, err.status);
-      return jsonStatus({ ok: false, error: 'internal error' } satisfies AjustarLineaResponse, 500);
+      return errorInterno(c, err, { ok: false, error: 'internal error' } satisfies AjustarLineaResponse);
     }
   });
 
@@ -1408,7 +1409,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       if (err instanceof ProyectoCotizacionError) return jsonStatus({ ok: false, error: err.message } satisfies AjustarLineaResponse, err.status);
       if (err instanceof AjusteLineaError) return jsonStatus({ ok: false, error: err.message } satisfies AjustarLineaResponse, err.status);
       if (err instanceof OutboxError) return jsonStatus({ ok: false, error: err.message } satisfies AjustarLineaResponse, err.status);
-      return jsonStatus({ ok: false, error: 'internal error' } satisfies AjustarLineaResponse, 500);
+      return errorInterno(c, err, { ok: false, error: 'internal error' } satisfies AjustarLineaResponse);
     }
   });
 
@@ -1425,7 +1426,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     } catch (err) {
       if (err instanceof ProyectoCotizacionError) return jsonStatus({ ok: false, error: err.message } satisfies AjustarLineaResponse, err.status);
       if (err instanceof AjusteLineaError) return jsonStatus({ ok: false, error: err.message } satisfies AjustarLineaResponse, err.status);
-      return jsonStatus({ ok: false, error: 'internal error' } satisfies AjustarLineaResponse, 500);
+      return errorInterno(c, err, { ok: false, error: 'internal error' } satisfies AjustarLineaResponse);
     }
   });
 
@@ -1582,7 +1583,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       return c.json({ imagen });
     } catch (err) {
       if (err instanceof ProyectoImagenError) return jsonStatus({ error: err.message }, err.status);
-      return jsonStatus({ error: 'internal error' }, 500);
+      return errorInterno(c, err, { error: 'internal error' });
     }
   });
 
@@ -1620,7 +1621,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       return c.json({ ok: true });
     } catch (err) {
       if (err instanceof ProyectoImagenError) return jsonStatus({ ok: false, error: err.message }, err.status);
-      return jsonStatus({ ok: false, error: 'internal error' }, 500);
+      return errorInterno(c, err, { ok: false, error: 'internal error' });
     }
   });
 
@@ -2080,7 +2081,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       return c.json(result);
     } catch (err) {
       if (err instanceof AutomationError) return jsonStatus({ ok: false, reason: err.message }, err.status);
-      return jsonStatus({ ok: false, reason: 'internal error' }, 500);
+      return errorInterno(c, err, { ok: false, reason: 'internal error' });
     }
   });
 }

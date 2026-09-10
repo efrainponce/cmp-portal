@@ -21,12 +21,14 @@ import { documentRoutes } from './routes/documents';
 import { homeRoutes } from './routes/home';
 import { anuncioRoutes } from './routes/anuncios';
 import { telemetryRoutes } from './routes/telemetry';
+import { saludRoutes } from './routes/salud';
 import { flushOutbox } from './lib/outbox';
 import { checkErrorsAndAlert } from './lib/errorAlerts';
+import { revisarSaludSiToca } from './lib/salud';
 import { backupD1ToR2 } from './lib/backup';
 import { purgeUxEvents } from './lib/telemetry';
 import { purgeAccionLog } from './lib/accionLog';
-import { logSync } from './sync/log';
+import { registrarError } from './lib/errores';
 import { jsonStatus } from './lib/http';
 
 const app = new Hono<{ Bindings: Env }>();
@@ -90,6 +92,7 @@ documentRoutes(app);
 homeRoutes(app);
 anuncioRoutes(app);
 telemetryRoutes(app);
+saludRoutes(app);
 
 app.all('*', c => c.env.ASSETS.fetch(c.req.raw));
 
@@ -98,7 +101,10 @@ app.all('*', c => c.env.ASSETS.fetch(c.req.raw));
 // se resuelven donde ya se resuelven). Deja rastro en sync_log para el cron de alertas
 // de abajo; sin esto un bug real no dejaba ningún rastro.
 app.onError(async (err, c) => {
-  await logSync(c.env, 'http', null, null, false, `${c.req.method} ${c.req.path}: ${err}`);
+  // Con la pila y quién (worker/lib/errores.ts, 2026-09-10); antes solo el mensaje.
+  let quien: string | undefined;
+  try { quien = c.get('viewer')?.email; } catch { /* sin identity */ }
+  await registrarError(c.env, `${c.req.method} ${c.req.path}`, err, quien ? { quien } : {});
   return jsonStatus({ error: 'internal error' }, 500);
 });
 
@@ -150,7 +156,9 @@ export default {
   fetch: app.fetch,
   scheduled: async (controller: ScheduledController, env: Env, ctx: ExecutionContext) => {
     if (controller.cron === ALERT_CRON) {
-      ctx.waitUntil(Promise.all([checkErrorsAndAlert(env), deltaSync(env)]));
+      // + la revisión de salud (worker/lib/salud.ts), que se corre sola una vez
+      // por hora dentro de este mismo cron: no hay cupo para un cron más.
+      ctx.waitUntil(Promise.all([checkErrorsAndAlert(env), deltaSync(env), revisarSaludSiToca(env)]));
       return;
     }
     if (controller.cron === BACKUP_CRON) {
