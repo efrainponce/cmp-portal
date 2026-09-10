@@ -25,6 +25,7 @@ import { CosteoProyectoTab } from './CosteoProyectoTab';
 import { EmbellecimientosVirtualTab } from './EmbellecimientosVirtualTab';
 import { EstadoCuentaTab } from './EstadoCuentaTab';
 import type { ProjectBoardKey } from '../../lib/projectStages';
+import type { OportunidadLigadaDTO } from '../../../shared/dto';
 import { canReadActivity } from '../../../shared/visibility';
 
 type ProyectoTabKey = 'estadocuenta' | 'actualizaciones' | 'actividad' | 'cotizacion' | 'costeo' | 'embellecimientos' | 'documentacion' | 'tallas' | 'ordenes' | 'ejecucion' | 'logistica';
@@ -134,7 +135,10 @@ export function ProyectoDrawer({ id, boardKey, backLabel, defaultTab, openTab, o
   // /estadocuenta/<id>/estadocuenta es copiable; el worker responde 403 al
   // resto de todos modos, esto es lo que se PINTA.
   const puedeVerEstadoCuenta = boardKey === 'estadocuenta' && !!me?.estadoCuentaAccess;
-  const [oportunidadId, setOportunidadId] = useState<string | null>(null);
+  // La Oportunidad ligada con su folio: el link del encabezado lo pinta ("Ver
+  // Oportunidad OPP-0085", Efraín 2026-09-10); los tabs solo usan el id.
+  const [oportunidad, setOportunidad] = useState<OportunidadLigadaDTO | null>(null);
+  const oportunidadId = oportunidad?.id ?? null;
   // Tri-estado a mano: `oportunidadId === null` significa las DOS cosas
   // (todavía no llega la respuesta / no hay oportunidad ligada) y Cotización y
   // Embellecimientos necesitan distinguirlas — un proyecto hecho desde cero
@@ -156,12 +160,12 @@ export function ProyectoDrawer({ id, boardKey, backLabel, defaultTab, openTab, o
   useEffect(() => {
     setItem(detailCache.get(id) ?? null);
     setTab(esTab(openTab) ? openTab : defaultTab as ProyectoTabKey);
-    setOportunidadId(null);
+    setOportunidad(null);
     setOppResuelta(false);
     load();
     getProyectoOportunidad(id)
-      .then(setOportunidadId)
-      .catch(() => setOportunidadId(null))
+      .then(setOportunidad)
+      .catch(() => setOportunidad(null))
       .finally(() => setOppResuelta(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
@@ -223,12 +227,12 @@ export function ProyectoDrawer({ id, boardKey, backLabel, defaultTab, openTab, o
             </Button>
           </div>
         </div>
-        {oportunidadId && (
+        {oportunidad && (
           <div
-            onClick={() => onOpenOportunidad(oportunidadId)}
+            onClick={() => onOpenOportunidad(oportunidad.id)}
             style={{ marginTop: 8, font: 'var(--text-label-strong)', color: 'var(--accent)', cursor: 'pointer', width: 'fit-content' }}
           >
-            Ver Oportunidad ligada (cotización, embellecimientos) ↗
+            Ver Oportunidad {oportunidad.folio || 'ligada'} (cotización, embellecimientos) ↗
           </div>
         )}
       </div>

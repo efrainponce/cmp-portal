@@ -299,6 +299,10 @@ function Row({ item, estadoProductosCol, showBattery, statusCol, totales, metric
   const isMobile = useIsMobile();
   const institucion = item.cols[INSTITUCION_COL]?.text || '—';
   const folio = item.cols[FOLIO_COL]?.text || '—';
+  // Folio de la Oportunidad ligada junto al del proyecto (Efraín, 2026-09-10:
+  // "que se vea la oportunidad ligada así OPP-XXX") — lo cruza el worker
+  // (worker/lib/oportunidadLigada.ts).
+  const oppFolio = item.oportunidad?.folio;
   const fechaEntrega = item.cols[FECHA_ENTREGA_COL]?.text;
   const vendedor = item.cols[VENDEDOR_COL]?.text || undefined;
   const estadoVal = estadoProductosCol ? item.cols[estadoProductosCol.id] : undefined;
@@ -319,7 +323,10 @@ function Row({ item, estadoProductosCol, showBattery, statusCol, totales, metric
       >
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10 }}>
           <div style={{ font: 'var(--text-body-strong)', color: 'var(--ink)', minWidth: 0 }}>{item.name}</div>
-          <MonoTag>{folio}</MonoTag>
+          <div style={{ display: 'flex', gap: 6, flex: 'none' }}>
+            {oppFolio && <MonoTag>{oppFolio}</MonoTag>}
+            <MonoTag>{folio}</MonoTag>
+          </div>
         </div>
         <div style={{ font: 'var(--text-label)', color: 'var(--ink-tertiary)' }}>{institucion}</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 2 }}>
@@ -388,6 +395,10 @@ function Row({ item, estadoProductosCol, showBattery, statusCol, totales, metric
         ) : fechaEntrega ? (
           <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)' }}>Entrega {fechaEntrega}</div>
         ) : null}
+        {/* Sin oportunidad (proyecto hecho desde cero, o una que el viewer no
+            ve) se guarda el hueco: si no, la fecha y la etapa de ese renglón se
+            recorren y dejan de caer en columna con las de los demás. */}
+        <MonoTag style={oppFolio ? undefined : { visibility: 'hidden' }}>{oppFolio || 'OPP-0000'}</MonoTag>
         <MonoTag>{folio}</MonoTag>
         <TotalesCells totales={totales} metricas={metricas} />
         {ecCols.length > 0 && <EstadoCuentaCells resumen={ecResumen} metricas={ecCols} />}

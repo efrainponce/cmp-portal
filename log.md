@@ -90,6 +90,27 @@
   se regenere. Las tallas de la Camisa Mujer suman 248 (no 250) por color: es
   como Pam las capturó.
 
+- **La Oportunidad ligada se ve en todos los boards de Proyectos** (Efraín:
+  "en todos los boards de proyectos necesito que se vea la oportunidad
+  ligada así OPP-XXX… también cuando das click a proyecto"). Cada renglón
+  pinta el folio `OPP-XXXX` junto al `PRO-XXXX` (todos los accesos de
+  Proyectos pasan por `ProyectoBoardList`), y el link del drawer ahora dice
+  "Ver Oportunidad OPP-0085 (cotización, embellecimientos)". Hacía falta:
+  varios proyectos no traen el folio en el nombre ("BOTAS TACTICAS BOMBEROS
+  CAJEME", que es OPP-0085) y otros traen dos ("OPP-0835 - OPP-0618 CLON II…").
+- **El cruce lo hace el worker** (`worker/lib/oportunidadLigada.ts`): la liga
+  vive en el Proyecto (`board_relation_mm0hf0y3`) y el folio en la
+  Oportunidad (`pulse_id_mm0qcq0m`). UNA consulta por lista, con los ids en
+  un solo bind (`json_each(?)`) y el folio extraído en SQL. Mismos dos
+  filtros que `totalesPorProyecto`: por columna (el rol tiene que leer la
+  relación y el folio) y por renglón (solo oportunidades que el viewer podría
+  leer; una de la zona privada no se asoma). Viaja dentro de cada item
+  (`ItemDTO.oportunidad`), así que el poll incremental no necesitó cambios.
+  `GET /api/proyectos/:id/oportunidad` regresa también el `folio`. Anclado en
+  `worker/lib/oportunidadLigada.test.ts`.
+- Sin oportunidad (proyecto hecho desde cero) el renglón guarda el hueco del
+  folio OPP para que la fecha y la etapa sigan cayendo en columna.
+
 ## 2026-09-08
 
 - **Nuevo board "Estado de Cuenta" en Proyectos** (Efraín: "retoma lo que

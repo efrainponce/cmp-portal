@@ -19,7 +19,17 @@ export interface ItemDTO {
   mondayUpdatedAt: string | null; // ISO, Monday's own item.updated_at — drives "actualizado hace X min"
   pendingWrite?: boolean;       // outbox row not yet confirmed by Monday echo
   cols: Record<string, ColVal>; // keyed by monday column id, whitelist-filtered
+  /** Solo Proyectos, en la lista: su Oportunidad ligada con folio. No sale del
+   * serializer — la cruza la ruta contra otra fila del mirror
+   * (worker/lib/oportunidadLigada.ts). Ausente = sin oportunidad, o una que el
+   * viewer no puede leer. */
+  oportunidad?: OportunidadLigadaDTO;
 }
+
+/** La Oportunidad ligada a un Proyecto y su folio ("OPP-0085") — Efraín,
+ * 2026-09-10: que se vea en todos los boards de Proyectos junto al folio del
+ * proyecto, y en su drawer. `folio` viene vacío si el mirror aún no lo trae. */
+export interface OportunidadLigadaDTO { id: string; folio: string }
 
 export interface ItemDetailDTO extends ItemDTO {
   children?: ItemDTO[];         // subitems, same whitelist rules
@@ -148,6 +158,11 @@ export interface EnviarCosteoResponse { ok: boolean; errors?: string[]; folio?: 
 // GET /api/oportunidades/:id/proyecto — el Proyecto ligado (tallas/OC viven ahí);
 // null cuando la oportunidad aún no tiene Proyecto.
 export interface ProyectoResponse { proyecto: ItemDetailDTO | null }
+
+// GET /api/proyectos/:id/oportunidad — la dirección inversa: la Oportunidad
+// ligada al Proyecto. null si no hay, o si el viewer no la puede leer. `folio`
+// vacío si su rol no lee esa columna o el mirror aún no lo trae.
+export interface ProyectoOportunidadResponse { oportunidadId: string | null; folio?: string }
 
 // Versiones de cotización (worker/lib/quoteVersions.ts). La vigente se arma en
 // caliente desde el mirror; las anteriores vienen archivadas en D1. `products` es

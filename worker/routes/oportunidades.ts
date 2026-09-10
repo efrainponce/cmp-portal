@@ -8,7 +8,7 @@ import type { Identity } from '../../shared/types';
 import { BOARDS, type BoardSlug } from '../../shared/boards';
 import { isNativeId } from '../../shared/nativeId';
 import { stageAtOrAfter, stageKeyForLabel } from '../../shared/dealStages';
-import type { AjustarLineaRequest, AjustarLineaResponse, CotizacionVirtualDTO, DuplicarOportunidadRequest, DuplicarOportunidadResponse, DuplicarVersionResponse, ItemDetailDTO, QuoteVersionsResponse, TallaBoxInput, CapturarTallasResponse, CambiarProductoLineasRequest, CambiarProductoLineasResponse, CambiosProductoResponse, ProyectoImagenesResponse, EstadoHistorialResponse, ProductoResumenResponse, ProductoGeneroResponse } from '../../shared/dto';
+import type { AjustarLineaRequest, AjustarLineaResponse, CotizacionVirtualDTO, DuplicarOportunidadRequest, DuplicarOportunidadResponse, DuplicarVersionResponse, ItemDetailDTO, QuoteVersionsResponse, TallaBoxInput, CapturarTallasResponse, CambiarProductoLineasRequest, CambiarProductoLineasResponse, CambiosProductoResponse, ProyectoImagenesResponse, EstadoHistorialResponse, ProductoResumenResponse, ProductoGeneroResponse, ProyectoOportunidadResponse } from '../../shared/dto';
 import { MAX_TALLAS_POR_REQUEST } from '../../shared/dto';
 import type { ProposedProductsResponse, AddProposedProductResponse } from '../../shared/productosPropuestos';
 import { getItem, childrenOf, pendingItemIds, proyectoForOportunidad, linkedItemId, PROYECTO_OPP_REL } from '../lib/dal';
@@ -23,6 +23,7 @@ import { generarCotizacionNative, generarCotizacionNativeD1, CotizacionError } f
 import { listVersions, duplicateVersion, restoreVersion, recordFirstVersion, QuoteVersionError, autoVersionSiCosteada } from '../lib/quoteVersions';
 import { ajustarLinea, restaurarLineaDividida, AjusteLineaError } from '../lib/lineaAjustes';
 import { listCotizacionVirtual, ajustarLineaVirtual, restaurarLineaVirtual, ProyectoCotizacionError } from '../lib/proyectoCotizacionVirtual';
+import { folioDe, puedeVerOportunidadLigada } from '../lib/oportunidadLigada';
 import { capturarTallas, reportarTallasIncorrectas, checkOcCliente, confirmTallasNative, confirmTallasNativeD1 } from '../lib/proyectoTallas';
 import { cambiarProductoLineas, listCambiosProducto, CambiarProductoError } from '../lib/proyectoLineaProducto';
 import {
@@ -1316,7 +1317,13 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     // Re-valida el scoping del viewer sobre la Oportunidad ligada: que el
     // Proyecto sea visible no implica que la Oportunidad también lo sea.
     const opp = await getItem(c.env, 'oportunidades', oppId, viewer);
-    return c.json({ oportunidadId: opp ? String(oppId) : null });
+    if (!opp) return c.json({ oportunidadId: null } satisfies ProyectoOportunidadResponse);
+    // El folio va con el id: el drawer lo pinta en el link "Ver Oportunidad
+    // OPP-0085" (Efraín, 2026-09-10), con el mismo gate de columnas que la lista.
+    return c.json({
+      oportunidadId: String(oppId),
+      folio: puedeVerOportunidadLigada(viewer) ? folioDe(opp) : '',
+    } satisfies ProyectoOportunidadResponse);
   });
 
   // Cotización del Proyecto (Efraín, 2026-08-10; escritura real desde

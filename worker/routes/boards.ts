@@ -13,7 +13,7 @@ import type {
 } from '../../shared/dto';
 import {
   listItems, getItem, childrenOf, childSlugOf, etagFor, pendingItemIds, listVendedores,
-  ownsItem, leadsOthers, hasPendingWrites, upsertIdentity,
+  ownsItem, leadsOthers, hasPendingWrites, upsertIdentity, PROYECTO_OPP_REL,
 } from '../lib/dal';
 import { toItemDTO, toColMeta, itemDetailEtag } from '../lib/serialize';
 import { canRead, canReadActivity, canReadBoard, canWrite, puedeVerEstadoCuenta } from '../../shared/visibility';
@@ -36,6 +36,7 @@ import { refetchItem, refetchItemTree, deltaSyncIfStale, mirrorVerificadoAt } fr
 import { jsonStatus, rejectUnknownQuery, contentDisposition } from '../lib/http';
 import { nombreDescarga, extensionDe } from '../../shared/nombreArchivo';
 import { totalesPorOportunidad, totalesPorProyecto, totalesVersion } from '../lib/totales';
+import { oportunidadesLigadas } from '../lib/oportunidadLigada';
 import { contentTypeFor } from '../lib/mime';
 import { notifyItemComment } from '../lib/updateNotify';
 import { markUpdatesSeen, seenByFor } from '../lib/updateSeen';
@@ -296,6 +297,20 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
     const incremental = since !== undefined && Number.isFinite(Date.parse(since));
     const enviar = incremental ? rows.filter(r => r.synced_at >= since) : rows;
     const items = enviar.map(r => toItemDTO(r, slug, viewer.role, pending.has(r.item_id), only, viewer.email));
+    // Proyectos: el folio de su Oportunidad ligada, que la lista pinta junto al
+    // del proyecto (Efraín, 2026-09-10). Viaja DENTRO de cada item y no en un
+    // mapa aparte como `totales`: así el poll incremental lo trae y lo conserva
+    // con su renglón sin lógica de fusión propia. El ETag no necesita la
+    // versión de Oportunidades — el folio no cambia, y re-ligar el proyecto
+    // mueve su propio synced_at. Con `?cols=` sin la relación, quien pide no
+    // la va a pintar.
+    if (slug === 'proyectos' && (!only || only.has(PROYECTO_OPP_REL))) {
+      const ligadas = await oportunidadesLigadas(c.env, viewer, enviar);
+      enviar.forEach((r, i) => {
+        const opp = ligadas.get(r.item_id);
+        if (opp) items[i].oportunidad = opp;
+      });
+    }
     const body: ListResponse = { board: slug, items, total: rows.length, etag };
     if (incremental) {
       body.incremental = {

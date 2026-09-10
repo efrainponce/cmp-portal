@@ -12,6 +12,7 @@ import type {
   EstadoHistorialEntryDTO, EstadoHistorialResponse,
   ProductoResumenDTO, ProductoResumenResponse, ProductoGeneroResponse,
   UpdateAttachmentDTO, UpdateDTO, VendedorDTO, WriteResponse, ZonaDTO,
+  OportunidadLigadaDTO, ProyectoOportunidadResponse,
 } from '../../shared/dto';
 import type { AddProposedProductResponse, ProposedProductDTO, ProposedProductsResponse } from '../../shared/productosPropuestos';
 import { mockBoardMeta, mockItemDetail, mockPatch } from './mockFallback';
@@ -571,13 +572,13 @@ export async function getProyecto(oppId: string): Promise<ItemDetailDTO | null> 
   return body.proyecto;
 }
 
-/** Oportunidad ligada a un Proyecto (dirección inversa) — null si el link aún
- * no resuelve (ver worker/routes/oportunidades.ts, fallback en vivo incl.). */
-export async function getProyectoOportunidad(proyectoId: string): Promise<string | null> {
+/** Oportunidad ligada a un Proyecto (dirección inversa), con su folio — null si
+ * el link aún no resuelve (ver worker/routes/oportunidades.ts, fallback en vivo incl.). */
+export async function getProyectoOportunidad(proyectoId: string): Promise<OportunidadLigadaDTO | null> {
   const res = await apiFetch(`/proyectos/${proyectoId}/oportunidad`);
   if (!res.ok) throw new Error('GET oportunidad failed: ' + res.status);
-  const body: { oportunidadId: string | null } = await res.json();
-  return body.oportunidadId;
+  const body: ProyectoOportunidadResponse = await res.json();
+  return body.oportunidadId ? { id: body.oportunidadId, folio: body.folio ?? '' } : null;
 }
 
 /** Una orden del ledger de OC (worker/lib/ocLedger.ts). */
