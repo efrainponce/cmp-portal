@@ -143,6 +143,9 @@ ve utilidad. Anclado en `worker/lib/assistantTools.test.ts`.
   (`worker/lib/consultaLibre.ts`). Campo desconocido o tapado = error que el
   modelo usa para corregirse. Proveedor y Tipo de Producto NO están (sus
   columnas no están en `VISIBILITY`; agregarlas es decisión de Efraín).
+- **Periodo por defecto = año en curso** (desde el 1 de enero, hora de CDMX)
+  en ranking, resumen y consulta libre; `toda_la_historia: true` solo cuando
+  piden el histórico. El resultado trae el periodo y el bot debe decirlo.
 - Regla 7 del prompt (todas las personas): pregunta ambigua → elegir el
   criterio más razonable, decirlo, contestar y ofrecer alternativas; no
   contestar con otra pregunta.

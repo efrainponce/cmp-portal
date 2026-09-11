@@ -2,6 +2,16 @@
 
 ## 2026-09-11
 
+- **Consultas de dirección del bot: por defecto, el año en curso** (Efraín:
+  "por defecto pon el año en curso"). Sin periodo, `ranking_vendedores`,
+  `resumen_ventas` y `consulta_libre` miran oportunidades creadas desde el 1 de
+  enero (año de CDMX, no de UTC — `anioEnCurso`); el resultado dice el periodo
+  y el prompt obliga a mencionarlo. `toda_la_historia: true` solo si piden el
+  histórico. En consulta_libre, un filtro de cualquier fecha (o mes/año de
+  creación) se respeta tal cual (`aplicarPeriodoDefault`, anclado en
+  `shared/consultaLibre.test.ts`). `oportunidades_por_validar` no cambia: es
+  el estado de hoy.
+
 - **Consulta libre del bot para dirección: preguntas abiertas como "¿qué
   zona va mejor?"** (Efraín: "preguntas ambiguas… así como lo que hago
   contigo" → opción consulta libre + reglas de ambigüedad).

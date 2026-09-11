@@ -178,6 +178,33 @@ export function validarConsulta(raw: unknown, disponibles: ReadonlySet<string>):
   };
 }
 
+// ── Periodo por defecto ──────────────────────────────────────────────────────
+
+/** Año en curso en hora de México (el 31 de dic a las 20:00 locales ya es 1 de
+ * enero en UTC — sin la zona, el bot cambiaría de año 6 horas antes). */
+export function anioEnCurso(ahora: Date = new Date()): string {
+  return ahora.toLocaleDateString('en-CA', { timeZone: 'America/Mexico_City' }).slice(0, 4);
+}
+
+/** Sin periodo, las consultas de dirección miran el AÑO EN CURSO (Efraín,
+ * 2026-09-11: "por defecto pon el año en curso"). Si la consulta ya filtra por
+ * alguna fecha (o por mes/año de creación), se respeta tal cual; con
+ * `todaLaHistoria` no se agrega nada. Devuelve el periodo en texto para que el
+ * bot lo diga — un total sin su periodo se lee como "de siempre". */
+export function aplicarPeriodoDefault(
+  c: Consulta, anio: string, todaLaHistoria: boolean,
+): { consulta: Consulta; periodo: string } {
+  if (todaLaHistoria) return { consulta: c, periodo: 'toda la historia' };
+  const defs = CAMPOS[c.tabla];
+  const tienePeriodo = c.filtros.some(f =>
+    defs[f.campo].tipo === 'fecha' || f.campo === 'mes_creada' || f.campo === 'anio_creada');
+  if (tienePeriodo) return { consulta: c, periodo: 'el de los filtros de fecha de la consulta' };
+  return {
+    consulta: { ...c, filtros: [...c.filtros, { campo: 'creada', op: '>=', valor: `${anio}-01-01` }] },
+    periodo: `año en curso (${anio}): oportunidades creadas desde ${anio}-01-01`,
+  };
+}
+
 // ── Ejecución ────────────────────────────────────────────────────────────────
 
 /** Minúsculas, sin acentos ni espacios de más: "Sureste " = "sureste". */

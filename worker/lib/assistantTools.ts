@@ -17,7 +17,9 @@ import { COLUMN_META } from '../../shared/column-meta.gen';
 import { readableCols, puedeConsultarDireccion } from '../../shared/visibility';
 import { buildAnalyticsResponse } from './analytics';
 import type { AnalyticsResponse, GrupoMetrics, FunnelStep, GroupBy } from '../../shared/analytics';
-import { CAMPOS, OPS, FNS, LIMITE_MAX, validarConsulta, ejecutarConsulta, ConsultaError, type Tabla } from '../../shared/consultaLibre';
+import {
+  CAMPOS, OPS, FNS, LIMITE_MAX, validarConsulta, ejecutarConsulta, aplicarPeriodoDefault, anioEnCurso, ConsultaError, type Tabla,
+} from '../../shared/consultaLibre';
 import { filasConsultaLibre } from './consultaLibre';
 import { EMBELL_TEMPLATE_KEYS } from '../../shared/embellecimiento';
 import { DEAL_STAGE_LABELS, DEAL_STAGE_ORDER, CLOSED_STAGES, stageKeyForLabel } from '../../shared/dealStages';
@@ -315,8 +317,9 @@ export const TOOLS: Anthropic.Tool[] = [
     input_schema: {
       type: 'object',
       properties: {
-        desde: { type: 'string', description: 'YYYY-MM-DD, inclusive. Filtra por fecha de CREACIÓN de la oportunidad. Omitir = desde el inicio.' },
+        desde: { type: 'string', description: 'YYYY-MM-DD, inclusive. Filtra por fecha de CREACIÓN de la oportunidad. Omitir desde y hasta = AÑO EN CURSO (desde el 1 de enero).' },
         hasta: { type: 'string', description: 'YYYY-MM-DD, inclusive. Omitir = hasta hoy.' },
+        toda_la_historia: { type: 'boolean', description: 'true SOLO si piden el histórico completo ("desde siempre", "histórico"); ignora el default del año en curso.' },
         criterio: { type: 'string', enum: ['monto_ganado', 'monto_cotizado', 'tasa_cierre', 'ganadas'], description: 'Cómo ordenar (default monto_ganado).' },
       },
     },
@@ -327,8 +330,9 @@ export const TOOLS: Anthropic.Tool[] = [
     input_schema: {
       type: 'object',
       properties: {
-        desde: { type: 'string', description: 'YYYY-MM-DD, inclusive. Filtra por fecha de CREACIÓN de la oportunidad. Omitir = desde el inicio.' },
+        desde: { type: 'string', description: 'YYYY-MM-DD, inclusive. Filtra por fecha de CREACIÓN de la oportunidad. Omitir desde y hasta = AÑO EN CURSO (desde el 1 de enero).' },
         hasta: { type: 'string', description: 'YYYY-MM-DD, inclusive. Omitir = hasta hoy.' },
+        toda_la_historia: { type: 'boolean', description: 'true SOLO si piden el histórico completo ("desde siempre", "histórico"); ignora el default del año en curso.' },
         por: { type: 'string', enum: ['zona', 'vendedor'], description: 'Desglose opcional por zona o vendedor.' },
       },
     },
@@ -351,6 +355,7 @@ export const TOOLS: Anthropic.Tool[] = [
       'Fechas YYYY-MM-DD; un filtro con "2026-08" abarca todo agosto. Texto sin importar acentos/mayúsculas. No existe fecha de ganada: los periodos son por fecha de creación (o de costeo/cotización). Montos en MXN sin IVA.',
       `Campos de "oportunidades" (una fila por oportunidad): ${camposDoc('oportunidades')}.`,
       `Campos de "lineas" (una fila por línea de producto, con los datos de su oportunidad): ${camposDoc('lineas')}.`,
+      'Sin ningún filtro de fecha, la consulta se limita al AÑO EN CURSO (creada desde el 1 de enero) y el resultado trae `periodo`; toda_la_historia:true lo quita (solo si piden el histórico).',
       'Si un campo no está disponible para tu usuario, la herramienta lo dice.',
     ].join('\n'),
     input_schema: {
@@ -387,6 +392,7 @@ export const TOOLS: Anthropic.Tool[] = [
         ordenar_por: { type: 'string', description: 'Agrupado: nombre de la métrica (p. ej. suma_monto) o del campo agrupado. Listado: un campo. Default: la primera métrica, de mayor a menor.' },
         ascendente: { type: 'boolean', description: 'true = de menor a mayor (default false)' },
         limite: { type: 'number', description: `Máximo de filas/grupos (default 20, máx ${LIMITE_MAX})` },
+        toda_la_historia: { type: 'boolean', description: 'true SOLO si piden el histórico completo; sin filtro de fecha el default es el año en curso.' },
       },
       required: ['tabla'],
     },
@@ -774,10 +780,14 @@ function fechaFiltro(raw: unknown, finDelDia: boolean): string | null {
 class ToolInputError extends Error {}
 
 async function analisis(env: Env, viewer: Identity, input: Record<string, unknown>, por: GroupBy): Promise<AnalyticsResponse> {
+  const desde = fechaFiltro(input.desde, false);
+  const hasta = fechaFiltro(input.hasta, true);
+  // Sin periodo = año en curso (Efraín, 2026-09-11), salvo que pidan el histórico.
+  const anioDefault = !desde && !hasta && input.toda_la_historia !== true;
   return buildAnalyticsResponse(env, viewer, {
     por,
-    desde: fechaFiltro(input.desde, false),
-    hasta: fechaFiltro(input.hasta, true),
+    desde: anioDefault ? `${anioEnCurso()}-01-01T00:00:00.000Z` : desde,
+    hasta,
   });
 }
 
@@ -787,6 +797,8 @@ function paso(embudo: GrupoMetrics['embudo'], step: FunnelStep) {
 
 function periodoTexto(r: AnalyticsResponse): string {
   if (!r.desde && !r.hasta) return 'toda la historia';
+  const anio = anioEnCurso();
+  if (r.desde === `${anio}-01-01T00:00:00.000Z` && !r.hasta) return `año en curso (${anio}): oportunidades creadas desde ${anio}-01-01`;
   return `oportunidades creadas ${r.desde ? `desde ${r.desde.slice(0, 10)}` : ''}${r.desde && r.hasta ? ' ' : ''}${r.hasta ? `hasta ${r.hasta.slice(0, 10)}` : ''}`;
 }
 
@@ -950,9 +962,11 @@ async function toolConsultaLibre(env: Env, viewer: Identity, input: Record<strin
   const { filas, disponibles } = await filasConsultaLibre(env, viewer, tabla);
   // validarConsulta lanza ConsultaError (campo desconocido/tapado, operador o
   // métrica inválidos) — el dispatcher se lo regresa al modelo para corregirse.
-  const consulta = validarConsulta(input, disponibles);
+  const { consulta, periodo } = aplicarPeriodoDefault(
+    validarConsulta(input, disponibles), anioEnCurso(), input.toda_la_historia === true);
   return JSON.stringify({
     tabla,
+    periodo,
     ...ejecutarConsulta(filas, consulta),
     notas: [
       'Montos en MXN sin IVA, de las líneas vigentes (sin versiones anteriores de la cotización).',

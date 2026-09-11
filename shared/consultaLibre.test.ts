@@ -3,7 +3,9 @@
 // que los filtros de texto no dependan de acentos/mayúsculas, que las fechas
 // filtren por prefijo ("2026-08" = todo agosto) y que los grupos/totales sumen.
 import { describe, it, expect } from 'vitest';
-import { validarConsulta, ejecutarConsulta, ConsultaError, CAMPOS, SIN_DATO, type Fila } from './consultaLibre';
+import {
+  validarConsulta, ejecutarConsulta, aplicarPeriodoDefault, anioEnCurso, ConsultaError, CAMPOS, SIN_DATO, type Fila,
+} from './consultaLibre';
 
 const TODOS = new Set([...Object.keys(CAMPOS.oportunidades), ...Object.keys(CAMPOS.lineas)]);
 const SIN_UTILIDAD = new Set([...TODOS].filter(c => c !== 'utilidad' && c !== 'utilidad_total'));
@@ -41,6 +43,39 @@ describe('validarConsulta — fail-closed', () => {
   it('ordenar_por agrupado debe existir en el resultado; el límite se topa', () => {
     expect(() => q({ agrupar_por: ['zona'], ordenar_por: 'monto' })).toThrow(/ordenar_por/);
     expect(q({ limite: 999 }).limite).toBe(50);
+  });
+});
+
+describe('periodo por defecto = año en curso', () => {
+  it('sin filtro de fecha agrega creada >= 1 de enero y lo dice', () => {
+    const { consulta, periodo } = aplicarPeriodoDefault(q({ agrupar_por: ['zona'] }), '2026', false);
+    expect(consulta.filtros).toContainEqual({ campo: 'creada', op: '>=', valor: '2026-01-01' });
+    expect(periodo).toMatch(/2026/);
+    // Sobre las filas: OPP-3 (julio) entra, nada de 2025 si lo hubiera.
+    const r = ejecutarConsulta([...opps, { ...opps[0], folio: 'OPP-2025', creada: '2025-12-31' }], consulta);
+    expect(r.filas_que_cumplen).toBe(5);
+  });
+
+  it('si la consulta ya trae un periodo (cualquier fecha o mes/año) se respeta', () => {
+    for (const filtros of [
+      [{ campo: 'fecha_cotizacion', op: '>=', valor: '2025-06' }],
+      [{ campo: 'mes_creada', op: '=', valor: '2025-11' }],
+      [{ campo: 'anio_creada', op: '=', valor: '2025' }],
+    ]) {
+      const c = q({ filtros });
+      expect(aplicarPeriodoDefault(c, '2026', false).consulta).toEqual(c);
+    }
+  });
+
+  it('toda_la_historia no agrega nada', () => {
+    const c = q({});
+    expect(aplicarPeriodoDefault(c, '2026', true)).toEqual({ consulta: c, periodo: 'toda la historia' });
+  });
+
+  it('el año es el de México, no el de UTC', () => {
+    // 1 de enero 03:00 UTC = 31 de dic 21:00 en CDMX.
+    expect(anioEnCurso(new Date('2027-01-01T03:00:00Z'))).toBe('2026');
+    expect(anioEnCurso(new Date('2027-01-01T07:00:00Z'))).toBe('2027');
   });
 });
 
