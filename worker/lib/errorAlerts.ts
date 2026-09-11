@@ -38,6 +38,12 @@ export async function checkErrorsAndAlert(env: Env): Promise<void> {
   await env.DB.prepare(
     `DELETE FROM sync_log WHERE at < datetime('now', ?)`,
   ).bind(`-${RETENTION_DAYS} days`).run();
+
+  // Bitácora de WhatsApp (worker/wa/log.ts) — misma retención. created_at es ISO.
+  try {
+    await env.DB.prepare('DELETE FROM wa_mensaje WHERE created_at < ?')
+      .bind(new Date(Date.now() - RETENTION_DAYS * 86_400_000).toISOString()).run();
+  } catch { /* tabla todavía no existe */ }
 }
 
 async function sendAlert(env: Env, total: number, rows: KindCount[]): Promise<void> {
@@ -52,7 +58,7 @@ async function sendAlert(env: Env, total: number, rows: KindCount[]): Promise<vo
     // original del loop de arriba). La alerta no apunta a un item concreto,
     // así que el link cae en la lista de Oportunidades (ruta válida del
     // portal, src/lib/routing.ts).
-    await sendTemplate(env, env.ADMIN_ALERT_PHONE, { bodyText, urlSuffix: 'oportunidades' });
+    await sendTemplate(env, env.ADMIN_ALERT_PHONE, { bodyText, urlSuffix: 'oportunidades' }, { tipo: 'alerta' });
   } catch (err) {
     await logSync(env, 'manual', null, null, false, 'error-alert: ' + err);
   }

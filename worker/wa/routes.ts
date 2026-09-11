@@ -6,6 +6,7 @@ import type { Env } from '../env';
 import { identityByPhone, alreadyProcessed } from './store';
 import { handleIncoming } from './agent';
 import { sendText, markRead } from './send';
+import { aplicarEstados, extraerEstados } from './log';
 
 interface WaMessage {
   id: string;
@@ -47,23 +48,24 @@ async function processMessage(env: Env, msg: WaMessage): Promise<void> {
 
   const viewer = await identityByPhone(env, msg.from);
   if (!viewer) {
-    await sendText(env, msg.from, 'Hola 👋 Este asistente es solo para el equipo de CMP. Si eres vendedor, pide al administrador que dé de alta tu número.');
+    await sendText(env, msg.from, 'Hola 👋 Este asistente es solo para el equipo de CMP. Si eres vendedor, pide al administrador que dé de alta tu número.', { tipo: 'bot' });
     return;
   }
+  const meta = { tipo: 'bot' as const, email: viewer.email };
 
   await markRead(env, msg.id);
 
   if (msg.type !== 'text' || !msg.text?.body) {
-    await sendText(env, msg.from, 'Por ahora solo puedo leer mensajes de texto 🙏');
+    await sendText(env, msg.from, 'Por ahora solo puedo leer mensajes de texto 🙏', meta);
     return;
   }
 
   try {
     const reply = await handleIncoming(env, viewer, msg.from, msg.text.body);
-    await sendText(env, msg.from, reply);
+    await sendText(env, msg.from, reply, meta);
   } catch (err) {
     console.error('wa agent error', err);
-    await sendText(env, msg.from, 'Ocurrió un error procesando tu mensaje 😕 Intenta de nuevo en un momento.');
+    await sendText(env, msg.from, 'Ocurrió un error procesando tu mensaje 😕 Intenta de nuevo en un momento.', meta);
   }
 }
 
@@ -106,6 +108,10 @@ export function waRoutes(app: Hono<{ Bindings: Env }>): void {
         })(),
       );
     }
+    // Avisos de estado de lo que mandamos (entregado/leído/fallido) — llegan por
+    // este mismo webhook; se asientan en la bitácora (worker/wa/log.ts).
+    const estados = extraerEstados(body);
+    if (estados.length > 0) c.executionCtx.waitUntil(aplicarEstados(c.env, estados));
     return c.text('ok');
   });
 

@@ -1,9 +1,12 @@
 // worker/wa/send.ts — WhatsApp Cloud API (Meta Graph) outbound helpers.
+// Cada mensaje queda en la bitácora `wa_mensaje` (worker/wa/log.ts) con el id
+// que devuelve Meta, para seguir después si se entregó.
 import type { Env } from '../env';
+import { registrarEnvio, type WaMeta } from './log';
 
 const GRAPH = 'https://graph.facebook.com/v20.0';
 
-async function graphPost(env: Env, body: Record<string, unknown>): Promise<void> {
+async function graphPost(env: Env, body: Record<string, unknown>): Promise<{ wamid: string | null }> {
   if (!env.WHATSAPP_TOKEN || !env.WHATSAPP_PHONE_NUMBER_ID) {
     throw new Error('WHATSAPP_TOKEN / WHATSAPP_PHONE_NUMBER_ID not configured');
   }
@@ -19,6 +22,8 @@ async function graphPost(env: Env, body: Record<string, unknown>): Promise<void>
     const detail = await res.text().catch(() => '');
     throw new Error(`WhatsApp send failed (${res.status}): ${detail.slice(0, 300)}`);
   }
+  const json = await res.json().catch(() => null) as { messages?: Array<{ id?: string }> } | null;
+  return { wamid: json?.messages?.[0]?.id ?? null };
 }
 
 // Meta's Cloud API reports MX inbound numbers with a legacy "1" after the
@@ -29,9 +34,22 @@ function normalizeMxTo(to: string): string {
   return /^521\d{10}$/.test(to) ? `52${to.slice(3)}` : to;
 }
 
+/** Manda y deja la fila en la bitácora — también si Meta lo rechaza (y relanza). */
+async function enviar(env: Env, to: string, body: Record<string, unknown>, meta: WaMeta): Promise<void> {
+  const telefono = normalizeMxTo(to);
+  let wamid: string | null;
+  try {
+    ({ wamid } = await graphPost(env, { to: telefono, ...body }));
+  } catch (err) {
+    await registrarEnvio(env, telefono, meta, { wamid: null, error: err instanceof Error ? err.message : String(err) });
+    throw err;
+  }
+  await registrarEnvio(env, telefono, meta, { wamid });
+}
+
 /** Send a plain text message. WhatsApp caps text bodies at 4096 chars. */
-export async function sendText(env: Env, to: string, body: string): Promise<void> {
-  await graphPost(env, { to: normalizeMxTo(to), type: 'text', text: { body: body.slice(0, 4000) } });
+export async function sendText(env: Env, to: string, body: string, meta: WaMeta): Promise<void> {
+  await enviar(env, to, { type: 'text', text: { body: body.slice(0, 4000) } }, { titulo: body, ...meta });
 }
 
 // Approved in Meta Business Manager: body {{1}} = título, botón URL dinámica
@@ -43,10 +61,9 @@ const NOTIFY_TEMPLATE_LANG = 'es_MX';
  * el template pre-aprobado por Meta. `urlSuffix` es el sufijo dinámico del botón
  * ("{boardKey}/{itemId}"), mismo formato de ruta que src/lib/routing.ts. */
 export async function sendTemplate(
-  env: Env, to: string, args: { bodyText: string; urlSuffix: string },
+  env: Env, to: string, args: { bodyText: string; urlSuffix: string }, meta: WaMeta,
 ): Promise<void> {
-  await graphPost(env, {
-    to: normalizeMxTo(to),
+  await enviar(env, to, {
     type: 'template',
     template: {
       name: NOTIFY_TEMPLATE_NAME,
@@ -56,7 +73,7 @@ export async function sendTemplate(
         { type: 'button', sub_type: 'url', index: '0', parameters: [{ type: 'text', text: args.urlSuffix }] },
       ],
     },
-  });
+  }, { titulo: args.bodyText, ...meta });
 }
 
 /** Mark an incoming message as read (blue ticks) — best-effort, never throws. */

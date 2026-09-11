@@ -64,6 +64,29 @@ CREATE TABLE IF NOT EXISTS wa_conversations (  -- WhatsApp bot: one row per phon
   updated_at TEXT NOT NULL
 );
 
+-- Bitácora de cada WhatsApp saliente y su estado en Meta (2026-09-11,
+-- worker/wa/log.ts; migración worker/migrations/2026-09-11-wa-mensaje.sql).
+CREATE TABLE IF NOT EXISTS wa_mensaje (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  wamid        TEXT,              -- id de Meta; NULL si Meta rechazó el envío
+  tipo         TEXT NOT NULL,     -- 'aviso' | 'anuncio' | 'alerta' | 'bot'
+  telefono     TEXT NOT NULL,
+  email        TEXT,
+  titulo       TEXT,
+  board_key    TEXT,
+  item_id      INTEGER,
+  estado       TEXT NOT NULL,     -- rechazado | enviado | entregado | leido | fallido
+  error        TEXT,
+  created_at   TEXT NOT NULL,
+  updated_at   TEXT NOT NULL,
+  entregado_at TEXT,
+  leido_at     TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_wa_mensaje_wamid   ON wa_mensaje(wamid);
+CREATE INDEX IF NOT EXISTS idx_wa_mensaje_email   ON wa_mensaje(email, created_at);
+CREATE INDEX IF NOT EXISTS idx_wa_mensaje_estado  ON wa_mensaje(estado, updated_at);
+CREATE INDEX IF NOT EXISTS idx_wa_mensaje_created ON wa_mensaje(created_at);
+
 CREATE TABLE IF NOT EXISTS wa_processed (      -- WhatsApp webhook dedupe (Meta retries)
   msg_id TEXT PRIMARY KEY,
   at     TEXT NOT NULL

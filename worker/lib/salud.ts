@@ -91,6 +91,7 @@ const TIPOS_DE: Record<string, string[]> = {
   divisiones: ['division_borrada'],
   sku: ['sku_desfasado'],
   fantasmas: ['linea_fantasma'],
+  whatsapp: ['wa_fallido'],
   outbox: ['outbox_atorado', 'outbox_fallido', 'outbox_conflicto'],
   tallas: ['tallas_no_cuadran'],
   errores: ['errores_servidor', 'http_500', 'errores_front', 'sync_fallido'],
@@ -482,6 +483,28 @@ async function erroresRecientes(env: Env, desde: string): Promise<Hallazgo[]> {
   return out;
 }
 
+/** WhatsApp que Meta no aceptó ('rechazado') o no pudo entregar ('fallido') en
+ * la última hora — bitácora `wa_mensaje` (worker/wa/log.ts). Es el "no me llegó
+ * el mensaje" visto desde nuestro lado. */
+async function whatsappFallidos(env: Env, desde: string): Promise<Hallazgo[]> {
+  const { results } = await env.DB.prepare(
+    `SELECT estado, COUNT(*) AS n, MAX(id) AS ultimo_id FROM wa_mensaje
+      WHERE estado IN ('rechazado', 'fallido') AND updated_at > ? GROUP BY estado`,
+  ).bind(desde).all<{ estado: string; n: number; ultimo_id: number }>();
+  const out: Hallazgo[] = [];
+  for (const r of results ?? []) {
+    const ej = await env.DB.prepare('SELECT email, telefono, titulo, error FROM wa_mensaje WHERE id = ?')
+      .bind(r.ultimo_id).first<{ email: string | null; telefono: string; titulo: string | null; error: string | null }>();
+    const que = r.estado === 'rechazado' ? 'que Meta no aceptó' : 'que Meta no pudo entregar';
+    out.push({
+      clave: `wa_fallido:${r.estado}`, tipo: 'wa_fallido', severidad: 'media',
+      titulo: `${r.n} WhatsApp ${que} en la última hora — el último, a ${ej?.email ?? ej?.telefono ?? '?'} ("${(ej?.titulo ?? '').slice(0, 80)}"): ${(ej?.error ?? '').slice(0, 200)}`,
+      detalle: { n: r.n, ultimoId: r.ultimo_id },
+    });
+  }
+  return out;
+}
+
 // ───────────────────────────── corrida y reporte ─────────────────────────────
 
 let tablaLista = false;
@@ -530,6 +553,7 @@ export async function revisarSalud(env: Env): Promise<ResultadoSalud> {
     ['outbox', () => outboxProblemas(env, ahora)],
     ['tallas', () => tallasNoCuadran(env)],
     ['errores', () => erroresRecientes(env, desde)],
+    ['whatsapp', () => whatsappFallidos(env, desde)],
   ];
   const hallazgos: Hallazgo[] = [];
   const fallidas: string[] = [];
@@ -647,5 +671,16 @@ export async function reporteSalud(env: Env, horas: number) {
   const { results: outbox } = await env.DB.prepare(
     'SELECT status, COUNT(*) AS n FROM outbox WHERE updated_at > ? GROUP BY status',
   ).bind(desde).all();
-  return { horas, ultimaRevision: ultima?.t ?? null, abiertos, errores, ejemplos, rechazos, outbox };
+  let whatsapp: { porEstado: unknown[]; fallidos: unknown[] } = { porEstado: [], fallidos: [] };
+  try {
+    const { results: porEstado } = await env.DB.prepare(
+      'SELECT tipo, estado, COUNT(*) AS n FROM wa_mensaje WHERE created_at > ? GROUP BY tipo, estado',
+    ).bind(desde).all();
+    const { results: fallidos } = await env.DB.prepare(
+      `SELECT created_at, tipo, email, telefono, titulo, estado, error FROM wa_mensaje
+        WHERE estado IN ('rechazado', 'fallido') AND created_at > ? ORDER BY id DESC LIMIT 25`,
+    ).bind(desde).all();
+    whatsapp = { porEstado: porEstado ?? [], fallidos: fallidos ?? [] };
+  } catch { /* wa_mensaje todavía no existe */ }
+  return { horas, ultimaRevision: ultima?.t ?? null, abiertos, errores, ejemplos, rechazos, outbox, whatsapp };
 }

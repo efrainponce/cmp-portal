@@ -45,6 +45,11 @@ con el Worker (`/api/*`). Bot de WhatsApp + chat del portal comparten agente Cla
   día: la consulta se capa en 10,000 eventos y además `items(ids:)` devuelve items
   borrados con `state`), `item_borrado` (qué borró el portal), `cotizacion_ajustes`
   (dividir/editar/restaurar), `accion_log` (quién intentó qué) y `outbox`.
+- "No me llegó el WhatsApp": `wa_mensaje` (`worker/wa/log.ts`) guarda CADA mensaje
+  que manda el portal (aviso/anuncio/alerta/bot) con el id de Meta, y el webhook
+  de Meta lo avanza a entregado/leído o fallido con el motivo. Si no hay fila, no
+  se intentó: revisa `notifications` (¿le tocaba el aviso?) e `identity.phone`.
+  `sendText`/`sendTemplate` piden el `WaMeta` — un envío nuevo también queda ahí.
 
 ## Reglas duras
 

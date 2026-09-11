@@ -15,6 +15,8 @@
 //    del front ('front …'), fallos de sync.
 //  - accion_log: cada POST/PATCH/DELETE rechazado, con su motivo.
 //  - outbox: escrituras del portal a Monday por estado.
+//  - wa_mensaje: cada WhatsApp que manda el portal y su estado según Meta
+//    (enviado → entregado → leído, o rechazado/fallido con el motivo).
 // Necesita `.dev.vars` (wrangler) en la raíz del repo, igual que el resto de
 // scripts.
 import { execFileSync } from 'node:child_process';
@@ -88,4 +90,23 @@ console.log('  ' + (ob.map(o => `${o.status}=${o.n}`).join(', ') || 'sin movimie
 const atorados = d1(`SELECT id, board_id, item_id, status, attempts, updated_at FROM outbox WHERE status IN ('pending','sent') AND updated_at < ${q(new Date(Date.now() - 15 * 60_000).toISOString())} LIMIT 10`) ?? [];
 for (const o of atorados) console.log(`  ⚠ atorado #${o.id} ${o.status} (${o.attempts} intentos) item ${o.item_id} desde ${String(o.updated_at).slice(0, 16)}`);
 
+titulo('5. WhatsApp (wa_mensaje: lo que manda el portal y su estado en Meta)');
+const wa = d1(`SELECT tipo, estado, COUNT(*) AS n FROM wa_mensaje WHERE created_at > ${q(desde)} GROUP BY tipo, estado ORDER BY tipo, estado`);
+if (wa === null) console.log('  (la tabla todavía no existe)');
+else {
+  if (wa.length === 0) console.log('  sin envíos');
+  const porTipo = {};
+  for (const r of wa) (porTipo[r.tipo] ??= []).push(`${r.estado}=${r.n}`);
+  for (const [t, xs] of Object.entries(porTipo)) console.log(`  ${t}: ${xs.join(', ')}`);
+  const malos = d1(`SELECT created_at, tipo, email, telefono, titulo, estado, error FROM wa_mensaje
+    WHERE estado IN ('rechazado','fallido') AND created_at > ${q(desde)} ORDER BY id DESC LIMIT 15`) ?? [];
+  for (const m of malos) {
+    console.log(`  ✗ ${String(m.created_at).slice(0, 16)} ${m.estado} ${m.tipo} → ${m.email ?? m.telefono} "${corto(m.titulo, 80)}": ${corto(m.error, 180)}`);
+  }
+  const haceUnaHora = new Date(Date.now() - 3_600_000).toISOString();
+  const sinEntregar = d1(`SELECT COUNT(*) AS n FROM wa_mensaje WHERE estado = 'enviado' AND created_at > ${q(desde)} AND created_at < ${q(haceUnaHora)}`)?.[0]?.n ?? 0;
+  if (sinEntregar) console.log(`  ⚠ ${sinEntregar} enviado(s) hace más de 1 h sin confirmación de entrega (celular apagado/sin datos, o Meta no ha avisado)`);
+}
+
 console.log('\nDetalle de un hallazgo: SELECT * FROM salud_hallazgo WHERE clave = \'…\' (wrangler d1 execute cmp-portal --remote --env-file=.dev.vars).');
+console.log('WhatsApp de una persona: SELECT created_at, tipo, titulo, estado, entregado_at, leido_at, error FROM wa_mensaje WHERE email = \'…\' ORDER BY id DESC LIMIT 20');

@@ -19,7 +19,7 @@ export async function notifyPortalWa(env: Env, n: NotifyInput): Promise<void> {
     await sendTemplate(env, row.phone, {
       bodyText: n.title,
       urlSuffix: `${n.boardKey}/${n.itemId}`,
-    });
+    }, { tipo: 'aviso', email: n.recipientEmail, boardKey: n.boardKey, itemId: n.itemId });
   } catch (err) {
     await logSync(env, 'manual', n.boardId ?? null, n.itemId ?? null, false, 'wa-notify: ' + err);
   }
@@ -46,7 +46,8 @@ export async function notifyAnuncioWa(
   let enviados = 0;
   for (const d of lote) {
     try {
-      await sendTemplate(env, d.phone, { bodyText: `Anuncio: ${titulo}`, urlSuffix: 'anuncios' });
+      await sendTemplate(env, d.phone, { bodyText: `Anuncio: ${titulo}`, urlSuffix: 'anuncios' },
+        { tipo: 'anuncio', email: d.email, boardKey: 'anuncios' });
       enviados++;
     } catch (err) {
       await logSync(env, 'manual', null, null, false, `wa-anuncio ${d.email}: ${err}`);

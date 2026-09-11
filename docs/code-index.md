@@ -162,6 +162,7 @@ y `src/lib/estadoProductoBuckets.ts`.
 
 - [worker/wa/agent.ts](worker/wa/agent.ts) — Canal WhatsApp del agente Claude (el loop real vive en lib/agentLoop). Exports: handleIncoming.
 - [worker/wa/notify.ts](worker/wa/notify.ts) — Puente entre el centro de notificaciones y el envío de WhatsApp, solo para severidad 'importante'. Exports: notifyPortalWa.
+- [worker/wa/log.ts](worker/wa/log.ts) — Bitácora `wa_mensaje`: cada WhatsApp saliente (lo guarda send.ts) y su estado según los `statuses` del webhook de Meta (entregado/leído/fallido). Exports: registrarEnvio, aplicarEstados, extraerEstados, siguienteEstado, describirError, WaMeta.
 - [worker/wa/routes.ts](worker/wa/routes.ts) — Webhook de WhatsApp Cloud API (Meta Graph). Exports: waRoutes.
 - [worker/wa/send.ts](worker/wa/send.ts) — Helpers de envío: sendText, markRead vía WhatsApp Cloud API. Exports: sendText, markRead.
 - [worker/wa/store.ts](worker/wa/store.ts) — Persistencia D1 del bot WhatsApp: identity-by-phone, idempotencia. Exports: normalizePhone, identityByPhone, alreadyProcessed.

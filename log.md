@@ -2,6 +2,24 @@
 
 ## 2026-09-11
 
+- **Bitácora de WhatsApp: cada mensaje que manda el portal y si Meta lo
+  entregó** (Efraín: "¿tenemos un log de mensajes que enviamos a los
+  celulares?" — no había: solo quedaban en sync_log los envíos que tronaban, y
+  nada de si llegaban).
+  - Tabla `wa_mensaje` (`worker/wa/log.ts`): tipo (aviso/anuncio/alerta/bot),
+    teléfono, correo, texto, oportunidad, id de Meta (`wamid`) y estado.
+    `sendText`/`sendTemplate` guardan la fila en cada envío — 'enviado', o
+    'rechazado' con el error si Meta no lo aceptó — y ahora PIDEN el `WaMeta`,
+    así que un envío nuevo no puede quedar fuera.
+  - El webhook de Meta (`worker/wa/routes.ts`) ya lee `value.statuses`: la fila
+    avanza a entregado → leído (con `entregado_at`/`leido_at`) o a fallido con
+    el motivo de Meta. Los avisos en desorden no hacen retroceder el estado.
+  - Revisión de salud "whatsapp" (hallazgo `wa_fallido`, media) y sección 5 de
+    `scripts/salud.mjs` (por tipo/estado, fallidos, enviados sin confirmar
+    entrega tras 1 h); también en `GET /api/admin/salud`. Retención 90 días,
+    igual que sync_log. Migración `worker/migrations/2026-09-11-wa-mensaje.sql`
+    (ya aplicada en producción). Anclado en `worker/wa/log.test.ts`.
+
 - **Los avisos de "dueño" le llegan a quien creó la oportunidad, no a quien
   prestó el id de Monday** (Efraín: "a Rodrigo no le llegan las
   notificaciones… quiero que le llegue el aviso SOLO a Rodrigo, es su
