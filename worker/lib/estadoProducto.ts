@@ -105,7 +105,7 @@ async function recordTransition(env: Env, args: TransitionArgs): Promise<void> {
     vendedorIdsOfProyecto(env, args.proyectosBoardId, args.proyectoId),
     compradorIdsOfProyecto(env, args.proyectosBoardId, args.proyectoId),
   ]);
-  const recipients = await resolveRecipients(env, entry.selectors, { vendedorIds, compradorIds, actorEmail: args.actorEmail });
+  const recipients = await resolveRecipients(env, entry.selectors, { vendedorIds, compradorIds, actorEmail: args.actorEmail, itemId: args.proyectoId });
   for (const recipientEmail of recipients) {
     await emitNotification(env, {
       recipientEmail,

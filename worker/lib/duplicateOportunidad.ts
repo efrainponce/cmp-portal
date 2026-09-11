@@ -38,6 +38,7 @@ import { DEAL_STAGE_LABELS, DUPLICAR_ETAPAS_VALIDAS } from '../../shared/dealSta
 import { createItem, createSubitem, addFileToColumn, fetchAssetPublicUrls } from './monday';
 import { getItem, childrenOf } from './dal';
 import { upsertItem, refetchItemTree } from '../sync';
+import { registrarCreador } from './itemCreador';
 import type { RawCol } from './serialize';
 
 export class DuplicateOportunidadError extends Error {
@@ -239,6 +240,8 @@ export async function duplicateOportunidad(
   }
   await upsertItem(env, 'oportunidades', newItem);
   const newItemId = Number(newItem.id);
+  // El duplicado es de quien lo pidió (el Vendedor puede ser un id PRESTADO).
+  await registrarCreador(env, newItemId, viewer.email);
 
   // La imagen del inventario que subió el vendedor es dato de entrada de la
   // cotización, no evidencia de un paso: se re-sube al clon.

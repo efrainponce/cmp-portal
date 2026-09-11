@@ -150,6 +150,7 @@ export async function notifyItemComment(env: Env, args: CommentNotifyArgs): Prom
       vendedorIds: args.vendedorIds,
       compradorIds,
       actorEmail: args.actorEmail ?? undefined,
+      itemId: args.itemId,
     });
     for (const recipientEmail of recipients) {
       if (mentioned.has(recipientEmail) || actorEmails.has(recipientEmail)) continue;

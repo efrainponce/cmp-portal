@@ -1,5 +1,34 @@
 # Log de commits
 
+## 2026-09-11
+
+- **Los avisos de "dueño" le llegan a quien creó la oportunidad, no a quien
+  prestó el id de Monday** (Efraín: "a Rodrigo no le llegan las
+  notificaciones… quiero que le llegue el aviso SOLO a Rodrigo, es su
+  herramienta de trabajo"). Rodrigo se dio de alta con "Actuar en Monday como"
+  Efraín: comparte su `monday_user_id` (98389537) y el Vendedor de sus
+  oportunidades en Monday es Efraín. El selector 'owner' resolvía ese id a la
+  primera identidad que lo tuviera, así que TODOS sus avisos (costeo
+  confirmado, cotización lista, con WhatsApp) le llegaban a Efraín — Rodrigo
+  tenía 0 notificaciones. Caso real: OPP-1031 "PPT Marina" pasó a Costeo
+  Confirmado y a Cotización el 9-sep y los dos avisos se fueron a Efraín.
+  - Tabla `item_creador` (item → correo de quien lo creó): se llena al crear
+    (form del portal, bot de WhatsApp, item nativo) y al duplicar
+    (`worker/lib/itemCreador.ts`). Un Proyecto toma el de su Oportunidad ligada.
+  - `notify.ts` `ownerEmailByMondayUserId`: SOLO si el id del Vendedor lo
+    comparten varias identidades, el aviso va al creador (si es una de ellas).
+    Con un id de una sola persona, o sin creador registrado, sale exactamente
+    lo de antes (`ORDER BY rowid` = el `.first()` de siempre). Todo best-effort:
+    si la consulta nueva falla, se usa la regla de antes. `itemId` viaja a
+    `resolveRecipients` desde los 5 emisores con 'owner'.
+  - Migración `worker/migrations/2026-09-11-item-creador.sql` (ya aplicada en
+    producción) con el respaldo de las 3 oportunidades que Rodrigo creó antes
+    (accion_log contra el created_at de Monday): OPP-0949, OPP-0958, OPP-1031.
+  - Anclado en `worker/lib/itemCreador.test.ts`.
+  - Descartado: hacer sus oportunidades "solo portal" (Zona Efrain las esconde
+    a Compras y cmp-tallas/Eledo leen de Monday) y avisar a todos los que
+    comparten el id (Efraín: "NOO, solo a Rodrigo").
+
 ## 2026-09-10
 
 - **Telemetría para ver cuándo algo no funciona** (Efraín: "haz lo necesario

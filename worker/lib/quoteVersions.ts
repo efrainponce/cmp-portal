@@ -404,7 +404,7 @@ async function notifyNuevaVersion(
   const compradorIds = personIdsFromColumns(opp.columns, OPP_COMPRAS_COL);
   const recipients = await resolveRecipients(
     env, viewer.role === 'vendedor' ? ['comprador'] : ['owner'],
-    { vendedorIds, compradorIds, actorEmail: viewer.email },
+    { vendedorIds, compradorIds, actorEmail: viewer.email, itemId },
   );
   const actorName = viewer.nombre || viewer.email;
   for (const recipientEmail of recipients) {

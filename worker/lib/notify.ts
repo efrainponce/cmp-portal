@@ -12,6 +12,7 @@ import { logSync } from '../sync/log';
 import { notifyPortalWa } from '../wa/notify';
 import type { RawCol } from './serialize';
 import { zonaPrivadaMemberIds, isZonaPrivadaAdminPermitido } from './zonas';
+import { creadorDeItem, elegirDueno } from './itemCreador';
 
 export type Severity = 'importante' | 'actualizacion';
 
@@ -72,6 +73,20 @@ async function emailByMondayUserId(env: Env, id: number): Promise<string | null>
   return row?.email ?? null;
 }
 
+/** Dueño (selector 'owner') de un item a partir del id del Vendedor. Si ese id
+ * lo comparten varias identidades (id PRESTADO con "Actuar en Monday como"), el
+ * aviso va a quien creó el item (worker/lib/itemCreador.ts), no a quien prestó
+ * el id. ORDER BY rowid = el orden en que salía antes (sin índice en
+ * monday_user_id, el `.first()` de siempre devolvía la fila más vieja). */
+async function ownerEmailByMondayUserId(env: Env, id: number, itemId?: number): Promise<string | null> {
+  const { results } = await env.DB.prepare(
+    `SELECT email FROM identity WHERE monday_user_id = ? AND active = 1 ORDER BY rowid`,
+  ).bind(id).all<{ email: string }>();
+  const candidatos = (results ?? []).map(r => r.email);
+  if (candidatos.length <= 1 || itemId == null) return candidatos[0] ?? null;
+  return elegirDueno(candidatos, await creadorDeItem(env, itemId));
+}
+
 // Para 'role:admin' hay que respetar la zona privada 'Efrain' (worker/lib/zonas.ts,
 // Efraín 2026-08-12): si el item cambia de etapa y su vendedor es miembro de esa
 // zona, el selector 'role:admin' NO debe alcanzar a un admin fuera de su
@@ -95,6 +110,7 @@ export interface ResolveContext {
   compradorIds?: number[];     // para selector 'comprador'
   actorEmail?: string;         // para selector 'actor'; SIEMPRE se excluye del set final
   mentionedEmails?: string[];  // para selector 'mentioned'
+  itemId?: number;             // para 'owner' con id de Vendedor prestado (ownerEmailByMondayUserId)
 }
 
 /** Resuelve selectores a emails de identidades ACTIVAS, de-dup, fail-closed
@@ -108,7 +124,7 @@ export async function resolveRecipients(
     for (const sel of selectors) {
       if (sel === 'owner') {
         for (const id of ctx.vendedorIds ?? []) {
-          const email = await emailByMondayUserId(env, id);
+          const email = await ownerEmailByMondayUserId(env, id, ctx.itemId);
           if (email) set.add(email);
         }
       } else if (sel === 'comprador') {
@@ -203,7 +219,7 @@ async function maybeEmitStatusChange(env: Env, args: {
 
     const boardKey = typeof args.boardKey === 'function' ? args.boardKey(newIndex) : args.boardKey;
     const compradorIds = args.compradorColId ? personIdsFromColumns(args.newColumnsJson, args.compradorColId) : [];
-    const recipients = await resolveRecipients(env, entry.selectors, { vendedorIds: args.vendedorIds, compradorIds });
+    const recipients = await resolveRecipients(env, entry.selectors, { vendedorIds: args.vendedorIds, compradorIds, itemId: args.itemId });
     for (const recipientEmail of recipients) {
       await emitNotification(env, {
         recipientEmail,
@@ -252,7 +268,7 @@ export async function emitStageNotification(env: Env, args: {
 
     const compradorIds = personIdsFromColumns(args.columnsJson, 'multiple_person_mm03qyw9');
     const recipients = await resolveRecipients(env, entry.selectors, {
-      vendedorIds: args.vendedorIds, compradorIds, actorEmail: args.actorEmail,
+      vendedorIds: args.vendedorIds, compradorIds, actorEmail: args.actorEmail, itemId: args.itemId,
     });
     for (const recipientEmail of recipients) {
       await emitNotification(env, {

@@ -19,6 +19,7 @@ import { stampInstitucionDeContacto, OPP_CONTACTO_REL } from './nativeMirrors';
 import { dealStageValue } from '../../shared/dealStages';
 import { boardRelationValue } from './outbox';
 import { recordDirectChanges } from './activityLog';
+import { registrarCreador } from './itemCreador';
 
 export class CreateError extends Error {
   status: number;
@@ -150,6 +151,9 @@ export async function submitCreate(
   }
 
   await upsertItem(env, slug, item);
+  // El Vendedor puede ser un id PRESTADO: los avisos de dueño van por correo
+  // (worker/lib/itemCreador.ts).
+  await registrarCreador(env, Number(item.id), viewer.email);
 
   // El board Contactos tiene una automatización de Monday ("When an item is
   // created → assign creator as Vendedor", id 530044968, de 2026-02-03, pensada
@@ -303,6 +307,7 @@ export async function submitCreateNative(
       now, now, rawHash(rawColumns), JSON.stringify(rawColumns),
     )
     .run();
+  await registrarCreador(env, itemId, viewer.email);
 
   // La Institución de la Oportunidad es un ESPEJO del Contacto ligado: en un
   // item nativo nadie la calcula, y checkCosteo la exige (worker/lib/

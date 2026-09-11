@@ -25,6 +25,15 @@ CREATE TABLE IF NOT EXISTS items (
 CREATE INDEX IF NOT EXISTS idx_items_parent ON items(parent_item_id);
 CREATE INDEX IF NOT EXISTS idx_items_board  ON items(board_id);
 
+-- Quién creó cada item desde el portal, por correo (2026-09-11,
+-- worker/lib/itemCreador.ts): desempata el aviso de "dueño" cuando el id del
+-- Vendedor es PRESTADO ("Actuar en Monday como") y lo comparten varias personas.
+CREATE TABLE IF NOT EXISTS item_creador (
+  item_id    INTEGER PRIMARY KEY,
+  email      TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS identity (
   email          TEXT PRIMARY KEY,
   phone          TEXT UNIQUE,

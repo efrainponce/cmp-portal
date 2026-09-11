@@ -8,6 +8,7 @@ import { EMB_LABEL_CON, EMB_LABEL_SIN, serializeEmbellecimiento } from '../../sh
 import { createItem, createSubitem, gql } from './monday';
 import { upsertItem } from '../sync';
 import { textosDerivadosDeProducto } from './lineaAjustes';
+import { registrarCreador } from './itemCreador';
 
 export class OportunidadError extends Error {
   status: number;
@@ -98,6 +99,8 @@ export async function createOportunidad(
   }
   await upsertItem(env, 'oportunidades', item);
   const itemId = Number(item.id);
+  // El Vendedor puede ser un id PRESTADO: los avisos de dueño van por correo.
+  await registrarCreador(env, itemId, viewer.email);
 
   // Las líneas se crean en paralelo — mismas mutaciones a Monday, mucha menos
   // latencia total; el orden de lineas/warnings sigue el orden del input.
