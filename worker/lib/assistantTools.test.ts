@@ -3,7 +3,7 @@
 // ventas, costeos por validar) solo se OFRECEN y solo CORREN para la whitelist
 // por correo de Efraín (2026-09-11) — rol admin no basta.
 import { describe, it, expect } from 'vitest';
-import { toolsFor, puedeUsarTool, TOOL_ROLES, TOOLS } from './assistantTools';
+import { toolsFor, puedeUsarTool, TOOL_ROLES, TOOLS, documentosProyecto, resumenLineasProyecto } from './assistantTools';
 
 const DIRECCION = ['ranking_vendedores', 'resumen_ventas', 'oportunidades_por_validar', 'consulta_libre'];
 
@@ -40,7 +40,63 @@ describe('consultas de dirección del bot', () => {
     }
   });
 
+  it('detalle_proyecto es de vendedor/compras/admin (el scope por renglón lo pone el DAL), no de almacén', () => {
+    for (const role of ['vendedor', 'compras', 'admin'] as const) expect(nombres('x@y.com', role)).toContain('detalle_proyecto');
+    expect(nombres('x@y.com', 'almacen')).not.toContain('detalle_proyecto');
+  });
+
   it('cada herramienta declarada tiene su regla de rol (fail-closed)', () => {
     for (const t of TOOLS) expect(TOOL_ROLES[t.name], t.name).toBeDefined();
+  });
+});
+
+const col = (id: string, text: string | null, value: unknown = null) =>
+  ({ id, text, value: value === null ? null : JSON.stringify(value) });
+
+describe('detalle_proyecto — documentos', () => {
+  const proyecto = {
+    columns: JSON.stringify([
+      // OC/contrato/cotización firmada (oculto) — la ve el vendedor.
+      col('file_mm33yv4p', 'https://x/a.pdf', { files: [{ name: 'OC cliente.pdf' }] }),
+      // OC interna — solo compras/admin.
+      col('file_mm0hcrtz', 'https://x/b.pdf, https://x/c.pdf', { files: [{ name: 'OC-1.pdf' }, { name: 'OC-2.pdf' }] }),
+    ]),
+  };
+
+  it('dice qué está subido y qué falta, con los nombres y sin "(oculto)"', () => {
+    const docs = documentosProyecto(proyecto, 'admin', 'x@y.com');
+    const firmada = docs.find(d => d.documento.startsWith('OC/contrato'));
+    expect(firmada).toMatchObject({ documento: 'OC/contrato/cotización firmada', subido: true, archivos: ['OC cliente.pdf'] });
+    expect(docs.find(d => d.documento === 'OC interna')).toMatchObject({ subido: true, archivos: ['OC-1.pdf', 'OC-2.pdf'] });
+    expect(docs.find(d => d.documento === 'OC Prov. Firmada')).toMatchObject({ subido: false });
+  });
+
+  it('el vendedor no ve documentos de columnas que su rol no lee (OC interna)', () => {
+    const docs = documentosProyecto(proyecto, 'vendedor', 'x@y.com').map(d => d.documento);
+    expect(docs).toContain('OC/contrato/cotización firmada');
+    expect(docs).not.toContain('OC interna');
+  });
+});
+
+describe('detalle_proyecto — líneas resumidas por producto+color', () => {
+  const linea = (producto: string, color: string, talla: string, cantidad: number, estado?: string, guia?: string) => ({
+    name: producto,
+    columns: JSON.stringify([
+      col('text_mm0hs17x', producto), col('text_mm0h4a1c', color), col('text_mm1antcb', talla),
+      col('numeric_mm0hj2q4', String(cantidad)),
+      ...(estado ? [col('color_mm0hqf79', estado)] : []),
+      ...(guia ? [col('text_mm0mzet0', guia)] : []),
+    ]),
+  });
+
+  it('suma piezas, desglosa tallas y cuenta estados', () => {
+    const r = resumenLineasProyecto([
+      linea('Camisa', 'Negro', 'M', 10, 'Entregado', 'G1'),
+      linea('Camisa', 'negro', 'L', 5, 'En embellecimiento'),
+      linea('Pantalón', 'Azul', '32', 20, 'Entregado', 'G1'),
+    ], 'vendedor', 'x@y.com');
+    expect(r).toMatchObject({ total_lineas: 3, total_piezas: 35, lineas_por_estado: { Entregado: 2, 'En embellecimiento': 1 } });
+    expect(r.productos[0]).toMatchObject({ producto: 'Pantalón', piezas: 20, tallas: '32: 20', guias: ['G1'] });
+    expect(r.productos[1]).toMatchObject({ producto: 'Camisa', color: 'Negro', piezas: 15, tallas: 'M: 10, L: 5', estado: { Entregado: 1, 'En embellecimiento': 1 } });
   });
 });

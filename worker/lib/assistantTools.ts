@@ -14,7 +14,7 @@ import type { Env } from '../env';
 import type { Identity, MirrorItem, Role } from '../../shared/types';
 import { BOARDS } from '../../shared/boards';
 import { COLUMN_META } from '../../shared/column-meta.gen';
-import { readableCols, puedeConsultarDireccion } from '../../shared/visibility';
+import { readableCols, canRead, puedeConsultarDireccion } from '../../shared/visibility';
 import { buildAnalyticsResponse } from './analytics';
 import type { AnalyticsResponse, GrupoMetrics, FunnelStep, GroupBy } from '../../shared/analytics';
 import {
@@ -74,6 +74,17 @@ const PROYECTO = {
   vendedor: 'multiple_person_mm0hrnqq',
 };
 
+// Líneas del Proyecto (proyectos_sub): una por talla — ids de column-meta.gen.ts.
+const PROYECTO_SUB = {
+  producto: 'text_mm0hs17x',
+  color: 'text_mm0h4a1c',
+  talla: 'text_mm1antcb',
+  sku: 'text_mm0hyrfs',
+  cantidad: 'numeric_mm0hj2q4',
+  estado: 'color_mm0hqf79',          // Estado del producto (tab Ejecución)
+  guia: 'text_mm0mzet0',             // Número de Guía
+};
+
 // ── Tool registry ─────────────────────────────────────────────────────────────
 
 const ALL: Role[] = ['vendedor', 'compras', 'admin'];
@@ -96,6 +107,7 @@ export const TOOL_ROLES: Record<string, Role[]> = {
   listar_oportunidades: ALL,
   detalle_oportunidad: ALL,
   listar_proyectos: ALL,
+  detalle_proyecto: ALL,
   consultar_inventario: INVENTORY_READ,
   movimientos_inventario: INVENTORY_READ,
   listar_almacenes: INVENTORY_READ,
@@ -250,12 +262,24 @@ export const TOOLS: Anthropic.Tool[] = [
   },
   {
     name: 'listar_proyectos',
-    description: 'Lista proyectos post-venta (oportunidades ganadas en ejecución) con estado, estado de pago y fecha de entrega. Filtra por texto.',
+    description: 'Lista proyectos post-venta (oportunidades ganadas en ejecución) con estado, estado de pago y fecha de entrega. Filtra por texto. Para el detalle de UN proyecto usa detalle_proyecto.',
     input_schema: {
       type: 'object',
       properties: {
         q: { type: 'string', description: 'Texto a buscar (nombre, institución, folio)' },
         limite: { type: 'number', description: 'Máximo de filas (default 15, máx 40)' },
+      },
+    },
+  },
+  {
+    name: 'detalle_proyecto',
+    description: 'Detalle de UN proyecto post-venta: todos sus campos visibles para tu rol (estado, pagos, facturación, fechas, responsables, oportunidad de origen…), qué documentos ya están subidos y cuáles faltan (OC firmada, OC a proveedores, acta de entrega… — solo nombres, no el contenido), y sus productos resumidos por producto+color (piezas, desglose de tallas, estado de cada producto, números de guía). Úsala para "¿cómo va el proyecto X?", "¿ya subieron la OC firmada de…?", "¿qué falta entregar en…?". Identifícalo por item_id, folio (PRO-…) o texto (nombre/institución).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        item_id: { type: 'number', description: 'item_id del proyecto (de listar_proyectos)' },
+        folio: { type: 'string', description: 'Folio del proyecto, p. ej. PRO-0020' },
+        q: { type: 'string', description: 'Nombre o institución si no tienes folio; si hay varios, te regresa candidatos para preguntar cuál' },
       },
     },
   },
@@ -679,6 +703,135 @@ async function toolListarProyectos(env: Env, viewer: Identity, input: Record<str
   });
 }
 
+/** Nombres de los archivos de una columna `file` del mirror: el `value` trae
+ * `files[]` con el nombre; si no, se cuentan las URLs del `text`. Solo nombres —
+ * el bot nunca abre ni reparte el contenido. */
+function archivosDe(c: ColEntry | undefined): string[] {
+  if (!c) return [];
+  try {
+    const v = JSON.parse(c.value ?? 'null') as { files?: Array<{ name?: string }> } | null;
+    if (Array.isArray(v?.files)) return v.files.map(f => String(f.name ?? 'archivo'));
+  } catch { /* cae al texto */ }
+  const t = c.text?.trim();
+  return t ? t.split(/,\s+(?=https?:\/\/)/).map(() => 'archivo') : [];
+}
+
+/** Documentos del Proyecto: una entrada por columna `file` que el rol puede
+ * ver (shared/visibility.ts — al vendedor no le aparecen las OC internas ni a
+ * proveedores), subido o no, con los nombres. */
+export function documentosProyecto(row: Pick<MirrorItem, 'columns'>, role: Role, email?: string | null) {
+  const cols = colEntries(row.columns);
+  return readableCols('proyectos', role, email)
+    .filter(id => COLUMN_META.proyectos[id]?.type === 'file')
+    .map(id => {
+      const archivos = archivosDe(cols.get(id));
+      return {
+        documento: COLUMN_META.proyectos[id].title.replace(/\(oculto\)/i, '').replace(/\s+/g, ' ').trim(),
+        subido: archivos.length > 0,
+        ...(archivos.length ? { archivos: archivos.slice(0, 5) } : {}),
+        ...(archivos.length > 5 ? { mas: archivos.length - 5 } : {}),
+      };
+    });
+}
+
+/** Líneas del Proyecto (una por talla, hasta 150) resumidas por producto+color:
+ * piezas, desglose de tallas, estados y guías. Mandarlas crudas reventaba el
+ * mensaje de WhatsApp (cada línea trae 8 textos de embellecimiento). Cada dato
+ * se gatea por su columna — mismo criterio que readableRecord. */
+export function resumenLineasProyecto(lineas: Array<Pick<MirrorItem, 'name' | 'columns'>>, role: Role, email?: string | null) {
+  const puede = (id: string) => canRead('proyectos_sub', id, role, email);
+  const grupos = new Map<string, {
+    producto: string; sku: string | null; color: string | null; piezas: number;
+    tallas: Map<string, number>; estados: Map<string, number>; guias: Set<string>;
+  }>();
+  const estadosTotal = new Map<string, number>();
+  let piezasTotal = 0;
+  const suma = (m: Map<string, number>, k: string, n: number) => m.set(k, (m.get(k) ?? 0) + n);
+
+  for (const l of lineas) {
+    const cols = colEntries(l.columns);
+    // "nan" = celda vacía que dejó la importación de tallas desde Sheets (visto
+    // en prod: Color "nan" en placas balísticas) — se trata como vacío.
+    const t = (id: string) => {
+      const v = puede(id) ? cols.get(id)?.text?.trim() || null : null;
+      return v && v.toLowerCase() !== 'nan' ? v : null;
+    };
+    const producto = t(PROYECTO_SUB.producto) ?? l.name;
+    const color = t(PROYECTO_SUB.color);
+    const cantidad = puede(PROYECTO_SUB.cantidad) ? Number((cols.get(PROYECTO_SUB.cantidad)?.text ?? '').replace(/,/g, '')) || 0 : 0;
+    const key = `${producto.toLowerCase()}|${(color ?? '').toLowerCase()}`;
+    const g = grupos.get(key) ?? {
+      producto, sku: t(PROYECTO_SUB.sku), color, piezas: 0,
+      tallas: new Map(), estados: new Map(), guias: new Set(),
+    };
+    g.piezas += cantidad;
+    piezasTotal += cantidad;
+    const talla = t(PROYECTO_SUB.talla);
+    if (talla) suma(g.tallas, talla, cantidad);
+    const estado = t(PROYECTO_SUB.estado);
+    if (estado) { suma(g.estados, estado, 1); suma(estadosTotal, estado, 1); }
+    const guia = t(PROYECTO_SUB.guia);
+    if (guia) g.guias.add(guia);
+    grupos.set(key, g);
+  }
+
+  const lista = [...grupos.values()].sort((a, b) => b.piezas - a.piezas);
+  return {
+    total_lineas: lineas.length,
+    total_piezas: piezasTotal,
+    ...(estadosTotal.size ? { lineas_por_estado: Object.fromEntries(estadosTotal) } : {}),
+    productos: lista.slice(0, 30).map(g => ({
+      producto: g.producto,
+      ...(g.sku ? { sku: g.sku } : {}),
+      ...(g.color ? { color: g.color } : {}),
+      piezas: g.piezas,
+      ...(g.tallas.size ? { tallas: [...g.tallas].map(([k, n]) => `${k}: ${n}`).join(', ') } : {}),
+      ...(g.estados.size ? { estado: Object.fromEntries(g.estados) } : {}),
+      ...(g.guias.size ? { guias: [...g.guias].slice(0, 5) } : {}),
+    })),
+    ...(lista.length > 30 ? { nota: `Mostrando 30 de ${lista.length} productos.` } : {}),
+  };
+}
+
+async function toolDetalleProyecto(env: Env, viewer: Identity, input: Record<string, unknown>): Promise<{ content: string; isError: boolean }> {
+  let item: MirrorItem | null = null;
+  const folioDe = (r: MirrorItem) => (colEntries(r.columns).get(PROYECTO.folio)?.text ?? '').trim();
+
+  if (typeof input.item_id === 'number') {
+    item = await getItem(env, 'proyectos', input.item_id, viewer);
+  } else {
+    const q = [input.folio, input.q].find((v): v is string => typeof v === 'string' && !!v.trim())?.trim();
+    if (!q) return { content: 'Indica item_id, folio o q.', isError: true };
+    // listItems aplica el scope del viewer (vendedor = solo sus proyectos).
+    const rows = await listItems(env, 'proyectos', viewer, q);
+    item = rows.find(r => folioDe(r).toLowerCase() === q.toLowerCase()) ?? (rows.length === 1 ? rows[0] : null);
+    if (!item && rows.length > 1) {
+      return {
+        content: JSON.stringify({
+          varios: rows.length,
+          candidatos: rows.slice(0, 8).map(r => {
+            const t = (id: string) => colEntries(r.columns).get(id)?.text ?? null;
+            return { item_id: r.item_id, folio: folioDe(r) || null, nombre: r.name, institucion: t(PROYECTO.institucion) ? dedupeMirror(t(PROYECTO.institucion)!) : null };
+          }),
+          nota: 'Hay varios proyectos que coinciden: pregunta cuál y vuelve a llamar con su item_id.',
+        }),
+        isError: false,
+      };
+    }
+  }
+  if (!item) return { content: 'No encontré ese proyecto (o no está dentro de tu alcance).', isError: true };
+
+  const lineas = await childrenOf(env, 'proyectos', item.item_id, viewer);
+  return {
+    content: JSON.stringify({
+      proyecto: { item_id: item.item_id, ...readableRecord('proyectos', item, viewer.role, viewer.email) },
+      documentos: documentosProyecto(item, viewer.role, viewer.email),
+      lineas: resumenLineasProyecto(lineas, viewer.role, viewer.email),
+    }),
+    isError: false,
+  };
+}
+
 async function toolConsultarInventario(env: Env, input: Record<string, unknown>): Promise<string> {
   const producto = typeof input.producto === 'string' ? input.producto.trim() : '';
   const almacen = typeof input.almacen === 'string' ? input.almacen.trim() : '';
@@ -1050,6 +1203,8 @@ export async function runTool(
         return toolDetalleOportunidad(env, viewer, input);
       case 'listar_proyectos':
         return { content: await toolListarProyectos(env, viewer, input), isError: false };
+      case 'detalle_proyecto':
+        return toolDetalleProyecto(env, viewer, input);
       case 'consultar_inventario':
         return { content: await toolConsultarInventario(env, input), isError: false };
       case 'movimientos_inventario':

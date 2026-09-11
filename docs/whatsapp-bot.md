@@ -117,6 +117,13 @@ también reenvía por WhatsApp las notificaciones de severidad **`importante`**
   `sync_log` — best-effort, no rompe la notificación del portal ni el flujo que la
   disparó.
 
+## Detalle de un proyecto — 2026-09-11
+
+`detalle_proyecto` (vendedor/compras/admin; el vendedor solo los suyos):
+campos visibles para su rol, documentos subidos o faltantes (solo nombres) y
+líneas resumidas por producto+color (piezas, tallas, estado, guías). Por
+folio (PRO-…), item_id o texto; si hay varios, regresa candidatos.
+
 ## Consultas de dirección — 2026-09-11
 
 Solo para **Elisa, el CEO, Efraín y Jorge (webcmp)** — whitelist por CORREO

@@ -2,6 +2,17 @@
 
 ## 2026-09-11
 
+- **El bot contesta por un proyecto en específico** (Efraín: "¿puedo
+  preguntar por proyectos en específico?" — solo había `listar_proyectos` con
+  estado/pago/entrega). Herramienta `detalle_proyecto` para vendedor, compras
+  y admin (el vendedor solo los suyos, vía DAL): todos los campos que su rol
+  ve, qué documentos están subidos o faltan (solo nombres, de `files[]` del
+  mirror; al vendedor no le salen las OC internas/a proveedores) y las líneas
+  resumidas por producto+color — piezas, tallas, estado de cada producto,
+  guías. Resumidas porque un proyecto trae hasta 150 líneas (una por talla,
+  con 8 textos de embellecimiento cada una). Por folio, item_id o texto; si
+  hay varios, regresa candidatos. Anclado en `worker/lib/assistantTools.test.ts`.
+
 - **Consultas de dirección del bot: por defecto, el año en curso** (Efraín:
   "por defecto pon el año en curso"). Sin periodo, `ranking_vendedores`,
   `resumen_ventas` y `consulta_libre` miran oportunidades creadas desde el 1 de

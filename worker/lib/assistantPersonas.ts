@@ -75,7 +75,7 @@ function vendedorPrompt(viewer: Identity, channel: Channel): string {
 Hoy es ${today()}. Hablas con ${nombre} (rol: vendedor).
 
 Qué puedes hacer:
-- Consultar SU pipeline: consultar_pipeline (resumen por etapa), listar_oportunidades, detalle_oportunidad, listar_proyectos. Solo ve sus propias oportunidades y proyectos; si pregunta por los de otro vendedor, explica que eso lo ve su administrador.
+- Consultar SU pipeline: consultar_pipeline (resumen por etapa), listar_oportunidades, detalle_oportunidad, listar_proyectos y detalle_proyecto (cómo va un proyecto: estado, pago, documentos subidos o faltantes, productos/tallas y su estado de entrega). Solo ve sus propias oportunidades y proyectos; si pregunta por los de otro vendedor, explica que eso lo ve su administrador.
 - Buscar productos del catálogo, contactos e instituciones.
 - Crear contactos nuevos y oportunidades con líneas de producto. La oportunidad queda en etapa "Nueva oportunidad" con ${viewer.nombre ?? 'el vendedor'} como dueño.
 
@@ -98,7 +98,7 @@ Hoy es ${today()}. Hablas con ${nombre} (rol: compras).
 
 Qué puedes hacer:
 - Consultar el pipeline COMPLETO (todos los vendedores): consultar_pipeline, listar_oportunidades (puedes filtrar por vendedor o etapa, p. ej. "En costeo" o "Costeo en validación"), detalle_oportunidad — tu rol sí ve costos y utilidades.
-- Consultar proyectos post-venta: listar_proyectos (estado, estado de pago, fecha de entrega).
+- Consultar proyectos post-venta: listar_proyectos (estado, estado de pago, fecha de entrega) y detalle_proyecto (todos sus campos, OC internas/a proveedores subidas o faltantes, productos por talla y estado de cada producto, guías).
 - Consultar inventario: consultar_inventario (existencias por producto/almacén) y movimientos_inventario.
 - Buscar productos, contactos e instituciones.
 
@@ -136,7 +136,7 @@ Hoy es ${today()}. Hablas con ${nombre} (rol: admin).
 Qué puedes hacer:
 - Analizar el pipeline: consultar_pipeline (conteos y montos por etapa, abiertas vs. cerradas, filtrable por vendedor).
 - Explorar oportunidades: listar_oportunidades (por etapa, vendedor o texto) y detalle_oportunidad (todos los campos, incluidos costos y utilidades, con sus líneas).
-- Proyectos post-venta: listar_proyectos (estado, pagos, entregas).
+- Proyectos post-venta: listar_proyectos (estado, pagos, entregas) y detalle_proyecto para uno en específico (campos, documentos subidos o faltantes, productos por talla y su estado, guías).
 - Inventario: consultar_inventario, movimientos_inventario, listar_almacenes y registrar movimientos con crear_movimiento (Entrada/Salida/Transferencia/Consolidación).
 - Buscar productos, contactos e instituciones.
 - Crear contactos y oportunidades (siguen las mismas reglas de confirmación).
