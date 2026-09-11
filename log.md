@@ -2,6 +2,23 @@
 
 ## 2026-09-11
 
+- **El bot contesta preguntas de dirección: mejor vendedor, cuánto hemos
+  cotizado y qué oportunidades faltan de validar** (Efraín: "TODO ESO lo debe
+  poder contestar el bot de WhatsApp solo a Elisa, CEO y obvio yo y webcmp").
+  - Herramientas nuevas del agente (WhatsApp y chat del portal):
+    `ranking_vendedores`, `resumen_ventas` (embudo, conversión, tiempo de
+    costeo, datos por resolver) y `oportunidades_por_validar` ("Costeo en
+    validación": listas vs. sin Precio de Venta, días esperando). Ranking y
+    resumen usan `buildAnalyticsResponse`: los mismos números del tablero de
+    Análisis, con su scope (zona privada) y su candado de utilidades.
+  - Candado por CORREO además del rol: `puedeConsultarDireccion`
+    (`shared/visibility.ts`) = la lista de utilidades + `webcmp@` (Jorge).
+    `toolsFor`/`runTool` ahora reciben el viewer (rol Y correo). PAM (admin)
+    no las recibe; Jorge no ve utilidad. Anclado en
+    `worker/lib/assistantTools.test.ts` y `shared/visibility.test.ts`.
+  - Ojo: Elisa, el CEO y Jorge no tienen `identity.phone` — por WhatsApp no
+    les contesta hasta darles de alta el número; en el chat del portal sí.
+
 - **Bitácora de WhatsApp: cada mensaje que manda el portal y si Meta lo
   entregó** (Efraín: "¿tenemos un log de mensajes que enviamos a los
   celulares?" — no había: solo quedaban en sync_log los envíos que tronaban, y

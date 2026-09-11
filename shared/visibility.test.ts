@@ -3,7 +3,7 @@
 // readableCols(). Un cambio accidental aquí no lo atrapa el typecheck (todo son
 // strings), así que estos tests anclan las reglas que importan.
 import { describe, it, expect } from 'vitest';
-import { VISIBILITY, canRead, canReadActivity, canReadBoard, canWrite, readableCols, puedeCapturarEnValidacion, puedeVerUtilidades, puedeVerEstadoCuenta } from './visibility';
+import { VISIBILITY, canRead, canReadActivity, canReadBoard, canWrite, readableCols, puedeCapturarEnValidacion, puedeVerUtilidades, puedeVerEstadoCuenta, puedeConsultarDireccion } from './visibility';
 import { COLUMN_META } from './column-meta.gen';
 import type { BoardSlug } from './boards';
 import type { Role } from './types';
@@ -432,6 +432,17 @@ describe('utilidades: whitelist por correo', () => {
     expect(puedeVerEstadoCuenta(null)).toBe(false);
     expect(puedeVerEstadoCuenta(undefined)).toBe(false);
     expect(puedeVerEstadoCuenta('')).toBe(false);
+  });
+
+  // Consultas de dirección del bot (Efraín, 2026-09-11): las mismas personas
+  // + Jorge (webcmp). Abrirle el bot a Jorge NO le abre las utilidades.
+  it('las consultas de dirección del bot: utilidades + webcmp, y webcmp sin utilidades', () => {
+    for (const email of PERMITIDOS) expect(puedeConsultarDireccion(email), email).toBe(true);
+    expect(puedeConsultarDireccion(' WebCMP@mexicanadeproteccion.com ')).toBe(true);
+    expect(puedeVerUtilidades('webcmp@mexicanadeproteccion.com')).toBe(false);
+    for (const email of FUERA) expect(puedeConsultarDireccion(email), email).toBe(false);
+    expect(puedeConsultarDireccion(null)).toBe(false);
+    expect(puedeConsultarDireccion('')).toBe(false);
   });
 
   it('sin correo NO se ven — el default es el seguro', () => {

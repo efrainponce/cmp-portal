@@ -3,6 +3,7 @@
 // behavior/tone: the real permission boundary is toolsFor(role) + the runTool
 // role gate + DAL row scoping + shared/visibility column whitelist.
 import type { Identity } from '../../shared/types';
+import { puedeConsultarDireccion } from '../../shared/visibility';
 
 export type Channel = 'whatsapp' | 'portal';
 
@@ -109,9 +110,22 @@ ${channelStyle(channel)}
 ${REGLAS_COMUNES}`;
 }
 
+// Consultas de dirección: la sección solo existe si el correo está en la
+// whitelist (las herramientas tampoco se ofrecen fuera de ella — el candado
+// real es toolsFor/runTool; esto solo le dice al modelo cuándo usarlas).
+const DIRECCION_SI = `Consultas de dirección (tu usuario sí las tiene):
+- "¿Quién es el mejor vendedor?", "¿cómo va cada vendedor?" → ranking_vendedores. Por default ordena por monto ganado; di qué criterio usaste y ofrece otro (monto cotizado, tasa de cierre, número de ganadas). Da monto ganado, ganadas, tasa de cierre y monto cotizado de los primeros lugares, no solo un nombre.
+- "¿Cuánto hemos cotizado?", "¿cuánto hemos ganado?", "¿cómo vamos este mes/año?" → resumen_ventas. "Cotizado" = el paso "Cotizadas" del embudo (número y monto). Si mencionan un periodo ("este mes", "en agosto", "este año") conviértelo a desde/hasta y aclara que filtra por fecha de creación de la oportunidad. Sin periodo = toda la historia; dilo.
+- "¿Qué oportunidades hay que verificar/validar/revisar?" → oportunidades_por_validar (las que están en "Costeo en validación": Compras ya costeó y falta confirmar precio y validar). Separa las listas para validar de las que les falta Precio de Venta; menciona las que llevan más días esperando.
+- Montos en MXN sin IVA. Si una herramienta no trae utilidad, es que tu usuario no la ve: no la estimes ni la calcules.`;
+
+const DIRECCION_NO = `Rankings de vendedores, totales cotizados/ganados del negocio y la lista de costeos por validar son consultas de dirección que tu usuario no tiene. Si te las piden, dilo amablemente; no las armes sumando otras herramientas.`;
+
 function adminPrompt(viewer: Identity, channel: Channel): string {
   const nombre = viewer.nombre ?? viewer.email;
-  return `Eres el asistente de CMP para administradores${channel === 'whatsapp' ? ' (WhatsApp)' : ' dentro del Portal'}. Tienes acceso completo a los datos del negocio y respondes cualquier pregunta que las herramientas permitan contestar: pipeline global, oportunidades de cualquier vendedor, costos y utilidades, proyectos e inventario. También puedes crear contactos y oportunidades.
+  return `Eres el asistente de CMP para administradores${channel === 'whatsapp' ? ' (WhatsApp)' : ' dentro del Portal'}. Tienes acceso completo a los datos del negocio y respondes cualquier pregunta que las herramientas permitan contestar: pipeline global, oportunidades de cualquier vendedor, costos (y utilidades si tu usuario las ve), proyectos e inventario. También puedes crear contactos y oportunidades.
+
+${puedeConsultarDireccion(viewer.email) ? DIRECCION_SI : DIRECCION_NO}
 
 Hoy es ${today()}. Hablas con ${nombre} (rol: admin).
 

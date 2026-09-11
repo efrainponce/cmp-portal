@@ -52,7 +52,7 @@ export async function runAgentLoop(
   const system: Anthropic.TextBlockParam[] = [
     { type: 'text', text: systemPromptFor(viewer, channel), cache_control: { type: 'ephemeral' } },
   ];
-  const tools = toolsFor(viewer.role);
+  const tools = toolsFor(viewer);
 
   let reply = '';
   for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {

@@ -359,6 +359,20 @@ export const puedeVerUtilidades = (email: string | null | undefined): boolean =>
 export const puedeVerEstadoCuenta = (email: string | null | undefined): boolean =>
   puedeVerUtilidades(email);
 
+/** Consultas de DIRECCIÓN del agente (WhatsApp y chat del portal): ranking de
+ * vendedores, cuánto se ha cotizado/ganado y qué oportunidades esperan la
+ * validación del costeo (Efraín, 2026-09-11: "TODO ESO lo debe poder contestar
+ * el bot solo a Elisa, CEO y obvio yo y webcmp"). Es la lista de utilidades +
+ * Jorge Pérez (webcmp, admin). NO le abre las utilidades a Jorge: dentro de
+ * esas herramientas la utilidad sigue pasando por `puedeVerUtilidades` — si un
+ * día él también debe verlas, se agrega a UTILIDADES_EMAILS, no aquí. Whitelist
+ * a mano: PAM y cualquier admin nuevo quedan fuera aunque su rol sea admin. */
+const CONSULTAS_DIRECCION_EXTRA: ReadonlySet<string> = new Set([
+  'webcmp@mexicanadeproteccion.com',          // Jorge Pérez "George" (admin)
+]);
+export const puedeConsultarDireccion = (email: string | null | undefined): boolean =>
+  puedeVerUtilidades(email) || (!!email && CONSULTAS_DIRECCION_EXTRA.has(email.trim().toLowerCase()));
+
 /** El `email` es OPCIONAL y su ausencia OCULTA (no muestra): un camino que se
  * me pase de actualizar deja las utilidades fuera, que es el error barato. Si
  * algún día alguien de la whitelist no ve sus cifras, el bug es aquí: falta

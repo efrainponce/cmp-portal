@@ -14,7 +14,9 @@ import type { Env } from '../env';
 import type { Identity, MirrorItem, Role } from '../../shared/types';
 import { BOARDS } from '../../shared/boards';
 import { COLUMN_META } from '../../shared/column-meta.gen';
-import { readableCols } from '../../shared/visibility';
+import { readableCols, puedeConsultarDireccion } from '../../shared/visibility';
+import { buildAnalyticsResponse } from './analytics';
+import type { AnalyticsResponse, GrupoMetrics, FunnelStep, GroupBy } from '../../shared/analytics';
 import { EMBELL_TEMPLATE_KEYS } from '../../shared/embellecimiento';
 import { DEAL_STAGE_LABELS, DEAL_STAGE_ORDER, CLOSED_STAGES, stageKeyForLabel } from '../../shared/dealStages';
 import { listItems, getItem, childrenOf } from './dal';
@@ -94,7 +96,27 @@ export const TOOL_ROLES: Record<string, Role[]> = {
   movimientos_inventario: INVENTORY_READ,
   listar_almacenes: INVENTORY_READ,
   crear_movimiento: INVENTORY_WRITE,
+  ranking_vendedores: ['admin'],
+  resumen_ventas: ['admin'],
+  oportunidades_por_validar: ['admin'],
 };
+
+/** Encima del rol, estas herramientas piden el CORREO en una whitelist
+ * (shared/visibility.ts). Las de dirección (Efraín, 2026-09-11): solo Elisa,
+ * el CEO, Efraín y Jorge (webcmp) — PAM es admin y no las recibe. Por correo y
+ * no por monday_user_id, que se presta con "Actuar en Monday como". */
+const TOOL_EMAIL_GATES: Record<string, (email: string | null | undefined) => boolean> = {
+  ranking_vendedores: puedeConsultarDireccion,
+  resumen_ventas: puedeConsultarDireccion,
+  oportunidades_por_validar: puedeConsultarDireccion,
+};
+
+/** ¿Este viewer puede usar esta herramienta? Rol Y (si aplica) correo. */
+export function puedeUsarTool(name: string, viewer: Pick<Identity, 'role' | 'email'>): boolean {
+  if (!TOOL_ROLES[name]?.includes(viewer.role)) return false;
+  const gate = TOOL_EMAIL_GATES[name];
+  return gate ? gate(viewer.email) : true;
+}
 
 export const TOOLS: Anthropic.Tool[] = [
   {
@@ -278,11 +300,45 @@ export const TOOLS: Anthropic.Tool[] = [
       required: ['tipo', 'producto', 'cantidad'],
     },
   },
+  {
+    name: 'ranking_vendedores',
+    description: 'Ranking de vendedores: por cada uno, oportunidades creadas, cotizadas (número y monto), ganadas (número y monto), tasa de cierre y pipeline abierto. Úsala para "¿quién es el mejor vendedor?", "¿quién vende más?", "¿cómo va cada vendedor?". Mismos números que el tablero de Análisis del portal.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        desde: { type: 'string', description: 'YYYY-MM-DD, inclusive. Filtra por fecha de CREACIÓN de la oportunidad. Omitir = desde el inicio.' },
+        hasta: { type: 'string', description: 'YYYY-MM-DD, inclusive. Omitir = hasta hoy.' },
+        criterio: { type: 'string', enum: ['monto_ganado', 'monto_cotizado', 'tasa_cierre', 'ganadas'], description: 'Cómo ordenar (default monto_ganado).' },
+      },
+    },
+  },
+  {
+    name: 'resumen_ventas',
+    description: 'Resumen del negocio: embudo (creadas → mandadas a costeo → costeo validado → cotizadas → ganadas) con número y monto en cada paso, conversión (ganadas/perdidas/abiertas, tasa de cierre, montos ganado/perdido/abierto), tiempo de costeo y datos por resolver. Úsala para "¿cuánto hemos cotizado?", "¿cuánto hemos ganado?", "¿cómo vamos este mes?". Opcionalmente desglosa por zona o vendedor.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        desde: { type: 'string', description: 'YYYY-MM-DD, inclusive. Filtra por fecha de CREACIÓN de la oportunidad. Omitir = desde el inicio.' },
+        hasta: { type: 'string', description: 'YYYY-MM-DD, inclusive. Omitir = hasta hoy.' },
+        por: { type: 'string', enum: ['zona', 'vendedor'], description: 'Desglose opcional por zona o vendedor.' },
+      },
+    },
+  },
+  {
+    name: 'oportunidades_por_validar',
+    description: 'Oportunidades en "Costeo en validación": Compras ya las costeó y falta que dirección confirme el Precio de Venta y valide el costeo. Dice cuáles ya están listas (todas las líneas con precio) y a cuáles les falta precio, con monto y días desde que se mandaron a costeo. Úsala para "¿qué oportunidades hay que verificar/validar/revisar?".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        vendedor: { type: 'string', description: 'Filtrar por nombre del vendedor (opcional)' },
+      },
+    },
+  },
 ];
 
-/** The tool list offered to an agent of the given role. */
-export function toolsFor(role: Role): Anthropic.Tool[] {
-  return TOOLS.filter(t => TOOL_ROLES[t.name]?.includes(role));
+/** The tool list offered to this viewer's agent (rol + whitelist por correo). */
+export function toolsFor(viewer: Pick<Identity, 'role' | 'email'>): Anthropic.Tool[] {
+  return TOOLS.filter(t => puedeUsarTool(t.name, viewer));
 }
 
 // ── Column helpers over mirror rows ───────────────────────────────────────────
@@ -640,6 +696,198 @@ async function toolCrearMovimiento(env: Env, viewer: Identity, input: Record<str
   });
 }
 
+// ── Consultas de dirección (whitelist por correo) ─────────────────────────────
+// Ranking y resumen salen de buildAnalyticsResponse (worker/lib/analytics.ts):
+// los MISMOS números que el tablero de Análisis, con su scope (zona privada
+// incluida) y su candado de utilidades — el bot no recalcula nada por su lado.
+
+const redondea = (n: number) => Math.round(n * 100) / 100;
+const pct = (x: number | null) => (x === null ? null : Math.round(x * 1000) / 10);
+
+/** YYYY-MM-DD → ISO del inicio/fin del día; null si no vino; error si vino mal. */
+function fechaFiltro(raw: unknown, finDelDia: boolean): string | null {
+  if (typeof raw !== 'string' || !raw.trim()) return null;
+  const d = raw.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || Number.isNaN(Date.parse(d))) {
+    throw new ToolInputError(`Fecha inválida "${d}": usa YYYY-MM-DD.`);
+  }
+  return finDelDia ? `${d}T23:59:59.999Z` : `${d}T00:00:00.000Z`;
+}
+
+class ToolInputError extends Error {}
+
+async function analisis(env: Env, viewer: Identity, input: Record<string, unknown>, por: GroupBy): Promise<AnalyticsResponse> {
+  return buildAnalyticsResponse(env, viewer, {
+    por,
+    desde: fechaFiltro(input.desde, false),
+    hasta: fechaFiltro(input.hasta, true),
+  });
+}
+
+function paso(embudo: GrupoMetrics['embudo'], step: FunnelStep) {
+  return embudo.find(b => b.step === step) ?? { n: 0, monto: 0 };
+}
+
+function periodoTexto(r: AnalyticsResponse): string {
+  if (!r.desde && !r.hasta) return 'toda la historia';
+  return `oportunidades creadas ${r.desde ? `desde ${r.desde.slice(0, 10)}` : ''}${r.desde && r.hasta ? ' ' : ''}${r.hasta ? `hasta ${r.hasta.slice(0, 10)}` : ''}`;
+}
+
+const NOTA_MONTOS = 'Montos en MXN sin IVA = Subtotal de las líneas vigentes de cada oportunidad. El periodo filtra por fecha de CREACIÓN de la oportunidad (igual que el tablero de Análisis).';
+const NOTA_SIN_UTILIDAD = 'La utilidad no está disponible para tu usuario.';
+
+function grupoCompacto(g: GrupoMetrics) {
+  const cot = paso(g.embudo, 'cotizada');
+  return {
+    nombre: g.clave,
+    creadas: g.creadas,
+    cotizadas: cot.n,
+    monto_cotizado: redondea(cot.monto),
+    ganadas: g.conversion.ganadas,
+    monto_ganado: redondea(g.conversion.montoGanado),
+    perdidas_o_canceladas: g.conversion.perdidas + g.conversion.canceladas,
+    abiertas: g.conversion.abiertas,
+    tasa_cierre_pct: pct(g.conversion.tasaCierre),
+    pipeline_abierto: redondea(g.conversion.montoAbierto),
+    ...(g.utilidadGanada !== undefined ? { utilidad_ganada: redondea(g.utilidadGanada) } : {}),
+  };
+}
+
+async function toolRankingVendedores(env: Env, viewer: Identity, input: Record<string, unknown>): Promise<string> {
+  const r = await analisis(env, viewer, input, 'vendedor');
+  const criterio = typeof input.criterio === 'string' ? input.criterio : 'monto_ganado';
+  const filas = r.grupos.map(grupoCompacto);
+  const valor = (f: ReturnType<typeof grupoCompacto>): number => {
+    switch (criterio) {
+      case 'monto_cotizado': return f.monto_cotizado;
+      case 'tasa_cierre': return f.tasa_cierre_pct ?? -1;
+      case 'ganadas': return f.ganadas;
+      default: return f.monto_ganado;
+    }
+  };
+  filas.sort((a, b) => valor(b) - valor(a) || b.monto_ganado - a.monto_ganado);
+  return JSON.stringify({
+    periodo: periodoTexto(r),
+    ordenado_por: criterio,
+    vendedores: filas.slice(0, 25).map((f, i) => ({ lugar: i + 1, ...f })),
+    notas: [
+      NOTA_MONTOS,
+      'tasa_cierre_pct = ganadas / (ganadas + perdidas + canceladas); null = todavía no cierra ninguna.',
+      'El vendedor es el "Vendedor" de la oportunidad en Monday; "(sin asignar)" = sin vendedor.',
+      ...(r.utilidadGanada === undefined ? [NOTA_SIN_UTILIDAD] : []),
+    ],
+    datos_al: r.syncedAt,
+  });
+}
+
+async function toolResumenVentas(env: Env, viewer: Identity, input: Record<string, unknown>): Promise<string> {
+  const por: GroupBy | null = input.por === 'zona' || input.por === 'vendedor' ? input.por : null;
+  const r = await analisis(env, viewer, input, por ?? 'vendedor');
+  const c = r.conversion;
+  return JSON.stringify({
+    periodo: periodoTexto(r),
+    total_oportunidades: r.totalOportunidades,
+    embudo: r.embudo.map(b => ({ paso: b.label, oportunidades: b.n, monto: redondea(b.monto), pct_de_creadas: pct(b.pctDeCreadas) })),
+    conversion: {
+      ganadas: c.ganadas, perdidas: c.perdidas, canceladas: c.canceladas, abiertas: c.abiertas,
+      tasa_cierre_pct: pct(c.tasaCierre),
+      monto_ganado: redondea(c.montoGanado),
+      monto_perdido_o_cancelado: redondea(c.montoPerdido),
+      monto_abierto: redondea(c.montoAbierto),
+    },
+    ...(r.utilidadGanada !== undefined ? { utilidad_ganada: redondea(r.utilidadGanada) } : {}),
+    tiempo_costeo_horas: {
+      mediana: r.tiempoCosteo.medianaHoras === null ? null : Math.round(r.tiempoCosteo.medianaHoras),
+      p90: r.tiempoCosteo.p90Horas === null ? null : Math.round(r.tiempoCosteo.p90Horas),
+      medidas: r.tiempoCosteo.n,
+    },
+    ...(por ? { [`por_${por}`]: r.grupos.slice(0, 25).map(grupoCompacto) } : {}),
+    datos_por_resolver: r.huecos.map(h => ({ problema: h.label, oportunidades: h.n })),
+    notas: [
+      NOTA_MONTOS,
+      '"Cotizadas" = llegaron a cotización (tienen Fecha Cotización o su etapa ya pasó por ahí), sigan abiertas o ya cerradas.',
+      ...(r.utilidadGanada === undefined ? [NOTA_SIN_UTILIDAD] : []),
+    ],
+    datos_al: r.syncedAt,
+  });
+}
+
+const STAGE_EN_VALIDACION = '7';
+const FECHA_SOLICITUD_COSTEO = 'date_mm094kzf';   // "Fecha solicitud costeo"
+const DIA_MS = 86_400_000;
+
+async function toolOportunidadesPorValidar(env: Env, viewer: Identity, input: Record<string, unknown>): Promise<string> {
+  const vendedorFilter = typeof input.vendedor === 'string' && input.vendedor.trim() ? input.vendedor : null;
+  const rows = (await scopedOportunidades(env, viewer)).filter(row => {
+    const cols = colEntries(row.columns);
+    if (stageKeyOf(cols) !== STAGE_EN_VALIDACION) return false;
+    return !vendedorFilter || like(cols.get(OPP.vendedor)?.text, vendedorFilter);
+  });
+
+  // Líneas de esas oportunidades en una sola pasada por tandas (tope de ~100
+  // binds por consulta de D1). Los padres ya pasaron el scope del viewer.
+  const porPadre = new Map<number, { lineas: number; sinPrecio: number; monto: number }>();
+  const ids = rows.map(r => r.item_id);
+  for (let i = 0; i < ids.length; i += 90) {
+    const tanda = ids.slice(i, i + 90);
+    const res = await env.DB.prepare(
+      `SELECT parent_item_id, columns FROM items WHERE board_id = ? AND parent_item_id IN (${tanda.map(() => '?').join(',')})`,
+    ).bind(BOARDS.oportunidades_sub.id, ...tanda).all<{ parent_item_id: number; columns: string }>();
+    for (const l of res.results ?? []) {
+      const cols = colEntries(l.columns);
+      const num = (id: string) => Number((cols.get(id)?.text ?? '').replace(/,/g, '')) || 0;
+      const precio = num(SUB.precioVenta);
+      const slot = porPadre.get(l.parent_item_id) ?? { lineas: 0, sinPrecio: 0, monto: 0 };
+      slot.lineas += 1;
+      if (precio <= 0) slot.sinPrecio += 1;
+      slot.monto += precio * num(SUB.cantidad);
+      porPadre.set(l.parent_item_id, slot);
+    }
+  }
+
+  const ahora = Date.now();
+  const lista = rows.map(row => {
+    const cols = colEntries(row.columns);
+    const t = (id: string) => cols.get(id)?.text ?? null;
+    const l = porPadre.get(row.item_id) ?? { lineas: 0, sinPrecio: 0, monto: 0 };
+    // El texto de las columnas date a veces llega vacío en el mirror aunque el
+    // `value` traiga la fecha — se lee de ahí como respaldo.
+    let solicitud = t(FECHA_SOLICITUD_COSTEO) || null;
+    if (!solicitud) {
+      try {
+        const v = JSON.parse(cols.get(FECHA_SOLICITUD_COSTEO)?.value ?? 'null') as { date?: string } | null;
+        solicitud = v?.date ?? null;
+      } catch { /* sin fecha */ }
+    }
+    const ts = solicitud ? Date.parse(solicitud) : NaN;
+    return {
+      item_id: row.item_id,
+      folio: t(OPP.folio),
+      nombre: row.name,
+      vendedor: t(OPP.vendedor),
+      institucion: t(OPP.institucion) ? dedupeMirror(t(OPP.institucion)!) : null,
+      monto_venta: redondea(l.monto),
+      lineas: l.lineas,
+      estado: l.lineas === 0 ? 'sin líneas de producto'
+        : l.sinPrecio === 0 ? 'lista para validar'
+        : `falta Precio de Venta en ${l.sinPrecio} de ${l.lineas} líneas`,
+      mandada_a_costeo: solicitud,
+      dias_desde_costeo: Number.isFinite(ts) ? Math.floor((ahora - ts) / DIA_MS) : null,
+    };
+  }).sort((a, b) => (b.dias_desde_costeo ?? -1) - (a.dias_desde_costeo ?? -1));
+
+  return JSON.stringify({
+    total: lista.length,
+    listas_para_validar: lista.filter(o => o.estado === 'lista para validar').length,
+    oportunidades: lista.slice(0, 40),
+    notas: [
+      'Se validan en el portal: board Validación → abrir la oportunidad → "Validar costeo" (exige Precio de Venta en todas las líneas).',
+      'monto_venta (MXN, sin IVA) = Σ Precio de Venta C/U × Cantidad; 0 = sin precios capturados.',
+      ...(lista.length > 40 ? [`Mostrando 40 de ${lista.length}.`] : []),
+    ],
+  });
+}
+
 // ── Dispatcher ────────────────────────────────────────────────────────────────
 
 /** Execute one tool call; always returns a string for the tool_result. */
@@ -651,8 +899,8 @@ export async function runTool(
 ): Promise<{ content: string; isError: boolean }> {
   // Defense in depth: even if the model hallucinates a tool it wasn't offered,
   // the role gate here refuses to run it.
-  if (!TOOL_ROLES[name]?.includes(viewer.role)) {
-    return { content: `La herramienta "${name}" no está disponible para tu rol.`, isError: true };
+  if (!puedeUsarTool(name, viewer)) {
+    return { content: `La herramienta "${name}" no está disponible para tu usuario.`, isError: true };
   }
   try {
     switch (name) {
@@ -723,6 +971,12 @@ export async function runTool(
         return { content: await toolListarAlmacenes(env, input), isError: false };
       case 'crear_movimiento':
         return { content: await toolCrearMovimiento(env, viewer, input), isError: false };
+      case 'ranking_vendedores':
+        return { content: await toolRankingVendedores(env, viewer, input), isError: false };
+      case 'resumen_ventas':
+        return { content: await toolResumenVentas(env, viewer, input), isError: false };
+      case 'oportunidades_por_validar':
+        return { content: await toolOportunidadesPorValidar(env, viewer, input), isError: false };
       default:
         return { content: `Herramienta desconocida: ${name}`, isError: true };
     }
@@ -730,6 +984,7 @@ export async function runTool(
     if (err instanceof CreateError || err instanceof OportunidadError || err instanceof InventoryError) {
       return { content: `Error (${err.status}): ${err.message}`, isError: true };
     }
+    if (err instanceof ToolInputError) return { content: err.message, isError: true };
     const detail = err instanceof Error ? err.message : String(err);
     return { content: `Error interno: ${detail}`, isError: true };
   }

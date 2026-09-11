@@ -117,6 +117,27 @@ también reenvía por WhatsApp las notificaciones de severidad **`importante`**
   `sync_log` — best-effort, no rompe la notificación del portal ni el flujo que la
   disparó.
 
+## Consultas de dirección — 2026-09-11
+
+Solo para **Elisa, el CEO, Efraín y Jorge (webcmp)** — whitelist por CORREO
+(`puedeConsultarDireccion`, `shared/visibility.ts`), además del rol admin. PAM
+es admin y no las tiene. Aplica al bot de WhatsApp y a la burbuja del portal.
+
+- `ranking_vendedores` — "¿quién es el mejor vendedor?": por vendedor, creadas,
+  cotizadas, ganadas, tasa de cierre, pipeline abierto; ordenable.
+- `resumen_ventas` — "¿cuánto hemos cotizado/ganado?": embudo con montos,
+  conversión, tiempo de costeo, datos por resolver; desglose opcional por zona
+  o vendedor.
+- `oportunidades_por_validar` — "¿qué hay que verificar?": las que están en
+  "Costeo en validación", listas vs. sin Precio de Venta, días esperando.
+
+Ranking y resumen salen de `buildAnalyticsResponse` (mismos números que el
+tablero de Análisis, periodo por fecha de creación, montos sin IVA). La
+utilidad sigue detrás de `puedeVerUtilidades`: Jorge usa las consultas pero no
+ve utilidad. Anclado en `worker/lib/assistantTools.test.ts`.
+
+Para usarlas por WhatsApp cada persona necesita su `identity.phone` (ver abajo).
+
 ## Alta de vendedores (whitelist — decisión de Efraín)
 
 El bot solo atiende teléfonos que estén en `identity.phone` (se comparan los últimos
