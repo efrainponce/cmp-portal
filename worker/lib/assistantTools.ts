@@ -17,6 +17,8 @@ import { COLUMN_META } from '../../shared/column-meta.gen';
 import { readableCols, puedeConsultarDireccion } from '../../shared/visibility';
 import { buildAnalyticsResponse } from './analytics';
 import type { AnalyticsResponse, GrupoMetrics, FunnelStep, GroupBy } from '../../shared/analytics';
+import { CAMPOS, OPS, FNS, LIMITE_MAX, validarConsulta, ejecutarConsulta, ConsultaError, type Tabla } from '../../shared/consultaLibre';
+import { filasConsultaLibre } from './consultaLibre';
 import { EMBELL_TEMPLATE_KEYS } from '../../shared/embellecimiento';
 import { DEAL_STAGE_LABELS, DEAL_STAGE_ORDER, CLOSED_STAGES, stageKeyForLabel } from '../../shared/dealStages';
 import { listItems, getItem, childrenOf } from './dal';
@@ -99,6 +101,7 @@ export const TOOL_ROLES: Record<string, Role[]> = {
   ranking_vendedores: ['admin'],
   resumen_ventas: ['admin'],
   oportunidades_por_validar: ['admin'],
+  consulta_libre: ['admin'],
 };
 
 /** Encima del rol, estas herramientas piden el CORREO en una whitelist
@@ -109,7 +112,13 @@ const TOOL_EMAIL_GATES: Record<string, (email: string | null | undefined) => boo
   ranking_vendedores: puedeConsultarDireccion,
   resumen_ventas: puedeConsultarDireccion,
   oportunidades_por_validar: puedeConsultarDireccion,
+  consulta_libre: puedeConsultarDireccion,
 };
+
+/** "campo (tipo): descripción" por tabla, para la descripción de consulta_libre.
+ * Determinista (sale de CAMPOS), así que no rompe el prompt caching. */
+const camposDoc = (t: Tabla) =>
+  Object.entries(CAMPOS[t]).map(([k, d]) => `${k} (${d.tipo}): ${d.desc}`).join('; ');
 
 /** ¿Este viewer puede usar esta herramienta? Rol Y (si aplica) correo. */
 export function puedeUsarTool(name: string, viewer: Pick<Identity, 'role' | 'email'>): boolean {
@@ -332,6 +341,54 @@ export const TOOLS: Anthropic.Tool[] = [
       properties: {
         vendedor: { type: 'string', description: 'Filtrar por nombre del vendedor (opcional)' },
       },
+    },
+  },
+  {
+    name: 'consulta_libre',
+    description: [
+      'Consulta abierta sobre oportunidades o líneas de producto: filtra, agrupa y calcula (contar, suma, promedio, mediana, min, max, contar_distintos). Úsala para cualquier pregunta de negocio que las otras herramientas no contesten directo: "¿qué zona va mejor?", "¿qué producto se vende más?", "¿qué institución nos compra más?", "¿cómo vamos por mes?", "¿qué marca vendemos más?". Puedes llamarla varias veces (p. ej. para comparar dos periodos). NUNCA sumes ni promedies tú: pide la métrica aquí.',
+      'Ejemplos: mejor zona por ventas ganadas = {tabla:"oportunidades", filtros:[{campo:"estado",op:"=",valor:"ganada"}], agrupar_por:["zona"], metricas:[{fn:"suma",campo:"monto"}]}. Producto más vendido = {tabla:"lineas", filtros:[{campo:"estado",op:"=",valor:"ganada"}], agrupar_por:["producto"], metricas:[{fn:"suma",campo:"cantidad"},{fn:"suma",campo:"subtotal"}]}. Creadas por mes = {tabla:"oportunidades", agrupar_por:["mes_creada"], ordenar_por:"mes_creada", ascendente:true}.',
+      'Fechas YYYY-MM-DD; un filtro con "2026-08" abarca todo agosto. Texto sin importar acentos/mayúsculas. No existe fecha de ganada: los periodos son por fecha de creación (o de costeo/cotización). Montos en MXN sin IVA.',
+      `Campos de "oportunidades" (una fila por oportunidad): ${camposDoc('oportunidades')}.`,
+      `Campos de "lineas" (una fila por línea de producto, con los datos de su oportunidad): ${camposDoc('lineas')}.`,
+      'Si un campo no está disponible para tu usuario, la herramienta lo dice.',
+    ].join('\n'),
+    input_schema: {
+      type: 'object',
+      properties: {
+        tabla: { type: 'string', enum: ['oportunidades', 'lineas'] },
+        filtros: {
+          type: 'array',
+          description: 'Condiciones (todas deben cumplirse). Máx. 10.',
+          items: {
+            type: 'object',
+            properties: {
+              campo: { type: 'string' },
+              op: { type: 'string', enum: [...OPS] },
+              valor: { description: 'Texto, número, true/false, fecha YYYY-MM-DD o YYYY-MM; lista para "en"; omitir en vacio/no_vacio.' },
+            },
+            required: ['campo', 'op'],
+          },
+        },
+        agrupar_por: { type: 'array', items: { type: 'string' }, description: 'Hasta 2 campos. Omitir para totales o listado.' },
+        metricas: {
+          type: 'array',
+          description: 'Hasta 6. El resultado nombra cada una como fn_campo (p. ej. suma_monto); "contar" siempre va.',
+          items: {
+            type: 'object',
+            properties: {
+              fn: { type: 'string', enum: [...FNS] },
+              campo: { type: 'string', description: 'Requerido salvo en contar' },
+            },
+            required: ['fn'],
+          },
+        },
+        columnas: { type: 'array', items: { type: 'string' }, description: 'Solo para listado (sin agrupar ni métricas): qué campos mostrar.' },
+        ordenar_por: { type: 'string', description: 'Agrupado: nombre de la métrica (p. ej. suma_monto) o del campo agrupado. Listado: un campo. Default: la primera métrica, de mayor a menor.' },
+        ascendente: { type: 'boolean', description: 'true = de menor a mayor (default false)' },
+        limite: { type: 'number', description: `Máximo de filas/grupos (default 20, máx ${LIMITE_MAX})` },
+      },
+      required: ['tabla'],
     },
   },
 ];
@@ -888,6 +945,22 @@ async function toolOportunidadesPorValidar(env: Env, viewer: Identity, input: Re
   });
 }
 
+async function toolConsultaLibre(env: Env, viewer: Identity, input: Record<string, unknown>): Promise<string> {
+  const tabla = input.tabla === 'lineas' ? 'lineas' : 'oportunidades';
+  const { filas, disponibles } = await filasConsultaLibre(env, viewer, tabla);
+  // validarConsulta lanza ConsultaError (campo desconocido/tapado, operador o
+  // métrica inválidos) — el dispatcher se lo regresa al modelo para corregirse.
+  const consulta = validarConsulta(input, disponibles);
+  return JSON.stringify({
+    tabla,
+    ...ejecutarConsulta(filas, consulta),
+    notas: [
+      'Montos en MXN sin IVA, de las líneas vigentes (sin versiones anteriores de la cotización).',
+      ...(disponibles.has(tabla === 'lineas' ? 'utilidad_total' : 'utilidad') ? [] : ['La utilidad no está disponible para tu usuario.']),
+    ],
+  });
+}
+
 // ── Dispatcher ────────────────────────────────────────────────────────────────
 
 /** Execute one tool call; always returns a string for the tool_result. */
@@ -977,6 +1050,8 @@ export async function runTool(
         return { content: await toolResumenVentas(env, viewer, input), isError: false };
       case 'oportunidades_por_validar':
         return { content: await toolOportunidadesPorValidar(env, viewer, input), isError: false };
+      case 'consulta_libre':
+        return { content: await toolConsultaLibre(env, viewer, input), isError: false };
       default:
         return { content: `Herramienta desconocida: ${name}`, isError: true };
     }
@@ -984,7 +1059,7 @@ export async function runTool(
     if (err instanceof CreateError || err instanceof OportunidadError || err instanceof InventoryError) {
       return { content: `Error (${err.status}): ${err.message}`, isError: true };
     }
-    if (err instanceof ToolInputError) return { content: err.message, isError: true };
+    if (err instanceof ToolInputError || err instanceof ConsultaError) return { content: err.message, isError: true };
     const detail = err instanceof Error ? err.message : String(err);
     return { content: `Error interno: ${detail}`, isError: true };
   }

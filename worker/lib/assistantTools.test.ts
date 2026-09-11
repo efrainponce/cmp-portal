@@ -5,7 +5,7 @@
 import { describe, it, expect } from 'vitest';
 import { toolsFor, puedeUsarTool, TOOL_ROLES, TOOLS } from './assistantTools';
 
-const DIRECCION = ['ranking_vendedores', 'resumen_ventas', 'oportunidades_por_validar'];
+const DIRECCION = ['ranking_vendedores', 'resumen_ventas', 'oportunidades_por_validar', 'consulta_libre'];
 
 const nombres = (email: string, role: 'admin' | 'compras' | 'vendedor' | 'almacen' = 'admin') =>
   toolsFor({ email, role }).map(t => t.name);

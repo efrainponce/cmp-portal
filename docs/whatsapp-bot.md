@@ -136,7 +136,20 @@ tablero de Análisis, periodo por fecha de creación, montos sin IVA). La
 utilidad sigue detrás de `puedeVerUtilidades`: Jorge usa las consultas pero no
 ve utilidad. Anclado en `worker/lib/assistantTools.test.ts`.
 
-Para usarlas por WhatsApp cada persona necesita su `identity.phone` (ver abajo).
+- `consulta_libre` — preguntas abiertas ("¿qué zona va mejor?", "¿qué producto
+  se vende más?", "¿cómo vamos por mes?"). El modelo NO escribe SQL ni suma de
+  cabeza: arma filtros + agrupar + métricas y el worker lo ejecuta
+  (`shared/consultaLibre.ts`) sobre filas ya filtradas por permisos
+  (`worker/lib/consultaLibre.ts`). Campo desconocido o tapado = error que el
+  modelo usa para corregirse. Proveedor y Tipo de Producto NO están (sus
+  columnas no están en `VISIBILITY`; agregarlas es decisión de Efraín).
+- Regla 7 del prompt (todas las personas): pregunta ambigua → elegir el
+  criterio más razonable, decirlo, contestar y ofrecer alternativas; no
+  contestar con otra pregunta.
+
+Para usarlas por WhatsApp cada persona necesita su `identity.phone` (ver
+abajo). Dados de alta el 2026-09-11: Jorge (`webcmp@`), Elisa
+(`administracion@`) y el CEO (`efrain.ponce@`).
 
 ## Alta de vendedores (whitelist — decisión de Efraín)
 

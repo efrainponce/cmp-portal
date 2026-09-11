@@ -2,6 +2,27 @@
 
 ## 2026-09-11
 
+- **Consulta libre del bot para dirección: preguntas abiertas como "¿qué
+  zona va mejor?"** (Efraín: "preguntas ambiguas… así como lo que hago
+  contigo" → opción consulta libre + reglas de ambigüedad).
+  - Herramienta `consulta_libre` (misma whitelist `puedeConsultarDireccion`):
+    el modelo arma filtros + agrupar + métricas sobre oportunidades o líneas y
+    el worker lo calcula — nunca SQL del modelo ni sumas de cabeza. Motor puro
+    en `shared/consultaLibre.ts`; filas desde D1 en
+    `worker/lib/consultaLibre.ts` con el scope de Análisis (zona privada
+    fuera) y cada campo gateado por su columna de origen (`canRead` + correo:
+    Jorge no ve utilidad). Campo desconocido/tapado = error, no se ignora.
+  - Proveedor y Tipo de Producto quedan fuera: sus columnas no están en
+    `VISIBILITY`. "Producto" agrupa por el nombre del catálogo (si no, el
+    texto, si no el nombre sin prefijo de SKU): en prod el mismo producto salía
+    partido en dos grupos.
+  - Regla 7 en todas las personas: pregunta ambigua → elige criterio, lo dice,
+    contesta y ofrece alternativas (no contesta con otra pregunta).
+  - Verificado read-only contra D1 de prod: 894 oportunidades / 4,199 líneas,
+    0.2–1 s por consulta; mejor zona por monto ganado = Noroeste.
+  - Teléfonos de WhatsApp dados de alta (sin commit, D1): Jorge, Elisa y el
+    CEO (`efrain.ponce@`).
+
 - **El bot contesta preguntas de dirección: mejor vendedor, cuánto hemos
   cotizado y qué oportunidades faltan de validar** (Efraín: "TODO ESO lo debe
   poder contestar el bot de WhatsApp solo a Elisa, CEO y obvio yo y webcmp").
