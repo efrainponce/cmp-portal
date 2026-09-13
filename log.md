@@ -24,6 +24,12 @@
   por persona (resumen, propuesta de cierre, avisos importantes, hora, días),
   menú numerado "ajustes" y comandos "pausa" / "parar" en código, admin por
   persona en el portal.
+- **Bitácora de todo** (Efraín: "necesitamos log de todo, todo se guarda en
+  algún lado ¿verdad?"): sección 8 — hoy el bot NO guarda entrantes, tools ni
+  costo (`wa_conversations` se recorta a 24 h). Tablas nuevas `wa_entrante` y
+  `agente_evento` (WA y burbuja), `wa_resumen` con motivo aunque no se mande,
+  `wa_preferencias_log`, script `wa-bitacora.mjs` y revisión de salud. Va
+  PRIMERO en la Fase 1.
 
 ## 2026-09-11
 

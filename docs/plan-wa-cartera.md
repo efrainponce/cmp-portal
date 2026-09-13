@@ -280,12 +280,61 @@ Las notificaciones del portal (campana) NO cambian: esto solo decide qué
 llega por WhatsApp. `notifyPortalWa` consulta la preferencia 3 y `pausa_hasta`
 antes de mandar; el gate del resumen consulta 1, 2, 4 y 5.
 
+## 8. Bitácora: todo queda en algún lado (Efraín, 2026-09-12)
+
+Regla del repo: si algo pasó (o alguien lo intentó), hay una fila que lo
+cuenta, con quién, cuándo y qué respondió el sistema. Hoy el bot tiene un
+hueco: `wa_conversations` es memoria de trabajo (se recorta a 24 h / 40
+mensajes), NO bitácora; nada registra los mensajes entrantes, ni qué tool corrió
+el agente, ni cuánto costó cada llamada. `accion_log` tampoco lo cubre: es
+middleware de las mutaciones HTTP del portal y el webhook de Meta no pasa por
+ahí como acción de una persona.
+
+| Evento | Dónde queda | Estado |
+|---|---|---|
+| Cada WhatsApp que manda el portal (resumen, aviso, respuesta del bot) + entregado/leído/fallido | `wa_mensaje` | ya existe |
+| Cada mensaje ENTRANTE: wamid, teléfono, correo, tipo (texto/botón), texto, quién lo atendió (`router:cartera`, `router:seguimiento`, `agente`, `rechazado:sin_identity`), latencia, error | `wa_entrante` | **nuevo** |
+| Cada llamada al modelo y cada tool que corrió: canal (WA/portal), correo, modelo, tokens entrada/salida/cacheados, costo USD, nombre de la tool, input y resultado resumidos (200 letras), error | `agente_evento` | **nuevo** — también para la burbuja del portal, que hoy tampoco lo tiene |
+| Resumen matutino: a quién, fecha, ids en orden, wamid, o por qué NO se mandó (cartera vacía, pausado, apagado, sin teléfono) | `wa_resumen` (una fila aunque no se mande, con `motivo`) | nuevo (sección 2) |
+| Seguimiento guardado en Actualizaciones | `seguimientos` + Update en Monday + `agente_evento` | ya existe / nuevo |
+| Cierre (Cancelada/Perdida) desde el bot | `outbox` (la escritura) + `activity_log` (eco de Monday) + Update con el motivo + `agente_evento` | ya existe |
+| Confirmación pedida y qué contestó (SÍ / NO / expiró) | `wa_pendiente` (no se borra: `resuelto_at` + `respuesta`) | nuevo (sección 6) |
+| "Hoy no" / posponer | `wa_snooze` | nuevo (sección 4) |
+| Cambio de preferencias (quién, qué número, antes → después, desde el chat o desde el admin) | `wa_preferencias_log` | nuevo (sección 7) |
+| Un admin cambia preferencias de otra persona | `accion_log` (ya pasa por el middleware) + `wa_preferencias_log` | ya existe / nuevo |
+| Template rechazado por Meta, envío fallido | `wa_mensaje.error` + `sync_log` | ya existe |
+| Gate del cron: corrió, a cuántos mandó, cuánto tardó | `sync_log` (kind `wa_resumen`) | nuevo |
+
+Reglas de forma, las mismas de `accion_log`:
+
+1. Una fila por evento, **sin muestreo**: la pregunta es siempre "¿qué pasó con
+   fulano el martes?".
+2. El INSERT va en `waitUntil` y se traga errores: nunca agrega latencia ni tumba
+   la respuesta.
+3. Correo de la persona real (el teléfono se resuelve por `identity`), nunca
+   solo el `monday_user_id`, que se presta.
+4. Retención 400 días, como `accion_log`; el mensaje entrante guarda el texto
+   completo (es lo que el vendedor dijo de su cliente y es lo que se va a querer
+   leer después).
+
+Cómo se lee:
+
+- `node scripts/wa-bitacora.mjs --correo x@ --dias 7` (mismo estilo que
+  `scripts/salud.mjs`): la línea de tiempo de una persona — lo que le mandamos,
+  lo que contestó, quién lo atendió, qué tools corrieron, qué escribió a Monday
+  y cuánto costó. Contesta "no me llegó", "el bot no me hizo caso" y "cuánto
+  gastamos" sin arqueología.
+- `GET /api/admin/wa/bitacora?correo=&desde=` para lo mismo desde el portal.
+- Revisión de salud (`salud.ts`): entrante sin respuesta en 2 min, resumen que
+  tocaba y no salió, costo del día por persona arriba de un tope. Los graves le
+  llegan a Efraín como hoy.
+
 ## Fases (cada una sale sola, detrás de `WA_CARTERA=1`, apagada por default)
 
 | Fase | Qué | Esfuerzo | Se ve así |
 |---|---|---|---|
 | 0 | Dar de alta teléfonos y `wa_resumen=1` a quien va a probar (Efraín / PAM, comando de `whatsapp-bot.md`). Pedir a Meta la aprobación del template (tarda 1-2 días; se pide desde el día 1). | sin código, hoy | — |
-| 1 | `cartera.ts` + `render*` + tests, router de comandos (`comandos.ts`), tools de respuesta directa (`DIRECT_REPLY_TOOLS`), `deltaSyncIfStale` al entrar un mensaje | ~1½ días | Preguntar "¿qué priorizo hoy?" por WhatsApp o en la burbuja |
+| 1 | Bitácora primero: `wa_entrante` + `agente_evento` + `scripts/wa-bitacora.mjs` (sección 8). Luego `cartera.ts` + `render*` + tests, router de comandos (`comandos.ts`), tools de respuesta directa (`DIRECT_REPLY_TOOLS`), `deltaSyncIfStale` al entrar un mensaje | ~2 días | Preguntar "¿qué priorizo hoy?" por WhatsApp o en la burbuja |
 | 2 | `registrar_seguimiento` (por router "2: texto" y por tool) + `wa_pendiente` + resumen del día en el contexto del chat | ~½ día | "La de Celaya: llamé, piden muestra" queda en Actualizaciones de Monday |
 | 3 | Tablas `wa_resumen` y `wa_preferencias`, menú "ajustes" / "pausa" / "parar" en el router, `enviarResumenSiToca` en el cron respetando hora y días de cada quien, `sendTemplate` con quick replies, webhook acepta `button`/`interactive`, admin de preferencias | ~1½ días + espera de Meta | El mensaje de las 8:00 |
 | 4 | Botones "Cerrar esa" / "Hoy no" en código, `cerrar_oportunidad` como tool, `wa_snooze` + rotación de la candidata | ~½ día | "Cerrar esa" → confirma → Cancelada en Monday |
