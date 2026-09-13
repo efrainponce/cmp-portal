@@ -2,6 +2,21 @@
 
 ## 2026-09-12
 
+- **Confiabilidad del portal y WhatsApp** (rama `codex/portal-reliability-optimizations`):
+  suplantación y administración de identidades respetan las whitelists de
+  acceso reservado del actor autenticado; sin cambios de miembros. El router
+  devuelve al agente las confirmaciones que no le pertenecen, reutiliza una
+  lectura del pendiente y solo ejecuta el cierre si gana su actualización
+  condicional (también verifica vencimiento). El outbox devuelve el recibo de
+  su INSERT; los cierres consultan ese id y distinguen confirmado, pendiente,
+  conflicto y fallido. Los errores asíncronos de las tools quedan dentro del
+  try/catch. Sin dependencias ni migraciones nuevas.
+  - Validación local: 35 escenarios comparados, 12 pasaban antes y 35 después;
+    suite completa 809 tests / 84 archivos, typecheck y build pasan. Cuatro
+    pruebas ejecutan SQL real en SQLite, incluidos recibos distintos y
+    confirmaciones concurrentes/vencidas. Evidencia y límites en
+    `docs/portal-reliability-2026-09-12.md`. Sin cambios de datos ni deploy.
+
 - **Asistente de cartera por WhatsApp — implementado** (Efraín: "implementa
   todo por fa", con los supuestos del plan donde faltaban decisiones: cerrar
   desde el bot SÍ con confirmación, comentario sin confirmación, umbrales

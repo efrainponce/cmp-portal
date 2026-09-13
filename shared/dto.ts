@@ -113,7 +113,11 @@ export interface MeDTO {
 }
 
 export interface WriteRequest { cols: Record<string, string> }  // colId -> new raw value
-export interface WriteResponse { ok: boolean; pending: boolean; error?: string }
+export interface WriteResponse {
+  ok: boolean; pending: boolean; error?: string;
+  /** Recibo de la escritura a Monday; ausente para escrituras nativas en D1. */
+  outboxId?: number;
+}
 
 // native: "salir de Monday" (Zona Efrain), worker/routes/boards.ts.
 // `true`: nace en D1 — oportunidades, contactos e instituciones, y solo para

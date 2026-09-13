@@ -28,8 +28,8 @@ import { listStock, listMovements, listWarehouses, createMovement, InventoryErro
 import { MOVEMENT_TYPES, type MovementType } from '../../shared/inventory';
 import { submitCreate, CreateError } from './createRecord';
 import { createOportunidad, OportunidadError, type LineaInput } from './createOportunidad';
-import { renderCartera, renderDetalle, renderHistorial, type Categoria, type EventoHistorial } from './cartera';
-import { registrarSeguimiento, cerrarOportunidad, CarteraError, type Cierre } from './carteraAcciones';
+import { renderCartera, renderHistorial, type Categoria, type EventoHistorial } from './cartera';
+import { registrarSeguimiento, cerrarOportunidad, renderCierre, CarteraError, type Cierre } from './carteraAcciones';
 import { listActivity } from './activityLog';
 import { cargarVista } from '../wa/comandos';
 import { guardarLista } from '../wa/estado';
@@ -1249,7 +1249,7 @@ async function toolCerrarOportunidad(env: Env, viewer: Identity, input: Record<s
   const cierre = input.cierre === 'perdida' ? 'perdida' : input.cierre === 'cancelada' ? 'cancelada' : null;
   if (!Number.isFinite(itemId) || !cierre) return { content: 'Necesito item_id y cierre (cancelada | perdida).', isError: true };
   const r = await cerrarOportunidad(env, viewer, itemId, cierre as Cierre, typeof input.motivo === 'string' ? input.motivo : '');
-  return { content: `Listo: *${r.etiqueta}* quedó como *${r.etapa}* en Monday ✅`, isError: false };
+  return { content: renderCierre(r), isError: false };
 }
 
 export async function runTool(
@@ -1321,11 +1321,11 @@ export async function runTool(
       case 'listar_oportunidades':
         return { content: await toolListarOportunidades(env, viewer, input), isError: false };
       case 'detalle_oportunidad':
-        return toolDetalleOportunidad(env, viewer, input);
+        return await toolDetalleOportunidad(env, viewer, input);
       case 'listar_proyectos':
         return { content: await toolListarProyectos(env, viewer, input), isError: false };
       case 'detalle_proyecto':
-        return toolDetalleProyecto(env, viewer, input);
+        return await toolDetalleProyecto(env, viewer, input);
       case 'consultar_inventario':
         return { content: await toolConsultarInventario(env, input), isError: false };
       case 'movimientos_inventario':
@@ -1345,11 +1345,11 @@ export async function runTool(
       case 'mi_cartera':
         return { content: await toolMiCartera(env, viewer, input), isError: false };
       case 'historial_oportunidad':
-        return toolHistorialOportunidad(env, viewer, input);
+        return await toolHistorialOportunidad(env, viewer, input);
       case 'registrar_seguimiento':
-        return toolRegistrarSeguimiento(env, viewer, input);
+        return await toolRegistrarSeguimiento(env, viewer, input);
       case 'cerrar_oportunidad':
-        return toolCerrarOportunidad(env, viewer, input);
+        return await toolCerrarOportunidad(env, viewer, input);
       default:
         return { content: `Herramienta desconocida: ${name}`, isError: true };
     }

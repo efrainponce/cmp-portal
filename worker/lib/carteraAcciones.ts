@@ -79,7 +79,20 @@ function folioDe(columnsJson: string): string | null {
   }
 }
 
-export interface CierreResult { etapa: string; folio: string | null; nombre: string; etiqueta: string }
+export interface CierreResult {
+  etapa: string; folio: string | null; nombre: string; etiqueta: string;
+  estado: 'confirmed' | 'pending' | 'conflict' | 'failed';
+  destino: 'Monday' | 'portal';
+}
+
+/** Ambos canales describen el resultado real, no solo la aceptación local. */
+export function renderCierre(r: CierreResult): string {
+  const item = `*${r.etiqueta}*`;
+  if (r.estado === 'confirmed') return `Listo: ${item} quedó como *${r.etapa}* en ${r.destino === 'portal' ? 'el portal' : 'Monday'} ✅`;
+  if (r.estado === 'conflict') return `Monday devolvió un valor distinto al cierre solicitado para ${item}. Revisa la oportunidad en el portal antes de intentar de nuevo.`;
+  if (r.estado === 'failed') return `No se pudo confirmar el cierre de ${item} en Monday. Revisa el error de sincronización en el portal.`;
+  return `Registré la solicitud para mover ${item} a *${r.etapa}*. Sigue pendiente de confirmación en Monday; no hace falta enviarla otra vez.`;
+}
 
 export async function cerrarOportunidad(env: Env, viewer: Identity, itemId: number, cierre: Cierre, motivo: string): Promise<CierreResult> {
   const item = await getItem(env, 'oportunidades', itemId, viewer, 'own');
@@ -89,17 +102,32 @@ export async function cerrarOportunidad(env: Env, viewer: Identity, itemId: numb
   if (actual === ETAPAS_CIERRE[cierre]) throw new CarteraError(409, `Esa oportunidad ya está ${DEAL_STAGE_LABELS[actual]}.`);
   const etapa = DEAL_STAGE_LABELS[ETAPAS_CIERRE[cierre]];
   const ctx = ctxLocal();
+  let write: Awaited<ReturnType<typeof submitWrite>>;
   try {
-    await submitWrite(env, ctx, 'oportunidades', itemId, { deal_stage: etapa }, viewer);
+    write = await submitWrite(env, ctx, 'oportunidades', itemId, { deal_stage: etapa }, viewer);
   } catch (err) {
     if (err instanceof OutboxError) throw new CarteraError(err.status, err.message);
     throw err;
   }
   await ctx.done();
+  let estado: CierreResult['estado'] = write.pending ? 'pending' : 'confirmed';
+  if (write.pending && write.outboxId != null) {
+    // El espejo es optimista; ni leer su etapa ni esperar flushOutbox prueba
+    // que Monday aceptó ESTA escritura. Consultar el recibo exacto sí.
+    try {
+      const row = await env.DB.prepare('SELECT status FROM outbox WHERE id = ?').bind(write.outboxId).first<{ status: string }>();
+      if (row?.status === 'confirmed' || row?.status === 'conflict' || row?.status === 'failed') estado = row.status;
+    } catch { /* aceptada localmente, pero aún no podemos confirmar su estado */ }
+  }
   const nota = motivo.trim() ? `: ${motivo.trim()}` : '';
-  try {
-    await postUpdate(env, BOARDS.oportunidades.id, itemId, `${nombreDe(viewer)} la marcó como ${etapa} desde WhatsApp${nota}`, [], { email: viewer.email, nombre: viewer.nombre });
-  } catch { /* la etapa ya cambió; el Update es el rastro secundario (queda en outbox/activity_log) */ }
+  if (estado === 'confirmed' || nota) {
+    try {
+      // Conserva el motivo, incluso cuando solo se pudo registrar la intención.
+      // Nunca deja una nota afirmando que se cerró si Monday no lo confirmó.
+      const accion = estado === 'confirmed' ? `la marcó como ${etapa}` : `solicitó el cambio a ${etapa} (sin confirmar en Monday)`;
+      await postUpdate(env, BOARDS.oportunidades.id, itemId, `${nombreDe(viewer)} ${accion} desde WhatsApp${nota}`, [], { email: viewer.email, nombre: viewer.nombre });
+    } catch { /* la escritura confirmada queda en outbox/activity_log */ }
+  }
   const folio = folioDe(item.columns);
-  return { etapa, folio, nombre: item.name, etiqueta: etiquetaDe(folio, item.name) };
+  return { etapa, folio, nombre: item.name, etiqueta: etiquetaDe(folio, item.name), estado, destino: write.pending ? 'Monday' : 'portal' };
 }

@@ -24,6 +24,7 @@ import { lineaDeTiempo, costoPorPersona } from '../wa/bitacora';
 import { enviarResumenAhora, carteraActiva } from '../wa/resumen';
 import { totalesDeLinea } from '../lib/lineaTotales';
 import { backfillOcLedger } from '../lib/ocLedger';
+import { puedeAdministrarIdentidad } from '../lib/identityAccess';
 
 /** Columna de OCs del Proyecto (file_mm0hj9pn) — la misma que llena
  * worker/lib/oc.ts; es de donde el backfill reconstruye los folios viejos. */
@@ -114,6 +115,7 @@ export function adminRoutes(app: Hono<{ Bindings: Env }>) {
     const email = body.email?.trim() ?? '';
     const nombre = body.nombre?.trim() ?? '';
     if (!/^\S+@\S+\.\S+$/.test(email)) return c.json({ error: 'correo inválido' }, 400);
+    if (!puedeAdministrarIdentidad(c.get('email'), email)) return c.json({ error: 'No puedes administrar esa cuenta con acceso reservado.' }, 403);
     if (!nombre) return c.json({ error: 'nombre is required' }, 400);
     const validRoles = ['vendedor', 'compras', 'admin', 'almacen'];
     const role = body.role ?? 'vendedor';
@@ -148,6 +150,7 @@ export function adminRoutes(app: Hono<{ Bindings: Env }>) {
     if (c.get('viewer').role !== 'admin') return c.json({ error: 'forbidden' }, 403);
     const email = decodeURIComponent(c.req.param('email'));
     if (!email.trim()) return c.json({ error: 'email is required' }, 400);
+    if (!puedeAdministrarIdentidad(c.get('email'), email)) return c.json({ error: 'No puedes administrar esa cuenta con acceso reservado.' }, 403);
     const body = await c.req.json<Partial<IdentityDTO>>();
     const existing = await getIdentityByEmail(c.env, email);
 

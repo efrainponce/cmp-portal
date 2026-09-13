@@ -271,6 +271,13 @@ node scripts/wa-mock-anthropic.mjs   # y en .dev.vars: ANTHROPIC_BASE_URL=http:/
 
 ## Pendientes / límites conocidos
 
+- **Confiabilidad (2026-09-12):** el router deja pasar SÍ/OK/NO al agente si
+  no tiene un cierre propio pendiente; lee ese estado una sola vez y exige
+  ganar la actualización condicional de la confirmación antes de ejecutar.
+  El cierre consulta su `outboxId` exacto: ambos canales distinguen
+  confirmado/pendiente/conflicto/fallido y un cierre nativo dice "en el portal".
+  Evidencia y límites en `docs/portal-reliability-2026-09-12.md`.
+
 - La conversación no tiene lock: dos mensajes simultáneos del mismo vendedor pueden
   pisarse el historial (gana el último). Aceptable para el volumen esperado.
 - Solo mensajes de texto; audio/imagenes responden "solo texto por ahora".

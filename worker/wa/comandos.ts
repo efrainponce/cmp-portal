@@ -20,9 +20,9 @@ import type { Identity } from '../../shared/types';
 import {
   vistaCartera, renderCartera, renderDetalle, UMBRALES, etiqueta, type VistaCartera, type OportunidadCartera, type Categoria,
 } from '../lib/cartera';
-import { registrarSeguimiento, cerrarOportunidad, CarteraError, type Cierre } from '../lib/carteraAcciones';
+import { registrarSeguimiento, cerrarOportunidad, renderCierre, CarteraError, type Cierre } from '../lib/carteraAcciones';
 import {
-  pendienteActivo, crearPendiente, resolverPendiente, posponer, pospuestas, guardarLista, listaVigente, propuestasRecientes, resumenDelDia, localCdmx, ultimoCierre,
+  pendienteActivo, crearPendiente, resolverPendiente, posponer, pospuestas, guardarLista, listaVigente, propuestasRecientes, resumenDelDia, localCdmx, ultimoCierre, type Pendiente,
 } from './estado';
 import { parseComandoPref, aplicarComandoPref } from './preferencias';
 
@@ -140,8 +140,7 @@ export interface Atendido { respuesta: string; atendidoPor: string }
 
 /** Un pendiente de menú/hora convierte "3" en opción de preferencias y no en
  * item de la lista: se resuelve primero. */
-async function atenderPreferencias(env: Env, viewer: Identity, texto: string): Promise<Atendido | null> {
-  const pend = await pendienteActivo(env, viewer.email);
+async function atenderPreferencias(env: Env, viewer: Identity, texto: string, pend: Pendiente | null): Promise<Atendido | null> {
   const cmd = parseComandoPref(texto, { menuAbierto: pend?.tipo === 'menu', esperandoHora: pend?.tipo === 'hora' });
   if (!cmd) return null;
   if (pend && (pend.tipo === 'menu' || pend.tipo === 'hora')) await resolverPendiente(env, pend.id, 'si');
@@ -163,7 +162,10 @@ async function pedirConfirmacionCierre(env: Env, viewer: Identity, o: Oportunida
 export async function atenderComando(
   env: Env, viewer: Identity, texto: string, opts: { payload?: string | null } = {},
 ): Promise<Atendido | null> {
-  const pref = await atenderPreferencias(env, viewer, texto);
+  // Un solo snapshot por mensaje para preferencias y confirmación: evita
+  // releer el mismo pendiente y decidir con dos estados distintos.
+  const pend = await pendienteActivo(env, viewer.email);
+  const pref = await atenderPreferencias(env, viewer, texto, pend);
   if (pref) return pref;
 
   const cmd = parseComando(texto, opts.payload);
@@ -223,20 +225,21 @@ export async function atenderComando(
       }
 
       case 'confirmar': {
-        const pend = await pendienteActivo(env, email);
         if (!pend || pend.tipo !== 'cerrar' || !pend.itemId) {
-          if (cmd.respuesta === 'no') return null; // un "no" suelto es conversación: que lo vea el agente
-          return { respuesta: 'No tengo nada pendiente de confirmar. Escribe *cartera* para ver tus oportunidades o *ayuda* para ver qué puedo hacer.', atendidoPor: 'router:confirmar_sin_pendiente' };
+          // El agente también pide confirmar altas. Sin un pendiente propio,
+          // "sí"/"ok"/"no" le pertenecen a esa conversación.
+          return null;
+        }
+        if (!(await resolverPendiente(env, pend.id, cmd.respuesta === 'no' ? 'no' : 'si'))) {
+          return { respuesta: 'Esa confirmación ya fue atendida. Revisa el estado de la oportunidad en el portal.', atendidoPor: 'router:confirmar_ya_atendida' };
         }
         if (cmd.respuesta === 'no') {
-          await resolverPendiente(env, pend.id, 'no');
           return { respuesta: 'Ok, la dejo como está. Si quieres, escribe "N: tu nota" para registrar qué pasó.', atendidoPor: 'router:cerrar_no' };
         }
         const cierre: Cierre = cmd.respuesta === 'perdida' ? 'perdida' : (pend.datos.cierre as Cierre) ?? 'cancelada';
-        await resolverPendiente(env, pend.id, 'si');
         const r = await cerrarOportunidad(env, viewer, pend.itemId, cierre, '');
         return {
-          respuesta: `Listo: *${r.etiqueta}* quedó como *${r.etapa}* en Monday ✅\nSi quieres dejar el motivo, escribe "motivo: …" y lo agrego a la oportunidad.`,
+          respuesta: renderCierre(r) + (r.estado === 'confirmed' ? '\nSi quieres dejar el motivo, escribe "motivo: …" y lo agrego a la oportunidad.' : ''),
           atendidoPor: `router:cerrar_${cierre}`,
         };
       }

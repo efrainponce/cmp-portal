@@ -323,7 +323,7 @@ export async function submitWrite(
     return { ok: true, pending: false };
   }
 
-  await env.DB
+  const queued = await env.DB
     .prepare(
       `INSERT INTO outbox (board_id, item_id, cols, content_hash, author_email, status, attempts, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, 'pending', 0, ?, ?)`,
@@ -340,7 +340,7 @@ export async function submitWrite(
   }
 
   if (!opts.skipFlush) ctx.waitUntil(flushOutbox(env));
-  return { ok: true, pending: true };
+  return { ok: true, pending: true, outboxId: queued.meta.last_row_id };
 }
 
 interface OutboxRow {

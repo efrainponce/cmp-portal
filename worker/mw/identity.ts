@@ -7,6 +7,7 @@ import type { MiddlewareHandler } from 'hono';
 import type { Env } from '../env';
 import type { Identity } from '../../shared/types';
 import { readableUserIds, hiddenOwnerIdsFor } from '../lib/zonas';
+import { puedeAdministrarIdentidad } from '../lib/identityAccess';
 
 declare module 'hono' {
   interface ContextVariableMap {
@@ -35,6 +36,9 @@ export const identity: MiddlewareHandler<{ Bindings: Env }> = async (c, next) =>
   if (impersonateEmail && row.role === 'admin' && impersonateEmail !== email) {
     const target = await fetchIdentity(impersonateEmail);
     if (!target) return c.json({ error: 'usuario a impersonar no encontrado o inactivo' }, 400);
+    if (!puedeAdministrarIdentidad(row.email, target.email)) {
+      return c.json({ error: 'No puedes actuar como una cuenta con acceso reservado que tu cuenta no tiene.' }, 403);
+    }
     console.log(`[impersonate] ${row.email} -> ${target.email} ${c.req.method} ${c.req.path}`);
     // El scope se calcula sobre el SUPLANTADO: "ver como" debe mostrar la zona que
     // ese usuario ve, no la del admin.

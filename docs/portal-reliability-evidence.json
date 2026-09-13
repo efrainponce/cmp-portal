@@ -1,0 +1,225 @@
+{
+  "baseline_commit": "2b2778c",
+  "branch": "codex/portal-reliability-optimizations",
+  "measurement": "Same 35 targeted local regression scenarios; external services mocked. Not a production success-rate estimate.",
+  "before": {
+    "passed": 12,
+    "failed": 23
+  },
+  "after": {
+    "passed": 35,
+    "failed": 0
+  },
+  "scenarios": [
+    {
+      "file": "carteraAcciones.test.ts",
+      "scenario": "el cierre reporta el resultado de SU escritura consulta el id exacto aceptado por el outbox",
+      "before": "failed",
+      "after": "passed"
+    },
+    {
+      "file": "carteraAcciones.test.ts",
+      "scenario": "el cierre reporta el resultado de SU escritura pending nunca responde que ya quedó en Monday",
+      "before": "failed",
+      "after": "passed"
+    },
+    {
+      "file": "carteraAcciones.test.ts",
+      "scenario": "el cierre reporta el resultado de SU escritura sent nunca responde que ya quedó en Monday",
+      "before": "failed",
+      "after": "passed"
+    },
+    {
+      "file": "carteraAcciones.test.ts",
+      "scenario": "el cierre reporta el resultado de SU escritura conflict nunca responde que ya quedó en Monday",
+      "before": "failed",
+      "after": "passed"
+    },
+    {
+      "file": "carteraAcciones.test.ts",
+      "scenario": "el cierre reporta el resultado de SU escritura failed nunca responde que ya quedó en Monday",
+      "before": "failed",
+      "after": "passed"
+    },
+    {
+      "file": "carteraAcciones.test.ts",
+      "scenario": "el cierre reporta el resultado de SU escritura confirmed anuncia éxito y conserva el motivo en Monday",
+      "before": "passed",
+      "after": "passed"
+    },
+    {
+      "file": "carteraAcciones.test.ts",
+      "scenario": "el cierre reporta el resultado de SU escritura una escritura nativa confirma el portal sin consultar Monday/outbox",
+      "before": "failed",
+      "after": "passed"
+    },
+    {
+      "file": "carteraAcciones.test.ts",
+      "scenario": "el cierre reporta el resultado de SU escritura si el estado ya no está disponible tampoco inventa confirmación",
+      "before": "failed",
+      "after": "passed"
+    },
+    {
+      "file": "carteraAcciones.test.ts",
+      "scenario": "el cierre reporta el resultado de SU escritura un rechazo inicial de permisos nunca consulta ni anuncia éxito",
+      "before": "failed",
+      "after": "passed"
+    },
+    {
+      "file": "identity.test.ts",
+      "scenario": "identidad autenticada limita la suplantación compras@mexicanadeproteccion.com no adquiere permisos de efrain.ponce@mexicanadeproteccion.com",
+      "before": "failed",
+      "after": "passed"
+    },
+    {
+      "file": "identity.test.ts",
+      "scenario": "identidad autenticada limita la suplantación webcmp@mexicanadeproteccion.com no adquiere permisos de efrain.ponce@mexicanadeproteccion.com",
+      "before": "failed",
+      "after": "passed"
+    },
+    {
+      "file": "identity.test.ts",
+      "scenario": "identidad autenticada limita la suplantación admin@example.test no adquiere permisos de efrain.ponce@mexicanadeproteccion.com",
+      "before": "failed",
+      "after": "passed"
+    },
+    {
+      "file": "identity.test.ts",
+      "scenario": "identidad autenticada limita la suplantación compras@mexicanadeproteccion.com no adquiere permisos de webcmp@mexicanadeproteccion.com",
+      "before": "failed",
+      "after": "passed"
+    },
+    {
+      "file": "identity.test.ts",
+      "scenario": "identidad autenticada limita la suplantación admin@example.test no adquiere permisos de compras@mexicanadeproteccion.com",
+      "before": "failed",
+      "after": "passed"
+    },
+    {
+      "file": "identity.test.ts",
+      "scenario": "identidad autenticada limita la suplantación efrain.ponce@mexicanadeproteccion.com conserva ver-como permitido para compras@mexicanadeproteccion.com",
+      "before": "passed",
+      "after": "passed"
+    },
+    {
+      "file": "identity.test.ts",
+      "scenario": "identidad autenticada limita la suplantación efrain.ponce@mexicanadeproteccion.com conserva ver-como permitido para webcmp@mexicanadeproteccion.com",
+      "before": "passed",
+      "after": "passed"
+    },
+    {
+      "file": "identity.test.ts",
+      "scenario": "identidad autenticada limita la suplantación compras@mexicanadeproteccion.com conserva ver-como permitido para seller@example.test",
+      "before": "passed",
+      "after": "passed"
+    },
+    {
+      "file": "identity.test.ts",
+      "scenario": "identidad autenticada limita la suplantación admin@example.test conserva ver-como permitido para seller@example.test",
+      "before": "passed",
+      "after": "passed"
+    },
+    {
+      "file": "identity.test.ts",
+      "scenario": "identidad autenticada limita la suplantación un vendedor no puede suplantar a dirección",
+      "before": "passed",
+      "after": "passed"
+    },
+    {
+      "file": "identity.test.ts",
+      "scenario": "identidad autenticada limita la suplantación dirección conserva su acceso normal",
+      "before": "passed",
+      "after": "passed"
+    },
+    {
+      "file": "identity.test.ts",
+      "scenario": "administración de identidades no permite tomar una cuenta privilegiada POST bloquea cambiar/registrar el teléfono de dirección",
+      "before": "failed",
+      "after": "passed"
+    },
+    {
+      "file": "identity.test.ts",
+      "scenario": "administración de identidades no permite tomar una cuenta privilegiada PUT bloquea cambiar/registrar el teléfono de dirección",
+      "before": "failed",
+      "after": "passed"
+    },
+    {
+      "file": "identity.test.ts",
+      "scenario": "administración de identidades no permite tomar una cuenta privilegiada usa el actor real al administrar, incluso al suplantar otro admin",
+      "before": "failed",
+      "after": "passed"
+    },
+    {
+      "file": "identity.test.ts",
+      "scenario": "administración de identidades no permite tomar una cuenta privilegiada dirección conserva la edición de su teléfono",
+      "before": "passed",
+      "after": "passed"
+    },
+    {
+      "file": "comandos.integration.test.ts",
+      "scenario": "router y conversación del agente sí llega al agente si el router no tiene confirmación",
+      "before": "failed",
+      "after": "passed"
+    },
+    {
+      "file": "comandos.integration.test.ts",
+      "scenario": "router y conversación del agente ok llega al agente si el router no tiene confirmación",
+      "before": "failed",
+      "after": "passed"
+    },
+    {
+      "file": "comandos.integration.test.ts",
+      "scenario": "router y conversación del agente dale llega al agente si el router no tiene confirmación",
+      "before": "failed",
+      "after": "passed"
+    },
+    {
+      "file": "comandos.integration.test.ts",
+      "scenario": "router y conversación del agente confirmo llega al agente si el router no tiene confirmación",
+      "before": "failed",
+      "after": "passed"
+    },
+    {
+      "file": "comandos.integration.test.ts",
+      "scenario": "router y conversación del agente no llega al agente si el router no tiene confirmación",
+      "before": "passed",
+      "after": "passed"
+    },
+    {
+      "file": "comandos.integration.test.ts",
+      "scenario": "router y conversación del agente perdida llega al agente si el router no tiene confirmación",
+      "before": "failed",
+      "after": "passed"
+    },
+    {
+      "file": "comandos.integration.test.ts",
+      "scenario": "router y conversación del agente una confirmación propia lee el pendiente una sola vez",
+      "before": "failed",
+      "after": "passed"
+    },
+    {
+      "file": "comandos.integration.test.ts",
+      "scenario": "router y conversación del agente NO deja la oportunidad intacta",
+      "before": "passed",
+      "after": "passed"
+    },
+    {
+      "file": "comandos.integration.test.ts",
+      "scenario": "router y conversación del agente el menú conserva prioridad sobre el número de una oportunidad",
+      "before": "passed",
+      "after": "passed"
+    },
+    {
+      "file": "comandos.integration.test.ts",
+      "scenario": "router y conversación del agente una confirmación ya consumida no vuelve a escribir",
+      "before": "failed",
+      "after": "passed"
+    },
+    {
+      "file": "comandos.integration.test.ts",
+      "scenario": "router y conversación del agente un rechazo de permisos no anuncia cierre exitoso",
+      "before": "passed",
+      "after": "passed"
+    }
+  ]
+}

@@ -111,9 +111,11 @@ export async function pendienteActivo(env: Env, email: string, ahora = new Date(
   return { id: row.id, email: row.email, tipo: row.tipo, itemId: row.item_id, datos, createdAt: row.created_at, expiraAt: row.expira_at };
 }
 
-export async function resolverPendiente(env: Env, id: number, respuesta: 'si' | 'no' | 'reemplazado'): Promise<void> {
-  await env.DB.prepare(`UPDATE wa_pendiente SET resuelto_at = ?, respuesta = ? WHERE id = ? AND resuelto_at IS NULL`)
-    .bind(new Date().toISOString(), respuesta, id).run();
+export async function resolverPendiente(env: Env, id: number, respuesta: 'si' | 'no' | 'reemplazado'): Promise<boolean> {
+  const ahora = new Date().toISOString();
+  const result = await env.DB.prepare(`UPDATE wa_pendiente SET resuelto_at = ?, respuesta = ? WHERE id = ? AND resuelto_at IS NULL AND expira_at > ?`)
+    .bind(ahora, respuesta, id, ahora).run();
+  return (result.meta?.changes ?? 0) === 1;
 }
 
 /** El último cierre confirmado hace menos de `minutos` — para "motivo: …". */
