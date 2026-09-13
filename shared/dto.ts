@@ -511,6 +511,21 @@ export interface IdentityDTO {
   role: Role;
   active: boolean;
 }
+/** Qué recibe cada número por WhatsApp (worker/wa/preferencias.ts), vista
+ * del admin en Ajustes → Usuarios. */
+export interface WaPreferenciasDTO {
+  email: string;
+  nombre: string | null;
+  phone: string | null;
+  role: Role;
+  resumen: boolean;
+  cierre: boolean;
+  avisos: boolean;
+  hora: number;
+  sabado: boolean;
+  pausaHasta: string | null;
+  todoApagado: boolean;
+}
 // Monday directory entry offered for import in Settings.
 export interface MondayUserDTO { id: number; nombre: string; email: string; phone: string | null; teams: string[] }
 

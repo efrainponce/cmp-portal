@@ -19,6 +19,7 @@ import { textIncludes } from '../lib/textMatch';
 import { startImpersonation } from '../lib/impersonation';
 import { useMe, refreshMe } from '../lib/useMe';
 import { BOARD_LABELS } from './Sidebar';
+import { WaPreferenciasCard } from './WaPreferenciasCard';
 import { BOARD_KEYS, TEAM_ROLES } from '../../shared/boardAccess';
 
 type Role = IdentityDTO['role'];
@@ -126,6 +127,10 @@ export function SettingsPage() {
           onLinked={(next) => { upsertIdentity(next); showToast('success', `${next.email} ahora actúa en Monday.`); }}
           onToast={showToast}
         />
+
+        <div style={{ height: 24 }} />
+
+        <WaPreferenciasCard onToast={showToast} />
 
         <div style={{ height: 24 }} />
 

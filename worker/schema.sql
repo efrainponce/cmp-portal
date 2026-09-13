@@ -839,3 +839,69 @@ CREATE TABLE IF NOT EXISTS estado_cuenta_borrado (
   borrado_por TEXT NOT NULL,
   borrado_en  TEXT NOT NULL
 );
+
+-- ── Asistente de cartera por WhatsApp (2026-09-12, docs/plan-wa-cartera.md) ──
+-- Todas lazy (CREATE TABLE IF NOT EXISTS en runtime); aquí solo documentación.
+-- Bitácora (worker/wa/bitacora.ts): cada mensaje ENTRANTE y quién lo atendió,
+-- y cada llamada al modelo / tool con tokens y costo (WhatsApp y burbuja).
+CREATE TABLE IF NOT EXISTS wa_entrante (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  wamid        TEXT,
+  telefono     TEXT NOT NULL,
+  email        TEXT,
+  tipo         TEXT NOT NULL,      -- text | button | interactive | dev | otro
+  texto        TEXT NOT NULL,
+  atendido_por TEXT NOT NULL,      -- router:<comando> | agente | rechazado:<motivo>
+  respuesta    TEXT,
+  latencia_ms  INTEGER,
+  error        TEXT,
+  created_at   TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS agente_evento (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  canal         TEXT NOT NULL,     -- whatsapp | portal
+  email         TEXT NOT NULL,
+  tipo          TEXT NOT NULL,     -- llamada | tool
+  modelo        TEXT,
+  tokens_in     INTEGER,
+  tokens_out    INTEGER,
+  tokens_cache  INTEGER,
+  costo_usd     REAL,
+  tool          TEXT,
+  input         TEXT,
+  resultado     TEXT,
+  is_error      INTEGER NOT NULL DEFAULT 0,
+  ms            INTEGER,
+  created_at    TEXT NOT NULL
+);
+-- Qué recibe cada número (worker/wa/preferencias.ts) + log de cambios.
+CREATE TABLE IF NOT EXISTS wa_preferencias (
+  email        TEXT PRIMARY KEY,
+  resumen      INTEGER NOT NULL DEFAULT 0,   -- opt-in
+  cierre       INTEGER NOT NULL DEFAULT 0,
+  avisos       INTEGER NOT NULL DEFAULT 1,
+  hora         INTEGER NOT NULL DEFAULT 8,   -- CDMX, 7–12
+  sabado       INTEGER NOT NULL DEFAULT 0,
+  pausa_hasta  TEXT,
+  todo_apagado INTEGER NOT NULL DEFAULT 0,   -- "parar"
+  updated_at   TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS wa_preferencias_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT NOT NULL, campo TEXT NOT NULL, antes TEXT, despues TEXT,
+  por TEXT NOT NULL, origen TEXT NOT NULL, created_at TEXT NOT NULL
+);
+-- Estado del chat fuera del historial del modelo (worker/wa/estado.ts).
+CREATE TABLE IF NOT EXISTS wa_pendiente (   -- confirmación abierta (cerrar) / menú / hora; nunca se borra
+  id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT NOT NULL, tipo TEXT NOT NULL, item_id INTEGER, datos TEXT,
+  created_at TEXT NOT NULL, expira_at TEXT NOT NULL, resuelto_at TEXT, respuesta TEXT
+);
+CREATE TABLE IF NOT EXISTS wa_snooze (      -- "hoy no": no proponer ese item hasta la fecha
+  id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT NOT NULL, item_id INTEGER NOT NULL, hasta TEXT NOT NULL, motivo TEXT, created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS wa_lista (       -- última lista numerada que vio la persona ("3" / "3: nota")
+  email TEXT PRIMARY KEY, item_ids TEXT NOT NULL, origen TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS wa_resumen (     -- resumen matutino: una fila por persona y día, mandado o NO (motivo)
+  id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT NOT NULL, fecha TEXT NOT NULL, enviado INTEGER NOT NULL, motivo TEXT,
+  item_ids TEXT NOT NULL DEFAULT '[]', candidata_id INTEGER, wamid TEXT, created_at TEXT NOT NULL
+);

@@ -54,5 +54,11 @@ export interface Env {
   WA_VERIFY_TOKEN?: string;       // arbitrary string echoed at webhook subscribe time
   WA_APP_SECRET?: string;         // Meta app secret — verifies X-Hub-Signature-256
 
+  // Plan docs/plan-wa-cartera.md (2026-09-12): '1' prende el resumen matutino
+  // de cartera por WhatsApp (worker/wa/resumen.ts, gate en el cron */15). El
+  // router de comandos y las tools de cartera NO dependen de la flag: son
+  // respuestas a mensajes que la persona ya mandó.
+  WA_CARTERA?: string;
+
   ADMIN_ALERT_PHONE?: string;     // E.164 (52XXXXXXXXXX) — destino de alertas de sync_log
 }

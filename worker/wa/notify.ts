@@ -5,6 +5,7 @@ import type { Env } from '../env';
 import type { NotifyInput } from '../lib/notify';
 import { logSync } from '../sync/log';
 import { sendTemplate } from './send';
+import { getPreferencias, puedeRecibirAviso } from './preferencias';
 
 /** Best-effort: nunca lanza. Si el destinatario no tiene teléfono registrado, o la
  * notificación no trae boardKey/itemId (nada a dónde enlazar), no hace nada. */
@@ -15,6 +16,13 @@ export async function notifyPortalWa(env: Env, n: NotifyInput): Promise<void> {
       `SELECT phone FROM identity WHERE email = ? AND active = 1`,
     ).bind(n.recipientEmail).first<{ phone: string | null }>();
     if (!row?.phone) return;
+    // Preferencia 3 ("avisos") y "parar" (worker/wa/preferencias.ts): la
+    // notificación del portal ya quedó; aquí solo se decide el WhatsApp.
+    const prefs = await getPreferencias(env, n.recipientEmail);
+    if (!puedeRecibirAviso(prefs)) {
+      await logSync(env, 'manual', n.boardId ?? null, n.itemId ?? null, true, `wa-notify: ${n.recipientEmail} tiene los avisos por WhatsApp apagados`);
+      return;
+    }
 
     await sendTemplate(env, row.phone, {
       bodyText: n.title,

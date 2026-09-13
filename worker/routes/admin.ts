@@ -19,6 +19,9 @@ import { backupD1ToR2 } from '../lib/backup';
 import { buildAnalyticsResponse } from '../lib/analytics';
 import { ACCION_RETENTION_DAYS } from '../lib/accionLog';
 import { rejectUnknownQuery } from '../lib/http';
+import { listPreferencias, getPreferencias, setPreferencia, PreferenciaError, type CampoPref } from '../wa/preferencias';
+import { lineaDeTiempo, costoPorPersona } from '../wa/bitacora';
+import { enviarResumenAhora, carteraActiva } from '../wa/resumen';
 import { totalesDeLinea } from '../lib/lineaTotales';
 import { backfillOcLedger } from '../lib/ocLedger';
 
@@ -29,6 +32,65 @@ import type { RawColumn } from '../lib/canon';
 import type { GroupBy } from '../../shared/analytics';
 
 export function adminRoutes(app: Hono<{ Bindings: Env }>) {
+  // ── WhatsApp: qué recibe cada número (docs/plan-wa-cartera.md §7) ──────────
+  // Lista por persona; PATCH cambia UN campo y deja la fila en
+  // wa_preferencias_log con el correo del admin (además de accion_log, que
+  // ya registra el PATCH como mutación).
+  app.get('/api/admin/wa/preferencias', async c => {
+    if (c.get('viewer').role !== 'admin') return c.json({ error: 'forbidden' }, 403);
+    const prefs = await listPreferencias(c.env);
+    const rows = await listIdentities(c.env);
+    const out = rows
+      .filter(r => r.active && ['vendedor', 'compras', 'admin'].includes(r.role))
+      .map(r => {
+        const p = prefs.get(r.email);
+        return {
+          email: r.email, nombre: r.nombre ?? null, phone: r.phone ?? null, role: r.role,
+          resumen: p?.resumen ?? false, cierre: p?.cierre ?? false, avisos: p?.avisos ?? true,
+          hora: p?.hora ?? 8, sabado: p?.sabado ?? false, pausaHasta: p?.pausaHasta ?? null, todoApagado: p?.todoApagado ?? false,
+        };
+      });
+    return c.json({ activa: carteraActiva(c.env), preferencias: out });
+  });
+
+  app.patch('/api/admin/wa/preferencias/:email', async c => {
+    const viewer = c.get('viewer');
+    if (viewer.role !== 'admin') return c.json({ error: 'forbidden' }, 403);
+    const email = decodeURIComponent(c.req.param('email'));
+    const body = await c.req.json().catch(() => ({})) as Record<string, unknown>;
+    const campos: CampoPref[] = ['resumen', 'cierre', 'avisos', 'hora', 'sabado', 'pausaHasta', 'todoApagado'];
+    const campo = campos.find(k => k in body);
+    if (!campo) return c.json({ error: 'campo requerido' }, 422);
+    try {
+      const p = await setPreferencia(c.env, email, campo, body[campo] as boolean | number | string | null, { por: viewer.email, origen: 'admin' });
+      return c.json(p);
+    } catch (err) {
+      if (err instanceof PreferenciaError) return c.json({ error: err.message }, 422);
+      throw err;
+    }
+  });
+
+  // Manda el resumen de cartera a UNA persona ahora mismo (pruebas / "mándaselo").
+  app.post('/api/admin/wa/resumen/enviar', async c => {
+    if (c.get('viewer').role !== 'admin') return c.json({ error: 'forbidden' }, 403);
+    const body = await c.req.json().catch(() => ({})) as { email?: string };
+    if (!body.email) return c.json({ error: 'email requerido' }, 422);
+    await getPreferencias(c.env, body.email);
+    return c.json(await enviarResumenAhora(c.env, body.email));
+  });
+
+  // Línea de tiempo de una persona en WhatsApp/burbuja (docs/plan-wa-cartera.md §8).
+  app.get('/api/admin/wa/bitacora', async c => {
+    if (c.get('viewer').role !== 'admin') return c.json({ error: 'forbidden' }, 403);
+    const bad = rejectUnknownQuery(c.req.url, ['correo', 'horas']);
+    if (bad) return bad;
+    const correo = c.req.query('correo');
+    const horas = Math.min(Math.max(Number(c.req.query('horas')) || 72, 1), 24 * 60);
+    const desde = new Date(Date.now() - horas * 3_600_000).toISOString();
+    if (!correo) return c.json({ desde, costos: await costoPorPersona(c.env, desde) });
+    return c.json({ desde, eventos: await lineaDeTiempo(c.env, correo, desde) });
+  });
+
   app.get('/api/admin/identities', async c => {
     if (c.get('viewer').role !== 'admin') return c.json({ error: 'forbidden' }, 403);
     const rows = await listIdentities(c.env);

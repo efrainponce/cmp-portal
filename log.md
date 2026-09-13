@@ -2,6 +2,36 @@
 
 ## 2026-09-12
 
+- **Asistente de cartera por WhatsApp — implementado** (Efraín: "implementa
+  todo por fa", con los supuestos del plan donde faltaban decisiones: cerrar
+  desde el bot SÍ con confirmación, comentario sin confirmación, umbrales
+  14/45/2/3 días, compras desde el inicio, texto del template como en el plan).
+  - Bitácora primero (`worker/wa/bitacora.ts`): `wa_entrante` (cada mensaje
+    que llega y quién lo atendió) y `agente_evento` (cada llamada al modelo
+    con tokens/costo, cada tool) — también la burbuja del portal. Poda a 400
+    días en el cron semanal. `scripts/wa-bitacora.mjs` y
+    `GET /api/admin/wa/bitacora`. Salud: revisión `cartera`.
+  - Vista de cartera (`worker/lib/cartera.ts`, pura + loader, 11 tests) y
+    acciones (`carteraAcciones.ts`: seguimiento = Update real; cerrar =
+    Cancelada/Perdida por outbox, nunca `archive_item`).
+  - Router sin modelo (`worker/wa/comandos.ts`, 7 tests) antes del agente:
+    cartera/filtros, "3", "3: nota", cerrar/perder con confirmación en
+    `wa_pendiente`, hoy no, motivo, ayuda, botones del template. Webhook lee
+    `button`/`interactive`, latido `deltaSyncIfStale(2 min)`.
+  - Tools de respuesta directa (`DIRECT_REPLY_TOOLS`): `mi_cartera`,
+    `historial_oportunidad`, `registrar_seguimiento`, `cerrar_oportunidad`; el
+    loop manda el texto de la tool sin segunda llamada. Última lista numerada
+    como contexto de system.
+  - Resumen matutino (`worker/wa/resumen.ts`) por template `resumen_cartera`
+    con 3 quick replies, gate por persona en el cron */15, detrás de
+    `WA_CARTERA=1`; PENDIENTE: dar de alta el template en Meta y prender la
+    flag. "Mandar resumen ahora" desde Ajustes para probar.
+  - Preferencias por número (`worker/wa/preferencias.ts`, 9 tests): menú
+    `ajustes` 1–5, `pausa`, `parar`, `reanudar`; `wa/notify.ts` respeta la
+    opción 3; tarjeta admin "WhatsApp: qué recibe cada número" en Ajustes.
+  - Todas las tablas nuevas son lazy (sin migración). Docs en
+    `docs/whatsapp-bot.md` § "Asistente de cartera".
+
 - **Plan: WhatsApp como asistente de cartera** (`docs/plan-wa-cartera.md`,
   Efraín: "que vendedores y compras usen su WhatsApp más avanzado: pedir sus
   oportunidades a priorizar, un resumen corto en la mañana, guardar los

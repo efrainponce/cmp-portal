@@ -25,6 +25,8 @@ import { saludRoutes } from './routes/salud';
 import { flushOutbox } from './lib/outbox';
 import { checkErrorsAndAlert } from './lib/errorAlerts';
 import { revisarSaludSiToca } from './lib/salud';
+import { enviarResumenSiToca } from './wa/resumen';
+import { purgeBitacora } from './wa/bitacora';
 import { backupD1ToR2 } from './lib/backup';
 import { purgeUxEvents } from './lib/telemetry';
 import { purgeAccionLog } from './lib/accionLog';
@@ -158,14 +160,16 @@ export default {
     if (controller.cron === ALERT_CRON) {
       // + la revisión de salud (worker/lib/salud.ts), que se corre sola una vez
       // por hora dentro de este mismo cron: no hay cupo para un cron más.
-      ctx.waitUntil(Promise.all([checkErrorsAndAlert(env), deltaSync(env), revisarSaludSiToca(env)]));
+      // + el resumen matutino de cartera por WhatsApp (worker/wa/resumen.ts):
+      // gate por persona (su hora CDMX, L–V, una vez al día), detrás de WA_CARTERA.
+      ctx.waitUntil(Promise.all([checkErrorsAndAlert(env), deltaSync(env), revisarSaludSiToca(env), enviarResumenSiToca(env)]));
       return;
     }
     if (controller.cron === BACKUP_CRON) {
       // Las podas de ux_event (90 días) y accion_log (400) se cuelgan aquí y
       // no del cron de 15 min: son DELETE por rango que no tienen por qué
       // correr 96 veces al día.
-      ctx.waitUntil(Promise.all([backupD1ToR2(env), purgeUxEvents(env), purgeAccionLog(env)]));
+      ctx.waitUntil(Promise.all([backupD1ToR2(env), purgeUxEvents(env), purgeAccionLog(env), purgeBitacora(env)]));
       return;
     }
     const slugs = CRON_GROUPS[controller.cron] ?? (Object.keys(BOARDS) as BoardSlug[]);

@@ -10,7 +10,7 @@
 // bitácora nunca tumba un envío ni el webhook.
 import type { Env } from '../env';
 
-export type WaTipo = 'aviso' | 'anuncio' | 'alerta' | 'bot';
+export type WaTipo = 'aviso' | 'anuncio' | 'alerta' | 'bot' | 'resumen';
 export type WaEstado = 'rechazado' | 'enviado' | 'entregado' | 'leido' | 'fallido';
 
 /** Qué se mandó y a quién — lo pone cada caller de sendText/sendTemplate. */

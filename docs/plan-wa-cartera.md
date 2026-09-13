@@ -1,7 +1,12 @@
 # Plan — WhatsApp como asistente de cartera (vendedores y compras)
 
-Status: **propuesta 2026-09-12, pendiente de aprobación de Efraín**. Nada de esto
-está en código todavía.
+Status: **implementado 2026-09-12** (Efraín: "implementa todo"), con los
+supuestos de la sección "Decisiones" donde faltaba respuesta. Lo que quedó en
+código está resumido en `docs/whatsapp-bot.md` § "Asistente de cartera".
+Pendiente fuera del código: dar de alta el template `resumen_cartera` en Meta,
+prender `WA_CARTERA=1` en wrangler, dar de alta teléfonos y prender el resumen a
+los primeros probadores (Ajustes → WhatsApp). Fase 5 (resumen de equipo para
+dirección) NO se hizo.
 
 ## En una línea
 

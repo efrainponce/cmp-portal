@@ -28,6 +28,11 @@ import { listStock, listMovements, listWarehouses, createMovement, InventoryErro
 import { MOVEMENT_TYPES, type MovementType } from '../../shared/inventory';
 import { submitCreate, CreateError } from './createRecord';
 import { createOportunidad, OportunidadError, type LineaInput } from './createOportunidad';
+import { renderCartera, renderDetalle, renderHistorial, type Categoria, type EventoHistorial } from './cartera';
+import { registrarSeguimiento, cerrarOportunidad, CarteraError, type Cierre } from './carteraAcciones';
+import { listActivity } from './activityLog';
+import { cargarVista } from '../wa/comandos';
+import { guardarLista } from '../wa/estado';
 
 // Display columns per board (seller-visible only — cost columns stay out).
 const PRODUCTO_COLS = {
@@ -116,7 +121,20 @@ export const TOOL_ROLES: Record<string, Role[]> = {
   resumen_ventas: ['admin'],
   oportunidades_por_validar: ['admin'],
   consulta_libre: ['admin'],
+  // Cartera (plan docs/plan-wa-cartera.md, 2026-09-12). Respuesta directa:
+  // el texto lo arma worker/lib/cartera.ts y el loop lo manda tal cual.
+  mi_cartera: ALL,
+  historial_oportunidad: ALL,
+  registrar_seguimiento: ALL,
+  cerrar_oportunidad: ALL,
 };
+
+/** Tools cuyo resultado YA es la respuesta para la persona (texto listo):
+ * agentLoop lo manda sin volver a llamar al modelo (Efraín, 2026-09-12:
+ * "barato para Haiku"). Solo tools que devuelven texto humano, nunca JSON. */
+export const DIRECT_REPLY_TOOLS: ReadonlySet<string> = new Set([
+  'mi_cartera', 'historial_oportunidad', 'registrar_seguimiento', 'cerrar_oportunidad',
+]);
 
 /** Encima del rol, estas herramientas piden el CORREO en una whitelist
  * (shared/visibility.ts). Las de dirección (Efraín, 2026-09-11): solo Elisa,
@@ -424,6 +442,56 @@ export const TOOLS: Anthropic.Tool[] = [
 ];
 
 /** The tool list offered to this viewer's agent (rol + whitelist por correo). */
+const TOOLS_CARTERA: Anthropic.Tool[] = [
+  {
+    name: 'mi_cartera',
+    description: 'La cartera de la persona ya priorizada y clasificada: por oportunidad abierta, etapa, días en etapa, días sin movimiento, monto, fecha límite, siguiente paso y categoría (se_mueve = lista para avanzar, atorada = lleva días en Nueva/En costeo, apagada = ≥14 días sin movimiento). Compras ve las que están en costeo o validación. Úsala para "¿qué priorizo hoy?", "¿cuáles llevan más de un mes paradas?", "¿qué tengo atorado?", "¿cómo va mi cartera?". Devuelve el texto final para la persona: NO lo reescribas, ya está redactado.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        solo: { type: 'string', enum: ['se_mueve', 'atorada', 'apagada', 'normal'], description: 'Filtrar por categoría (opcional)' },
+      },
+    },
+  },
+  {
+    name: 'historial_oportunidad',
+    description: 'Cómo ha ido UNA oportunidad: cambios de etapa con fecha y quién, seguimientos registrados, siguiente paso. Úsala para "¿cómo va la de Hospital X?", "¿desde cuándo está en costeo?", "¿qué se le ha hecho a PRO-812?". Identifícala por item_id (de la lista en contexto o de listar_oportunidades) o por folio. Devuelve el texto final para la persona.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        item_id: { type: 'number', description: 'item_id de la oportunidad' },
+        folio: { type: 'string', description: 'Folio (PRO-…) si no tienes el item_id' },
+      },
+    },
+  },
+  {
+    name: 'registrar_seguimiento',
+    description: 'Guarda una nota de seguimiento en la oportunidad: queda como Actualización (update) real en Monday y en el historial del portal. Úsala cuando la persona cuente algo que pasó con una oportunidad ("llamé, piden muestra", "el cliente pide descuento", "la 2 sigue viva"). NO pidas confirmación: guárdalo y reporta. Si dice "la 2", toma el item_id de la lista numerada del contexto. Devuelve el texto final para la persona.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        item_id: { type: 'number', description: 'item_id de la oportunidad' },
+        texto: { type: 'string', description: 'La nota tal cual la dijo la persona, en sus palabras (no la resumas)' },
+      },
+      required: ['item_id', 'texto'],
+    },
+  },
+  {
+    name: 'cerrar_oportunidad',
+    description: 'Mueve una oportunidad a Cancelada ("archivar": ya no va a pasar, sin competidor) o Perdida (la ganó otro proveedor) en Monday, con motivo opcional. Es una acción que cambia el CRM: SIEMPRE muestra antes un resumen (folio, nombre, etapa destino) y espera confirmación explícita ("sí", "confirmo"); sin ella no la llames. Devuelve el texto final para la persona.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        item_id: { type: 'number', description: 'item_id de la oportunidad' },
+        cierre: { type: 'string', enum: ['cancelada', 'perdida'], description: 'cancelada = archivar; perdida = la ganó un competidor' },
+        motivo: { type: 'string', description: 'Motivo en palabras de la persona (opcional)' },
+      },
+      required: ['item_id', 'cierre'],
+    },
+  },
+];
+TOOLS.push(...TOOLS_CARTERA);
+
 export function toolsFor(viewer: Pick<Identity, 'role' | 'email'>): Anthropic.Tool[] {
   return TOOLS.filter(t => puedeUsarTool(t.name, viewer));
 }
@@ -1131,6 +1199,59 @@ async function toolConsultaLibre(env: Env, viewer: Identity, input: Record<strin
 // ── Dispatcher ────────────────────────────────────────────────────────────────
 
 /** Execute one tool call; always returns a string for the tool_result. */
+// ── Cartera (respuesta directa) ───────────────────────────────────────────────
+
+async function toolMiCartera(env: Env, viewer: Identity, input: Record<string, unknown>): Promise<string> {
+  const filtro = typeof input.solo === 'string' && ['se_mueve', 'atorada', 'apagada', 'normal'].includes(input.solo)
+    ? input.solo as Categoria : undefined;
+  const vista = await cargarVista(env, viewer);
+  const { texto, itemIds } = renderCartera(vista, { filtro, nombre: viewer.nombre });
+  if (itemIds.length) await guardarLista(env, viewer.email, itemIds, filtro ? `filtro:${filtro}` : 'cartera');
+  return texto;
+}
+
+async function oportunidadDeCartera(env: Env, viewer: Identity, input: Record<string, unknown>) {
+  const vista = await cargarVista(env, viewer);
+  if (typeof input.item_id === 'number') return vista.oportunidades.find(o => o.item_id === input.item_id) ?? null;
+  if (typeof input.folio === 'string' && input.folio.trim()) {
+    const f = input.folio.trim().toLowerCase();
+    return vista.oportunidades.find(o => (o.folio ?? '').toLowerCase() === f)
+      ?? vista.oportunidades.find(o => (o.folio ?? '').toLowerCase().includes(f)) ?? null;
+  }
+  return null;
+}
+
+async function toolHistorialOportunidad(env: Env, viewer: Identity, input: Record<string, unknown>): Promise<{ content: string; isError: boolean }> {
+  const o = await oportunidadDeCartera(env, viewer, input);
+  if (!o) return { content: 'No encontré esa oportunidad entre las abiertas de tu cartera. Indica item_id o folio (PRO-…), o usa listar_oportunidades si ya está cerrada.', isError: true };
+  const actividad = await listActivity(env, [{ boardId: BOARDS.oportunidades.id, itemId: o.item_id }]);
+  const eventos: EventoHistorial[] = actividad
+    .filter(a => a.column_id === 'deal_stage' && a.new_text)
+    .map(a => ({ at: a.created_at, texto: `pasó a ${a.new_text}${a.actor_email ? ` (${a.actor_email.split('@')[0]})` : ''}` }));
+  try {
+    const { results } = await env.DB.prepare('SELECT mensaje, created_at, autor_email FROM seguimientos WHERE item_id = ? ORDER BY created_at DESC LIMIT 10')
+      .bind(o.item_id).all<{ mensaje: string; created_at: string; autor_email: string }>();
+    for (const r of results ?? []) eventos.push({ at: r.created_at, texto: `seguimiento (${r.autor_email.split('@')[0]}): ${r.mensaje.slice(0, 140)}` });
+  } catch { /* sin seguimientos todavía */ }
+  return { content: renderHistorial(o, eventos), isError: false };
+}
+
+async function toolRegistrarSeguimiento(env: Env, viewer: Identity, input: Record<string, unknown>): Promise<{ content: string; isError: boolean }> {
+  const itemId = Number(input.item_id);
+  const texto = typeof input.texto === 'string' ? input.texto.trim() : '';
+  if (!Number.isFinite(itemId) || !texto) return { content: 'Necesito item_id y texto.', isError: true };
+  const r = await registrarSeguimiento(env, viewer, itemId, texto);
+  return { content: `Guardado en las Actualizaciones de *${r.etiqueta}* ✅\n"${texto}"`, isError: false };
+}
+
+async function toolCerrarOportunidad(env: Env, viewer: Identity, input: Record<string, unknown>): Promise<{ content: string; isError: boolean }> {
+  const itemId = Number(input.item_id);
+  const cierre = input.cierre === 'perdida' ? 'perdida' : input.cierre === 'cancelada' ? 'cancelada' : null;
+  if (!Number.isFinite(itemId) || !cierre) return { content: 'Necesito item_id y cierre (cancelada | perdida).', isError: true };
+  const r = await cerrarOportunidad(env, viewer, itemId, cierre as Cierre, typeof input.motivo === 'string' ? input.motivo : '');
+  return { content: `Listo: *${r.etiqueta}* quedó como *${r.etapa}* en Monday ✅`, isError: false };
+}
+
 export async function runTool(
   env: Env,
   viewer: Identity,
@@ -1221,11 +1342,19 @@ export async function runTool(
         return { content: await toolOportunidadesPorValidar(env, viewer, input), isError: false };
       case 'consulta_libre':
         return { content: await toolConsultaLibre(env, viewer, input), isError: false };
+      case 'mi_cartera':
+        return { content: await toolMiCartera(env, viewer, input), isError: false };
+      case 'historial_oportunidad':
+        return toolHistorialOportunidad(env, viewer, input);
+      case 'registrar_seguimiento':
+        return toolRegistrarSeguimiento(env, viewer, input);
+      case 'cerrar_oportunidad':
+        return toolCerrarOportunidad(env, viewer, input);
       default:
         return { content: `Herramienta desconocida: ${name}`, isError: true };
     }
   } catch (err) {
-    if (err instanceof CreateError || err instanceof OportunidadError || err instanceof InventoryError) {
+    if (err instanceof CreateError || err instanceof OportunidadError || err instanceof InventoryError || err instanceof CarteraError) {
       return { content: `Error (${err.status}): ${err.message}`, isError: true };
     }
     if (err instanceof ToolInputError || err instanceof ConsultaError) return { content: err.message, isError: true };

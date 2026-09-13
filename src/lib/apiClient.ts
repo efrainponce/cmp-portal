@@ -12,7 +12,7 @@ import type {
   EstadoHistorialEntryDTO, EstadoHistorialResponse,
   ProductoResumenDTO, ProductoResumenResponse, ProductoGeneroResponse,
   UpdateAttachmentDTO, UpdateDTO, VendedorDTO, WriteResponse, ZonaDTO,
-  OportunidadLigadaDTO, ProyectoOportunidadResponse,
+  OportunidadLigadaDTO, ProyectoOportunidadResponse, WaPreferenciasDTO,
 } from '../../shared/dto';
 import type { AddProposedProductResponse, ProposedProductDTO, ProposedProductsResponse } from '../../shared/productosPropuestos';
 import { mockBoardMeta, mockItemDetail, mockPatch } from './mockFallback';
@@ -1064,6 +1064,27 @@ export async function getActivity(slug: BoardSlug, id: string): Promise<Activity
 export async function getIdentities(): Promise<IdentityDTO[]> {
   const res = await apiFetch('/admin/identities');
   if (!res.ok) throw new Error('GET identities failed: ' + res.status);
+  return res.json();
+}
+
+export async function getWaPreferencias(): Promise<{ activa: boolean; preferencias: WaPreferenciasDTO[] }> {
+  const res = await apiFetch('/admin/wa/preferencias');
+  if (!res.ok) throw new Error('GET wa preferencias failed: ' + res.status);
+  return res.json();
+}
+
+export async function patchWaPreferencia(email: string, patch: Partial<Pick<WaPreferenciasDTO, 'resumen' | 'cierre' | 'avisos' | 'hora' | 'sabado' | 'todoApagado'>> & { pausaHasta?: string | null }): Promise<void> {
+  const res = await apiFetch(`/admin/wa/preferencias/${encodeURIComponent(email)}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch),
+  });
+  if (!res.ok) throw new Error('PATCH wa preferencia failed: ' + res.status);
+}
+
+export async function enviarResumenWa(email: string): Promise<{ enviado: boolean; motivo?: string }> {
+  const res = await apiFetch('/admin/wa/resumen/enviar', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }),
+  });
+  if (!res.ok) throw new Error('POST wa resumen failed: ' + res.status);
   return res.json();
 }
 

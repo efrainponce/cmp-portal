@@ -76,6 +76,46 @@ export async function sendTemplate(
   }, { titulo: args.bodyText, ...meta });
 }
 
+// Resumen matutino de cartera (worker/wa/resumen.ts, plan docs/plan-wa-cartera.md
+// §2). Template a dar de alta en Meta Business Manager (Utility, es_MX),
+// cuerpo con 6 parámetros de una línea y 3 botones quick-reply:
+//   Buenos días {{1}}. Tu cartera hoy: {{2}}.
+//   • {{3}}
+//   • {{4}}
+//   • {{5}}
+//   Para cerrar hoy: {{6}}
+//   [Ver detalle] [Cerrar esa] [Hoy no]
+// Los payloads de los botones son los de worker/wa/comandos.ts PAYLOAD; al
+// tocarlos Meta manda un mensaje tipo `button` y abre la ventana de 24 h.
+const RESUMEN_TEMPLATE_NAME = 'resumen_cartera';
+const RESUMEN_TEMPLATE_LANG = 'es_MX';
+
+export async function sendResumenTemplate(
+  env: Env, to: string, params: string[], payloads: [string, string, string], meta: WaMeta,
+): Promise<{ wamid: string | null }> {
+  const telefono = normalizeMxTo(to);
+  const body = {
+    type: 'template',
+    template: {
+      name: RESUMEN_TEMPLATE_NAME,
+      language: { code: RESUMEN_TEMPLATE_LANG },
+      components: [
+        { type: 'body', parameters: params.map(text => ({ type: 'text', text: text.slice(0, 1024) })) },
+        ...payloads.map((payload, i) => ({ type: 'button', sub_type: 'quick_reply', index: String(i), parameters: [{ type: 'payload', payload }] })),
+      ],
+    },
+  };
+  let wamid: string | null;
+  try {
+    ({ wamid } = await graphPost(env, { to: telefono, ...body }));
+  } catch (err) {
+    await registrarEnvio(env, telefono, { titulo: params.join(' | '), ...meta }, { wamid: null, error: err instanceof Error ? err.message : String(err) });
+    throw err;
+  }
+  await registrarEnvio(env, telefono, { titulo: params.join(' | '), ...meta }, { wamid });
+  return { wamid };
+}
+
 /** Mark an incoming message as read (blue ticks) — best-effort, never throws. */
 export async function markRead(env: Env, messageId: string): Promise<void> {
   try {

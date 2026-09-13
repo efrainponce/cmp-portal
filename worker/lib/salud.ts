@@ -92,6 +92,7 @@ const TIPOS_DE: Record<string, string[]> = {
   sku: ['sku_desfasado'],
   fantasmas: ['linea_fantasma'],
   whatsapp: ['wa_fallido'],
+  cartera: ['wa_sin_respuesta', 'wa_resumen_fallido', 'agente_costo'],
   outbox: ['outbox_atorado', 'outbox_fallido', 'outbox_conflicto'],
   tallas: ['tallas_no_cuadran'],
   errores: ['errores_servidor', 'http_500', 'errores_front', 'sync_fallido'],
@@ -505,6 +506,54 @@ async function whatsappFallidos(env: Env, desde: string): Promise<Hallazgo[]> {
   return out;
 }
 
+/** Bot de cartera (docs/plan-wa-cartera.md §8): entrantes que tronaron en la
+ * última hora, resúmenes matutinos de hoy que NO salieron por error (los
+ * "apagado"/"cartera vacía" son normales) y gasto del modelo por persona
+ * arriba del tope diario. Las tablas nacen lazy: sin ellas, sin hallazgos. */
+const COSTO_DIARIO_TOPE_USD = 1;
+
+async function carteraWhatsapp(env: Env, desde: string): Promise<Hallazgo[]> {
+  const out: Hallazgo[] = [];
+  try {
+    const { results: fallas } = await env.DB.prepare(
+      `SELECT email, texto, error, atendido_por FROM wa_entrante WHERE error IS NOT NULL AND created_at > ? ORDER BY id DESC LIMIT 5`,
+    ).bind(desde).all<{ email: string | null; texto: string; error: string; atendido_por: string }>();
+    for (const f of fallas ?? []) {
+      out.push({
+        clave: `wa_sin_respuesta:${f.email ?? '?'}`, tipo: 'wa_sin_respuesta', severidad: 'media',
+        titulo: `El bot de WhatsApp tronó con un mensaje de ${f.email ?? '?'} ("${f.texto.slice(0, 60)}"): ${f.error.slice(0, 160)}`,
+        detalle: { atendidoPor: f.atendido_por },
+      });
+    }
+  } catch { /* wa_entrante todavía no existe */ }
+  try {
+    const hoy = new Date().toISOString().slice(0, 10);
+    const { results: resumenes } = await env.DB.prepare(
+      `SELECT email, motivo FROM wa_resumen WHERE enviado = 0 AND fecha >= ? AND (motivo LIKE 'Meta:%' OR motivo LIKE 'error%' OR motivo = 'enviando')`,
+    ).bind(hoy).all<{ email: string; motivo: string | null }>();
+    for (const r of resumenes ?? []) {
+      out.push({
+        clave: `wa_resumen_fallido:${r.email}`, tipo: 'wa_resumen_fallido', severidad: 'alta',
+        titulo: `El resumen matutino de ${r.email} no salió: ${(r.motivo ?? '').slice(0, 200)}`,
+      });
+    }
+  } catch { /* wa_resumen todavía no existe */ }
+  try {
+    const desdeDia = new Date(Date.now() - 86_400_000).toISOString();
+    const { results: costos } = await env.DB.prepare(
+      `SELECT email, SUM(costo_usd) AS usd, COUNT(*) AS n FROM agente_evento WHERE tipo = 'llamada' AND created_at > ? GROUP BY email HAVING usd > ?`,
+    ).bind(desdeDia, COSTO_DIARIO_TOPE_USD).all<{ email: string; usd: number; n: number }>();
+    for (const c of costos ?? []) {
+      out.push({
+        clave: `agente_costo:${c.email}`, tipo: 'agente_costo', severidad: 'media',
+        titulo: `${c.email} lleva $${c.usd.toFixed(2)} USD de modelo en 24 h (${c.n} llamadas) — tope ${COSTO_DIARIO_TOPE_USD}`,
+        detalle: { usd: c.usd, llamadas: c.n },
+      });
+    }
+  } catch { /* agente_evento todavía no existe */ }
+  return out;
+}
+
 // ───────────────────────────── corrida y reporte ─────────────────────────────
 
 let tablaLista = false;
@@ -554,6 +603,7 @@ export async function revisarSalud(env: Env): Promise<ResultadoSalud> {
     ['tallas', () => tallasNoCuadran(env)],
     ['errores', () => erroresRecientes(env, desde)],
     ['whatsapp', () => whatsappFallidos(env, desde)],
+    ['cartera', () => carteraWhatsapp(env, desde)],
   ];
   const hallazgos: Hallazgo[] = [];
   const fallidas: string[] = [];

@@ -117,6 +117,75 @@ también reenvía por WhatsApp las notificaciones de severidad **`importante`**
   `sync_log` — best-effort, no rompe la notificación del portal ni el flujo que la
   disparó.
 
+## Asistente de cartera — 2026-09-12
+
+Plan completo en `docs/plan-wa-cartera.md`. Lo que quedó en código (Efraín:
+"implementa todo", "que sea barato para Haiku", "log de todo", "opción para
+no recibir las actualizaciones o por número saber cuáles recibir o no"):
+
+- **Vista de cartera** (`worker/lib/cartera.ts`): por oportunidad abierta del
+  viewer — días en etapa (último `deal_stage` en `activity_log`; sin registro,
+  "aprox" desde `monday_updated_at`), días sin movimiento, último seguimiento,
+  siguiente paso por etapa/rol, prioridad (fecha límite, etapa avanzada, monto
+  alto, apagada, atorada), categoría (`se_mueve` / `atorada` / `apagada` /
+  `normal`) y UNA candidata a cerrar (≥45 días, sin pospuestas ni repetidas en
+  7 días). Umbrales en `UMBRALES` (14 / 45 / 2 / 3 / 7). Compras ve las que están
+  en costeo o validación con lo que dice `checkValidacion`. Los `render*`
+  devuelven el texto final para WhatsApp: **el código redacta, el modelo no**.
+- **Router de comandos sin modelo** (`worker/wa/comandos.ts`, corre ANTES del
+  agente): `cartera` / `apagadas` / `atoradas` / `se mueven`, `3` (detalle de
+  la #3 de la última lista, `wa_lista`), `3: llamé, piden muestra` (Update real
+  en Monday + `seguimientos`, sin confirmación), `cerrar 3` / `perder 3` /
+  `cerrar` (la candidata) → confirmación en `wa_pendiente` → `SÍ` / `NO` /
+  `PERDIDA`, `motivo: …` (nota en la recién cerrada), `hoy no` / `posponer 3`
+  (`wa_snooze` 7 días), `ayuda`, y los botones del template. "Archivar" =
+  `deal_stage` Cancelada por el outbox (como el drawer), nunca `archive_item`.
+- **Tools de respuesta directa** (`DIRECT_REPLY_TOOLS`, `agentLoop.ts`):
+  `mi_cartera`, `historial_oportunidad`, `registrar_seguimiento`,
+  `cerrar_oportunidad` devuelven texto listo; si el modelo llamó solo una, el
+  loop lo manda tal cual y NO vuelve a llamar al modelo (se ahorra la llamada
+  cara). La última lista numerada entra como segundo bloque de system
+  (`contextoDeLista`) para que "la 2 sigue viva" resuelva el item_id en una
+  llamada. El webhook hace `deltaSyncIfStale(2 min)` antes de contestar.
+- **Resumen matutino** (`worker/wa/resumen.ts`, `WA_CARTERA=1`): gate por
+  persona dentro del cron `*/15` (su hora CDMX y las dos siguientes, L–V,
+  sábado opcional, una fila por día en `wa_resumen` aunque NO salga, con
+  motivo). Relee de Monday las abiertas de la persona (`refetchItems`) antes
+  de armarlo. Template `resumen_cartera` (Utility, es_MX) — **hay que darlo
+  de alta en Meta** con este cuerpo literal y 3 botones quick-reply
+  (payloads `CARTERA_VER`, `CARTERA_CERRAR`, `CARTERA_HOY_NO`):
+
+  ```
+  Buenos días {{1}}. Tu cartera hoy: {{2}}.
+  • {{3}}
+  • {{4}}
+  • {{5}}
+  Para cerrar hoy: {{6}}
+  [Ver detalle] [Cerrar esa] [Hoy no]
+  ```
+
+  Sin el template aprobado el envío falla y queda en `wa_resumen.motivo` +
+  `wa_mensaje` (y la revisión de salud lo marca). "Mandar resumen ahora" desde
+  Ajustes (`POST /api/admin/wa/resumen/enviar`) sirve para probarlo.
+- **Qué recibe cada número** (`worker/wa/preferencias.ts`, `wa_preferencias`):
+  1 resumen (opt-in, apagado por default), 2 propuesta de cierre, 3 avisos
+  importantes (`wa/notify.ts` lo consulta; prendido por default), 4 hora
+  (7–12), 5 sábados; `pausa` / `pausa 2 semanas` (1 y 2), `parar` (todo lo
+  proactivo, exigencia de Meta), `reanudar`, menú `ajustes` numerado. Cada
+  cambio en `wa_preferencias_log`. Admin: Ajustes → "WhatsApp: qué recibe cada
+  número" (`src/app/WaPreferenciasCard.tsx`, `GET/PATCH /api/admin/wa/preferencias`).
+- **Bitácora de todo** (`worker/wa/bitacora.ts`): `wa_entrante` (cada mensaje
+  que llega, quién lo atendió — `router:<cmd>` / `agente` / `rechazado:<motivo>`
+  —, respuesta, latencia, error) y `agente_evento` (cada llamada al modelo con
+  tokens y costo USD, cada tool con input/resultado resumidos; WhatsApp Y
+  burbuja del portal). Retención 400 días (poda en el cron semanal). Leer:
+  `node scripts/wa-bitacora.mjs --correo x@… --dias 7` (línea de tiempo) o
+  sin correo (gasto por persona); `GET /api/admin/wa/bitacora?correo=&horas=`.
+  Salud (`salud.ts` revisión `cartera`): entrante que tronó, resumen de hoy
+  que no salió por error, persona con > $1 USD de modelo en 24 h.
+- Todas las tablas nuevas se crean lazy (`CREATE TABLE IF NOT EXISTS`) — no
+  hay migración que aplicar; están documentadas en `worker/schema.sql`.
+
 ## Detalle de un proyecto — 2026-09-11
 
 `detalle_proyecto` (vendedor/compras/admin; el vendedor solo los suyos):
