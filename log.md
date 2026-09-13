@@ -1,5 +1,21 @@
 # Log de commits
 
+## 2026-09-12
+
+- **Plan: WhatsApp como asistente de cartera** (`docs/plan-wa-cartera.md`,
+  Efraín: "que vendedores y compras usen su WhatsApp más avanzado: pedir sus
+  oportunidades a priorizar, un resumen corto en la mañana, guardar los
+  mensajes en Actualizaciones, e intentar archivar una al día sin ser
+  intenso; algo tipo MCP que Haiku lea rápido con data fresca"). Propuesta,
+  sin código: la "fuente fresca" es una vista de cartera por persona en el
+  Worker (no un MCP — el modelo y los datos ya viven juntos), servida por una
+  herramienta del bot, un resumen matutino por template de Meta sin modelo, y
+  la pantalla Inicio. Reúsa `home.ts` (apagadas ≥14 días, seguimiento = Update
+  real), `activity_log` (etapas con fecha desde 2026-08-14) y `sendTemplate`.
+  Cinco fases detrás de `WA_CARTERA`, y seis decisiones de Efraín antes de
+  empezar (opt-in/hora, cerrar desde el bot, comentario sin confirmar,
+  umbrales, compras, texto literal del template).
+
 ## 2026-09-11
 
 - **El bot contesta por un proyecto en específico** (Efraín: "¿puedo
