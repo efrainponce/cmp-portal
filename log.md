@@ -15,6 +15,11 @@
   Cinco fases detrás de `WA_CARTERA`, y seis decisiones de Efraín antes de
   empezar (opt-in/hora, cerrar desde el bot, comentario sin confirmar,
   umbrales, compras, texto literal del template).
+- **Barato para Haiku** (Efraín, misma tarde): sección 6 del plan — router de
+  comandos en código antes del agente (botones, números, "2: texto", SÍ/NO,
+  "cartera"), tools de respuesta directa que evitan la segunda llamada al
+  modelo, y textos fijos. Día normal de un vendedor = cero tokens; Haiku solo
+  con texto libre, una llamada.
 
 ## 2026-09-11
 

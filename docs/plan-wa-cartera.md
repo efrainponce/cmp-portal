@@ -190,15 +190,64 @@ que cambiarlos sea una línea.
   (quick reply de template) e `interactive` (botones de respuesta) y convertirlos
   en texto ("Ver detalle") antes del loop.
 
+## 6. Barato para Haiku: qué sale sin modelo (Efraín, 2026-09-12)
+
+Regla: **el código contesta todo lo que tenga forma fija; Haiku solo entra con
+texto libre, y entonces con UNA llamada.** Un router de comandos
+(`worker/wa/comandos.ts`) corre ANTES del loop del agente; solo lo que no
+reconoce pasa a `runAgentLoop`.
+
+| Interacción | Quién contesta | Costo Haiku |
+|---|---|---|
+| Resumen matutino | código (template) | $0 |
+| Botón "Ver detalle" | código: renderiza la cartera completa numerada (`renderCartera`, el MISMO texto que ve la tool) | $0 |
+| Botón "Hoy no" | código: `wa_snooze` 7 días + texto fijo | $0 |
+| Botón "Cerrar esa" → "¿Muevo PRO-640 a Cancelada? Responde SÍ o NO" → SÍ | código: PATCH `deal_stage` por outbox + Update fijo | $0 |
+| "cartera", "hoy", "pendientes", "atoradas", "apagadas" | código: `renderCartera` filtrada | $0 |
+| "3" (un número del resumen) | código: detalle fijo de esa oportunidad (`renderDetalle`) | $0 |
+| "2: llamé, piden muestra" (número + dos puntos + texto) | código: `registrar_seguimiento` en la #2, sin modelo | $0 |
+| "sí / no / ok / cancelar" con una confirmación pendiente (`wa_pendiente`) | código | $0 |
+| "la de Celaya sigue viva, piden muestra" (texto libre) | Haiku, 1 llamada: elige `registrar_seguimiento`, la tool contesta directo | ~$0.002 |
+| "¿qué me falta para avanzar la de Hospital X?" | Haiku, 1 llamada + tool de respuesta directa | ~$0.002 |
+| Crear oportunidad / contacto (ya existe) | Haiku, varias vueltas, como hoy | ~$0.01–0.03 |
+
+Cómo se logra la "una llamada":
+
+- **Tools de respuesta directa** (`DIRECT_REPLY_TOOLS` en `agentLoop.ts`):
+  `mi_cartera`, `historial_oportunidad`, `registrar_seguimiento` y
+  `detalle_*` devuelven texto YA formateado para WhatsApp (lo arma el código con
+  el mismo `render*` del router). Si el modelo llamó solo una de estas, el loop
+  **manda ese texto tal cual y no vuelve a llamar al modelo**. Se ahorra la
+  segunda llamada, que es la cara (es la que genera texto). Hoy el loop siempre
+  da la vuelta extra para "redactar" lo que la tool ya dijo.
+- **Tool results compactos**: texto plano, no JSON. Menos tokens de entrada y el
+  modelo no tiene que "traducir".
+- **Prompt caching** ya está (system + tools cacheados). El resumen del día
+  entra como bloque de system que cambia una vez al día, igual que la fecha.
+- **Confirmaciones en código**: la confirmación pendiente vive en
+  `wa_pendiente(phone, accion, item_id, expira)`, no en el historial del modelo.
+  "SÍ" lo resuelve el router. El modelo solo llega a `cerrar_oportunidad` si la
+  persona lo pide en texto libre, y aun así la tool deja la confirmación en
+  `wa_pendiente` y contesta directo: el SÍ ya no pasa por Haiku.
+- **Textos fijos con variaciones** (`worker/wa/textos.ts`): 3–4 formas de cada
+  mensaje fijo elegidas por día, para que el resumen y las confirmaciones no se
+  sientan de máquina sin gastar un token.
+
+Con esto, en un día normal de un vendedor (resumen, un botón, un seguimiento
+numerado) el gasto de modelo es **cero**; Haiku solo cobra cuando escriben
+libre. Precio de referencia Haiku 4.5: $1 entrada / $5 salida por millón de
+tokens; una llamada con prefijo cacheado y una tool sale en ~2 milésimas de
+dólar.
+
 ## Fases (cada una sale sola, detrás de `WA_CARTERA=1`, apagada por default)
 
 | Fase | Qué | Esfuerzo | Se ve así |
 |---|---|---|---|
 | 0 | Dar de alta teléfonos y `wa_resumen=1` a quien va a probar (Efraín / PAM, comando de `whatsapp-bot.md`). Pedir a Meta la aprobación del template (tarda 1-2 días; se pide desde el día 1). | sin código, hoy | — |
-| 1 | `cartera.ts` + tests, tools `mi_cartera` y `historial_oportunidad`, `deltaSyncIfStale` al entrar un mensaje | ~1 día | Preguntar "¿qué priorizo hoy?" por WhatsApp o en la burbuja |
-| 2 | `registrar_seguimiento` + resumen del día en el contexto del chat | ~½ día | "La de Celaya: llamé, piden muestra" queda en Actualizaciones de Monday |
+| 1 | `cartera.ts` + `render*` + tests, router de comandos (`comandos.ts`), tools de respuesta directa (`DIRECT_REPLY_TOOLS`), `deltaSyncIfStale` al entrar un mensaje | ~1½ días | Preguntar "¿qué priorizo hoy?" por WhatsApp o en la burbuja |
+| 2 | `registrar_seguimiento` (por router "2: texto" y por tool) + `wa_pendiente` + resumen del día en el contexto del chat | ~½ día | "La de Celaya: llamé, piden muestra" queda en Actualizaciones de Monday |
 | 3 | Tabla `wa_resumen`, `enviarResumenSiToca` en el cron, `sendTemplate` con quick replies, webhook acepta `button`/`interactive` | ~1 día + espera de Meta | El mensaje de las 8:00 |
-| 4 | `cerrar_oportunidad` + `wa_snooze` + rotación de la candidata | ~½ día | "Cerrar esa" → confirma → Cancelada en Monday |
+| 4 | Botones "Cerrar esa" / "Hoy no" en código, `cerrar_oportunidad` como tool, `wa_snooze` + rotación de la candidata | ~½ día | "Cerrar esa" → confirma → Cancelada en Monday |
 | 5 | Resumen de equipo para dirección (Elisa / CEO / Efraín, whitelist `puedeConsultarDireccion`): conteos por vendedor y las 3 más viejas de cada uno. Medir 2 semanas con `wa_mensaje` (entregado/leído), seguimientos por WA vs portal, cierres. | ~½ día | — |
 
 Cada fase entra en `log.md` y en `docs/whatsapp-bot.md` como las anteriores.
