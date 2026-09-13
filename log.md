@@ -20,6 +20,10 @@
   "cartera"), tools de respuesta directa que evitan la segunda llamada al
   modelo, y textos fijos. Día normal de un vendedor = cero tokens; Haiku solo
   con texto libre, una llamada.
+- **Qué recibe cada número** (Efraín, misma tarde): sección 7 — `wa_preferencias`
+  por persona (resumen, propuesta de cierre, avisos importantes, hora, días),
+  menú numerado "ajustes" y comandos "pausa" / "parar" en código, admin por
+  persona en el portal.
 
 ## 2026-09-11
 

@@ -111,8 +111,9 @@ que cambiarlos sea una línea.
   `(email, fecha)` en la tabla `wa_resumen`; el gate acepta cualquier corrida
   entre 08:00 y 10:00 (el cron se ha saltado invocaciones antes) y marca por
   fecha, no por minuto.
-- **A quién**: `identity` con `phone` y `wa_resumen = 1` (columna nueva,
-  default 0 → **opt-in**). Si la cartera está vacía no se manda nada.
+- **A quién**: `identity` con `phone` y el resumen prendido en
+  `wa_preferencias` (sección 7; opt-in, con hora y días por persona). Si la
+  cartera está vacía no se manda nada.
 - **Cómo**: template nuevo de Meta `resumen_cartera` (Utility, `es_MX`).
   Obligatorio: es un mensaje fuera de la ventana de 24 h. Meta no acepta saltos
   de línea dentro de un parámetro, así que cada renglón es un parámetro:
@@ -239,6 +240,46 @@ libre. Precio de referencia Haiku 4.5: $1 entrada / $5 salida por millón de
 tokens; una llamada con prefijo cacheado y una tool sale en ~2 milésimas de
 dólar.
 
+## 7. Qué recibe cada número (Efraín, 2026-09-12)
+
+Cada persona decide desde su propio WhatsApp qué le llega, y puede apagarlo
+todo. Va en código (router), sin modelo. Tabla `wa_preferencias` por correo
+(el teléfono se resuelve por `identity`, como todo lo demás):
+
+| # | Preferencia | Default | Qué controla |
+|---|---|---|---|
+| 1 | Resumen matutino | apagado hasta que la persona lo prenda (opt-in) | el mensaje de las 08:00 |
+| 2 | Propuesta de cierre | igual que el resumen | la línea "Para cerrar hoy" y el botón "Cerrar esa" |
+| 3 | Avisos importantes | prendido (hoy se mandan siempre) | menciones, costeo incompleto, documento firmado (`wa/notify.ts`) |
+| 4 | Hora del resumen | 08:00 | cualquier hora en punto entre 07:00 y 12:00; el gate del cron compara contra la hora de cada quien |
+| 5 | Días | lunes a viernes | opción de incluir sábado |
+
+Cómo se maneja, todo por texto fijo:
+
+- **"ajustes"** (o "config", "opciones") responde el menú numerado con el estado
+  actual: "1 Resumen matutino ✅ · 2 Propuesta de cierre ✅ · 3 Avisos ✅ ·
+  4 Hora 08:00 · 5 L–V. Responde el número para cambiarlo." Responder "1" lo
+  apaga o prende; "4" pide la hora ("¿A qué hora? 7, 8, 9…"); "5" alterna sábado.
+- **"pausa"** apaga el resumen y la propuesta de cierre (1 y 2) hasta que la
+  persona escriba "reanudar"; "pausa 2 semanas" pone fecha de regreso (`pausa_hasta`).
+- **"parar"**, "stop", "baja" apagan TODO lo proactivo, incluidos los avisos
+  importantes (3). Es también lo que Meta exige: cualquier mensaje iniciado por
+  el negocio tiene que poder cortarse desde el mismo chat. El bot sigue
+  contestando si la persona escribe.
+- Cada resumen y cada aviso lleva al final, una vez a la semana, "Escribe
+  *ajustes* para cambiar qué recibes" — no en cada mensaje, para no hacer ruido.
+- El menú y los cambios se confirman con texto fijo ("Listo: ya no te llega el
+  resumen matutino. Escribe *ajustes* cuando quieras cambiarlo").
+
+Admin: `GET /api/admin/wa/preferencias` lista por persona (nombre, teléfono,
+1–5, pausa) y `PATCH` para cambiarlas desde el portal (misma pantalla donde se
+dan de alta usuarios); útil para prenderle el resumen a alguien nuevo sin que
+tenga que escribir "ajustes". Quién lo apagó y cuándo queda en `accion_log`.
+
+Las notificaciones del portal (campana) NO cambian: esto solo decide qué
+llega por WhatsApp. `notifyPortalWa` consulta la preferencia 3 y `pausa_hasta`
+antes de mandar; el gate del resumen consulta 1, 2, 4 y 5.
+
 ## Fases (cada una sale sola, detrás de `WA_CARTERA=1`, apagada por default)
 
 | Fase | Qué | Esfuerzo | Se ve así |
@@ -246,7 +287,7 @@ dólar.
 | 0 | Dar de alta teléfonos y `wa_resumen=1` a quien va a probar (Efraín / PAM, comando de `whatsapp-bot.md`). Pedir a Meta la aprobación del template (tarda 1-2 días; se pide desde el día 1). | sin código, hoy | — |
 | 1 | `cartera.ts` + `render*` + tests, router de comandos (`comandos.ts`), tools de respuesta directa (`DIRECT_REPLY_TOOLS`), `deltaSyncIfStale` al entrar un mensaje | ~1½ días | Preguntar "¿qué priorizo hoy?" por WhatsApp o en la burbuja |
 | 2 | `registrar_seguimiento` (por router "2: texto" y por tool) + `wa_pendiente` + resumen del día en el contexto del chat | ~½ día | "La de Celaya: llamé, piden muestra" queda en Actualizaciones de Monday |
-| 3 | Tabla `wa_resumen`, `enviarResumenSiToca` en el cron, `sendTemplate` con quick replies, webhook acepta `button`/`interactive` | ~1 día + espera de Meta | El mensaje de las 8:00 |
+| 3 | Tablas `wa_resumen` y `wa_preferencias`, menú "ajustes" / "pausa" / "parar" en el router, `enviarResumenSiToca` en el cron respetando hora y días de cada quien, `sendTemplate` con quick replies, webhook acepta `button`/`interactive`, admin de preferencias | ~1½ días + espera de Meta | El mensaje de las 8:00 |
 | 4 | Botones "Cerrar esa" / "Hoy no" en código, `cerrar_oportunidad` como tool, `wa_snooze` + rotación de la candidata | ~½ día | "Cerrar esa" → confirma → Cancelada en Monday |
 | 5 | Resumen de equipo para dirección (Elisa / CEO / Efraín, whitelist `puedeConsultarDireccion`): conteos por vendedor y las 3 más viejas de cada uno. Medir 2 semanas con `wa_mensaje` (entregado/leído), seguimientos por WA vs portal, cierres. | ~½ día | — |
 
@@ -254,8 +295,9 @@ Cada fase entra en `log.md` y en `docs/whatsapp-bot.md` como las anteriores.
 
 ## Decisiones de Efraín (bloquean fases)
 
-1. **Quién y a qué hora**: opt-in por persona (propuesto) o todos los que tengan
-   teléfono. Hora fija 08:00 o por persona.
+1. **Quién y a qué hora**: resuelto con la sección 7 — cada persona lo prende,
+   apaga y elige hora desde su chat; el admin puede prendérselo. Falta decidir
+   si a los primeros probadores se les prende de entrada.
 2. **Cerrar desde el bot**: ¿el vendedor puede mover a Cancelada/Perdida desde
    WhatsApp, o el bot solo propone y el cierre se hace en el portal? Hoy el
    drawer sí se lo permite (`deal_stage` `w: V`).
