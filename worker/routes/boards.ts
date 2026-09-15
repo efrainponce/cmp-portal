@@ -20,7 +20,7 @@ import { canRead, canReadActivity, canReadBoard, canWrite, puedeVerEstadoCuenta 
 import { submitWrite, OutboxError } from '../lib/outbox';
 import { submitCreate, submitCreateNative, isNativeCreatable, CreateError } from '../lib/createRecord';
 import { esDraftVigente, LINE_DEFINING_COLS, autoVersionSiCosteada, borrarLineaCotizacion, QuoteVersionError } from '../lib/quoteVersions';
-import { addFileToUpdate, fetchAssetPublicUrls, type MentionInput } from '../lib/monday';
+import { addFileToUpdate, fetchAssetPublicUrls } from '../lib/monday';
 import { BorradoError } from '../lib/itemBorrado';
 import { esAjusteInline, registrarAjusteInline, normalizarCantidad, textosDerivadosDeProducto } from '../lib/lineaAjustes';
 // Los updates de un item nativo (Zona Efrain) viven en D1, no en Monday — estas
@@ -30,6 +30,7 @@ import {
 } from '../lib/nativeUpdates';
 import { listActivity, actorNameResolver } from '../lib/activityLog';
 import { cachedFetchUsers } from '../lib/rosterCache';
+import { firmaAutor } from '../lib/firmaUpdate';
 import { getBoardAccess } from '../lib/boardAccess';
 import { isZonaPrivadaAdminPermitido } from '../lib/zonas';
 import { refetchItem, refetchItemTree, deltaSyncIfStale, mirrorVerificadoAt } from '../sync';
@@ -644,19 +645,15 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
     if (!text) return c.json({ error: 'body is required' }, 400);
     const mentions = (body.mentions ?? []).filter(m => Number.isFinite(m.id) && typeof m.nombre === 'string' && m.nombre.length > 0);
 
-    // Cuando el autor tiene cuenta real de Monday (monday_user_id > 0), la firma
-    // se manda como @mention de verdad — Monday la renderiza como link clickeable
-    // en vez de solo texto plano. Nativos (id sintético <= 0) no tienen a quién
-    // apuntar el mention, así que se quedan con el texto plano de siempre. Un
-    // ITEM nativo (Zona Efrain) tampoco: su feed vive en D1 y ahí el HTML de la
-    // mención se vería como HTML crudo — el firmado se queda plano.
-    const authorName = viewer.nombre ?? viewer.email;
-    const authorMention: MentionInput | null =
-      !isNativeId(itemId) && viewer.monday_user_id > 0 && viewer.nombre
-        ? { id: viewer.monday_user_id, nombre: viewer.nombre } : null;
-    const signed = authorMention
-      ? `${text}\n\n— @${authorMention.nombre} vía Portal CMP`
-      : `${text}\n\n— ${authorName} vía Portal CMP`;
+    // Firma (worker/lib/firmaUpdate.ts): @mention de verdad solo cuando el
+    // usuario de Monday con ese id ES el autor; con un id PRESTADO (Rodrigo,
+    // Paola → id de Efraín) va en texto plano con el nombre del portal.
+    const roster = viewer.monday_user_id > 0 && !isNativeId(itemId)
+      ? await cachedFetchUsers(c.env, 6 * 3600_000).catch(() => [])
+      : [];
+    const usuarioMonday = roster.find(u => String(u.id) === String(viewer.monday_user_id));
+    const { firma, mention: authorMention } = firmaAutor(viewer, usuarioMonday, { itemNativo: isNativeId(itemId) });
+    const signed = `${text}\n\n${firma}`;
     const updateMentions = authorMention ? [...mentions, authorMention] : mentions;
     const u = await postUpdate(c.env, BOARDS[slug].id, itemId, signed, updateMentions, {
       email: viewer.email, nombre: viewer.nombre ?? undefined,

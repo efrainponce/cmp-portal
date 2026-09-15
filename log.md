@@ -34,6 +34,19 @@
   Zonas trae la lista "Auxiliares"; el bot de WhatsApp usa el mismo scope
   (`zonaScopeFields`). Paola se dio de alta como auxiliar de "Centro" en D1 de
   producción; sigue con rol `vendedor`. Tests nuevos en `dal.test.ts`.
+- **Paola sin Monday: id prestado + firma en texto plano**: "Paola ya no tiene
+  Monday, lo que suba usa mi identidad como Rodrigo; si hace una actualización
+  ponle Paola" (Efraín). En D1 su `monday_user_id` pasó de 105285353 al de
+  Efraín (98389537, el mismo que ya usa Rodrigo); no pierde sus 10 oportunidades
+  porque todas tienen también a Ricardo, líder de su zona. La firma de las
+  actualizaciones (`worker/lib/firmaUpdate.ts`, antes inline en boards.ts) solo
+  manda @mention cuando el usuario de Monday con ese id ES el autor (mismo
+  nombre o correo en el roster); con id prestado va en texto plano con el nombre
+  del portal — antes el mention habría apuntado al usuario de Efraín con el
+  nombre de Paola encima y le habría avisado a él cada comentario. Sin roster
+  (Monday caído y sin cache) también cae a texto plano. El préstamo se hizo por
+  SQL porque la UI lo bloquea (`idPrestadoBloqueado`: Efraín está en la whitelist
+  de la zona privada) — mismo caso que Rodrigo, autorizado por Efraín.
 
 ## 2026-09-12
 
