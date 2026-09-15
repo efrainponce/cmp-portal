@@ -780,13 +780,18 @@ export async function uploadOportunidadInventario(
   return body;
 }
 
-/** Sube la OC / cotización / contrato firmado por el cliente al Proyecto ligado. */
+/** Archivos del cliente que viven en el Proyecto: 'documento' = OC / cotización /
+ * contrato firmado; 'acta-entrega' = acta de entrega firmada (2026-09-15). La
+ * categoría es la misma que lleva el key de /api/files (worker/lib/portalFiles.ts). */
+export type ProyectoArchivoCategoria = 'documento' | 'acta-entrega';
+
+/** Sube un archivo del cliente al Proyecto ligado (OC/contrato por default). */
 export async function uploadProyectoDocumento(
-  proyectoId: string, file: File,
+  proyectoId: string, file: File, categoria: ProyectoArchivoCategoria = 'documento',
 ): Promise<{ ok: boolean; name?: string; url?: string; error?: string }> {
   const form = new FormData();
   form.append('file', file);
-  const res = await apiFetch(`/proyectos/${proyectoId}/documento`, { method: 'POST', body: form });
+  const res = await apiFetch(`/proyectos/${proyectoId}/${categoria}`, { method: 'POST', body: form });
   const body = await res.json();
   if (!res.ok) return { ok: false, error: body.error ?? 'No se pudo subir el archivo.' };
   return body;
@@ -797,9 +802,9 @@ export async function uploadProyectoDocumento(
  * `assetId` sale de la URL de Monday y es lo que distingue dos archivos con el
  * MISMO nombre — justo el caso que originó esto (la misma OC subida dos veces). */
 export async function borrarProyectoDocumento(
-  proyectoId: string, archivo: { assetId: number; nombre: string },
+  proyectoId: string, archivo: { assetId: number; nombre: string }, categoria: ProyectoArchivoCategoria = 'documento',
 ): Promise<{ ok: boolean; error?: string }> {
-  const res = await apiFetch(`/proyectos/${proyectoId}/documento/borrar`, {
+  const res = await apiFetch(`/proyectos/${proyectoId}/${categoria}/borrar`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ assetId: archivo.assetId, nombre: archivo.nombre }),

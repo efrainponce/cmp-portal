@@ -14,9 +14,9 @@
 import { useState, type ChangeEvent } from 'react';
 import type { ItemDetailDTO } from '../../../lib/api';
 import { uploadProyectoDocumento, borrarProyectoDocumento, useBoards, colForBoard } from '../../../lib/api';
-import { patchItem } from '../../../lib/apiClient';
+import { patchItem, type ProyectoArchivoCategoria } from '../../../lib/apiClient';
 import { useMe } from '../../../lib/useMe';
-import { P_OC_CLIENTE, P_OC_CLIENTE_LEGADO, type ProyectoState } from '../ProyectoSection';
+import { P_OC_CLIENTE, P_OC_CLIENTE_LEGADO, P_ACTA_ENTREGA, type ProyectoState } from '../ProyectoSection';
 import { DocumentsPanel } from '../../../components/documents/DocumentsPanel';
 
 export const SOLICITUDES_COL = 'file_mm0z6rze'; // Cotizaciones sin precio
@@ -93,6 +93,8 @@ export function DocumentacionTab({ item, proyecto }: { item: ItemDetailDTO; proy
       <FechaEntregaField proyecto={proyecto} />
 
       <OcContratoSection proyecto={proyecto} oppId={item.id} />
+
+      <ActaEntregaSection proyecto={proyecto} oppId={item.id} />
 
       <div>
         <SectionTitle>Documentos del portal</SectionTitle>
@@ -276,15 +278,66 @@ export function FechaEntregaField({ proyecto }: { proyecto?: ProyectoState }) {
   );
 }
 
-/** Único upload real de esta pestaña: sube al Proyecto ligado (file_mm33yv4p),
- * no a la Oportunidad — el resto de las secciones se queda deshabilitado. */
+/** Qué archivo del cliente pinta una sección: columna de Monday, categoría del
+ * key de /api/files y textos. Las dos secciones (OC/contrato y acta de entrega)
+ * comparten TODO el comportamiento — subir, listar desde R2, borrar 1-1 con
+ * Monday — y solo cambian en esto. */
+interface ProyectoArchivoConfig {
+  categoria: ProyectoArchivoCategoria;
+  colId: string;
+  /** Columna vieja que solo se LEE (sin "Borrar"): proyectos anteriores al cambio. */
+  colLegado?: string;
+  titulo: string;
+  descripcion: string;
+  placeholder: string;
+  /** Marca la sección en rojo cuando está vacía y explica por qué es obligatoria. */
+  obligatorio?: string;
+}
+
+const OC_CONTRATO: ProyectoArchivoConfig = {
+  categoria: 'documento',
+  colId: P_OC_CLIENTE,
+  colLegado: P_OC_CLIENTE_LEGADO,
+  titulo: 'Órdenes de compra / contrato firmado',
+  descripcion: 'Orden de compra, cotización firmada por el cliente o contrato firmado.',
+  placeholder: 'Subir orden de compra o contrato',
+  // Obligatorio antes de "Validar tallas (vendedor)" — el server ya lo bloquea
+  // (worker/lib/proyectoTallas.ts checkOcCliente), esto es el warning en el
+  // board mismo para que no se descubra hasta que el botón truene (Efraín, 2026-08-10).
+  obligatorio: 'Obligatorio: sin este documento no se puede enviar a validación de tallas.',
+};
+
+// Acta de entrega firmada por el cliente (Efraín, 2026-09-15: "hace falta
+// agregar un apartado actas de entrega" — hasta entonces la columna existía en
+// Monday pero el portal no la mostraba ni dejaba subirla).
+const ACTA_ENTREGA: ProyectoArchivoConfig = {
+  categoria: 'acta-entrega',
+  colId: P_ACTA_ENTREGA,
+  titulo: 'Actas de entrega',
+  descripcion: 'Acta de entrega firmada por el cliente al recibir el proyecto.',
+  placeholder: 'Subir acta de entrega',
+};
+
+/** OC / cotización / contrato firmado — sube al Proyecto ligado (file_mm33yv4p),
+ * no a la Oportunidad. */
 export function OcContratoSection({ proyecto, oppId }: { proyecto?: ProyectoState; oppId: string | null }) {
+  return <ProyectoArchivoSection config={OC_CONTRATO} proyecto={proyecto} oppId={oppId} />;
+}
+
+/** Acta de entrega firmada — misma mecánica que la OC, columna file_mm4pa2h8. */
+export function ActaEntregaSection({ proyecto, oppId }: { proyecto?: ProyectoState; oppId: string | null }) {
+  return <ProyectoArchivoSection config={ACTA_ENTREGA} proyecto={proyecto} oppId={oppId} />;
+}
+
+function ProyectoArchivoSection({ config, proyecto, oppId }: {
+  config: ProyectoArchivoConfig; proyecto?: ProyectoState; oppId: string | null;
+}) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [borrando, setBorrando] = useState<string | null>(null);
   // Refleja ColMeta.w (shared/visibility.ts) en vez de repetir la whitelist aquí.
   const { boards } = useBoards();
-  const canDelete = !!colForBoard(boards, 'proyectos').find((c) => c.id === P_OC_CLIENTE)?.w;
+  const canDelete = !!colForBoard(boards, 'proyectos').find((c) => c.id === config.colId)?.w;
 
   const handleFile = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -293,7 +346,7 @@ export function OcContratoSection({ proyecto, oppId }: { proyecto?: ProyectoStat
     if (!file || !p) return;
     setUploading(true);
     setError(null);
-    const res = await uploadProyectoDocumento(p.id, file);
+    const res = await uploadProyectoDocumento(p.id, file, config.categoria);
     setUploading(false);
     if (!res.ok) { setError(res.error ?? 'No se pudo subir el archivo.'); return; }
     proyecto?.reload();
@@ -308,7 +361,7 @@ export function OcContratoSection({ proyecto, oppId }: { proyecto?: ProyectoStat
     if (!confirm(`¿Borrar "${f.name}"?\n\nSe quita del portal y de Monday. El portal guarda una copia de respaldo.`)) return;
     setBorrando(fileKey(f));
     setError(null);
-    const res = await borrarProyectoDocumento(p.id, { assetId: f.assetId ?? 0, nombre: f.name });
+    const res = await borrarProyectoDocumento(p.id, { assetId: f.assetId ?? 0, nombre: f.name }, config.categoria);
     setBorrando(null);
     if (!res.ok) { setError(res.error ?? 'No se pudo borrar el documento.'); return; }
     proyecto?.reload();
@@ -318,33 +371,29 @@ export function OcContratoSection({ proyecto, oppId }: { proyecto?: ProyectoStat
   // Reconstruye el key de R2 (durable, sin expirar) en vez de usar la URL
   // firmada de Monday que trae el mirror — GET /api/files/... cae de vuelta
   // a Monday por sí solo si el archivo aún no se migró (ver worker/routes/oportunidades.ts).
-  // Se listan las dos columnas: la vigente y la que el portal usaba antes del
-  // 2026-08-26 — los proyectos viejos siguen mostrando su documento (el key de
-  // /api/files es el mismo, el server resuelve en cuál de las dos vive).
+  // Si hay columna vieja se lista también: los proyectos anteriores al cambio
+  // siguen mostrando su documento (el key de /api/files es el mismo, el server
+  // resuelve en cuál de las dos vive). El borrado solo sabe de la columna
+  // vigente, así que esos no ofrecen "Borrar" — se quitan desde Monday si hiciera falta.
   const files = p && oppId ? [
-    ...parseFiles(p.cols[P_OC_CLIENTE]?.text),
-    // El borrado solo sabe de la columna vigente, así que estos no ofrecen
-    // "Borrar" — se quitan desde Monday si hiciera falta.
-    ...parseFiles(p.cols[P_OC_CLIENTE_LEGADO]?.text).map((f) => ({ ...f, soloLectura: true })),
+    ...parseFiles(p.cols[config.colId]?.text),
+    ...(config.colLegado ? parseFiles(p.cols[config.colLegado]?.text).map((f) => ({ ...f, soloLectura: true })) : []),
   ].map((f) => ({
-    ...f, url: `/api/files/oportunidades/${oppId}/documento/${encodeURIComponent(f.name)}`,
+    ...f, url: `/api/files/oportunidades/${oppId}/${config.categoria}/${encodeURIComponent(f.name)}`,
   })) : [];
   const canUpload = !!p;
   const hint = !proyecto || proyecto.loading ? 'Buscando el proyecto ligado…'
     : !p ? 'Esta oportunidad aún no tiene Proyecto en Monday — se crea al GANAR la oportunidad.'
     : null;
-  // Obligatorio antes de "Validar tallas (vendedor)" — el server ya lo bloquea
-  // (worker/lib/proyectoTallas.ts checkOcCliente), esto es el warning en el
-  // board mismo para que no se descubra hasta que el botón truene (Efraín, 2026-08-10).
-  const isMissing = !!p && files.length === 0;
+  const isMissing = !!config.obligatorio && !!p && files.length === 0;
 
   return (
     <div>
       <SectionTitle>
-        Órdenes de compra / contrato firmado{isMissing && <span style={{ color: 'var(--status-perdida)' }}> *</span>}
+        {config.titulo}{isMissing && <span style={{ color: 'var(--status-perdida)' }}> *</span>}
       </SectionTitle>
       <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)', marginTop: 2, marginBottom: 4 }}>
-        Orden de compra, cotización firmada por el cliente o contrato firmado.
+        {config.descripcion}
       </div>
       <label style={{
         display: 'flex', alignItems: 'center', gap: 10, border: `1px dashed ${error || isMissing ? 'var(--status-perdida)' : 'var(--ink-faint)'}`,
@@ -352,7 +401,7 @@ export function OcContratoSection({ proyecto, oppId }: { proyecto?: ProyectoStat
         cursor: canUpload && !uploading ? 'pointer' : 'default', opacity: canUpload ? 1 : .6,
       }}>
         <span style={{ font: 'var(--text-label)', color: error ? 'var(--status-perdida)' : 'var(--ink-secondary)' }}>
-          {uploading ? 'Subiendo…' : error ? `Error — reintentar (${error})` : hint ?? 'Subir orden de compra o contrato'}
+          {uploading ? 'Subiendo…' : error ? `Error — reintentar (${error})` : hint ?? config.placeholder}
         </span>
         <input type="file" onChange={handleFile} style={{ display: 'none' }} disabled={!canUpload || uploading} />
       </label>
@@ -362,7 +411,7 @@ export function OcContratoSection({ proyecto, oppId }: { proyecto?: ProyectoStat
           marginTop: 8, padding: '8px 10px', border: '1px solid var(--status-perdida)', borderRadius: 'var(--radius-lg)',
           background: 'var(--status-perdida-tint)', font: 'var(--text-caption-strong)', color: 'var(--status-perdida)',
         }}>
-          Obligatorio: sin este documento no se puede enviar a validación de tallas.
+          {config.obligatorio}
         </div>
       )}
     </div>

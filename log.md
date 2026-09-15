@@ -2,6 +2,24 @@
 
 ## 2026-09-15
 
+- **Actas de entrega en Documentación del Proyecto**: Efraín preguntó por qué no
+  llegaba el acta de entrega de OPP-0723 / PRO-0139 (CADETES TORREON). Se revisó en
+  vivo: nadie la había subido (las 11 columnas file del Proyecto, la Oportunidad,
+  la carpeta de Drive y los comentarios, sin acta) y, aunque hubiera estado, el
+  portal no la mostraba — la pestaña Documentación solo pintaba Fecha de entrega y
+  OC/contrato. Ahora hay sección **"Actas de entrega"** debajo de la OC, con subir,
+  listar (desde R2) y borrar 1-1 con Monday, en el drawer del Proyecto y en el de la
+  Oportunidad. Columna: `file_mm4pa2h8` (`PROYECTO_ACTA_COL`), la "Acta de Entrega"
+  que el equipo sí usa (8 proyectos); la otra columna con el mismo título
+  (`project_file`, 3 proyectos con fotos de WhatsApp mezcladas) no se expone.
+  Permisos iguales a la OC/contrato (`vis: V, w: V`: vendedor, compras y admin
+  suben; borra quien subió o un admin). Implementación: `OcContratoSection` se
+  generalizó en `ProyectoArchivoSection` con config por categoría; las rutas
+  `POST /api/proyectos/:id/{documento|acta-entrega}` y `/borrar` salen de un solo
+  bloque, y `'acta-entrega'` entra a `PROYECTO_FILE_COLS` para que `/api/files`
+  resuelva el key igual que tallas/oc. El 500 del borrado ahora pasa por
+  `errorInterno`. Probado en local con un proyecto nativo sembrado (subir →
+  descargar → borrar) y captura del drawer.
 - **Auxiliar de zona (Paola Facundo, "Auxiliar de Ventas" de la zona de Ricardo)**:
   Efraín pidió un rol "idéntico a gerente de ventas" y, a media tarea, "con
   permisos de escritura, es un rol de líder". En el portal "gerente" nunca fue un

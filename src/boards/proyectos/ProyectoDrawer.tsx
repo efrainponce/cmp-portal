@@ -18,7 +18,7 @@ import { useIsMobile } from '../../lib/useIsMobile';
 import { useMe } from '../../lib/useMe';
 import { ActualizacionesTab } from '../oportunidades/tabs/ActualizacionesTab';
 import { ActividadTab } from '../oportunidades/tabs/ActividadTab';
-import { FechaEntregaField, OcContratoSection } from '../oportunidades/tabs/DocumentacionTab';
+import { FechaEntregaField, OcContratoSection, ActaEntregaSection } from '../oportunidades/tabs/DocumentacionTab';
 import { ProyectoTallasSection, ProyectoOrdenesSection, EjecucionSection, LogisticaSection, type ProyectoState } from '../oportunidades/ProyectoSection';
 import { CotizacionVirtualTab } from './CotizacionVirtualTab';
 import { CosteoProyectoTab } from './CosteoProyectoTab';
@@ -305,6 +305,7 @@ export function ProyectoDrawer({ id, boardKey, backLabel, defaultTab, openTab, o
         <div style={{ padding: '24px 32px 40px', maxWidth: 920, width: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 20 }}>
           <FechaEntregaField proyecto={proyectoState} />
           <OcContratoSection proyecto={proyectoState} oppId={oportunidadId} />
+          <ActaEntregaSection proyecto={proyectoState} oppId={oportunidadId} />
         </div>
       )}
       {tab === 'tallas' && (

@@ -19,6 +19,11 @@ export const PROYECTO_DOCUMENTO_COL = 'file_mm33yv4p';
 // La columna de antes: se sigue LEYENDO (los 4 proyectos viejos no pierden su
 // documento) pero ya no se escribe — no está en la whitelist como writable.
 export const PROYECTO_DOCUMENTO_COL_LEGADO = 'file_mm0hayh4';
+// Acta de entrega firmada por el cliente (board Proyectos, 2026-09-15). Hay DOS
+// columnas tituladas "Acta de Entrega": esta es la que el equipo usa (8
+// proyectos al 2026-09-15); `project_file` tiene 3 con fotos de WhatsApp
+// mezcladas y NO se lee ni se escribe desde el portal.
+export const PROYECTO_ACTA_COL = 'file_mm4pa2h8';
 
 // Documentos que genera cmp-tallas subiendo directo a Monday (nunca al portal,
 // nunca dual-write) — el fallback de abajo es lo único que los mantiene
@@ -34,6 +39,9 @@ export const OPP_FILE_COLS: Record<string, string> = {
 export const PROYECTO_FILE_COLS: Record<string, string> = {
   'tallas': 'file_mm0hcrtz',
   'oc': 'file_mm0hj9pn',
+  // La sube el portal (tab Documentación) con dual-write a R2, igual que
+  // 'documento' — está aquí porque la resolución por key es la misma.
+  'acta-entrega': PROYECTO_ACTA_COL,
 };
 
 // Tab Logística del Proyecto (2026-08-17): archivos por SUBITEM de

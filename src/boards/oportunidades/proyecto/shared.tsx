@@ -27,6 +27,11 @@ export const P_OC_CLIENTE = 'file_mm33yv4p';
 // A donde apuntaba el portal antes: solo lectura, para no esconder el documento
 // de los proyectos que lo tienen ahí ("Cotización Firmada Institucion").
 export const P_OC_CLIENTE_LEGADO = 'file_mm0hayh4';
+// Acta de entrega firmada por el cliente (sección propia en Documentación,
+// 2026-09-15). Es la "Acta de Entrega" que el equipo sí usa en Monday; la otra
+// columna con el mismo título (`project_file`) no se expone
+// (ver worker/lib/portalFiles.ts PROYECTO_ACTA_COL).
+export const P_ACTA_ENTREGA = 'file_mm4pa2h8';
 export const P_METODO_PAGO = 'text_mm4cct6a';    // Método de pago (default del Proyecto, prellenado por tarjeta)
 export const P_COND_PAGO = 'text_mm4cdyjb';      // Condiciones de pago (default del Proyecto, prellenado por tarjeta)
 

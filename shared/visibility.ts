@@ -163,7 +163,7 @@ export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
       'date_mm21c5ka', 'multiple_person_mm164em1', 'multiple_person_mm16qysk',
       'multiple_person_mm169k2f', 'file_mm478mkq', 'link_mm462saa',
       'text_mm4cct6a', 'text_mm4cdyjb', 'color_mm52csps',
-      'file_mm4pa2h8', 'date_mm525k42', 'file_mm3393nf'], AC),
+      'date_mm525k42', 'file_mm3393nf'], AC),
     // Comentarios — lo que cmp-tallas imprime en la OC. El portal lo escribe
     // como puente de la "nota al proveedor" del tab Órdenes de compra
     // (worker/lib/ocNotas.ts, Efraín 2026-08-19).
@@ -176,6 +176,13 @@ export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
     // "OC/contrato/cotización firmada (oculto)": es donde el equipo lo sube de
     // verdad (worker/lib/portalFiles.ts PROYECTO_DOCUMENTO_COL, 2026-08-26).
     file_mm33yv4p: { vis: V, w: V },
+    // Acta de Entrega firmada por el cliente — sección propia en Documentación
+    // desde el 2026-09-15 (Efraín: "hace falta agregar un apartado actas de
+    // entrega"). Mismos permisos que la OC/contrato: la recibe el vendedor al
+    // entregar, compras/admin también la suben. Es la columna que el equipo ya
+    // usa en Monday (worker/lib/portalFiles.ts PROYECTO_ACTA_COL); la otra
+    // "Acta de Entrega" (`project_file`) no se expone.
+    file_mm4pa2h8: { vis: V, w: V },
     // "Cotización Firmada Institucion" — a donde apuntaba el portal antes del
     // 2026-08-26. Solo lectura: 4 proyectos viejos siguen mostrando su
     // documento, pero lo nuevo ya se escribe en file_mm33yv4p.

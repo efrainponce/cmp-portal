@@ -55,7 +55,7 @@ import { toNativeColumns, insertNativeSubitem, stampNativeFileMarker } from '../
 import { insertSeguimiento } from '../lib/home';
 import { listZoneImages, uploadZoneImage, EmbellImageError } from '../lib/embellecimientoImagenes';
 import { listProposedProducts, addProposedProduct, ProposedProductError } from '../lib/productosPropuestos';
-import { resolveMondayAsset, keyLegado, PROYECTO_DOCUMENTO_COL } from '../lib/portalFiles';
+import { resolveMondayAsset, keyLegado, PROYECTO_DOCUMENTO_COL, PROYECTO_ACTA_COL } from '../lib/portalFiles';
 import { putFile, oportunidadFileKey, proyectoFileKey } from '../lib/r2';
 import { resolveCotizacionPdfUrl, nativeCotizacionPdf, CotizacionPdfError, ETIQUETA_BY_KIND, type PdfKind } from '../lib/cotizacionPdfs';
 import { refetchItem, refetchItemTree, upsertItem } from '../sync';
@@ -1841,107 +1841,117 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     }
   });
 
-  // Sube la OC / cotización / contrato firmado por el cliente al Proyecto ligado.
-  // Registrada ANTES de /api/proyectos/:id/:action a propósito — mismo motivo
+  // Archivos del cliente que suben las personas al Proyecto ligado, uno por
+  // columna file: la OC / cotización / contrato firmado ('documento') y, desde
+  // el 2026-09-15, el acta de entrega ('acta-entrega'). Mismo par de rutas
+  // (subir / borrar) para cada uno — la categoría define la columna de Monday
+  // y el prefijo del key de R2 (worker/lib/portalFiles.ts).
+  // Registradas ANTES de /api/proyectos/:id/:action a propósito — mismo motivo
   // que /lineas arriba: el wildcard también matchea /documento (action="documento")
   // e intercepta con 404 si va después (bug encontrado y corregido, Efraín 2026-07-17).
-  app.post('/api/proyectos/:id/documento', async c => {
-    const itemId = Number(c.req.param('id'));
-    if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
-    const viewer = c.get('viewer');
-    if (!canWrite('proyectos', PROYECTO_DOCUMENTO_COL, viewer.role)) return c.json({ error: 'forbidden' }, 403);
+  const PROYECTO_ARCHIVOS: ReadonlyArray<{ categoria: string; colId: string }> = [
+    { categoria: 'documento', colId: PROYECTO_DOCUMENTO_COL },
+    { categoria: 'acta-entrega', colId: PROYECTO_ACTA_COL },
+  ];
+  for (const { categoria, colId } of PROYECTO_ARCHIVOS) {
+    app.post(`/api/proyectos/:id/${categoria}`, async c => {
+      const itemId = Number(c.req.param('id'));
+      if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
+      const viewer = c.get('viewer');
+      if (!canWrite('proyectos', colId, viewer.role)) return c.json({ error: 'forbidden' }, 403);
 
-    const row = await getItem(c.env, 'proyectos', itemId, viewer, 'own');
-    if (!row) return c.json({ error: 'not found' }, 404);
+      const row = await getItem(c.env, 'proyectos', itemId, viewer, 'own');
+      if (!row) return c.json({ error: 'not found' }, 404);
 
-    const form = await c.req.formData();
-    const file = form.get('file');
-    if (!(file instanceof File)) return c.json({ error: 'file is required' }, 400);
+      const form = await c.req.formData();
+      const file = form.get('file');
+      if (!(file instanceof File)) return c.json({ error: 'file is required' }, 400);
 
-    // Proyecto nativo (Zona Efrain, "salir de Monday"): no existe columna de
-    // Monday a la que subir — el archivo vive SOLO en R2, y se estampa un
-    // marcador en `items.columns` para que checkOcCliente (worker/lib/
-    // proyectoTallas.ts) encuentre texto no vacío en PROYECTO_DOCUMENTO_COL.
-    if (isNativeId(itemId)) {
+      // Proyecto nativo (Zona Efrain, "salir de Monday"): no existe columna de
+      // Monday a la que subir — el archivo vive SOLO en R2, y se estampa un
+      // marcador en `items.columns` para que checkOcCliente (worker/lib/
+      // proyectoTallas.ts) encuentre texto no vacío en PROYECTO_DOCUMENTO_COL.
+      if (isNativeId(itemId)) {
+        const oppId = linkedItemId(row, PROYECTO_OPP_REL);
+        // Sin Oportunidad ligada el key cuelga del Proyecto (worker/lib/r2.ts,
+        // 2026-08-26) — antes el archivo se quedaba sin copia y sin URL servible.
+        const key = oppId != null
+          ? oportunidadFileKey(oppId, categoria, file.name)
+          : proyectoFileKey(itemId, categoria, file.name);
+        await putFile(c.env, key, file);
+        await stampNativeFileMarker(c.env, 'proyectos', itemId, colId, file.name, 'replace');
+        // assetId 0: un item nativo no tiene asset de Monday — el registro de
+        // quién subió empata por nombre (worker/lib/archivoBorrado.ts).
+        await registrarSubida(c.env, BOARDS.proyectos.id, itemId, colId, { assetId: 0, nombre: file.name }, viewer.email);
+        return c.json({ ok: true, id: `native-${Date.now()}`, name: file.name, url: `/api/files/${key}` });
+      }
+
+      const asset = await addFileToColumn(c.env, itemId, colId, file, file.name);
+      c.executionCtx.waitUntil(refetchItem(c.env, BOARDS.proyectos.id, itemId));
+
+      // Deja constancia de QUIÉN lo subió: Monday no lo sabe decir (todo sube con
+      // el token de servicio), y sin esto no se puede cumplir "solo el que lo
+      // subió lo puede borrar" (Efraín, 2026-08-19).
+      await registrarSubida(c.env, BOARDS.proyectos.id, itemId, colId,
+        { assetId: Number(asset.id) || 0, nombre: asset.name || file.name }, viewer.email);
+
+      // Dual-write a R2: el Proyecto no trae el oppId directo, se resuelve del
+      // board_relation ya cargado en `row` (ver worker/lib/dal.ts). Un proyecto
+      // hecho desde cero no tiene ninguna (shared/createFields.ts, 2026-08-26) y
+      // el archivo cuelga de él — antes ese caso se quedaba solo en Monday, o sea
+      // con un link que pide sesión de Monday para abrirse.
       const oppId = linkedItemId(row, PROYECTO_OPP_REL);
-      // Sin Oportunidad ligada el key cuelga del Proyecto (worker/lib/r2.ts,
-      // 2026-08-26) — antes el archivo se quedaba sin copia y sin URL servible.
       const key = oppId != null
-        ? oportunidadFileKey(oppId, 'documento', file.name)
-        : proyectoFileKey(itemId, 'documento', file.name);
+        ? oportunidadFileKey(oppId, categoria, file.name, asset.id)
+        : proyectoFileKey(itemId, categoria, file.name, asset.id);
       await putFile(c.env, key, file);
-      await stampNativeFileMarker(c.env, 'proyectos', itemId, PROYECTO_DOCUMENTO_COL, file.name, 'replace');
-      // assetId 0: un item nativo no tiene asset de Monday — el registro de
-      // quién subió empata por nombre (worker/lib/archivoBorrado.ts).
-      await registrarSubida(c.env, BOARDS.proyectos.id, itemId, PROYECTO_DOCUMENTO_COL, { assetId: 0, nombre: file.name }, viewer.email);
-      return c.json({ ok: true, id: `native-${Date.now()}`, name: file.name, url: `/api/files/${key}` });
-    }
+      return c.json({ ok: true, id: asset.id, name: asset.name, url: `/api/files/${key}` });
+    });
 
-    const asset = await addFileToColumn(c.env, itemId, PROYECTO_DOCUMENTO_COL, file, file.name);
-    c.executionCtx.waitUntil(refetchItem(c.env, BOARDS.proyectos.id, itemId));
+    // Borra un archivo de la columna: del portal Y de Monday, 1-1
+    // (worker/lib/archivoBorrado.ts — respaldo en R2 antes, tope por hora, y
+    // `update_assets_on_item` en vez de cualquier mutación destructiva).
+    // Efraín, 2026-08-19: "vendedor puede borrar documentos que el SUBIO".
+    app.post(`/api/proyectos/:id/${categoria}/borrar`, async c => {
+      const itemId = Number(c.req.param('id'));
+      if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
+      const viewer = c.get('viewer');
+      if (!canWrite('proyectos', colId, viewer.role)) return c.json({ error: 'forbidden' }, 403);
 
-    // Deja constancia de QUIÉN lo subió: Monday no lo sabe decir (todo sube con
-    // el token de servicio), y sin esto no se puede cumplir "solo el que lo
-    // subió lo puede borrar" (Efraín, 2026-08-19).
-    await registrarSubida(c.env, BOARDS.proyectos.id, itemId, PROYECTO_DOCUMENTO_COL,
-      { assetId: Number(asset.id) || 0, nombre: asset.name || file.name }, viewer.email);
+      // scope 'own': borrar es una escritura — solo sobre lo propio, nunca sobre
+      // lo que el viewer apenas LEE por liderar la zona (worker/lib/zonas.ts).
+      const row = await getItem(c.env, 'proyectos', itemId, viewer, 'own');
+      if (!row) return c.json({ error: 'not found' }, 404);
 
-    // Dual-write a R2: el Proyecto no trae el oppId directo, se resuelve del
-    // board_relation ya cargado en `row` (ver worker/lib/dal.ts). Un proyecto
-    // hecho desde cero no tiene ninguna (shared/createFields.ts, 2026-08-26) y
-    // el archivo cuelga de él — antes ese caso se quedaba solo en Monday, o sea
-    // con un link que pide sesión de Monday para abrirse.
-    const oppId = linkedItemId(row, PROYECTO_OPP_REL);
-    const key = oppId != null
-      ? oportunidadFileKey(oppId, 'documento', file.name, asset.id)
-      : proyectoFileKey(itemId, 'documento', file.name, asset.id);
-    await putFile(c.env, key, file);
-    return c.json({ ok: true, id: asset.id, name: asset.name, url: `/api/files/${key}` });
-  });
+      const body = await c.req.json<{ assetId?: number; nombre?: string }>().catch(() => ({} as { assetId?: number; nombre?: string }));
+      const nombre = typeof body.nombre === 'string' ? body.nombre.trim() : '';
+      const assetId = Number(body.assetId) || 0;
+      if (!nombre && !assetId) return c.json({ error: 'falta el archivo a borrar' }, 400);
 
-  // Borra un archivo de la OC/contrato: del portal Y de Monday, 1-1
-  // (worker/lib/archivoBorrado.ts — respaldo en R2 antes, tope por hora, y
-  // `update_assets_on_item` en vez de cualquier mutación destructiva).
-  // Efraín, 2026-08-19: "vendedor puede borrar documentos que el SUBIO".
-  app.post('/api/proyectos/:id/documento/borrar', async c => {
-    const itemId = Number(c.req.param('id'));
-    if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
-    const viewer = c.get('viewer');
-    if (!canWrite('proyectos', PROYECTO_DOCUMENTO_COL, viewer.role)) return c.json({ error: 'forbidden' }, 403);
+      // En vivo, no contra el mirror: el espejo tarda en ver una subida y borrar
+      // lo recién subido contestaba 404 (prueba de producción, 2026-08-19).
+      const archivo = await buscarArchivo(c.env, BOARDS.proyectos.id, itemId, colId, { assetId, nombre });
+      if (!archivo) return c.json({ error: 'ese documento ya no está en el proyecto' }, 404);
 
-    // scope 'own': borrar es una escritura — solo sobre lo propio, nunca sobre
-    // lo que el viewer apenas LEE por liderar la zona (worker/lib/zonas.ts).
-    const row = await getItem(c.env, 'proyectos', itemId, viewer, 'own');
-    if (!row) return c.json({ error: 'not found' }, 404);
+      const uploader = await subidoPor(c.env, BOARDS.proyectos.id, itemId, colId, archivo);
+      if (!puedeBorrarArchivo(viewer, uploader)) {
+        return c.json({ error: 'ese documento lo subió alguien más — pídele a quien lo subió, o a un admin, que lo borre' }, 403);
+      }
 
-    const body = await c.req.json<{ assetId?: number; nombre?: string }>().catch(() => ({} as { assetId?: number; nombre?: string }));
-    const nombre = typeof body.nombre === 'string' ? body.nombre.trim() : '';
-    const assetId = Number(body.assetId) || 0;
-    if (!nombre && !assetId) return c.json({ error: 'falta el archivo a borrar' }, 400);
-
-    // En vivo, no contra el mirror: el espejo tarda en ver una subida y borrar
-    // lo recién subido contestaba 404 (prueba de producción, 2026-08-19).
-    const archivo = await buscarArchivo(c.env, BOARDS.proyectos.id, itemId, PROYECTO_DOCUMENTO_COL, { assetId, nombre });
-    if (!archivo) return c.json({ error: 'ese documento ya no está en el proyecto' }, 404);
-
-    const uploader = await subidoPor(c.env, BOARDS.proyectos.id, itemId, PROYECTO_DOCUMENTO_COL, archivo);
-    if (!puedeBorrarArchivo(viewer, uploader)) {
-      return c.json({ error: 'ese documento lo subió alguien más — pídele a quien lo subió, o a un admin, que lo borre' }, 403);
-    }
-
-    try {
-      const oppId = linkedItemId(row, PROYECTO_OPP_REL);
-      const res = await borrarArchivoDeColumna(c.env, {
-        slug: 'proyectos', itemId, colId: PROYECTO_DOCUMENTO_COL,
-        oppId, categoria: 'documento', ref: archivo, viewer,
-      });
-      if (!isNativeId(itemId)) await refetchItem(c.env, BOARDS.proyectos.id, itemId);
-      return c.json({ ok: true, nombre: res.nombre });
-    } catch (err) {
-      if (err instanceof ArchivoBorradoError) return jsonStatus({ error: err.message }, err.status);
-      return c.json({ error: 'No se pudo borrar el documento.' }, 500);
-    }
-  });
+      try {
+        const oppId = linkedItemId(row, PROYECTO_OPP_REL);
+        const res = await borrarArchivoDeColumna(c.env, {
+          slug: 'proyectos', itemId, colId,
+          oppId, categoria, ref: archivo, viewer,
+        });
+        if (!isNativeId(itemId)) await refetchItem(c.env, BOARDS.proyectos.id, itemId);
+        return c.json({ ok: true, nombre: res.nombre });
+      } catch (err) {
+        if (err instanceof ArchivoBorradoError) return jsonStatus({ error: err.message }, err.status);
+        return errorInterno(c, err, { error: 'No se pudo borrar el documento.' });
+      }
+    });
+  }
 
   // Sube "# Guia - empresa" / "Evidencia recolección" (columnas file de
   // proyectos_sub) desde el tab Logística — mismo patrón dual-write que
