@@ -39,16 +39,22 @@ describe('SUBFOLDERS', () => {
 });
 
 describe('proyectoRootFolderName', () => {
-  it('antepone el folio PRO-nnnn al nombre, como Make con la Oportunidad', () => {
-    expect(proyectoRootFolderName('PRO-0202', 'OPP-1015 - UNIFORMES CORRALON NOGALES'))
+  it('"PRO - OPP - nombre", quitando el OPP que el nombre ya trae (Efraín: "tipo PRO-XXX - OPP-XXX")', () => {
+    expect(proyectoRootFolderName('PRO-0202', 'OPP-1015', 'OPP-1015 - UNIFORMES CORRALON NOGALES'))
       .toBe('PRO-0202 - OPP-1015 - UNIFORMES CORRALON NOGALES');
+    expect(proyectoRootFolderName('PRO-0196', 'OPP-0236', 'CHALECOS FOFIS SONORA - OPP-0236'))
+      .toBe('PRO-0196 - OPP-0236 - CHALECOS FOFIS SONORA');
+    expect(proyectoRootFolderName('PRO-0210', 'OPP-1041', 'OPP-1041 - OPP-0823 - Uniforme PC (copy)'))
+      .toBe('PRO-0210 - OPP-1041 - OPP-0823 - Uniforme PC (copy)');
+    expect(proyectoRootFolderName('PRO-0020', 'OPP-0112', 'OPP-0112 BOTAS PC SAN PEDRO'))
+      .toBe('PRO-0020 - OPP-0112 - BOTAS PC SAN PEDRO');
   });
-  it('no duplica el folio si el nombre ya lo trae', () => {
-    expect(proyectoRootFolderName('PRO-0202', 'PRO-0202 - Chalecos')).toBe('PRO-0202 - Chalecos');
-    expect(proyectoRootFolderName('pro-0202', 'PRO-0202 - Chalecos')).toBe('PRO-0202 - Chalecos');
+  it('no confunde OPP-101 con OPP-1015', () => {
+    expect(proyectoRootFolderName('PRO-1', 'OPP-101', 'OPP-1015 - X')).toBe('PRO-1 - OPP-101 - OPP-1015 - X');
   });
-  it('sin folio deja el nombre tal cual', () => {
-    expect(proyectoRootFolderName('', '  Chalecos ')).toBe('Chalecos');
+  it('sin oportunidad ligada: "PRO - nombre"; sin folio: el nombre', () => {
+    expect(proyectoRootFolderName('PRO-0203', '', 'PRUEBAS DE LABORATORIO')).toBe('PRO-0203 - PRUEBAS DE LABORATORIO');
+    expect(proyectoRootFolderName('', '', '  Chalecos ')).toBe('Chalecos');
   });
 });
 

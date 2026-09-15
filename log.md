@@ -51,6 +51,15 @@
   - Ops: secretos `GOOGLE_SERVICE_ACCOUNT_EMAIL` y `GOOGLE_PRIVATE_KEY` subidos
     al Worker de producción (antes no existían ahí). Tests nuevos en
     `worker/lib/drive.test.ts`; typecheck/test/lint en verde.
+  - Nombre de la carpeta (Efraín, misma tarde: "incluye el folio de la
+    oportunidad, tipo PRO-XXX - OPP-XXX"): `PRO-0202 - OPP-1015 - nombre`,
+    quitando el OPP que el nombre del proyecto ya trae. La sincronización del
+    Proyecto también espeja las cotizaciones de su Oportunidad a "10. COT FINAL".
+  - `scripts/drive-batch-proyectos.mjs` (Efraín: "los proyectos anteriores se
+    creen ahora en batch y con documentos"): misma regla que el worker, corre
+    contra producción sin esperar el deploy (Drive + Monday + D1 vía wrangler),
+    idempotente por nombre, `--dry` para el plan. Dry run 2026-09-15: 129
+    proyectos, 910 archivos; se saltan los de prueba (OC test / E2E).
 
 
 - **Actas de entrega en Documentación del Proyecto**: Efraín preguntó por qué no

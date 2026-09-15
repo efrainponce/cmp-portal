@@ -30,7 +30,8 @@ import { getGoogleAccessToken, GoogleAuthError } from './googleAuth';
 import { gql, fetchItem } from './monday';
 import { BOARDS } from '../../shared/boards';
 import { isNativeId } from '../../shared/nativeId';
-import { getItemTrusted } from './dal';
+import { getItemTrusted, linkedItemId, PROYECTO_OPP_REL } from './dal';
+import { folioDe } from './oportunidadLigada';
 import { parseArchivos } from './archivoBorrado';
 import { fetchAssetBytes } from './portalFiles';
 import { refetchItem } from '../sync/refetch';
@@ -318,15 +319,23 @@ export function oportunidadRootFolderName(folio: string, nombre: string): string
   return `${folio} - ${nombre}`;
 }
 
-/** "{PRO-0202} - {nombre}" — mismo patrón que Make usa para la Oportunidad. Si
- * el nombre ya empieza con ese folio (o no hay folio) se deja tal cual, para
- * no producir "PRO-0202 - PRO-0202 - …". */
-export function proyectoRootFolderName(folio: string, nombre: string): string {
-  const f = folio.trim();
-  const n = nombre.trim();
-  if (!f) return n;
-  if (n.toUpperCase().startsWith(f.toUpperCase())) return n;
-  return `${f} - ${n}`;
+/** "PRO-0202 - OPP-1015 - {nombre}" (Efraín, 2026-09-15: "incluye el folio de
+ * la oportunidad directo en el nombre, tipo PRO-XXX - OPP-XXX"). El nombre del
+ * Proyecto casi siempre ya trae el OPP ("OPP-1015 - UNIFORMES…", "CHALECOS… -
+ * OPP-0236"): se le quita para no repetirlo. Sin oportunidad ligada queda
+ * "PRO-0202 - {nombre}"; sin folio, el nombre tal cual. */
+export function proyectoRootFolderName(folioPro: string, folioOpp: string, nombre: string): string {
+  const pro = folioPro.trim();
+  const opp = folioOpp.trim();
+  let n = nombre.trim();
+  if (opp) {
+    // Quita el token del folio donde esté ("OPP-0112 BOTAS", "X - OPP-0236",
+    // "OPP-1041 - OPP-0823 - …") y limpia los separadores que deja.
+    const esc = opp.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    n = n.replace(new RegExp(`(?<![\\w-])${esc}(?![\\w-])`, 'ig'), ' ')
+      .replace(/\s+-\s+-\s+/g, ' - ').replace(/^\s*-\s*|\s*-\s*$/g, '').replace(/\s{2,}/g, ' ').trim();
+  }
+  return [pro, opp, n].filter(Boolean).join(' - ');
 }
 
 /** Carpeta de Drive de una Oportunidad, resolviendo folio+nombre desde Monday
@@ -371,6 +380,13 @@ export async function createOportunidadFolderOnCreate(env: Env, itemId: number):
 
 interface RawColLite { id: string; text?: string | null; value?: string | null }
 
+/** La Oportunidad ligada al Proyecto (board_relation_mm0hf0y3), del mirror;
+ * null si no tiene (proyecto hecho desde cero). */
+async function oportunidadLigadaDe(env: Env, proyecto: MirrorItem): Promise<MirrorItem | null> {
+  const oppId = linkedItemId(proyecto, PROYECTO_OPP_REL);
+  return oppId != null ? getItemTrusted(env, 'oportunidades', oppId) : null;
+}
+
 function colsDe(row: MirrorItem): Map<string, RawColLite> {
   try {
     const raw: RawColLite[] = JSON.parse(row.columns || '[]');
@@ -407,7 +423,8 @@ export async function crearCarpetaProyecto(env: Env, proyectoId: number): Promis
   if (!row) throw new DriveError(`proyecto ${proyectoId} no está en el mirror`);
   const cols = colsDe(row);
   const folio = cols.get(PROY_FOLIO)?.text?.trim() || `PRO-${proyectoId}`;
-  const rootName = proyectoRootFolderName(folio, row.name);
+  const opp = await oportunidadLigadaDe(env, row);
+  const rootName = proyectoRootFolderName(folio, opp ? folioDe(opp) : '', row.name);
 
   const folder = await ensureFolderTree(env, PROYECTOS_PARENT_FOLDER_ID, rootName);
   await guardarCarpeta(env, 'proyecto', proyectoId, rootName, folder);
@@ -605,18 +622,27 @@ export async function sincronizarDocumentos(
 ): Promise<SincronizarResultado> {
   const resultado: SincronizarResultado = { subidos: [], existentes: 0, errores: [] };
   if (isNativeId(Number(row.item_id))) return resultado;
-  const cols = colsDe(row);
-
   const pendientes: { assetId: number; nombre: string; categoria: string }[] = [];
   const vistos = new Set<string>();
-  for (const { colId, categoria } of COLUMNAS_SINCRONIZABLES[kind]) {
-    for (const a of parseArchivos(cols.get(colId)?.value ?? null)) {
-      if (!a.assetId || !a.nombre) continue;
-      const llave = `${categoria}/${a.nombre}`;
-      if (vistos.has(llave)) continue;
-      vistos.add(llave);
-      pendientes.push({ assetId: a.assetId, nombre: a.nombre, categoria });
+  const agregar = (item: MirrorItem, columnas: ReadonlyArray<{ colId: string; categoria: string }>) => {
+    const cols = colsDe(item);
+    for (const { colId, categoria } of columnas) {
+      for (const a of parseArchivos(cols.get(colId)?.value ?? null)) {
+        if (!a.assetId || !a.nombre) continue;
+        const llave = `${categoria}/${a.nombre}`;
+        if (vistos.has(llave)) continue;
+        vistos.add(llave);
+        pendientes.push({ assetId: a.assetId, nombre: a.nombre, categoria });
+      }
     }
+  };
+  agregar(row, COLUMNAS_SINCRONIZABLES[kind]);
+  // La carpeta del Proyecto también recibe las cotizaciones de SU Oportunidad
+  // (10. COT FINAL): en los proyectos anteriores a "Ganar" desde el portal la
+  // firmada solo vive en la Oportunidad (Efraín, 2026-09-15: "con documentos").
+  if (kind === 'proyecto') {
+    const opp = await oportunidadLigadaDe(env, row);
+    if (opp) agregar(opp, COLUMNAS_SINCRONIZABLES.oportunidad);
   }
   const lote = pendientes.slice(0, SINCRONIZAR_MAX);
   if (pendientes.length > SINCRONIZAR_MAX) {
