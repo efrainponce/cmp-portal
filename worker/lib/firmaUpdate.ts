@@ -11,7 +11,7 @@
 // que el mention solo sale cuando el usuario de Monday con ese id ES el autor
 // (mismo nombre o mismo correo); si no, texto plano con el nombre del portal.
 import type { Identity } from '../../shared/types';
-import type { MentionInput } from '../../shared/dto';
+import type { MentionInput } from './monday';
 
 export interface UsuarioMondayMin { id: string | number; name: string; email?: string | null }
 
