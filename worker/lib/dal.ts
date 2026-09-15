@@ -12,10 +12,9 @@ interface Scope {
 }
 
 /** 'read': lo propio + lo de la zona que el viewer lidera (worker/lib/zonas.ts).
- * 'own': lo propio más lo que el viewer puede ESCRIBIR — lo que exige TODO camino
- * de escritura. Para un líder de zona es estrictamente lo suyo (ve el trabajo de
- * su equipo sin poder pisarlo); para un AUXILIAR de zona (viewer.write_user_ids,
- * Efraín 2026-09-15) incluye a los miembros y al líder de su zona. */
+ * 'own': lo propio más lo que el viewer puede ESCRIBIR (viewer.write_user_ids) —
+ * lo que exige TODO camino de escritura. Desde 2026-09-15 líder y auxiliar de
+ * zona escriben su zona entera (antes el líder solo leía); fuera de ella, 404. */
 export type ScopeMode = 'read' | 'own';
 
 /** Los ids que cuentan como "dueño" para este viewer bajo este modo. Puro: la

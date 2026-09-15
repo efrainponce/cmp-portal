@@ -41,11 +41,11 @@ describe('ownerIdsFor', () => {
     expect(ownerIdsFor(lider, 'read').sort()).toEqual([10, 22, 33]);
   });
 
-  it("el líder NO escribe su zona: 'own' devuelve solo el propio id", () => {
+  it("sin write_user_ids, 'own' devuelve solo el propio id (scope_user_ids no da escritura)", () => {
     expect(ownerIdsFor(lider, 'own')).toEqual([10]);
   });
 
-  it("el auxiliar sí: 'own' trae el suyo + los miembros + el líder (write_user_ids)", () => {
+  it("con write_user_ids (líder o auxiliar desde 2026-09-15): 'own' trae la zona", () => {
     expect(ownerIdsFor(auxiliar, 'own').sort()).toEqual([10, 22, 33, 44]);
     expect(ownerIdsFor(auxiliar, 'read').sort()).toEqual([10, 22, 33, 44]);
   });

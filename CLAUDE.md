@@ -99,11 +99,10 @@ con el Worker (`/api/*`). Bot de WhatsApp + chat del portal comparten agente Cla
   servicio, por eso el registro es propio) o un admin.
 - **Las rutas rechazan query params que no conocen** (`rejectUnknownQuery` en
   `worker/lib/http.ts`): un filtro mal escrito no debe degradar a "sin filtro".
-- Permisos por RENGLÓN: `worker/lib/dal.ts`. Leer = lo propio + la zona que el viewer
-  lidera (`worker/lib/zonas.ts`); escribir = SOLO lo propio (`getItem(..., 'own')`).
-  Única excepción: el **auxiliar de zona** (`zona_auxiliares`, Efraín 2026-09-15:
-  Paola Facundo en la zona Centro de Ricardo) lee Y escribe toda su zona —
-  `viewer.write_user_ids` entra al scope `'own'`; el líder sigue solo leyendo.
+- Permisos por RENGLÓN: `worker/lib/dal.ts`. Leer y escribir = lo propio + la zona
+  que el viewer lidera o de la que es auxiliar (`worker/lib/zonas.ts`,
+  `zona_auxiliares`; desde 2026-09-15 el líder también EDITA su zona — antes solo
+  leía). `getItem(..., 'own')` = propio + `viewer.write_user_ids`; fuera de eso, 404.
   Todo endpoint que muta pide scope `'own'` — si agregas uno, hazlo también.
 - Antes de cada commit, agrega la entrada a `log.md` (fecha + bullets del cambio,
   sin hash — todavía no existe) y súbela en el MISMO commit junto con el código.

@@ -668,10 +668,9 @@ function ZonasSection({ identities, onToast }: {
       count={zonas?.length ?? '…'}
     >
       <div style={{ padding: '12px 18px', background: 'var(--bg-raised)', font: 'var(--text-label)', color: 'var(--ink-tertiary)' }}>
-        El líder de una zona ve las oportunidades de sus miembros además de las suyas, en
-        modo lectura: editarlas, mandarlas a costeo o generar documentos sigue siendo
-        solo del vendedor dueño. Un auxiliar ve lo mismo que el líder (miembros y líder)
-        y además puede editarlo todo, como si fuera suyo.
+        El líder de una zona ve y edita las oportunidades y proyectos de sus miembros
+        como si fueran suyos. Un auxiliar hace lo mismo (miembros y líder). Lo que cada
+        quien cree sigue quedando a su nombre.
       </div>
 
       {loadError ? (

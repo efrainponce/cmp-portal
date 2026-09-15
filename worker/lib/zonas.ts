@@ -1,11 +1,14 @@
 // worker/lib/zonas.ts — zonas de ventas: un líder ve, además de lo suyo, las
 // oportunidades de los miembros de su zona (worker/schema.sql `zonas`).
 //
-// El LÍDER solo ensancha la LECTURA. Su escritura sigue siendo estrictamente
-// propia: el write path pide scope 'own' (worker/lib/outbox.ts -> dal.getItem),
-// así que el líder recibe 404 al intentar escribir sobre una oportunidad ajena —
-// nunca 403, para no filtrar de quién es. Un vendedor que no lidera ninguna zona
-// conserva exactamente el scope de antes.
+// Desde 2026-09-15 el líder también ESCRIBE lo de su zona (Efraín: Ricardo
+// intentó editar dos proyectos de César y recibió "not found" — "si puede
+// editar lo de sus compañeros por favor"). Del 2026-07-30 a esa fecha solo
+// leía: el write path pide scope 'own' (worker/lib/outbox.ts -> dal.getItem) y
+// 'own' era estrictamente lo propio. Hoy 'own' = propio + viewer.write_user_ids,
+// que trae la zona entera para líder y auxiliar. Fuera de la zona sigue el 404
+// (nunca 403, para no filtrar de quién es). Un vendedor que no lidera ninguna
+// zona conserva exactamente el scope de antes.
 //
 // Sin jerarquía: la consulta es de UN nivel. Si un líder es miembro de otra zona,
 // su líder lo ve a él pero no a su equipo — no hay cadena que recorrer.
@@ -13,13 +16,11 @@
 // AUXILIARES (Efraín, 2026-09-15: Paola Facundo como "Auxiliar de Ventas" de la
 // zona de Ricardo — "es un rol de líder, con permisos de escritura, puede
 // cambiar lo que sea necesario"): una zona puede tener, además del líder, N
-// auxiliares que LEEN lo mismo que el líder (lo suyo + miembros + el líder) y
-// además ESCRIBEN sobre todo eso — el único caso en que el scope 'own' del DAL
-// trae más de un id (viewer.write_user_ids). No es un rol nuevo de identity
-// (sigue siendo vendedor/compras/admin/almacen: la columna vis/w de
-// shared/visibility.ts no cambia); es otra persona actuando como dueña de la
-// zona. La atribución (accion_log, Vendedor de lo que crea) sigue siendo la
-// suya, no la del dueño.
+// auxiliares que LEEN y ESCRIBEN lo mismo que el líder (lo suyo + miembros +
+// el líder). No es un rol nuevo de identity (sigue siendo
+// vendedor/compras/admin/almacen: la columna vis/w de shared/visibility.ts no
+// cambia); es otra persona actuando como dueña de la zona. La atribución
+// (accion_log, Vendedor de lo que crea) sigue siendo la suya, no la del dueño.
 import type { Env } from '../env';
 import type { Identity } from '../../shared/types';
 import type { BoardSlug } from '../../shared/boards';
@@ -130,10 +131,10 @@ export async function ensureZonaTables(env: Env): Promise<void> {
  *  - `readIds`: monday_user_ids cuyas filas puede LEER — el suyo, más los
  *    miembros de las zonas que lidera, más (si es auxiliar de una zona) los
  *    miembros Y el líder de esa zona.
- *  - `writeIds`: los que además puede ESCRIBIR — el suyo, más los de las zonas
- *    de las que es AUXILIAR (Efraín, 2026-09-15: "con permisos de escritura,
- *    ella puede cambiar lo que sea necesario; es un rol de líder"). El líder
- *    de siempre sigue sin escribir lo de su equipo (decisión del 2026-07-30).
+ *  - `writeIds`: los que además puede ESCRIBIR. Desde 2026-09-15 es lo mismo
+ *    que `readIds` (líder y auxiliar editan su zona: "si puede editar lo de sus
+ *    compañeros por favor"); se conservan separados porque el DAL distingue
+ *    'read' de 'own' y mañana puede volver a haber una zona de solo lectura.
  *
  * Se resuelve por monday_user_id y no por email para que una persona con dos
  * filas de identity (login de trabajo + gmail personal, mismo id de Monday)
@@ -175,7 +176,7 @@ export async function resolveZonaScope(env: Env, viewer: Identity): Promise<Zona
     const rows = (res.results ?? []).filter(r => Number.isFinite(r.id));
     return {
       readIds: [...new Set([own, ...rows.map(r => r.id)])],
-      writeIds: [...new Set([own, ...rows.filter(r => r.via === 'auxiliar').map(r => r.id)])],
+      writeIds: [...new Set([own, ...rows.map(r => r.id)])],
     };
   } catch {
     return { readIds: [own], writeIds: [own] };

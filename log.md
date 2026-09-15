@@ -34,6 +34,12 @@
   Zonas trae la lista "Auxiliares"; el bot de WhatsApp usa el mismo scope
   (`zonaScopeFields`). Paola se dio de alta como auxiliar de "Centro" en D1 de
   producción; sigue con rol `vendedor`. Tests nuevos en `dal.test.ts`.
+- **El líder de zona también edita** (Efraín: Ricardo intentó 8 veces editar dos
+  proyectos de César y recibió "not found"; "si puede editar lo de sus compañeros
+  por favor"): `resolveZonaScope` ahora pone en `writeIds` la zona entera para el
+  líder, no solo para el auxiliar. Se acaba la regla del 2026-07-30 "el líder
+  lee, no escribe"; `read`/`own` siguen separados en el DAL por si vuelve a
+  hacer falta una zona de solo lectura. Texto de Configuración → Zonas al día.
 - **Paola sin Monday: id prestado + firma en texto plano**: "Paola ya no tiene
   Monday, lo que suba usa mi identidad como Rodrigo; si hace una actualización
   ponle Paola" (Efraín). En D1 su `monday_user_id` pasó de 105285353 al de
