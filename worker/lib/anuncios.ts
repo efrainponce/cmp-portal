@@ -5,7 +5,7 @@
 //
 // Audiencia = roles Y zonas (worker/lib/zonas.ts), ambas opcionales: lista vacía
 // significa "todos". La pertenencia a zona se resuelve por monday_user_id y no por
-// email — misma razón que zonas.readableUserIds: una persona puede tener dos filas
+// email — misma razón que zonas.resolveZonaScope: una persona puede tener dos filas
 // de identity (login de trabajo + gmail personal) con el mismo id de Monday.
 //
 // Un admin SIEMPRE ve todos los anuncios, aunque no sean para su rol/zona: es quien

@@ -22,7 +22,7 @@ import { parametrosResumen, filasCartera } from '../lib/cartera';
 import { refetchItems } from '../sync/refetch';
 import { logSync } from '../sync/log';
 import { registrarError } from '../lib/errores';
-import { readableUserIds, hiddenOwnerIdsFor } from '../lib/zonas';
+import { zonaScopeFields } from '../lib/zonas';
 import { sendResumenTemplate } from './send';
 import { listPreferencias, getPreferencias, tocaResumen, type Preferencias } from './preferencias';
 import { registrarResumen, resumenDelDia, guardarLista, localCdmx } from './estado';
@@ -43,8 +43,7 @@ async function destinatarios(env: Env): Promise<Destinatario[]> {
     out.push({
       ...base,
       phone: r.phone,
-      scope_user_ids: await readableUserIds(env, base),
-      hidden_owner_ids: await hiddenOwnerIdsFor(env, base),
+      ...(await zonaScopeFields(env, base)),
     });
   }
   return out;

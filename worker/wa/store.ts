@@ -3,7 +3,7 @@
 import type { Env } from '../env';
 import type { Identity } from '../../shared/types';
 import { HISTORY_TTL_MS, trimHistory } from '../lib/conversationHistory';
-import { readableUserIds, hiddenOwnerIdsFor } from '../lib/zonas';
+import { zonaScopeFields } from '../lib/zonas';
 
 /** Normalize any phone representation to its last 10 digits (MX national number).
  * WhatsApp sends e.g. "5214771234567"; identity.phone may be stored with or
@@ -32,11 +32,10 @@ export async function identityByPhone(env: Env, waPhone: string): Promise<Identi
   };
   // Mismo scope de zona que el portal (worker/mw/identity.ts): sin esto el bot
   // le contestaría a un líder solo con lo suyo, mientras la web le muestra su
-  // zona completa. Solo lectura — el bot no escribe oportunidades.
+  // zona completa.
   return {
     ...identity,
-    scope_user_ids: await readableUserIds(env, identity),
-    hidden_owner_ids: await hiddenOwnerIdsFor(env, identity),
+    ...(await zonaScopeFields(env, identity)),
   };
 }
 

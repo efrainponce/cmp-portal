@@ -6,7 +6,7 @@
 import type { MiddlewareHandler } from 'hono';
 import type { Env } from '../env';
 import type { Identity } from '../../shared/types';
-import { readableUserIds, hiddenOwnerIdsFor } from '../lib/zonas';
+import { zonaScopeFields } from '../lib/zonas';
 import { puedeAdministrarIdentidad } from '../lib/identityAccess';
 
 declare module 'hono' {
@@ -25,11 +25,11 @@ export const identity: MiddlewareHandler<{ Bindings: Env }> = async (c, next) =>
   if (!row) return c.json({ error: 'pide acceso', email }, 403);
 
   // Zona: se resuelve UNA vez por request y viaja en el viewer, para que el DAL no
-  // le pegue a D1 en cada getItem. Ver worker/lib/zonas.ts — solo ensancha lectura.
+  // le pegue a D1 en cada getItem. Ver worker/lib/zonas.ts — líder: ensancha
+  // lectura; auxiliar: lectura y escritura.
   const withScope = async (identity: Identity): Promise<Identity> => ({
     ...identity,
-    scope_user_ids: await readableUserIds(c.env, identity),
-    hidden_owner_ids: await hiddenOwnerIdsFor(c.env, identity),
+    ...(await zonaScopeFields(c.env, identity)),
   });
 
   const impersonateEmail = c.req.header('X-Impersonate-Email');

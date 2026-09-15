@@ -1147,7 +1147,7 @@ export async function createZona(nombre: string): Promise<ZonaDTO> {
 }
 
 export async function putZona(
-  id: number, patch: Partial<Pick<ZonaDTO, 'nombre' | 'liderEmail' | 'miembros'>>,
+  id: number, patch: Partial<Pick<ZonaDTO, 'nombre' | 'liderEmail' | 'miembros' | 'auxiliares'>>,
 ): Promise<void> {
   const res = await apiFetch(`/admin/zonas/${id}`, {
     method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch),

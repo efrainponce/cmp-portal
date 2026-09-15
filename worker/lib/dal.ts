@@ -12,14 +12,17 @@ interface Scope {
 }
 
 /** 'read': lo propio + lo de la zona que el viewer lidera (worker/lib/zonas.ts).
- * 'own': estrictamente lo propio, ignorando la zona — lo que exige TODO camino de
- * escritura, para que un líder pueda ver el trabajo de su equipo sin poder pisarlo. */
+ * 'own': lo propio más lo que el viewer puede ESCRIBIR — lo que exige TODO camino
+ * de escritura. Para un líder de zona es estrictamente lo suyo (ve el trabajo de
+ * su equipo sin poder pisarlo); para un AUXILIAR de zona (viewer.write_user_ids,
+ * Efraín 2026-09-15) incluye a los miembros y al líder de su zona. */
 export type ScopeMode = 'read' | 'own';
 
 /** Los ids que cuentan como "dueño" para este viewer bajo este modo. Puro: la
- * resolución de la zona ya ocurrió en worker/mw/identity.ts (viewer.scope_user_ids). */
+ * resolución de la zona ya ocurrió en worker/mw/identity.ts (viewer.scope_user_ids
+ * / viewer.write_user_ids). */
 export function ownerIdsFor(viewer: Identity, mode: ScopeMode): number[] {
-  if (mode === 'own') return [viewer.monday_user_id];
+  if (mode === 'own') return [...new Set([viewer.monday_user_id, ...(viewer.write_user_ids ?? [])])];
   return [...new Set([viewer.monday_user_id, ...(viewer.scope_user_ids ?? [])])];
 }
 

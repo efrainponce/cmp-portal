@@ -670,7 +670,8 @@ function ZonasSection({ identities, onToast }: {
       <div style={{ padding: '12px 18px', background: 'var(--bg-raised)', font: 'var(--text-label)', color: 'var(--ink-tertiary)' }}>
         El líder de una zona ve las oportunidades de sus miembros además de las suyas, en
         modo lectura: editarlas, mandarlas a costeo o generar documentos sigue siendo
-        solo del vendedor dueño.
+        solo del vendedor dueño. Un auxiliar ve lo mismo que el líder (miembros y líder)
+        y además puede editarlo todo, como si fuera suyo.
       </div>
 
       {loadError ? (
@@ -725,30 +726,40 @@ function ZonaRow({ zona, identities, onSaved, onError, onDelete }: {
   const [nombre, setNombre] = useState(zona.nombre);
   const [lider, setLider] = useState(zona.liderEmail ?? '');
   const [miembros, setMiembros] = useState(new Set(zona.miembros));
+  const [auxiliares, setAuxiliares] = useState(new Set(zona.auxiliares ?? []));
   const [saving, setSaving] = useState(false);
 
+  const difiere = (actual: Set<string>, guardado: string[]) =>
+    actual.size !== guardado.length || guardado.some((m) => !actual.has(m));
   const dirty = nombre !== zona.nombre
     || lider !== (zona.liderEmail ?? '')
-    || miembros.size !== zona.miembros.length
-    || zona.miembros.some((m) => !miembros.has(m));
+    || difiere(miembros, zona.miembros)
+    || difiere(auxiliares, zona.auxiliares ?? []);
 
-  function toggle(email: string) {
-    setMiembros((prev) => {
+  const toggleEn = (set: React.Dispatch<React.SetStateAction<Set<string>>>) => (email: string) => {
+    set((prev) => {
       const next = new Set(prev);
       if (next.has(email)) next.delete(email); else next.add(email);
       return next;
     });
-  }
+  };
+  const toggle = toggleEn(setMiembros);
+  const toggleAuxiliar = toggleEn(setAuxiliares);
 
   async function save() {
     setSaving(true);
     try {
       // El líder nunca se guarda como miembro de su propia zona: su scope ya lo
-      // incluye por definición (worker/lib/zonas.ts readableUserIds).
+      // incluye por definición (worker/lib/zonas.ts resolveZonaScope).
       const clean = [...miembros].filter((m) => m !== lider);
-      await putZona(zona.id, { nombre: nombre.trim(), liderEmail: lider || null, miembros: clean });
-      onSaved({ ...zona, nombre: nombre.trim(), liderEmail: lider || null, miembros: clean });
+      // Un auxiliar tampoco es miembro ni líder de su propia zona: ya lee y
+      // escribe todo lo de ella (worker/lib/zonas.ts resolveZonaScope).
+      const cleanAux = [...auxiliares].filter((a) => a !== lider);
+      const patch = { nombre: nombre.trim(), liderEmail: lider || null, miembros: clean, auxiliares: cleanAux };
+      await putZona(zona.id, patch);
+      onSaved({ ...zona, ...patch });
       setMiembros(new Set(clean));
+      setAuxiliares(new Set(cleanAux));
     } catch (err) {
       onError(err instanceof Error ? err.message : 'No se pudo guardar la zona.');
     } finally {
@@ -782,6 +793,18 @@ function ZonaRow({ zona, identities, onSaved, onError, onDelete }: {
         {identities.filter((i) => i.email !== lider).map((i) => (
           <label key={i.email} style={{ display: 'flex', alignItems: 'center', gap: 6, font: 'var(--text-label)', color: 'var(--ink-secondary)', cursor: 'pointer' }}>
             <input type="checkbox" checked={miembros.has(i.email)} onChange={() => toggle(i.email)} style={{ cursor: 'pointer' }} />
+            {i.nombre || i.email}
+          </label>
+        ))}
+      </div>
+
+      <div style={{ font: 'var(--text-micro)', color: 'var(--ink-quiet)', textTransform: 'uppercase', letterSpacing: '.4px', margin: '14px 0 8px' }}>
+        Auxiliares (ven y editan toda la zona)
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 18px' }}>
+        {identities.filter((i) => i.email !== lider).map((i) => (
+          <label key={i.email} style={{ display: 'flex', alignItems: 'center', gap: 6, font: 'var(--text-label)', color: 'var(--ink-secondary)', cursor: 'pointer' }}>
+            <input type="checkbox" checked={auxiliares.has(i.email)} onChange={() => toggleAuxiliar(i.email)} style={{ cursor: 'pointer' }} />
             {i.nombre || i.email}
           </label>
         ))}

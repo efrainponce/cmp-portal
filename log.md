@@ -1,5 +1,22 @@
 # Log de commits
 
+## 2026-09-15
+
+- **Auxiliar de zona (Paola Facundo, "Auxiliar de Ventas" de la zona de Ricardo)**:
+  Efraín pidió un rol "idéntico a gerente de ventas" y, a media tarea, "con
+  permisos de escritura, es un rol de líder". En el portal "gerente" nunca fue un
+  rol de identity sino vendedor + líder de zona (solo lectura), así que se agrega
+  el concepto de **auxiliar** por zona: tabla `zona_auxiliares`, `resolveZonaScope`
+  resuelve en UNA consulta lectura (`scope_user_ids`) y escritura
+  (`write_user_ids`, nuevo en Identity) — el auxiliar lee y escribe lo de los
+  miembros y del líder; el líder queda como estaba (lee, no escribe, decisión del
+  2026-07-30). `dal.ownerIdsFor(viewer, 'own')` suma `write_user_ids`, así que
+  todos los caminos que mutan (outbox, costeo, tallas, OC, documentos, borrado,
+  estado de cuenta) y `ownedByViewer` lo respetan sin tocarlos. Configuración →
+  Zonas trae la lista "Auxiliares"; el bot de WhatsApp usa el mismo scope
+  (`zonaScopeFields`). Paola se dio de alta como auxiliar de "Centro" en D1 de
+  producción; sigue con rol `vendedor`. Tests nuevos en `dal.test.ts`.
+
 ## 2026-09-12
 
 - **Confiabilidad del portal y WhatsApp** (rama `codex/portal-reliability-optimizations`):

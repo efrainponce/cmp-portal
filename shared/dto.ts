@@ -540,11 +540,13 @@ export type BoardAccessDTO = Record<Role, string[]>;
 
 // Zonas de ventas (worker/lib/zonas.ts): el líder ve, además de lo suyo, las
 // oportunidades de sus miembros — solo lectura. Se administra en Configuración.
+// Los auxiliares (2026-09-15) leen exactamente lo mismo que el líder.
 export interface ZonaDTO {
   id: number;
   nombre: string;
   liderEmail: string | null;
   miembros: string[];           // emails de identity
+  auxiliares: string[];         // emails de identity — mismo alcance que el líder
 }
 
 // Column metadata the UI needs to render board-like tables (titles, types,

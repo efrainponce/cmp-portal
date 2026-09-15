@@ -24,6 +24,13 @@ const compras = (over: Partial<Identity> = {}): Identity => ({
 
 /** Rich lidera una zona con dos vendedores — así lo deja mw/identity.ts. */
 const lider = vendedor({ email: 'rich@mexicanadeproteccion.com', monday_user_id: 10, scope_user_ids: [10, 22, 33] });
+/** Paola es AUXILIAR de la zona de Rich (Efraín, 2026-09-15): lee lo mismo que
+ * él (miembros + el líder) y además lo escribe — write_user_ids lo trae
+ * zonas.resolveZonaScope. */
+const auxiliar = vendedor({
+  email: 'cdmx.administracion@mexicanadeproteccion.com', monday_user_id: 44,
+  scope_user_ids: [44, 10, 22, 33], write_user_ids: [44, 10, 22, 33],
+});
 
 describe('ownerIdsFor', () => {
   it('sin zona, solo el propio id', () => {
@@ -34,8 +41,18 @@ describe('ownerIdsFor', () => {
     expect(ownerIdsFor(lider, 'read').sort()).toEqual([10, 22, 33]);
   });
 
-  it("escribir NUNCA mira la zona: 'own' devuelve solo el propio id", () => {
+  it("el líder NO escribe su zona: 'own' devuelve solo el propio id", () => {
     expect(ownerIdsFor(lider, 'own')).toEqual([10]);
+  });
+
+  it("el auxiliar sí: 'own' trae el suyo + los miembros + el líder (write_user_ids)", () => {
+    expect(ownerIdsFor(auxiliar, 'own').sort()).toEqual([10, 22, 33, 44]);
+    expect(ownerIdsFor(auxiliar, 'read').sort()).toEqual([10, 22, 33, 44]);
+  });
+
+  it("'own' solo mira write_user_ids, nunca scope_user_ids (un líder con scope amplio sigue sin escribir)", () => {
+    const soloLee = vendedor({ scope_user_ids: [11, 55], write_user_ids: [] });
+    expect(ownerIdsFor(soloLee, 'own')).toEqual([11]);
   });
 
   it('no duplica el id propio cuando ya viene en el scope', () => {
@@ -108,6 +125,11 @@ describe('scopeFor', () => {
 
   it("y en 'own' el subitem tampoco hereda la zona", () => {
     expect(scopeFor('oportunidades_sub', lider, 'own').binds.slice(1)).toEqual([10]);
+  });
+
+  it("un auxiliar de zona escribe ('own') la zona entera, también en los subitems", () => {
+    expect(scopeFor('oportunidades', auxiliar, 'own').binds).toEqual([44, 10, 22, 33]);
+    expect(scopeFor('proyectos_sub', auxiliar, 'own').binds.slice(1)).toEqual([44, 10, 22, 33]);
   });
 
   it('boards sin authzCols (catálogos) siguen abiertos a todos', () => {

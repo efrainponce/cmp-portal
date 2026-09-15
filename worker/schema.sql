@@ -315,6 +315,16 @@ CREATE TABLE IF NOT EXISTS zona_miembros (
   email   TEXT NOT NULL REFERENCES identity(email) ON DELETE CASCADE,
   PRIMARY KEY (zona_id, email)
 );
+
+-- Auxiliares de la zona (Efraín, 2026-09-15: "Auxiliar de Ventas", idéntico al
+-- gerente): LEEN exactamente lo mismo que el líder — lo suyo + los miembros — y
+-- tampoco escriben nada ajeno. Una zona puede tener varios; el líder sigue
+-- siendo uno solo (lider_email).
+CREATE TABLE IF NOT EXISTS zona_auxiliares (
+  zona_id INTEGER NOT NULL REFERENCES zonas(id) ON DELETE CASCADE,
+  email   TEXT NOT NULL REFERENCES identity(email) ON DELETE CASCADE,
+  PRIMARY KEY (zona_id, email)
+);
 CREATE INDEX IF NOT EXISTS idx_zona_miembros_email ON zona_miembros(email);
 
 -- Centro de notificaciones del portal (2026-07-22, worker/lib/notify.ts). Dos bandejas

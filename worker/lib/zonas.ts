@@ -1,14 +1,25 @@
 // worker/lib/zonas.ts — zonas de ventas: un líder ve, además de lo suyo, las
 // oportunidades de los miembros de su zona (worker/schema.sql `zonas`).
 //
-// Solo ensancha la LECTURA. La escritura sigue siendo estrictamente propia: el
-// write path pide scope 'own' (worker/lib/outbox.ts -> dal.getItem), así que el
-// líder recibe 404 al intentar escribir sobre una oportunidad ajena — nunca 403,
-// para no filtrar de quién es. Un vendedor que no lidera ninguna zona conserva
-// exactamente el scope de antes.
+// El LÍDER solo ensancha la LECTURA. Su escritura sigue siendo estrictamente
+// propia: el write path pide scope 'own' (worker/lib/outbox.ts -> dal.getItem),
+// así que el líder recibe 404 al intentar escribir sobre una oportunidad ajena —
+// nunca 403, para no filtrar de quién es. Un vendedor que no lidera ninguna zona
+// conserva exactamente el scope de antes.
 //
 // Sin jerarquía: la consulta es de UN nivel. Si un líder es miembro de otra zona,
 // su líder lo ve a él pero no a su equipo — no hay cadena que recorrer.
+//
+// AUXILIARES (Efraín, 2026-09-15: Paola Facundo como "Auxiliar de Ventas" de la
+// zona de Ricardo — "es un rol de líder, con permisos de escritura, puede
+// cambiar lo que sea necesario"): una zona puede tener, además del líder, N
+// auxiliares que LEEN lo mismo que el líder (lo suyo + miembros + el líder) y
+// además ESCRIBEN sobre todo eso — el único caso en que el scope 'own' del DAL
+// trae más de un id (viewer.write_user_ids). No es un rol nuevo de identity
+// (sigue siendo vendedor/compras/admin/almacen: la columna vis/w de
+// shared/visibility.ts no cambia); es otra persona actuando como dueña de la
+// zona. La atribución (accion_log, Vendedor de lo que crea) sigue siendo la
+// suya, no la del dueño.
 import type { Env } from '../env';
 import type { Identity } from '../../shared/types';
 import type { BoardSlug } from '../../shared/boards';
@@ -76,6 +87,7 @@ export interface Zona {
   nombre: string;
   liderEmail: string | null;
   miembros: string[];      // emails de identity
+  auxiliares: string[];    // emails de identity — leen como el líder
 }
 
 export class ZonaError extends Error {
@@ -90,7 +102,7 @@ let tablesReady = false;
 
 /** Mismo patrón que ensureDocumentTables: la feature funciona sin aplicar
  * schema.sql a mano. Solo la llaman las rutas de admin — el camino de lectura
- * nunca crea tablas (ver readableUserIds, que falla cerrado). */
+ * nunca crea tablas (ver resolveZonaScope, que falla cerrado). */
 export async function ensureZonaTables(env: Env): Promise<void> {
   if (tablesReady) return;
   await env.DB.batch([
@@ -105,34 +117,76 @@ export async function ensureZonaTables(env: Env): Promise<void> {
       PRIMARY KEY (zona_id, email)
     )`),
     env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_zona_miembros_email ON zona_miembros(email)'),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS zona_auxiliares (
+      zona_id INTEGER NOT NULL REFERENCES zonas(id) ON DELETE CASCADE,
+      email   TEXT NOT NULL REFERENCES identity(email) ON DELETE CASCADE,
+      PRIMARY KEY (zona_id, email)
+    )`),
   ]);
   tablesReady = true;
 }
 
-/** monday_user_ids cuyas filas puede LEER el viewer: el suyo, más los de los
- * miembros de las zonas que lidera. Se resuelve por monday_user_id y no por
- * email para que un líder con dos filas de identity (login de trabajo + gmail
- * personal, mismo id de Monday) lidere igual con cualquiera de los dos.
+/** Alcance de zona del viewer, resuelto en UNA consulta por request:
+ *  - `readIds`: monday_user_ids cuyas filas puede LEER — el suyo, más los
+ *    miembros de las zonas que lidera, más (si es auxiliar de una zona) los
+ *    miembros Y el líder de esa zona.
+ *  - `writeIds`: los que además puede ESCRIBIR — el suyo, más los de las zonas
+ *    de las que es AUXILIAR (Efraín, 2026-09-15: "con permisos de escritura,
+ *    ella puede cambiar lo que sea necesario; es un rol de líder"). El líder
+ *    de siempre sigue sin escribir lo de su equipo (decisión del 2026-07-30).
+ *
+ * Se resuelve por monday_user_id y no por email para que una persona con dos
+ * filas de identity (login de trabajo + gmail personal, mismo id de Monday)
+ * tenga el mismo alcance con cualquiera de los dos.
  *
  * Falla cerrado: si las tablas todavía no existen en esta base, el viewer se
  * queda con su scope de siempre en vez de tumbar toda la lectura. */
-export async function readableUserIds(env: Env, viewer: Identity): Promise<number[]> {
-  const own = [viewer.monday_user_id];
+export interface ZonaScope {
+  readIds: number[];
+  writeIds: number[];
+}
+
+export async function resolveZonaScope(env: Env, viewer: Identity): Promise<ZonaScope> {
+  const own = viewer.monday_user_id;
   try {
     const res = await env.DB
-      .prepare(`SELECT DISTINCT m.monday_user_id AS id
+      .prepare(`SELECT DISTINCT m.monday_user_id AS id, 'lider' AS via
                 FROM zonas z
                 JOIN identity lider ON lider.email = z.lider_email
                 JOIN zona_miembros zm ON zm.zona_id = z.id
                 JOIN identity m ON m.email = zm.email AND m.active = 1
-                WHERE lider.monday_user_id = ?`)
-      .bind(viewer.monday_user_id)
-      .all<{ id: number }>();
-    const ids = (res.results ?? []).map(r => r.id).filter(Number.isFinite);
-    return [...new Set([...own, ...ids])];
+                WHERE lider.monday_user_id = ?1
+                UNION
+                SELECT DISTINCT m.monday_user_id AS id, 'auxiliar' AS via
+                FROM zona_auxiliares za
+                JOIN identity aux ON aux.email = za.email
+                JOIN zona_miembros zm ON zm.zona_id = za.zona_id
+                JOIN identity m ON m.email = zm.email AND m.active = 1
+                WHERE aux.monday_user_id = ?1
+                UNION
+                SELECT DISTINCT lider.monday_user_id AS id, 'auxiliar' AS via
+                FROM zona_auxiliares za
+                JOIN identity aux ON aux.email = za.email
+                JOIN zonas z ON z.id = za.zona_id
+                JOIN identity lider ON lider.email = z.lider_email AND lider.active = 1
+                WHERE aux.monday_user_id = ?1`)
+      .bind(own)
+      .all<{ id: number; via: 'lider' | 'auxiliar' }>();
+    const rows = (res.results ?? []).filter(r => Number.isFinite(r.id));
+    return {
+      readIds: [...new Set([own, ...rows.map(r => r.id)])],
+      writeIds: [...new Set([own, ...rows.filter(r => r.via === 'auxiliar').map(r => r.id)])],
+    };
   } catch {
-    return own;
+    return { readIds: [own], writeIds: [own] };
   }
+}
+
+/** Campos de scope que viajan en el viewer (worker/mw/identity.ts, worker/wa/
+ * store.ts, worker/wa/resumen.ts): los tres los arman igual. */
+export async function zonaScopeFields(env: Env, viewer: Identity): Promise<Pick<Identity, 'scope_user_ids' | 'write_user_ids' | 'hidden_owner_ids'>> {
+  const [scope, hidden] = await Promise.all([resolveZonaScope(env, viewer), hiddenOwnerIdsFor(env, viewer)]);
+  return { scope_user_ids: scope.readIds, write_user_ids: scope.writeIds, hidden_owner_ids: hidden };
 }
 
 /** monday_user_ids de los miembros de la zona privada 'Efrain' (sea cual sea el
@@ -165,23 +219,31 @@ export async function hiddenOwnerIdsFor(env: Env, viewer: Identity): Promise<num
 
 export async function listZonas(env: Env): Promise<Zona[]> {
   await ensureZonaTables(env);
-  const [zonas, miembros] = await Promise.all([
+  const [zonas, miembros, auxiliares] = await Promise.all([
     env.DB.prepare('SELECT id, nombre, lider_email FROM zonas ORDER BY nombre')
       .all<{ id: number; nombre: string; lider_email: string | null }>(),
     env.DB.prepare('SELECT zona_id, email FROM zona_miembros ORDER BY email')
       .all<{ zona_id: number; email: string }>(),
+    env.DB.prepare('SELECT zona_id, email FROM zona_auxiliares ORDER BY email')
+      .all<{ zona_id: number; email: string }>(),
   ]);
-  const byZona = new Map<number, string[]>();
-  for (const row of miembros.results ?? []) {
-    const list = byZona.get(row.zona_id) ?? [];
-    list.push(row.email);
-    byZona.set(row.zona_id, list);
-  }
+  const agrupa = (rows: { zona_id: number; email: string }[] | undefined) => {
+    const byZona = new Map<number, string[]>();
+    for (const row of rows ?? []) {
+      const list = byZona.get(row.zona_id) ?? [];
+      list.push(row.email);
+      byZona.set(row.zona_id, list);
+    }
+    return byZona;
+  };
+  const miembrosPorZona = agrupa(miembros.results);
+  const auxiliaresPorZona = agrupa(auxiliares.results);
   return (zonas.results ?? []).map(z => ({
     id: z.id,
     nombre: z.nombre,
     liderEmail: z.lider_email,
-    miembros: byZona.get(z.id) ?? [],
+    miembros: miembrosPorZona.get(z.id) ?? [],
+    auxiliares: auxiliaresPorZona.get(z.id) ?? [],
   }));
 }
 
@@ -200,7 +262,7 @@ export async function createZona(env: Env, nombre: string): Promise<Zona> {
     .prepare('INSERT INTO zonas (nombre, lider_email) VALUES (?, NULL) RETURNING id')
     .bind(clean)
     .first<{ id: number }>();
-  return { id: row!.id, nombre: clean, liderEmail: null, miembros: [] };
+  return { id: row!.id, nombre: clean, liderEmail: null, miembros: [], auxiliares: [] };
 }
 
 /** Reemplaza el estado completo de la zona (mismo criterio que setBoardAccess:
@@ -208,7 +270,7 @@ export async function createZona(env: Env, nombre: string): Promise<Zona> {
 export async function updateZona(
   env: Env,
   id: number,
-  patch: { nombre?: string; liderEmail?: string | null; miembros?: string[] },
+  patch: { nombre?: string; liderEmail?: string | null; miembros?: string[]; auxiliares?: string[] },
 ): Promise<void> {
   await ensureZonaTables(env);
   const zona = await env.DB.prepare('SELECT id FROM zonas WHERE id = ?').bind(id).first<{ id: number }>();
@@ -238,6 +300,15 @@ export async function updateZona(
       ...clean.map(email => env.DB.prepare('INSERT INTO zona_miembros (zona_id, email) VALUES (?, ?)').bind(id, email)),
     ]);
   }
+
+  if (patch.auxiliares !== undefined) {
+    const clean = [...new Set(patch.auxiliares.map(e => e.trim()).filter(Boolean))];
+    for (const email of clean) await assertIdentityExists(env, email);
+    await env.DB.batch([
+      env.DB.prepare('DELETE FROM zona_auxiliares WHERE zona_id = ?').bind(id),
+      ...clean.map(email => env.DB.prepare('INSERT INTO zona_auxiliares (zona_id, email) VALUES (?, ?)').bind(id, email)),
+    ]);
+  }
 }
 
 export async function deleteZona(env: Env, id: number): Promise<void> {
@@ -247,6 +318,7 @@ export async function deleteZona(env: Env, id: number): Promise<void> {
   // reaparecerían si un id de zona se reutiliza.
   await env.DB.batch([
     env.DB.prepare('DELETE FROM zona_miembros WHERE zona_id = ?').bind(id),
+    env.DB.prepare('DELETE FROM zona_auxiliares WHERE zona_id = ?').bind(id),
     env.DB.prepare('DELETE FROM zonas WHERE id = ?').bind(id),
   ]);
 }

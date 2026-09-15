@@ -241,9 +241,12 @@ export function adminRoutes(app: Hono<{ Bindings: Env }>) {
     if (c.get('viewer').role !== 'admin') return c.json({ error: 'forbidden' }, 403);
     const id = Number(c.req.param('id'));
     if (!Number.isFinite(id)) return c.json({ error: 'not found' }, 404);
-    const body = await c.req.json<Partial<Pick<ZonaDTO, 'nombre' | 'liderEmail' | 'miembros'>>>();
+    const body = await c.req.json<Partial<Pick<ZonaDTO, 'nombre' | 'liderEmail' | 'miembros' | 'auxiliares'>>>();
     if (body.miembros !== undefined && !Array.isArray(body.miembros)) {
       return c.json({ error: 'miembros debe ser una lista' }, 400);
+    }
+    if (body.auxiliares !== undefined && !Array.isArray(body.auxiliares)) {
+      return c.json({ error: 'auxiliares debe ser una lista' }, 400);
     }
     try {
       await updateZona(c.env, id, body);

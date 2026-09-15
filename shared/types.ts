@@ -12,6 +12,11 @@ export interface Identity {
    * request; ausente = solo el propio, que es el scope de siempre. La escritura
    * NUNCA lo usa — ver dal.getItem({ scope: 'own' }). */
   scope_user_ids?: number[];
+  /** monday_user_ids que este viewer puede ESCRIBIR además del suyo: los de las
+   * zonas de las que es AUXILIAR (worker/lib/zonas.ts resolveZonaScope, Efraín
+   * 2026-09-15). Ausente = solo lo propio. Siempre es subconjunto de
+   * scope_user_ids. dal.ownerIdsFor(viewer, 'own') lo suma al propio. */
+  write_user_ids?: number[];
   /** monday_user_ids que este viewer admin NO debe ver — zona privada 'Efrain'
    * (worker/lib/zonas.ts, caso especial de Efraín 2026-08-12: ni siquiera un
    * admin ve estas filas salvo que esté en la whitelist de esa zona). Vacío o
