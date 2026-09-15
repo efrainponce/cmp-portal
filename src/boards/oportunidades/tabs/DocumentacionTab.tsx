@@ -18,6 +18,7 @@ import { patchItem, type ProyectoArchivoCategoria } from '../../../lib/apiClient
 import { useMe } from '../../../lib/useMe';
 import { P_OC_CLIENTE, P_OC_CLIENTE_LEGADO, P_ACTA_ENTREGA, type ProyectoState } from '../ProyectoSection';
 import { DocumentsPanel } from '../../../components/documents/DocumentsPanel';
+import { DriveCarpeta } from '../../../components/documents/DriveCarpeta';
 
 export const SOLICITUDES_COL = 'file_mm0z6rze'; // Cotizaciones sin precio
 export const NO_FIRMADAS_COL = 'file_mm0fgrzq'; // Cotizaciones generadas
@@ -95,6 +96,14 @@ export function DocumentacionTab({ item, proyecto }: { item: ItemDetailDTO; proy
       <OcContratoSection proyecto={proyecto} oppId={item.id} />
 
       <ActaEntregaSection proyecto={proyecto} oppId={item.id} />
+
+      {/* Carpetas de Google Drive (Efraín, 2026-09-15): la de la Oportunidad
+          (la crea Monday/Make al darla de alta) y, si ya hay Proyecto, la suya
+          propia bajo "Proyectos Portal". Se leen en vivo al abrir el tab. */}
+      <DriveCarpeta kind="oportunidad" itemId={item.id} etiqueta="Oportunidad" editable={item.ownedByViewer !== false} />
+      {proyecto?.proyecto && (
+        <DriveCarpeta kind="proyecto" itemId={proyecto.proyecto.id} etiqueta="Proyecto" editable={proyecto.proyecto.ownedByViewer !== false} />
+      )}
 
       <div>
         <SectionTitle>Documentos del portal</SectionTitle>

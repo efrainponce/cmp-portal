@@ -2,6 +2,57 @@
 
 ## 2026-09-15
 
+- **Carpeta de Drive por Proyecto + Drive en el tab Documentación** (rama
+  `feat/drive-proyectos`; Efraín: "como en oportunidades, una carpeta por
+  proyecto para drive, que la conectes al portal y, si se puede, que se conecte
+  la documentación con los documentos en subcarpetas — no solo del proyecto,
+  también de la oportunidad"). Hasta hoy el Proyecto no tenía carpeta: "Ganar"
+  copiaba el LINK de la carpeta de la Oportunidad a `link_mm462saa` (79 de 130
+  proyectos apuntan a la carpeta de su oportunidad).
+  - `worker/lib/drive.ts`: `crearCarpetaProyecto` crea `{PRO-nnnn} - {nombre}`
+    bajo "Proyectos Portal" (unidad compartida `0ANaYG13_TI1wUk9PVA`, carpeta
+    `1CXvu__tcLCvb2H0_Wr10srGJbi4AW09I`, que Efraín compartió con la cuenta de
+    servicio `cmp-tallas@…` ese día) con las MISMAS 12 subcarpetas de la
+    oportunidad (01. BASES … 12. FACTURA — la convención que el equipo ya usa;
+    cambiarla es editar `SUBFOLDERS`), la cachea en D1 (`drive_carpetas`, con
+    `kind`, sustituye a `drive_folders` que nunca llegó a prod) y escribe la URL
+    en `link_mm462saa`. Automática al ganar (`ganarOportunidad.ts`, tras el
+    refetch para tener el folio) y al crear un proyecto desde cero
+    (`createRecord.ts`), gateada por `DRIVE_PROYECTOS` (prendida en
+    `wrangler.jsonc`; independiente de `DRIVE_NATIVE`, que sigue apagada
+    porque Make 100 sigue creando la carpeta de la Oportunidad). Los proyectos
+    anteriores la crean con un botón.
+  - `resolverCarpeta`: la carpeta del item sin crear nada (cache D1 → columna
+    link); para el Proyecto, un link heredado de la Oportunidad (carpeta fuera
+    de "Proyectos Portal") NO cuenta como propia. `listarCarpeta`: subcarpetas +
+    archivos en 2 llamadas (hijos de la raíz; hijos de todas las subcarpetas en
+    una sola `q` con OR de parents). `sincronizarDocumentos`: espeja a Drive los
+    archivos que el item tiene en Monday (cotizaciones → 10. COT FINAL,
+    OC/contrato → 05. CONTRATO FIRMADO, actas → 06. ACTA DE ENTREGA, tallas →
+    09, OC proveedor → 08), saltando por nombre los que ya están, tope 25 por
+    click. Subir OC/contrato o acta desde el portal también la copia a Drive
+    en segundo plano (`depositarSubidaProyecto`, solo si la carpeta ya existe).
+    La solicitud de costeo y el inventario no se depositan a propósito.
+  - `worker/routes/drive.ts` (registrado ANTES de oportunidadRoutes por el
+    wildcard `/api/proyectos/:id/:action`): GET `…/drive` (lectura, el líder de
+    zona también), POST `/api/proyectos/:id/drive` y POST `…/drive/sincronizar`
+    (scope `own`). Sin credenciales responde `disponible:false` en vez de tronar.
+  - Front: `src/components/documents/DriveCarpeta.tsx` (+ `src/lib/driveApi.ts`,
+    aparte de apiClient.ts) en el tab Documentación de la Oportunidad (su
+    carpeta + la del Proyecto si ya existe) y del Proyecto (la suya + la de su
+    Oportunidad): subcarpetas desplegables con archivos y fecha, Abrir en
+    Drive, Crear carpeta, Actualizar, Sincronizar documentos. Se lee en vivo al
+    abrir el tab, nunca en polling. Verificado a 1280 y 390 px.
+  - Probado en vivo contra Drive real con el worker local y el proyecto nativo
+    de QA (carpeta creada, listada, sincronizada y luego enviada a la papelera).
+    Hallazgo: crear las 12 subcarpetas en paralelo dispara `403
+    userRateLimitExceeded` de Drive — ahora van de 3 en 3 y `driveFetch`
+    reintenta con backoff en 403 de cuota / 429 / 5xx (~7 s por carpeta).
+  - Ops: secretos `GOOGLE_SERVICE_ACCOUNT_EMAIL` y `GOOGLE_PRIVATE_KEY` subidos
+    al Worker de producción (antes no existían ahí). Tests nuevos en
+    `worker/lib/drive.test.ts`; typecheck/test/lint en verde.
+
+
 - **Actas de entrega en Documentación del Proyecto**: Efraín preguntó por qué no
   llegaba el acta de entrega de OPP-0723 / PRO-0139 (CADETES TORREON). Se revisó en
   vivo: nadie la había subido (las 11 columnas file del Proyecto, la Oportunidad,

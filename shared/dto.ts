@@ -713,3 +713,27 @@ export interface AddAbonoResponse { ok: boolean; id?: string; error?: string }
  * monto si entró distinto de lo acordado). */
 export interface UpdateAbonoRequest { monto?: number; fecha?: string | null; fechaEstimada?: string | null; nota?: string }
 export interface UpdateAbonoResponse { ok: boolean; error?: string }
+
+// Carpeta de Google Drive de una Oportunidad o un Proyecto (worker/routes/
+// drive.ts, tab Documentación, 2026-09-15). `disponible=false` = el ambiente no
+// tiene credenciales de Google; `carpeta=null` = el item no tiene carpeta
+// propia (el Proyecto puede crearla si `puedeCrear`).
+export interface DriveArchivoDTO {
+  id: string; nombre: string; url: string; mimeType: string;
+  modificado: string | null; tamano: number | null;
+}
+export interface DriveSubcarpetaDTO { id: string; nombre: string; url: string; archivos: DriveArchivoDTO[] }
+export interface DriveCarpetaResponse {
+  disponible: boolean;
+  carpeta: { id: string; url: string; nombre: string } | null;
+  subcarpetas: DriveSubcarpetaDTO[];
+  /** Archivos sueltos en la raíz (p.ej. el Google Sheet de tallas). */
+  archivos: DriveArchivoDTO[];
+  puedeCrear?: boolean;
+}
+export interface DriveSincronizarResponse {
+  ok: true;
+  subidos: string[];
+  existentes: number;
+  errores: string[];
+}
