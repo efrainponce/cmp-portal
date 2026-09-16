@@ -59,12 +59,23 @@ for (const k of ['MONDAY_API_KEY', 'GOOGLE_SERVICE_ACCOUNT_EMAIL', 'GOOGLE_PRIVA
 const API_VERSION = /const API_VERSION = '([^']+)'/.exec(fs.readFileSync('worker/lib/monday.ts', 'utf8'))?.[1] ?? '2025-01';
 
 // --- D1 de producción --------------------------------------------------------
+// La API de Cloudflare responde 7403 "account not authorized" de forma
+// intermitente (visto 3 veces el 2026-09-15 con el mismo token que un minuto
+// después funciona): se reintenta con espera creciente antes de rendirse.
 function d1(sql) {
-  const out = execFileSync('npx', ['wrangler', 'd1', 'execute', 'cmp-portal', '--remote', '--env-file=.dev.vars', '--json', '--command', sql], {
-    env: { ...process.env, CLOUDFLARE_API_TOKEN: undefined }, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'],
-  });
-  const json = JSON.parse(out.slice(out.indexOf('[')));
-  return json.map(r => r.results);
+  const esperas = [3000, 6000, 12000, 24000];
+  for (let intento = 0; ; intento++) {
+    try {
+      const out = execFileSync('npx', ['wrangler', 'd1', 'execute', 'cmp-portal', '--remote', '--env-file=.dev.vars', '--json', '--command', sql], {
+        env: { ...process.env, CLOUDFLARE_API_TOKEN: undefined }, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      return JSON.parse(out.slice(out.indexOf('['))).map(r => r.results);
+    } catch (err) {
+      if (intento >= esperas.length) throw err;
+      console.log(`  D1 falló (${(err.stdout ?? '').match(/code: \d+/)?.[0] ?? err.message.slice(0, 60)}), reintento en ${esperas[intento] / 1000}s…`);
+      execFileSync('sleep', [String(esperas[intento] / 1000)]);
+    }
+  }
 }
 const sqlStr = v => `'${String(v).replace(/'/g, "''")}'`;
 
