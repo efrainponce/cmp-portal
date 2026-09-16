@@ -288,7 +288,7 @@ for (const p of lista) {
     if (cacheRows.length >= 10) { try { guardarCache(); } catch (err) { console.log(`  cache D1 pendiente: ${err.message.slice(0, 80)}`); } }
     break;
   } catch (err) {
-    if (/fetch failed/i.test(err.message) && intentoRed < 4) {
+    if (/fetch failed|aborted due to timeout/i.test(err.message) && intentoRed < 4) {
       console.log(`${tag} — red caída (${err.message}), reintento ${intentoRed + 1}/4 en 30 s…`);
       await sleep(30_000);
       continue;
