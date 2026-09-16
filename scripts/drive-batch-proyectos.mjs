@@ -18,6 +18,8 @@
 // (MONDAY_API_KEY, GOOGLE_SERVICE_ACCOUNT_EMAIL, GOOGLE_PRIVATE_KEY) y
 // `.dev.vars` (wrangler) en la raíz del repo. Solo proyectos reales de Monday
 // (ids < 900000000000): los nativos no tienen assets que espejar.
+// Todo fetch lleva timeout: la primera corrida (2026-09-15) se quedó colgada 35
+// min en un fetch de Node sin timeout, sin conexión abierta y sin error.
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process';
@@ -75,7 +77,7 @@ async function googleToken() {
   const now = Math.floor(Date.now() / 1000);
   const input = `${b64({ alg: 'RS256', typ: 'JWT' })}.${b64({ iss: env.GOOGLE_SERVICE_ACCOUNT_EMAIL, scope: 'https://www.googleapis.com/auth/drive', aud: 'https://oauth2.googleapis.com/token', exp: now + 3600, iat: now })}`;
   const sig = crypto.sign('RSA-SHA256', Buffer.from(input), pem).toString('base64url');
-  const r = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: `${input}.${sig}` }) });
+  const r = await fetch('https://oauth2.googleapis.com/token', { signal: AbortSignal.timeout(30_000), method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: `${input}.${sig}` }) });
   const j = await r.json();
   if (!j.access_token) throw new Error('token Google: ' + JSON.stringify(j));
   gToken = j.access_token; gTokenExp = Date.now() + 50 * 60 * 1000;
@@ -84,7 +86,7 @@ async function googleToken() {
 const REINTENTOS_MS = [500, 1000, 2000, 4000, 8000];
 async function driveFetch(url, init = {}) {
   for (let intento = 0; ; intento++) {
-    const res = await fetch(url, { ...init, headers: { ...(init.headers ?? {}), Authorization: `Bearer ${await googleToken()}` } });
+    const res = await fetch(url, { ...init, signal: AbortSignal.timeout(60_000), headers: { ...(init.headers ?? {}), Authorization: `Bearer ${await googleToken()}` } });
     const json = await res.json().catch(() => ({}));
     if (res.ok) return json;
     const reason = json?.error?.errors?.[0]?.reason ?? '';
@@ -122,7 +124,7 @@ async function upload(folderId, nombre, bytes, contentType) {
   });
   for (let intento = 0; ; intento++) {
     const r = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${created.id}?uploadType=media&supportsAllDrives=true`, {
-      method: 'PATCH', headers: { Authorization: `Bearer ${await googleToken()}`, 'Content-Type': contentType }, body: bytes,
+      method: 'PATCH', signal: AbortSignal.timeout(180_000), headers: { Authorization: `Bearer ${await googleToken()}`, 'Content-Type': contentType }, body: bytes,
     });
     if (r.ok) return;
     if ((r.status === 429 || r.status >= 500 || r.status === 403) && intento < REINTENTOS_MS.length) { await sleep(REINTENTOS_MS[intento]); continue; }
@@ -133,7 +135,7 @@ async function upload(folderId, nombre, bytes, contentType) {
 // --- Monday -----------------------------------------------------------------
 async function gql(query, variables) {
   const r = await fetch('https://api.monday.com/v2', {
-    method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: env.MONDAY_API_KEY, 'API-Version': API_VERSION },
+    signal: AbortSignal.timeout(60_000), method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: env.MONDAY_API_KEY, 'API-Version': API_VERSION },
     body: JSON.stringify({ query, variables }),
   });
   const j = await r.json();
@@ -227,7 +229,7 @@ for (const p of lista) {
         if (await existe(folderId, a.nombre)) { yaEstaban++; continue; }
         const url = urls.get(String(a.assetId));
         if (!url) throw new Error('Monday no dio public_url');
-        const r = await fetch(url);
+        const r = await fetch(url, { signal: AbortSignal.timeout(120_000) });
         if (!r.ok) throw new Error(`descarga ${r.status}`);
         await upload(folderId, a.nombre, Buffer.from(await r.arrayBuffer()), r.headers.get('content-type') ?? 'application/octet-stream');
         subidos++;
