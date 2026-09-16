@@ -28,6 +28,11 @@ const args = process.argv.slice(2);
 const DRY = args.includes('--dry');
 const SOLO = new Set((args.find(a => a.startsWith('--solo='))?.slice(7) ?? '').split(',').filter(Boolean).map(Number));
 const LIMITE = Number(args.find(a => a.startsWith('--limite='))?.slice(9) ?? 0) || Infinity;
+// --desde=N: arranca en el N-ésimo de la lista (orden estable por item_id) —
+// para retomar una corrida cortada. --solo-cache: no sube nada, solo vuelve a
+// leer las carpetas ya creadas y guarda drive_carpetas en D1.
+const DESDE = Number(args.find(a => a.startsWith('--desde='))?.slice(8) ?? 1) || 1;
+const SOLO_CACHE = args.includes('--solo-cache');
 
 const BOARD_PROYECTOS = 18395657594;
 const BOARD_OPORTUNIDADES = 18395657596;
@@ -63,7 +68,7 @@ const API_VERSION = /const API_VERSION = '([^']+)'/.exec(fs.readFileSync('worker
 // intermitente (visto 3 veces el 2026-09-15 con el mismo token que un minuto
 // después funciona): se reintenta con espera creciente antes de rendirse.
 function d1(sql) {
-  const esperas = [3000, 6000, 12000, 24000];
+  const esperas = [3000, 6000, 12000, 30000, 60000, 120000];
   for (let intento = 0; ; intento++) {
     try {
       const out = execFileSync('npx', ['wrangler', 'd1', 'execute', 'cmp-portal', '--remote', '--env-file=.dev.vars', '--json', '--command', sql], {
@@ -191,7 +196,7 @@ for (let i = 0; i < oppIds.length; i += 80) {
 const esPrueba = p => /\btest\b|e2e/i.test(p.name);
 const saltados = SOLO.size === 0 ? proyectos.filter(esPrueba) : [];
 if (saltados.length) console.log(`Saltando ${saltados.length} proyectos de prueba: ${saltados.map(p => p.name).join(' | ')}`);
-let lista = proyectos.filter(p => SOLO.size ? SOLO.has(Number(p.item_id)) : !esPrueba(p)).slice(0, LIMITE);
+let lista = proyectos.filter(p => SOLO.size ? SOLO.has(Number(p.item_id)) : !esPrueba(p)).slice(DESDE - 1, DESDE - 1 + LIMITE);
 console.log(`${proyectos.length} proyectos en el mirror, ${lista.length} a procesar, ${opps.size} oportunidades ligadas.`);
 
 const existentes = await childFolders(PROYECTOS_PARENT_FOLDER_ID);
@@ -199,6 +204,22 @@ console.log(`"Proyectos Portal" ya tiene ${existentes.size} carpetas.`);
 
 const resumen = { carpetasCreadas: 0, carpetasExistian: 0, subidos: 0, yaEstaban: 0, linksEscritos: 0, errores: [] };
 const cacheRows = [];
+let tablaLista = false;
+// Se guarda cada 10 proyectos y al final: una corrida cortada no pierde lo hecho.
+function guardarCache() {
+  if (DRY || cacheRows.length === 0) return;
+  console.log(`  guardando ${cacheRows.length} carpetas en drive_carpetas (D1 producción)…`);
+  if (!tablaLista) {
+    d1(`CREATE TABLE IF NOT EXISTS drive_carpetas (kind TEXT NOT NULL, item_id INTEGER NOT NULL, root_folder_id TEXT NOT NULL, root_name TEXT NOT NULL DEFAULT '', subfolders_json TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')), PRIMARY KEY (kind, item_id))`);
+    tablaLista = true;
+  }
+  for (let j = 0; j < cacheRows.length; j += 15) {
+    const stmts = cacheRows.slice(j, j + 15).map(r =>
+      `INSERT INTO drive_carpetas (kind, item_id, root_folder_id, root_name, subfolders_json) VALUES ('proyecto', ${r.item_id}, ${sqlStr(r.rootId)}, ${sqlStr(r.rootName)}, ${sqlStr(JSON.stringify(r.subs))}) ON CONFLICT(kind, item_id) DO UPDATE SET root_folder_id = excluded.root_folder_id, root_name = excluded.root_name, subfolders_json = excluded.subfolders_json`);
+    d1(stmts.join('; '));
+  }
+  cacheRows.length = 0;
+}
 let i = 0;
 for (const p of lista) {
   i++;
@@ -221,20 +242,25 @@ for (const p of lista) {
     continue;
   }
 
+  // "fetch failed" = la red del equipo se cayó (pasó dos veces el 2026-09-15,
+  // ~1 h después de arrancar): se espera y se reintenta el proyecto completo,
+  // que es idempotente.
+  for (let intentoRed = 0; ; intentoRed++) {
   try {
     let rootId = existentes.get(rootName);
     if (rootId) resumen.carpetasExistian++;
+    else if (SOLO_CACHE) { console.log(`${tag} — sin carpeta, se salta (--solo-cache)`); break; }
     else { rootId = await createFolder(rootName, PROYECTOS_PARENT_FOLDER_ID); existentes.set(rootName, rootId); resumen.carpetasCreadas++; }
 
     const subs = await childFolders(rootId);
-    const faltan = SUBFOLDERS.filter(s => !subs.has(s));
+    const faltan = SOLO_CACHE ? [] : SUBFOLDERS.filter(s => !subs.has(s));
     for (let j = 0; j < faltan.length; j += 3) {
       await Promise.all(faltan.slice(j, j + 3).map(async s => { subs.set(s, await createFolder(s, rootId)); }));
     }
 
     let subidos = 0, yaEstaban = 0;
-    const urls = archivos.length ? await assetUrls(archivos.map(a => a.assetId)) : new Map();
-    for (const a of archivos) {
+    const urls = archivos.length && !SOLO_CACHE ? await assetUrls(archivos.map(a => a.assetId)) : new Map();
+    for (const a of SOLO_CACHE ? [] : archivos) {
       const folderId = subs.get(a.sub);
       try {
         if (await existe(folderId, a.nombre)) { yaEstaban++; continue; }
@@ -252,26 +278,27 @@ for (const p of lista) {
     resumen.subidos += subidos; resumen.yaEstaban += yaEstaban;
 
     const rootUrl = `https://drive.google.com/drive/folders/${rootId}`;
-    if (linkUrl(cols, PROY_LINK) !== rootUrl) {
+    if (!SOLO_CACHE && linkUrl(cols, PROY_LINK) !== rootUrl) {
       await gql(`mutation($b:ID!,$i:ID!,$cv:JSON!){ change_multiple_column_values(board_id:$b,item_id:$i,column_values:$cv){ id } }`,
         { b: String(BOARD_PROYECTOS), i: String(p.item_id), cv: JSON.stringify({ [PROY_LINK]: { url: rootUrl, text: rootName } }) });
       resumen.linksEscritos++;
     }
     cacheRows.push({ item_id: p.item_id, rootId, rootName, subs: Object.fromEntries(SUBFOLDERS.map(s => [s, subs.get(s)])) });
     console.log(`${tag} — ${rootId ? 'ok' : '?'}: ${subidos} subidos, ${yaEstaban} ya estaban`);
+    if (cacheRows.length >= 10) { try { guardarCache(); } catch (err) { console.log(`  cache D1 pendiente: ${err.message.slice(0, 80)}`); } }
+    break;
   } catch (err) {
+    if (/fetch failed/i.test(err.message) && intentoRed < 4) {
+      console.log(`${tag} — red caída (${err.message}), reintento ${intentoRed + 1}/4 en 30 s…`);
+      await sleep(30_000);
+      continue;
+    }
     resumen.errores.push(`${rootName}: ${err.message}`);
     console.log(`${tag} — ERROR ${err.message}`);
+    break;
+  }
   }
 }
 
-if (!DRY && cacheRows.length) {
-  console.log(`Guardando ${cacheRows.length} carpetas en drive_carpetas (D1 producción)…`);
-  d1(`CREATE TABLE IF NOT EXISTS drive_carpetas (kind TEXT NOT NULL, item_id INTEGER NOT NULL, root_folder_id TEXT NOT NULL, root_name TEXT NOT NULL DEFAULT '', subfolders_json TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')), PRIMARY KEY (kind, item_id))`);
-  for (let j = 0; j < cacheRows.length; j += 15) {
-    const stmts = cacheRows.slice(j, j + 15).map(r =>
-      `INSERT INTO drive_carpetas (kind, item_id, root_folder_id, root_name, subfolders_json) VALUES ('proyecto', ${r.item_id}, ${sqlStr(r.rootId)}, ${sqlStr(r.rootName)}, ${sqlStr(JSON.stringify(r.subs))}) ON CONFLICT(kind, item_id) DO UPDATE SET root_folder_id = excluded.root_folder_id, root_name = excluded.root_name, subfolders_json = excluded.subfolders_json`);
-    d1(stmts.join('; '));
-  }
-}
+guardarCache();
 console.log('\nRESUMEN', JSON.stringify(resumen, null, 2));
