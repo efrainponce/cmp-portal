@@ -60,6 +60,12 @@
     contra producción sin esperar el deploy (Drive + Monday + D1 vía wrangler),
     idempotente por nombre, `--dry` para el plan. Dry run 2026-09-15: 129
     proyectos, 910 archivos; se saltan los de prueba (OC test / E2E).
+    Corrida real (2026-09-15/16, 6 corridas por caídas de red y un 7403
+    intermitente de la API de Cloudflare — de ahí los reintentos, `--desde`,
+    `--solo` y el cache incremental): **124 carpetas creadas en "Proyectos
+    Portal" con 883 archivos**, `link_mm462saa` apuntando a la carpeta propia y
+    `drive_carpetas` de producción con las 124. Quedaron fuera 7 proyectos de
+    prueba y los nativos de Zona Efrain.
 
 
 - **Actas de entrega en Documentación del Proyecto**: Efraín preguntó por qué no
