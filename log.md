@@ -36,6 +36,11 @@
     Access: encolar solo necesita D1.
   - `scripts/limpiar-pruebas.mjs`: lista (dry run), `--encolar`, `--estado`
     o `--borrar` directo.
+  - Ajuste tras la primera hora: la corrida de 06:00 se cortó a los 6 items y
+    la de 06:15 no procesó ninguno (cada `delete_item` tarda ~4-5 s y la
+    invocación del cron se termina sin asentar error). Ahora cada corrida
+    tiene presupuesto de 20 s y la cola también avanza en el cron de 10 min;
+    el tope de 40/h de `borrarItem` sigue mandando.
 
 ## 2026-09-16
 

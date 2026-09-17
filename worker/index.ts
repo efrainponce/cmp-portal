@@ -178,6 +178,8 @@ export default {
       return;
     }
     const slugs = CRON_GROUPS[controller.cron] ?? (Object.keys(BOARDS) as BoardSlug[]);
-    ctx.waitUntil(reconcileAll(env, slugs).then(() => flushOutbox(env)));
+    // La cola de limpieza también avanza aquí (cron de 10 min): con el
+    // presupuesto de 20 s por corrida, entre los dos crones salen ~40/h.
+    ctx.waitUntil(Promise.all([reconcileAll(env, slugs).then(() => flushOutbox(env)), procesarColaLimpieza(env)]));
   },
 };

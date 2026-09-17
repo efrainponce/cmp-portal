@@ -33,6 +33,12 @@ import { registrarError } from './errores';
 
 export const SLUGS_LIMPIEZA: BoardSlug[] = ['oportunidades', 'proyectos', 'contactos', 'instituciones'];
 const LOTE_POR_CORRIDA = 10;
+/** Presupuesto de pared por corrida. Medido 2026-09-17: cada borrado tarda
+ * ~4-5 s (delete_item de Monday); la corrida de las 06:00 se cortó a los 6
+ * items y la de 06:15 no procesó ninguno, sin error asentado — la invocación
+ * del cron se termina antes de acabar el lote. Con 20 s se cierran ~4 por
+ * corrida y, como también procesa el cron de 10 min, salen ~40 por hora. */
+const PRESUPUESTO_MS = 20_000;
 
 export class LimpiezaError extends Error {
   status: number;
@@ -123,12 +129,14 @@ interface Pendiente { id: number; slug: BoardSlug; item_id: number; nombre: stri
  * asentado en `resultado` y el item no se reintenta. */
 export async function procesarColaLimpieza(env: Env): Promise<{ ok: number; fallidos: number; tope: boolean }> {
   const res = { ok: 0, fallidos: 0, tope: false };
+  const inicio = Date.now();
   try {
     await ensureLimpiezaCola(env);
     const { results } = await env.DB
       .prepare('SELECT id, slug, item_id, nombre, encolado_por FROM limpieza_cola WHERE procesado_at IS NULL ORDER BY id LIMIT ?')
       .bind(LOTE_POR_CORRIDA).all<Pendiente>();
     for (const p of results ?? []) {
+      if (Date.now() - inicio > PRESUPUESTO_MS) break;
       let resultado: string;
       try {
         const r = await borrarPrueba(env, p.slug, p.item_id, p.nombre, p.encolado_por);
