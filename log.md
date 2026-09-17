@@ -2,6 +2,17 @@
 
 ## 2026-09-17
 
+- **Tab Tallas: ya no salen las tallas "en doble"** (Efraín: "aparecen las
+  tallas en DOBLE… hasta parece bug"). Con líneas ya traídas del archivo, el
+  tab pintaba arriba las tarjetas con las tallas reales y abajo, para los
+  MISMOS productos, las cajitas de captura vacías (XS…3XL, 0/75).
+  `TallasSection.tsx`: las cajitas solo salen para los productos+color de la
+  cotización que todavía NO tienen líneas en el Proyecto (cruce por SKU+color,
+  y sin SKU por producto+color — el nombre del subitem de cotización es un
+  número, por eso el SKU va primero); si todos tienen, la sección desaparece
+  y queda un link "¿Falta una talla en un producto que ya tiene líneas?
+  Capturarla a mano" que la despliega completa.
+
 - **Captura de tallas 4 líneas a la vez** (Efraín, tras "Traer tallas del
   archivo" en PRO-0205: 52 líneas en 3 min 57 s — "¿no se puede hacer de
   jalón?"). `capturarTallas` (`proyectoTallas.ts`) primero decide qué escribir

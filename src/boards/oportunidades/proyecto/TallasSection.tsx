@@ -19,6 +19,10 @@ import { numberCellKeyDown } from '../../../components/forms/NumberCellInput';
 
 interface CantidadEdit { draft?: string; saving?: boolean; error?: string }
 
+// Oportunidades subitems — mismos ids que TallaCapture.tsx.
+const OPP_SUB_SKU = 'lookup_mkzn7x9a';
+const OPP_SUB_COLOR = 'text_mm07s2mg';
+
 function norm(s: string): string {
   return s.trim().toLowerCase();
 }
@@ -316,6 +320,27 @@ export function ProyectoTallasSection({ state, oppId }: { state: ProyectoState; 
     return () => { vivo = false; };
   }, [oppId]);
 
+  // Un producto+color que YA tiene líneas en el Proyecto no vuelve a salir en
+  // las cajitas de captura: sus tallas se editan arriba, en su tarjeta.
+  // Antes salían las dos cosas para el mismo producto (arriba las tallas
+  // traídas del archivo, abajo cajitas vacías XS…3XL en 0/75) y parecía que
+  // había que capturarlas dos veces (Efraín, 2026-09-17: "aparecen las tallas
+  // en DOBLE, hasta parece bug"). Cruce por SKU+color y, sin SKU, por
+  // producto+color — mismas llaves que groupByProductoColor.
+  const [capturaAbierta, setCapturaAbierta] = useState(false);
+  const conLineas = new Set<string>();
+  for (const g of groupByProductoColor(state.proyecto?.children ?? [])) {
+    conLineas.add(`p|${norm(g.producto)}|${norm(g.color)}`);
+    if (g.sku) conLineas.add(`s|${norm(g.sku)}|${norm(g.color)}`);
+  }
+  const yaTieneLineas = (l: ItemDTO): boolean => {
+    const color = norm(l.cols[OPP_SUB_COLOR]?.text || '');
+    const sku = norm(l.cols[OPP_SUB_SKU]?.text || '');
+    return (!!sku && conLineas.has(`s|${sku}|${color}`)) || conLineas.has(`p|${norm(l.name)}|${color}`);
+  };
+  const sinLineas = oppLineas.filter(l => !yaTieneLineas(l));
+  const productosCaptura = capturaAbierta ? oppLineas : sinLineas;
+
   if (state.loading) return <Shell hint="Buscando el proyecto ligado…" />;
   if (!state.proyecto) {
     return <Shell hint="Esta oportunidad aún no tiene Proyecto en Monday — se crea cuando se GANA la oportunidad, y ahí vive el desglose de tallas." />;
@@ -350,11 +375,22 @@ export function ProyectoTallasSection({ state, oppId }: { state: ProyectoState; 
           — lo que se captura se guarda como subitems del Proyecto. */}
       <TallaBoxesCapture
         proyectoId={p.id}
-        products={oppLineas}
+        products={productosCaptura}
         onSaved={state.reload}
-        titulo="Capturar tallas"
+        titulo={sinLineas.length === oppLineas.length ? 'Capturar tallas' : 'Capturar tallas de los productos que faltan'}
         hint="Cuántas piezas de cada talla por producto — se guardan como líneas del proyecto. Puedes capturar de a poco: lo que dejes en blanco no se toca."
       />
+      {sinLineas.length < oppLineas.length && (
+        <button
+          type="button"
+          onClick={() => setCapturaAbierta(v => !v)}
+          style={{ marginTop: 10, background: 'none', border: 'none', padding: 0, cursor: 'pointer', font: 'var(--text-label)', color: 'var(--ink-secondary)', textDecoration: 'underline' }}
+        >
+          {capturaAbierta
+            ? 'Ocultar la captura de los productos que ya tienen tallas'
+            : '¿Falta una talla en un producto que ya tiene líneas? Capturarla a mano'}
+        </button>
+      )}
       <FileList label="Relaciones de tallas (PDF)" files={toR2Files(parseFiles(p.cols[P_TALLAS_PDF]?.text), oppId, 'tallas', p.id)} />
     </div>
   );
