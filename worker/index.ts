@@ -26,6 +26,7 @@ import { limpiezaRoutes } from './routes/limpieza';
 import { flushOutbox } from './lib/outbox';
 import { checkErrorsAndAlert } from './lib/errorAlerts';
 import { revisarSaludSiToca } from './lib/salud';
+import { procesarColaLimpieza } from './lib/limpieza';
 import { enviarResumenSiToca } from './wa/resumen';
 import { purgeBitacora } from './wa/bitacora';
 import { backupD1ToR2 } from './lib/backup';
@@ -164,7 +165,9 @@ export default {
       // por hora dentro de este mismo cron: no hay cupo para un cron más.
       // + el resumen matutino de cartera por WhatsApp (worker/wa/resumen.ts):
       // gate por persona (su hora CDMX, L–V, una vez al día), detrás de WA_CARTERA.
-      ctx.waitUntil(Promise.all([checkErrorsAndAlert(env), deltaSync(env), revisarSaludSiToca(env), enviarResumenSiToca(env)]));
+      // + la cola de limpieza de items de prueba (worker/lib/limpieza.ts):
+      // de a 10 por corrida = 40 por hora, el tope de borrarItem.
+      ctx.waitUntil(Promise.all([checkErrorsAndAlert(env), deltaSync(env), revisarSaludSiToca(env), enviarResumenSiToca(env), procesarColaLimpieza(env)]));
       return;
     }
     if (controller.cron === BACKUP_CRON) {

@@ -12,14 +12,18 @@
   (ATTEST_INTENT), no firmas manuales. Se excluyen "PRUEBAS DE LAB…" (3
   proyectos y 2 productos reales de laboratorio) y no se tocan productos ni
   proveedores.
-  - `POST /api/admin/limpieza/borrar` (`worker/routes/limpieza.ts`): borra UN
-    padre por llamada, por id Y nombre exacto; exige que el nombre diga
-    test/prueba/borrar; rechaza si hay firma manual; respalda cada línea en
-    `item_borrado` y luego pasa por `borrarItem` (Monday borra los subitems
-    en cascada, el mirror se limpia después). Cuenta 1 contra el tope de 40
-    por hora.
-  - `scripts/limpiar-pruebas.mjs`: lista (dry run) o `--borrar`; se detiene
-    al primer 429 y se repite cada hora hasta vaciar la lista.
+  - `worker/lib/limpieza.ts` (`borrarPrueba`): borra UN padre, por id Y
+    nombre exacto; exige que el nombre diga test/prueba/borrar; rechaza si
+    hay firma manual; respalda cada línea en `item_borrado` y luego pasa por
+    `borrarItem` (Monday borra los subitems en cascada, el mirror se limpia
+    después). Cuenta 1 contra el tope de 40 por hora.
+  - Dos entradas: `POST /api/admin/limpieza/borrar` (con sesión de Access) y
+    la cola `limpieza_cola`, que el cron de 15 min procesa de a 10 por
+    corrida (= 40/h). La cola existe porque la sesión de Access de los
+    scripts había expirado y `wrangler dev --remote` también queda detrás de
+    Access: encolar solo necesita D1.
+  - `scripts/limpiar-pruebas.mjs`: lista (dry run), `--encolar`, `--estado`
+    o `--borrar` directo.
 
 ## 2026-09-16
 
