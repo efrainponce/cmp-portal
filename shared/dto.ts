@@ -338,6 +338,13 @@ export interface TallaBoxInput {
   color?: string;
   talla: string;
   cantidad: number;
+  /** "Traer tallas del archivo" (2026-09-17): Género del Sheet (col D). Forma
+   * parte de la identidad de la línea cuando viene — hombre M y mujer M del
+   * mismo producto+color son dos líneas. La captura por boxes no lo manda. */
+  genero?: string;
+  /** Textos de embellecimiento por zona del Sheet (cols J–Q), ya como
+   * columna→texto del subitem (long_text_*). Solo el camino del archivo. */
+  extras?: Record<string, string>;
 }
 
 export interface CapturarTallasResponse {
@@ -348,6 +355,9 @@ export interface CapturarTallasResponse {
    * cantidad/costeo distinto se actualiza en vez de omitirse. */
   updated: number;
   omitted: number;
+  /** Filas que quedaron sin escribir por el tope de escrituras de la llamada
+   * ("Traer tallas del archivo"): el cliente vuelve a llamar hasta que sea 0. */
+  restantes?: number;
 }
 
 // POST /api/proyectos/:id/lineas/cambiar-producto — "Cambiar producto" en la

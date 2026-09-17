@@ -715,6 +715,7 @@ export async function restablecerOcImagen(sku: string): Promise<OcImagenDTO> {
 
 export type ProyectoAction =
   | 'tallas-regenerar' | 'tallas-confirmar' | 'tallas-importar'
+  | 'tallas-traer'                  // lee el Sheet y crea/actualiza líneas sin borrar (worker/lib/tallasDesdeSheet.ts)
   | 'generar-oc'                    // cmp-tallas/Eledo + firmas DocuSeal
   | 'generar-oc-portal'             // motor propio del portal, sin firma electrónica
   | 'generar-oc-portal-imagenes';   // la misma, con ficha y foto por producto

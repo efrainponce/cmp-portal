@@ -2,6 +2,38 @@
 
 ## 2026-09-17
 
+- **"Traer tallas del archivo al portal" ya NO borra nada** (Efraín: "¿eso no
+  modifica Monday, solo jala la info?" → "sí mejor algo que no destruya nada;
+  deja el botón así pero es solo jalar la info"). El botón dejaba de ser
+  import_tallas de cmp-tallas (borra y recrea TODOS los subitems del Proyecto,
+  llevándose proveedor/costo/estado editados a mano).
+  - Nuevo `worker/lib/tallasDesdeSheet.ts` + `POST /api/proyectos/:id/tallas-traer`
+    (compras/admin, mismo gate del botón): lee la pestaña `Data` del Sheet del
+    Proyecto con la service account de Google del Worker (`googleAuth.ts`, scope
+    spreadsheets.readonly — es la misma cuenta `cmp-tallas@…` que creó el
+    archivo, verificado en `.env`), mismas columnas A–Q que import_tallas.py,
+    y pasa las filas con cantidad por `capturarTallas` (reconciliación por
+    identidad: crea lo que falta, actualiza lo que cambió, nunca borra). Escribe
+    a lo más `MAX_TALLAS_POR_REQUEST` líneas por llamada y devuelve `restantes`;
+    `ProyectoActionBar` vuelve a llamar hasta cerrar. Los textos de
+    embellecimiento por zona (J–Q) sí se escriben en cada línea; las líneas
+    "✨ zona" del bordador NO se crean (eso sigue siendo de import_tallas).
+  - `capturarTallas` (`proyectoTallas.ts`): `TallaBoxInput` gana `genero` y
+    `extras`; `identityKey` toma el género cuando viene (hombre M ≠ mujer M) y
+    las líneas viejas sin género siguen cruzando por las 4 llaves; nuevo tope
+    `maxEscrituras` (las omitidas no cuestan subrequests). La captura por
+    boxes no cambia.
+  - `fusionarFilas`: dos bloques del Sheet con la misma identidad (PRO-0205:
+    la Playera Polo dividida en 48 + 27 sin cambiar producto ni color, y la
+    pestaña Data no trae género) se SUMAN en una línea en vez de que el
+    segundo pise al primero — import_tallas.py tenía esa misma colisión.
+  - UI (`shared.tsx`): "Traer tallas del archivo al portal (compras)" ahora
+    dispara `tallas-traer` (confirmación "crea o actualiza líneas, no borra
+    nada"); "Importar tallas a Monday (compras)" regresa como botón secundario
+    con su texto original, por si alguien de veras quiere rehacer todo.
+  - Tests: `tallasDesdeSheet.test.ts` (parseo de filas, fusión, género en la
+    llave). `npm run typecheck`, `npm test` (847) y `npm run lint` limpios.
+
 - **Botón claro para traer las tallas del archivo al portal** (Efraín, captura
   del tab Tallas: "¿cómo le hago para traer las tallas del archivo de excel al
   portal? puedes crear un botón claro"). Ya existía — "Importar tallas a Monday

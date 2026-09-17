@@ -332,7 +332,7 @@ export function ProyectoTallasSection({ state, oppId }: { state: ProyectoState; 
       <ProyectoActionBar
         proyecto={p}
         reload={state.reload}
-        actions={isNativeId(Number(p.id)) ? ['tallas-confirmar'] : ['tallas-regenerar', 'tallas-confirmar', 'tallas-importar']}
+        actions={isNativeId(Number(p.id)) ? ['tallas-confirmar'] : ['tallas-regenerar', 'tallas-confirmar', 'tallas-traer']}
       />
       <TallasGrid
         native={isNativeId(Number(p.id))}

@@ -55,6 +55,7 @@ const SUB_PRODUCTO = 'text_mm0hs17x';
 const SUB_SKU = 'text_mm0hyrfs';
 const SUB_COLOR = 'text_mm0h4a1c';
 const SUB_TALLA = 'text_mm1antcb';
+const SUB_GENERO = 'text_mm1a5yyq';   // col D del Sheet (import_tallas.py COL_SUB_D)
 const SUB_CANTIDAD = 'numeric_mm0hj2q4';
 const SUB_COSTO = 'numeric_mm1dj4fp';
 const SUB_MONEDA = 'text_mm1gdsvg';
@@ -203,8 +204,11 @@ function norm(s: string): string {
 /** Clave de identidad de una talla: producto+sku+color+talla, normalizada
  * (espacios/mayúsculas no cuentan) — con esto se decide qué filas ya existen
  * y se omiten en vez de duplicarse. Exportada para test unitario puro. */
-export function identityKey(producto: string, sku: string | undefined, color: string | undefined, talla: string): string {
-  return [norm(producto), norm(sku ?? ''), norm(color ?? ''), norm(talla)].join('|');
+export function identityKey(producto: string, sku: string | undefined, color: string | undefined, talla: string, genero?: string): string {
+  const base = [norm(producto), norm(sku ?? ''), norm(color ?? ''), norm(talla)].join('|');
+  // El género solo distingue cuando viene (Sheet): la captura por boxes y las
+  // líneas viejas sin género siguen cruzando por las 4 llaves de siempre.
+  return genero?.trim() ? `${base}|${norm(genero)}` : base;
 }
 
 /** Filas capturables: cantidad positiva, talla y producto no vacíos. Exportada
@@ -224,6 +228,10 @@ export function buildTallaColumns(r: TallaBoxInput, enr: CosteoEnrichment | unde
   };
   if (r.sku?.trim()) cols[SUB_SKU] = r.sku.trim();
   if (r.color?.trim()) cols[SUB_COLOR] = r.color.trim();
+  if (r.genero?.trim()) cols[SUB_GENERO] = r.genero.trim();
+  for (const [colId, texto] of Object.entries(r.extras ?? {})) {
+    if (texto.trim()) cols[colId] = texto.trim();
+  }
   if (enr?.costo) cols[SUB_COSTO] = enr.costo;
   if (enr?.moneda) cols[SUB_MONEDA] = enr.moneda;
   if (enr?.descuento) cols[SUB_DESCUENTO] = enr.descuento;
@@ -331,9 +339,16 @@ async function nativeTallaColumns(
 
 export async function capturarTallas(
   env: Env, viewer: Identity, proyectoId: number, rows: TallaBoxInput[],
+  opts: { maxEscrituras?: number } = {},
 ): Promise<CapturarTallasResponse> {
   const wanted = filterWanted(rows);
-  if (wanted.length === 0) return { ok: true, created: 0, updated: 0, omitted: 0 };
+  if (wanted.length === 0) return { ok: true, created: 0, updated: 0, omitted: 0, restantes: 0 };
+  // "Traer tallas del archivo" manda TODAS las filas del Sheet en una llamada
+  // (no sabe cuáles ya existen); las omitidas no cuestan subrequests, así que
+  // el tope se aplica solo a las que sí escriben — el resto se reporta como
+  // `restantes` y el cliente vuelve a llamar.
+  const maxEscrituras = opts.maxEscrituras ?? Number.POSITIVE_INFINITY;
+  let restantes = 0;
 
   const oppId = await resolveOportunidadId(env, viewer, proyectoId);
   const enrichment = oppId !== null ? await fetchCosteoEnrichment(env, oppId, viewer) : new Map<number, CosteoEnrichment>();
@@ -349,8 +364,17 @@ export async function capturarTallas(
       cols.get(SUB_SKU)?.text || '',
       cols.get(SUB_COLOR)?.text || '',
       cols.get(SUB_TALLA)?.text || '',
+      cols.get(SUB_GENERO)?.text || '',
     );
     if (!byKey.has(key)) byKey.set(key, row);
+    // Las líneas viejas sin género también cruzan con una fila del Sheet que sí
+    // lo trae (una importación anterior de cmp-tallas lo escribió; la captura
+    // por boxes no): mismo renglón, segunda llave.
+    const sinGenero = identityKey(
+      cols.get(SUB_PRODUCTO)?.text || '', cols.get(SUB_SKU)?.text || '',
+      cols.get(SUB_COLOR)?.text || '', cols.get(SUB_TALLA)?.text || '',
+    );
+    if (!byKey.has(sinGenero)) byKey.set(sinGenero, row);
   }
 
   const native = isNativeId(proyectoId);
@@ -364,12 +388,16 @@ export async function capturarTallas(
   // nativo lo usa; en el real esos textos los resuelve Monday.
   const provCache = new Map<number, ProveedorTexto>();
   for (const r of wanted) {
-    const key = identityKey(r.producto, r.sku, r.color, r.talla);
+    const key = identityKey(r.producto, r.sku, r.color, r.talla, r.genero);
     if (seenThisRequest.has(key)) { omitted++; continue; } // duplicado dentro del mismo request
     seenThisRequest.add(key);
 
     const desired = buildTallaColumns(r, enrichment.get(r.subitemId));
-    const match = byKey.get(key);
+    // Con género: primero la llave completa; si no hay, la línea vieja sin
+    // género del mismo producto+color+talla (se le escribe el género al actualizar).
+    const match = byKey.get(key) ?? (r.genero?.trim() ? byKey.get(identityKey(r.producto, r.sku, r.color, r.talla)) : undefined);
+    if (match && !needsUpdate(colsOf(match), desired)) { omitted++; continue; }
+    if (created + updated >= maxEscrituras) { restantes++; continue; }
     if (!match) {
       if (native) {
         await insertNativeSubitem(env, 'proyectos_sub', proyectoId, r.producto.trim(), await nativeTallaColumns(env, desired, provCache));
@@ -385,7 +413,6 @@ export async function capturarTallas(
       created++;
       continue;
     }
-    if (!needsUpdate(colsOf(match), desired)) { omitted++; continue; }
     if (native) {
       const columns = await nativeTallaColumns(env, desired, provCache);
       const byId = new Map(colsOf(match).entries());
@@ -422,7 +449,7 @@ export async function capturarTallas(
     updated++;
   }
 
-  return { ok: true, created, updated, omitted };
+  return { ok: true, created, updated, omitted, restantes };
 }
 
 export interface ReportarTallasResult { ok: true; notificados: number }

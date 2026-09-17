@@ -25,6 +25,7 @@ import { ajustarLinea, restaurarLineaDividida, descartarAvisoDivision, AjusteLin
 import { listCotizacionVirtual, ajustarLineaVirtual, restaurarLineaVirtual, descartarAvisoVirtual, ProyectoCotizacionError } from '../lib/proyectoCotizacionVirtual';
 import { folioDe, puedeVerOportunidadLigada } from '../lib/oportunidadLigada';
 import { regenerarSheetTrasCambio } from '../lib/tallasSheet';
+import { traerTallasDesdeSheet, TraerTallasError } from '../lib/tallasDesdeSheet';
 import { capturarTallas, reportarTallasIncorrectas, checkOcCliente, confirmTallasNative, confirmTallasNativeD1 } from '../lib/proyectoTallas';
 import { cambiarProductoLineas, listCambiosProducto, CambiarProductoError } from '../lib/proyectoLineaProducto';
 import {
@@ -1831,6 +1832,26 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
   // WhatsApp cuando una línea producto+color no cuadra contra lo cotizado.
   // Registrada ANTES de /api/proyectos/:id/:action por el mismo motivo que
   // /lineas y /tallas-capturar arriba.
+  // "Traer tallas del archivo al portal" (Efraín, 2026-09-17): lee el Sheet y
+  // crea/actualiza líneas del Proyecto SIN borrar (worker/lib/tallasDesdeSheet.ts).
+  // Reemplaza en la UI a 'tallas-importar' (import_tallas de cmp-tallas, que
+  // borra y recrea); esa acción sigue existiendo para el botón de Monday.
+  // Mismo gate de rol que tenía el botón (compras/admin). Registrada ANTES de
+  // /api/proyectos/:id/:action por el mismo motivo que /tallas-capturar.
+  app.post('/api/proyectos/:id/tallas-traer', async c => {
+    const itemId = Number(c.req.param('id'));
+    if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
+    const viewer = c.get('viewer');
+    if (!['compras', 'admin'].includes(viewer.role)) return jsonStatus({ ok: false, reason: 'forbidden' }, 403);
+    try {
+      const result = await traerTallasDesdeSheet(c.env, viewer, itemId);
+      return c.json(result);
+    } catch (err) {
+      if (err instanceof TraerTallasError) return jsonStatus({ ok: false, reason: err.message }, err.status);
+      return errorInterno(c, err, { ok: false, reason: 'internal error' });
+    }
+  });
+
   app.post('/api/proyectos/:id/tallas-reportar', async c => {
     const itemId = Number(c.req.param('id'));
     if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
