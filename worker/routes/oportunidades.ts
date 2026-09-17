@@ -24,6 +24,7 @@ import { listVersions, duplicateVersion, restoreVersion, recordFirstVersion, Quo
 import { ajustarLinea, restaurarLineaDividida, descartarAvisoDivision, AjusteLineaError } from '../lib/lineaAjustes';
 import { listCotizacionVirtual, ajustarLineaVirtual, restaurarLineaVirtual, descartarAvisoVirtual, ProyectoCotizacionError } from '../lib/proyectoCotizacionVirtual';
 import { folioDe, puedeVerOportunidadLigada } from '../lib/oportunidadLigada';
+import { regenerarSheetTrasCambio } from '../lib/tallasSheet';
 import { capturarTallas, reportarTallasIncorrectas, checkOcCliente, confirmTallasNative, confirmTallasNativeD1 } from '../lib/proyectoTallas';
 import { cambiarProductoLineas, listCambiosProducto, CambiarProductoError } from '../lib/proyectoLineaProducto';
 import {
@@ -706,6 +707,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
         // recuperable: versión archivada + renglón completo en `item_borrado`.
         await borrarLineaCotizacion(c.env, c.executionCtx, lineaId, itemId, viewer, true);
         await refetchItemTree(c.env, BOARDS.oportunidades.id, itemId);
+        await regenerarSheetTrasCambio(c.env, c.executionCtx, itemId, 'línea eliminada', viewer.email);
         const versions = await listVersions(c.env, itemId, viewer);
         return c.json({ ok: true, lineaId, versions } satisfies AjustarLineaResponse);
       } catch (err) {
@@ -718,6 +720,9 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     try {
       const result = await ajustarLinea(c.env, c.executionCtx, lineaId, viewer, body);
       await refetchItemTree(c.env, BOARDS.oportunidades.id, result.itemId);
+      // El Sheet de tallas del Proyecto (si ya existe) se arma por línea:
+      // sin esto una división se queda fuera hasta que alguien "Regenera".
+      await regenerarSheetTrasCambio(c.env, c.executionCtx, result.itemId, `línea ${body.modo === 'dividir' ? 'dividida' : 'editada'}`, viewer.email);
       // `versions` para que el drawer pinte de inmediato los chips .n, las
       // etiquetas Dividida/Editada y el aviso de divisiones; antes solo se
       // veían al reabrir la oportunidad (revisión 2026-09-10).
@@ -744,6 +749,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     try {
       const result = await restaurarLineaDividida(c.env, itemId, subversion, viewer);
       await refetchItemTree(c.env, BOARDS.oportunidades.id, result.itemId);
+      await regenerarSheetTrasCambio(c.env, c.executionCtx, result.itemId, 'línea restaurada', viewer.email);
       const versions = await listVersions(c.env, itemId, viewer);
       return c.json({ ok: true, lineaId: result.lineaId, nuevaLineaId: result.nuevaLineaId, versions } satisfies AjustarLineaResponse);
     } catch (err) {
@@ -1383,7 +1389,10 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
 
     try {
       const result = await ajustarLineaVirtual(c.env, c.executionCtx, proyectoId, lineaId, viewer, body);
-      if (result.itemId != null) await refetchItemTree(c.env, BOARDS.oportunidades.id, result.itemId);
+      if (result.itemId != null) {
+        await refetchItemTree(c.env, BOARDS.oportunidades.id, result.itemId);
+        await regenerarSheetTrasCambio(c.env, c.executionCtx, result.itemId, `línea ${body.modo === 'dividir' ? 'dividida' : 'editada'} (Proyecto)`, viewer.email);
+      }
       return c.json({ ok: result.ok, lineaId: result.lineaId, nuevaLineaId: result.nuevaLineaId, costoDivergente: result.costoDivergente } satisfies AjustarLineaResponse);
     } catch (err) {
       if (err instanceof ProyectoCotizacionError) return jsonStatus({ ok: false, error: err.message } satisfies AjustarLineaResponse, err.status);
@@ -1403,7 +1412,10 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     const viewer = c.get('viewer');
     try {
       const result = await restaurarLineaVirtual(c.env, proyectoId, subversion, viewer);
-      if (result.itemId != null) await refetchItemTree(c.env, BOARDS.oportunidades.id, result.itemId);
+      if (result.itemId != null) {
+        await refetchItemTree(c.env, BOARDS.oportunidades.id, result.itemId);
+        await regenerarSheetTrasCambio(c.env, c.executionCtx, result.itemId, 'línea restaurada (Proyecto)', viewer.email);
+      }
       return c.json({ ok: result.ok, lineaId: result.lineaId, nuevaLineaId: result.nuevaLineaId } satisfies AjustarLineaResponse);
     } catch (err) {
       if (err instanceof ProyectoCotizacionError) return jsonStatus({ ok: false, error: err.message } satisfies AjustarLineaResponse, err.status);

@@ -1,5 +1,37 @@
 # Log de commits
 
+## 2026-09-17
+
+- **El Sheet de tallas del Proyecto se regenera solo cuando cambian las líneas
+  de la cotización** (Efraín: PRO-0205 / OPP-0768 "dividimos las tallas de
+  hombre y mujer pero no se refleja en el Google Sheets… la división la hizo el
+  martes… esto tiene que funcionar ya").
+  - Causa: la división sí quedó en Monday (Playera Polo Piqué 75 → 48 + 27,
+    2026-09-15 18:40 vía "Editar/Dividir" del drawer del Proyecto), pero el
+    Sheet lo arma cmp-tallas (`generate_sheet`, un bloque por subitem) y solo
+    corre al nacer el Proyecto o al apretar "Regenerar Tallas" — nadie lo apretó
+    y el portal no lo disparaba tras ajustar una línea. No es bug del Sheet ni
+    de cmp-tallas: faltaba el enganche.
+  - Remedio inmediato: se regeneró el Sheet de PRO-0205 a mano (las dos líneas
+    de Playera Polo ya aparecen; las cantidades de los otros 9 productos se
+    conservaron porque `generate_sheet` las guarda por subitem+género+talla).
+  - Nuevo `worker/lib/tallasSheet.ts`: `regenerarSheetTrasCambio(env, ctx,
+    oppId, motivo, quien)` busca los Proyectos ligados a la Oportunidad (sin
+    scoping de viewer: es del sistema) que ya tengan Sheet (`link_mm1amwz8`,
+    nativos fuera), encola en `sheet_regen_pendiente` (D1, una fila por
+    Proyecto) y dispara `generate_sheet` con `waitUntil`. El cron de 10 y de
+    15 min (`procesarSheetsPendientes`) barre lo que quedó pendiente (espera
+    2 min desde la solicitud para no pisar el intento en caliente), reintenta
+    hasta 5 veces y al agotarlas deja el error en `sync_log`. Nunca lanza: la
+    regeneración no convierte un ajuste ya aplicado en error.
+  - Enganchado en: Ajustar línea de Oportunidades (editar/dividir/eliminar),
+    Restaurar línea, Editar/Dividir y Restaurar desde el Proyecto
+    (`cotizacion-virtual`), el PATCH inline de una línea cuando toca
+    producto/color/cantidad/embellecimiento (`LINE_DEFINING_COLS`) y el 🗑 de
+    la fila (`DELETE /api/boards/:slug/items/:id`).
+  - `tallasSheet.test.ts` (detección del link). `npm run typecheck`, `npm test`
+    (833) y `npm run lint` limpios.
+
 ## 2026-09-16
 
 - **Microsoft Clarity en el portal** (Efraín: "¿lo puedes mandar a prod? sí me

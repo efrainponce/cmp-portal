@@ -23,6 +23,7 @@ import { esDraftVigente, LINE_DEFINING_COLS, autoVersionSiCosteada, borrarLineaC
 import { addFileToUpdate, fetchAssetPublicUrls } from '../lib/monday';
 import { BorradoError } from '../lib/itemBorrado';
 import { esAjusteInline, registrarAjusteInline, normalizarCantidad, textosDerivadosDeProducto } from '../lib/lineaAjustes';
+import { regenerarSheetTrasCambio } from '../lib/tallasSheet';
 // Los updates de un item nativo (Zona Efrain) viven en D1, no en Monday — estas
 // dos funciones eligen el lado por el id, así que la ruta no lo decide.
 import {
@@ -463,6 +464,7 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
     // se resuelve aquí (con la línea ANTES del write) y se registra después de
     // que el write salió bien.
     let ajusteCompras: { parentItemId: number; linea: MirrorItem } | null = null;
+    let lineaPadre: number | null = null;
 
     if (slug === 'oportunidades_sub' && Object.keys(body.cols).some(id => LINE_DEFINING_COLS.has(id))) {
       // La misma validación por columna que submitWrite hará abajo, pero ANTES
@@ -475,6 +477,7 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
       }
       const linea = await getItem(c.env, 'oportunidades_sub', itemId, viewer, 'own');
       if (linea?.parent_item_id != null && !isNativeId(linea.parent_item_id)) {
+        lineaPadre = linea.parent_item_id;
         // Compras/admin cambiando color/cantidad NO reinician el ciclo de
         // costeo (Efraín, 2026-08-19: "en cotización los de compras siempre
         // pueden modificar colores y cantidades, acuérdate de hacer mini
@@ -511,6 +514,11 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
             await registrarAjusteInline(c.env, ajusteCompras.parentItemId, ajusteCompras.linea, body.cols, viewer);
           }
         } catch { /* la mini versión nunca bloquea el write */ }
+      }
+      // Producto/color/cantidad/embellecimiento de una línea cambian el Sheet
+      // de tallas del Proyecto (si existe): se regenera solo (worker/lib/tallasSheet.ts).
+      if (slug === 'oportunidades_sub' && result.ok && lineaPadre != null && Object.keys(body.cols).some(id => LINE_DEFINING_COLS.has(id))) {
+        await regenerarSheetTrasCambio(c.env, c.executionCtx, lineaPadre, 'línea editada inline', viewer.email);
       }
       return c.json(result);
     } catch (err) {
@@ -552,6 +560,7 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
     // (worker/lib/quoteVersions.ts), compartido con "Ajustar línea → Eliminar".
     try {
       await borrarLineaCotizacion(c.env, c.executionCtx, itemId, row.parent_item_id, viewer, !isNativeId(row.parent_item_id));
+      await regenerarSheetTrasCambio(c.env, c.executionCtx, row.parent_item_id, 'línea eliminada', viewer.email);
     } catch (err) {
       if (err instanceof BorradoError || err instanceof QuoteVersionError) return jsonStatus({ ok: false, error: err.message }, err.status);
       throw err;

@@ -27,6 +27,7 @@ import { flushOutbox } from './lib/outbox';
 import { checkErrorsAndAlert } from './lib/errorAlerts';
 import { revisarSaludSiToca } from './lib/salud';
 import { procesarColaLimpieza } from './lib/limpieza';
+import { procesarSheetsPendientes } from './lib/tallasSheet';
 import { enviarResumenSiToca } from './wa/resumen';
 import { purgeBitacora } from './wa/bitacora';
 import { backupD1ToR2 } from './lib/backup';
@@ -167,7 +168,7 @@ export default {
       // gate por persona (su hora CDMX, L–V, una vez al día), detrás de WA_CARTERA.
       // + la cola de limpieza de items de prueba (worker/lib/limpieza.ts):
       // de a 10 por corrida = 40 por hora, el tope de borrarItem.
-      ctx.waitUntil(Promise.all([checkErrorsAndAlert(env), deltaSync(env), revisarSaludSiToca(env), enviarResumenSiToca(env), procesarColaLimpieza(env)]));
+      ctx.waitUntil(Promise.all([checkErrorsAndAlert(env), deltaSync(env), revisarSaludSiToca(env), enviarResumenSiToca(env), procesarColaLimpieza(env), procesarSheetsPendientes(env)]));
       return;
     }
     if (controller.cron === BACKUP_CRON) {
@@ -180,6 +181,6 @@ export default {
     const slugs = CRON_GROUPS[controller.cron] ?? (Object.keys(BOARDS) as BoardSlug[]);
     // La cola de limpieza también avanza aquí (cron de 10 min): con el
     // presupuesto de 20 s por corrida, entre los dos crones salen ~40/h.
-    ctx.waitUntil(Promise.all([reconcileAll(env, slugs).then(() => flushOutbox(env)), procesarColaLimpieza(env)]));
+    ctx.waitUntil(Promise.all([reconcileAll(env, slugs).then(() => flushOutbox(env)), procesarColaLimpieza(env), procesarSheetsPendientes(env)]));
   },
 };
