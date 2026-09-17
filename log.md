@@ -2,6 +2,15 @@
 
 ## 2026-09-17
 
+- **Tarjeta de tallas: "cambió de color" explícito** (Efraín, PRO-0205: la
+  tarjeta Porta Esposas NEGRO decía "sin línea de cotización para comparar"
+  y la cotización sí tenía Porta Esposas, en PLATA — "que sea explícito, así
+  como cambió de color, no es nada claro"). `TallasSection.tsx`:
+  `cotizadoMapsFrom` indexa además por producto y por SKU sin color;
+  `explicarSinCotizado` arma el motivo: "cambió de color: la cotización lo
+  tiene en PLATA (75), no en NEGRO" o "este producto no está en la
+  cotización". La tarjeta lo pinta en lugar del texto genérico.
+
 - **Tab Tallas: ya no salen las tallas "en doble"** (Efraín: "aparecen las
   tallas en DOBLE… hasta parece bug"). Con líneas ya traídas del archivo, el
   tab pintaba arriba las tarjetas con las tallas reales y abajo, para los

@@ -27,7 +27,14 @@ function norm(s: string): string {
   return s.trim().toLowerCase();
 }
 
+/** Colores cotizados de un producto, para explicar un "no cruza" (Efraín,
+ * 2026-09-17: "sin línea de cotización para comparar" con Porta Esposas NEGRO
+ * cuando la cotización decía PLATA — "que sea explícito, cambió de color"). */
+interface CotizadoOtrosColores { colores: { color: string; cantidad: number }[] }
+
 interface CotizadoMaps {
+  byProducto: Map<string, CotizadoOtrosColores>;
+  bySku: Map<string, CotizadoOtrosColores>;
   byProductoColor: Map<string, number>;
   bySkuColor: Map<string, number>;
 }
@@ -48,17 +55,37 @@ interface CotizadoMaps {
 function cotizadoMapsFrom(lineas: QuoteLineSnapshot[]): CotizadoMaps {
   const byProductoColor = new Map<string, number>();
   const bySkuColor = new Map<string, number>();
+  const byProducto = new Map<string, CotizadoOtrosColores>();
+  const bySku = new Map<string, CotizadoOtrosColores>();
+  const acumula = (m: Map<string, CotizadoOtrosColores>, key: string, color: string, cantidad: number) => {
+    const e = m.get(key) ?? { colores: [] };
+    const c = e.colores.find(x => norm(x.color) === norm(color));
+    if (c) c.cantidad += cantidad; else e.colores.push({ color, cantidad });
+    m.set(key, e);
+  };
   for (const l of lineas) {
     const color = norm(l.color || '');
     const cantidad = l.cantidad || 0;
     const pKey = `${norm(l.producto)}|${color}`;
     byProductoColor.set(pKey, (byProductoColor.get(pKey) ?? 0) + cantidad);
+    acumula(byProducto, norm(l.producto), l.color || '', cantidad);
     if (l.sku?.trim()) {
       const sKey = `${norm(l.sku)}|${color}`;
       bySkuColor.set(sKey, (bySkuColor.get(sKey) ?? 0) + cantidad);
+      acumula(bySku, norm(l.sku), l.color || '', cantidad);
     }
   }
-  return { byProductoColor, bySkuColor };
+  return { byProductoColor, bySkuColor, byProducto, bySku };
+}
+
+/** Cuando el grupo NO cruza por producto+color: el texto que explica por qué.
+ * Mismo producto cotizado en otro color → "cambió de color"; producto que no
+ * está en la cotización → se dice tal cual. */
+export function explicarSinCotizado(group: TallaGroup, maps: CotizadoMaps): string {
+  const otros = maps.byProducto.get(norm(group.producto)) ?? (group.sku ? maps.bySku.get(norm(group.sku)) : undefined);
+  if (!otros || otros.colores.length === 0) return 'este producto no está en la cotización';
+  const lista = otros.colores.map(c => `${c.color || 'sin color'} (${c.cantidad})`).join(', ');
+  return `cambió de color: la cotización lo tiene en ${lista}, no en ${group.color || 'sin color'}`;
 }
 
 /** Cotizado de un grupo del Proyecto: primero por producto+color, con
@@ -138,8 +165,8 @@ const CARD_TONE_STYLE: Record<CardTone, { border: string; background: string; te
  * Monday (sin tocar el Sheet, así que "Importar tallas a Monday" la vuelve a
  * pisar); "Reportar tallas incorrectas" avisa a Compras (Monday + WhatsApp,
  * worker/lib/proyectoTallas.ts) cuando el desglose no cuadra. */
-function TallaBoxCard({ group, cotizado, canEditCantidad, canReport, proyectoId, reload }: {
-  group: TallaGroup; cotizado: number | null; canEditCantidad: boolean; canReport: boolean;
+function TallaBoxCard({ group, cotizado, sinCotizadoPorque, canEditCantidad, canReport, proyectoId, reload }: {
+  group: TallaGroup; cotizado: number | null; sinCotizadoPorque?: string; canEditCantidad: boolean; canReport: boolean;
   proyectoId: string; reload: () => void;
 }) {
   const [overrides, setOverrides] = useState<Record<string, string>>({});
@@ -177,7 +204,7 @@ function TallaBoxCard({ group, cotizado, canEditCantidad, canReport, proyectoId,
   const cuadra = cotizado !== null && asignadas === cotizado;
   let progresoTexto: string;
   if (cotizado === null) {
-    progresoTexto = `${asignadas} asignadas (sin línea de cotización para comparar)`;
+    progresoTexto = `${asignadas} asignadas — no hay con qué comparar: ${sinCotizadoPorque ?? 'sin línea de cotización'}`;
   } else if (cuadra) {
     progresoTexto = `${asignadas} asignadas — cuadra con lo cotizado`;
   } else if (asignadas < cotizado) {
@@ -279,6 +306,7 @@ function TallasGrid({ lineas, cotizadoMaps, canEditCantidad, canReport, proyecto
           key={`${g.producto}|${g.color}`}
           group={g}
           cotizado={lookupCotizado(g, cotizadoMaps)}
+          sinCotizadoPorque={lookupCotizado(g, cotizadoMaps) === null ? explicarSinCotizado(g, cotizadoMaps) : undefined}
           canEditCantidad={canEditCantidad}
           canReport={canReport}
           proyectoId={proyectoId}
@@ -289,7 +317,7 @@ function TallasGrid({ lineas, cotizadoMaps, canEditCantidad, canReport, proyecto
   );
 }
 
-const EMPTY_COTIZADO_MAPS: CotizadoMaps = { byProductoColor: new Map(), bySkuColor: new Map() };
+const EMPTY_COTIZADO_MAPS: CotizadoMaps = { byProductoColor: new Map(), bySkuColor: new Map(), byProducto: new Map(), bySku: new Map() };
 
 export function ProyectoTallasSection({ state, oppId }: { state: ProyectoState; oppId: string | null }) {
   const me = useMe();
