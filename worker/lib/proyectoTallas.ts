@@ -86,6 +86,9 @@ const PROYECTO_CLIENTE = 'board_relation_mm0hb0gy';
 const PROYECTO_INSTITUCION = 'lookup_mm1dwn6';
 const PROYECTO_VENDEDOR = 'multiple_person_mm0hrnqq';
 
+/** Escrituras simultáneas a Monday en capturarTallas — ver nota ahí. */
+const PARALELO_MONDAY = 4;
+
 const NO_CUADRA_MSG =
   '⚠️ El desglose de tallas no cuadra con las cantidades de la oportunidad.\n' +
   'Por favor revisa el documento y asegúrate de que la suma de cada producto\n' +
@@ -387,6 +390,15 @@ export async function capturarTallas(
   // mismo patrón que proveedorCache en fetchCosteoEnrichment. Solo el camino
   // nativo lo usa; en el real esos textos los resuelve Monday.
   const provCache = new Map<number, ProveedorTexto>();
+
+  // Primero se decide qué hay que escribir (todo en memoria / D1), y luego se
+  // escribe con PARALELO_MONDAY líneas a la vez. Medido por cmp-tallas contra
+  // la API real (import_tallas.py, 2026-07-24): 1 a la vez = 3.2 s/subitem,
+  // 4 = 1.15 s, 8+ no mejora y 12 empieza a fallar por el candado de subitems
+  // por padre. "Traer tallas del archivo" con 52 líneas tardó 3 min 57 s de
+  // una en una (PRO-0205, 2026-09-17: "¿no se puede hacer de jalón?").
+  type Tarea = { r: TallaBoxInput; desired: Record<string, unknown>; match: MirrorItem | undefined };
+  const tareas: Tarea[] = [];
   for (const r of wanted) {
     const key = identityKey(r.producto, r.sku, r.color, r.talla, r.genero);
     if (seenThisRequest.has(key)) { omitted++; continue; } // duplicado dentro del mismo request
@@ -397,7 +409,11 @@ export async function capturarTallas(
     // género del mismo producto+color+talla (se le escribe el género al actualizar).
     const match = byKey.get(key) ?? (r.genero?.trim() ? byKey.get(identityKey(r.producto, r.sku, r.color, r.talla)) : undefined);
     if (match && !needsUpdate(colsOf(match), desired)) { omitted++; continue; }
-    if (created + updated >= maxEscrituras) { restantes++; continue; }
+    if (tareas.length >= maxEscrituras) { restantes++; continue; }
+    tareas.push({ r, desired, match });
+  }
+
+  const escribir = async ({ r, desired, match }: Tarea): Promise<void> => {
     if (!match) {
       if (native) {
         await insertNativeSubitem(env, 'proyectos_sub', proyectoId, r.producto.trim(), await nativeTallaColumns(env, desired, provCache));
@@ -411,7 +427,7 @@ export async function capturarTallas(
         await mirrorUpsertStatement(env, 'proyectos_sub', subitem).stmt.run();
       }
       created++;
-      continue;
+      return;
     }
     if (native) {
       const columns = await nativeTallaColumns(env, desired, provCache);
@@ -447,7 +463,19 @@ export async function capturarTallas(
       }
     }
     updated++;
-  }
+  };
+
+  // Pool sencillo: PARALELO_MONDAY trabajadores que van tomando de la cola.
+  // El nativo escribe solo en D1 y no tiene candado, pero tampoco gana nada
+  // con más; el mismo pool sirve para los dos caminos.
+  let cursor = 0;
+  const trabajador = async (): Promise<void> => {
+    while (cursor < tareas.length) {
+      const t = tareas[cursor++];
+      await escribir(t);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(PARALELO_MONDAY, tareas.length) }, trabajador));
 
   return { ok: true, created, updated, omitted, restantes };
 }

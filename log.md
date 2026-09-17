@@ -2,6 +2,15 @@
 
 ## 2026-09-17
 
+- **Captura de tallas 4 líneas a la vez** (Efraín, tras "Traer tallas del
+  archivo" en PRO-0205: 52 líneas en 3 min 57 s — "¿no se puede hacer de
+  jalón?"). `capturarTallas` (`proyectoTallas.ts`) primero decide qué escribir
+  (dedup, cruce con lo existente, tope) y luego escribe con un pool de
+  `PARALELO_MONDAY = 4` trabajadores, el punto que cmp-tallas midió contra la
+  API real (1 = 3.2 s/subitem, 4 = 1.15 s, 8+ no mejora, 12 falla por el
+  candado de subitems por padre). Aplica a "Traer tallas del archivo" y a la
+  captura por boxes; mismo número de subrequests. Esperado: ~1 min para 52.
+
 - **"Traer tallas del archivo al portal" ya NO borra nada** (Efraín: "¿eso no
   modifica Monday, solo jala la info?" → "sí mejor algo que no destruya nada;
   deja el botón así pero es solo jalar la info"). El botón dejaba de ser
