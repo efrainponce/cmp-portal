@@ -32,7 +32,7 @@
     nada"); "Importar tallas a Monday (compras)" regresa como botón secundario
     con su texto original, por si alguien de veras quiere rehacer todo.
   - Tests: `tallasDesdeSheet.test.ts` (parseo de filas, fusión, género en la
-    llave). `npm run typecheck`, `npm test` (847) y `npm run lint` limpios.
+    llave). `npm run typecheck`, `npm test` (841) y `npm run lint` limpios.
 
 - **Botón claro para traer las tallas del archivo al portal** (Efraín, captura
   del tab Tallas: "¿cómo le hago para traer las tallas del archivo de excel al
