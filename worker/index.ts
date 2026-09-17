@@ -22,6 +22,7 @@ import { homeRoutes } from './routes/home';
 import { anuncioRoutes } from './routes/anuncios';
 import { telemetryRoutes } from './routes/telemetry';
 import { saludRoutes } from './routes/salud';
+import { limpiezaRoutes } from './routes/limpieza';
 import { flushOutbox } from './lib/outbox';
 import { checkErrorsAndAlert } from './lib/errorAlerts';
 import { revisarSaludSiToca } from './lib/salud';
@@ -95,6 +96,7 @@ homeRoutes(app);
 anuncioRoutes(app);
 telemetryRoutes(app);
 saludRoutes(app);
+limpiezaRoutes(app);
 
 app.all('*', c => c.env.ASSETS.fetch(c.req.raw));
 

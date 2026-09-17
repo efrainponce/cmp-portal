@@ -2,6 +2,27 @@
 
 ## 2026-09-16
 
+- **Limpieza de items de prueba en Monday y D1** (Efraín: "tenemos CIENTOS de
+  oportunidades y proyectos de prueba… haz un clean en Monday y por ende en
+  nuestra base de datos; todo lo que dice test y borrar, asegúrate de que no
+  haya nada firmado"). Inventario de la D1 de prod: 35 oportunidades (64
+  líneas), 9 proyectos (58 líneas), 15 contactos y 8 instituciones con
+  test/prueba/borrar en el nombre; ningún item real enlaza a esos contactos/
+  instituciones y las 155 "firmas" que hay son acuses automáticos
+  (ATTEST_INTENT), no firmas manuales. Se excluyen "PRUEBAS DE LAB…" (3
+  proyectos y 2 productos reales de laboratorio) y no se tocan productos ni
+  proveedores.
+  - `POST /api/admin/limpieza/borrar` (`worker/routes/limpieza.ts`): borra UN
+    padre por llamada, por id Y nombre exacto; exige que el nombre diga
+    test/prueba/borrar; rechaza si hay firma manual; respalda cada línea en
+    `item_borrado` y luego pasa por `borrarItem` (Monday borra los subitems
+    en cascada, el mirror se limpia después). Cuenta 1 contra el tope de 40
+    por hora.
+  - `scripts/limpiar-pruebas.mjs`: lista (dry run) o `--borrar`; se detiene
+    al primer 429 y se repite cada hora hasta vaciar la lista.
+
+## 2026-09-16
+
 - **Rediseño visual: el portal se ve como tratto-demo (sidebar verde, paleta
   gris, tipografía Geist)** (Efraín: "cambia el FRONTEND de cmp-portal al
   mismo que la DEMO tratto-demo… con el sidebar verde y en general el mismo
