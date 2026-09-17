@@ -2,6 +2,18 @@
 
 ## 2026-09-16
 
+- **Microsoft Clarity en el portal** (Efraín: "¿lo puedes mandar a prod? sí me
+  gustaría guardar los mails de las personas"). Snippet oficial (proyecto
+  `yjksmrghhn`) en `index.html`, async, después de la precarga para no
+  competirle. `src/lib/clarity.ts` llama `clarity("identify", email)` cuando
+  `/api/me` resuelve (hook en `useMe.loadMe`), más tag `rol`; con "ver como"
+  activo se identifica al ADMIN real y el suplantado va en el tag `ver_como`.
+  Clarity hashea el id en el navegador. Pendiente de Efraín: el masking en
+  Settings → Masking va en "Balanced" por default y graba el texto de la
+  página (costos/utilidades); "Strict" si eso no debe salir.
+
+## 2026-09-16
+
 - **Limpieza de items de prueba en Monday y D1** (Efraín: "tenemos CIENTOS de
   oportunidades y proyectos de prueba… haz un clean en Monday y por ende en
   nuestra base de datos; todo lo que dice test y borrar, asegúrate de que no
