@@ -38,7 +38,7 @@ export function SnapshotTable({ version }: { version: QuoteVersionDTO }) {
     <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: 'var(--radius-xl)' }}>
       <div style={{
         display: 'grid', gridTemplateColumns: '1.6fr .5fr .7fr .7fr .85fr .85fr',
-        padding: '9px 14px', background: 'var(--bg-sunken)', font: '700 9.5px \'Inter\', sans-serif',
+        padding: '9px 14px', background: 'var(--bg-sunken)', font: '600 9.5px var(--font-ui)',
         color: 'var(--ink-tertiary)', textTransform: 'uppercase', letterSpacing: '.3px', textAlign: 'center',
       }}>
         <div>Producto</div><div>SKU</div><div>Color</div><div>Cant.</div>

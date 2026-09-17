@@ -7,7 +7,7 @@
   "display": "standalone",
   "orientation": "portrait-primary",
   "background_color": "#ffffff",
-  "theme_color": "#FFA500",
+  "theme_color": "#164d38",
   "icons": [
     {
       "src": "/logo.webp",

@@ -4,6 +4,7 @@
 import { useState } from 'react';
 import { Sidebar, BOARD_LABELS, type BoardKey } from './Sidebar';
 import { NotificationBell } from '../components/notifications/NotificationBell';
+import logo from '../assets/logo-64.webp';
 
 interface MobileTopBarProps {
   activeBoard: BoardKey;
@@ -39,8 +40,8 @@ export function MobileTopBar({ activeBoard, onSelectBoard, onOpenNotification }:
         >
           <IconMenu />
         </button>
-        <div style={{ width: 20, height: 20, borderRadius: 5, background: 'var(--ink)', flex: 'none' }} />
-        <div style={{ font: '700 15px \'Inter\', sans-serif', color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1 }}>
+        <img src={logo} alt="CMP" style={{ width: 22, height: 22, borderRadius: 5, flex: 'none' }} />
+        <div style={{ font: '600 15px var(--font-ui)', color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1 }}>
           {BOARD_LABELS[activeBoard] ?? 'CMP Portal'}
         </div>
         {onOpenNotification && (

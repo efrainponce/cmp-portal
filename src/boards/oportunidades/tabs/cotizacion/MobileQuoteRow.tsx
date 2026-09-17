@@ -22,7 +22,7 @@ import {
 } from './gridMeta';
 
 const labelStyle: React.CSSProperties = {
-  font: '700 9px \'Inter\', sans-serif', color: 'var(--ink-tertiary)',
+  font: '600 9px var(--font-ui)', color: 'var(--ink-tertiary)',
   textTransform: 'uppercase', letterSpacing: '.3px', marginBottom: 4,
 };
 
@@ -243,13 +243,13 @@ function MobileQuoteRowInner({
   return (
     <div style={{ borderTop: '1px solid var(--border-subtle)', background: lineWarnings.length > 0 ? '#fdf1f2' : '#fff', padding: '14px' }}>
       {bannerText && (
-        <div style={{ font: '700 11px \'Inter\', sans-serif', color: '#ce3048', marginBottom: 10 }}>
+        <div style={{ font: '600 11px var(--font-ui)', color: '#ce3048', marginBottom: 10 }}>
           ⚠ {bannerText}
         </div>
       )}
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
         <span style={{
-          font: '700 10px \'Inter\', sans-serif', color: 'var(--ink-tertiary)', marginTop: 4, flexShrink: 0,
+          font: '600 10px var(--font-ui)', color: 'var(--ink-tertiary)', marginTop: 4, flexShrink: 0,
         }} title="Partida">
           #{partida}
         </span>

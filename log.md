@@ -2,6 +2,39 @@
 
 ## 2026-09-16
 
+- **Rediseño visual: el portal se ve como tratto-demo (sidebar verde, paleta
+  gris, tipografía Geist)** (Efraín: "cambia el FRONTEND de cmp-portal al
+  mismo que la DEMO tratto-demo… con el sidebar verde y en general el mismo
+  feeling"). Es el port del commit `ada0fcb` de tratto-demo ("Rediseño
+  visual: tipografía Geist y verde Tratto") sobre los mismos componentes
+  base; cero cambios de funcionalidad, worker intacto.
+  - Tokens: `colors.css` pasa de sepia a gris neutro (`--bg #f7f7f7`, tinta
+    grafito), acento `#164d38` con `--accent-hover/-soft/-lime`, y tokens
+    nuevos `--fill-hover/--fill-active` y `--shadow-card`. `typography.css`:
+    Geist + Geist Mono (woff2 propios en `public/fonts/`, con
+    `ascent/descent-override` para que ningún renglón cambie de alto) y pesos
+    400/500/600 — nada más pesado; la jerarquía sale del color.
+  - Sidebar: clase `.sidebar-verde` en `index.css` que re-mapea las variables
+    (tinta blanca translúcida, acento lima) solo dentro del sidebar; los
+    paneles que abren de ahí van por portal y no la heredan. Las etiquetas
+    de sección Proyectos/Inventario pierden su color propio (no se leía sobre
+    el verde). NavItem: activo = relleno neutro + tinta, ya no acento + '1a'.
+  - GroupCard: header neutro sobre tarjeta blanca con sombra, color solo en
+    el punto, la barra izquierda y el contador (`color-mix`); `tint` queda
+    opcional y sin uso visual para no tocar a los 6 boards que lo pasan.
+  - Avatares 500/9.5px con traslape de 4 px (con 8 se tapaban las iniciales),
+    MonoTag sin fondo, chips activos en `var(--ink)`, filtro activo en
+    `--accent-soft`, iconos a 1.5 de trazo, foco de teclado verde tenue,
+    `::selection`, `tabular-nums`. Barra móvil con el logo real en vez del
+    cuadro negro.
+  - Barrido: 0 `'Inter'` hardcodeados en `src/` (todo `var(--font-ui)`),
+    pesos 700/800 → 600 y 600 → 500 en los shorthand inline;
+    `#9a958a` → `#949494` (gris del fallback de grupo). `manifest.json`
+    theme_color al verde.
+  - Verificación: typecheck (app+worker), lint, 828 tests y capturas
+    desktop/móvil (lista, drawer, Reporte de Proyectos, Inicio, menú móvil)
+    sin errores de consola.
+
 - **Monday tarda en verse en el portal — refresco en vivo del drawer y
   "Actualizar" que sí espera** (continúa el trabajo de Astra/Codex del
   2026-09-12, que quedó sin commitear en el checkout principal: Efraín, "one

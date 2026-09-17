@@ -1,4 +1,4 @@
-// scripts/fetch-fonts.mjs — baja Inter + JetBrains Mono de Google Fonts a
+// scripts/fetch-fonts.mjs — baja Geist + Geist Mono de Google Fonts a
 // public/fonts/ y genera src/tokens/fonts.css con los @font-face locales.
 //
 // Por qué self-host: el @import a fonts.googleapis.com dentro de un CSS es el
@@ -36,9 +36,16 @@ const CSS_SALIDA = join(RAIZ, 'src', 'tokens', 'fonts.css');
 // un archivo por peso serían 189 KB de Inter en vez de 47 KB, cuatro veces el
 // mismo byte por byte.
 const FAMILIES = [
-  { nombre: 'Inter', archivo: 'inter', pesos: [400, 600, 700, 800] },
-  { nombre: 'JetBrains Mono', archivo: 'jetbrains-mono', pesos: [500] },
+  { nombre: 'Geist', archivo: 'geist', pesos: [400, 500, 600, 700], metricas: { ascent: '96.875%', descent: '24.121%' } },
+  { nombre: 'Geist Mono', archivo: 'geist-mono', pesos: [500], metricas: { ascent: '102%', descent: '30%' } },
 ];
+
+// Métricas verticales: Geist trae un alto de línea de 1.30 em y las fuentes
+// anteriores (Inter 1.21, JetBrains Mono 1.32) fijaron el alto de renglones,
+// chips y botones con `line-height: normal`. Los overrides copian las métricas
+// exactas de la fuente anterior (Chrome redondea ascent y descent por separado,
+// así que una aproximación sube renglones de 12 a 13 px): el cambio de fuente no
+// mueve ningún tamaño del layout.
 
 // UA de Chrome: sin esto Google devuelve ttf en vez de woff2 (mucho más pesado).
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
@@ -92,6 +99,9 @@ async function main() {
       // llega el woff2. Nunca se queda en blanco esperando la fuente.
       `  font-display: swap;\n` +
       `  src: url('/fonts/${nombreArchivo}') format('woff2');\n` +
+      (fam.metricas
+        ? `  ascent-override: ${fam.metricas.ascent};\n  descent-override: ${fam.metricas.descent};\n  line-gap-override: 0%;\n`
+        : '') +
       (rango ? `  unicode-range: ${rango};\n` : '') +
       `}`,
     );

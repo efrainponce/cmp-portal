@@ -829,7 +829,7 @@ export function CotizacionTab({
             ...gridWrapStyle,
             display: 'grid', gridTemplateColumns: `28px ${colsTemplate(visibleCols)}${canAddLines ? ' 32px' : ''}`,
             gap: 6, padding: '9px 10px', borderBottom: '1px solid var(--border)',
-            font: '600 11px \'Inter\', sans-serif', color: 'var(--ink-tertiary)', background: 'var(--bg-raised)',
+            font: '500 11px var(--font-ui)', color: 'var(--ink-tertiary)', background: 'var(--bg-raised)',
           }}>
             <div title="Partida" style={{ textAlign: 'center' }}>#</div>
             {visibleCols.map((c, idx) => (

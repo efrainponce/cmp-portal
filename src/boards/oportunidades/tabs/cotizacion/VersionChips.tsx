@@ -33,7 +33,7 @@ export function VersionChips({
             style={{
               cursor: 'pointer', font: 'var(--text-label-strong)', padding: '4px 12px',
               borderRadius: 'var(--radius-pill)',
-              background: isSelected ? '#2b2925' : 'var(--bg-sunken)',
+              background: isSelected ? 'var(--ink)' : 'var(--bg-sunken)',
               color: isSelected ? '#fff' : 'var(--ink-secondary)',
             }}
           >

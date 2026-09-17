@@ -79,7 +79,7 @@ export function FilterBar({
           onClick={() => setOpen(true)}
           style={{
             height: 36, font: 'var(--text-label)', color: active ? 'var(--ink)' : 'var(--ink-secondary)',
-            background: active ? 'var(--accent)22' : 'var(--bg-sunken)',
+            background: active ? 'var(--accent-soft)' : 'var(--bg-sunken)',
             border: '1px solid var(--border)', borderRadius: 'var(--radius-pill)', padding: '0 14px',
             display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
           }}

@@ -23,7 +23,7 @@ export function ImpersonationBanner() {
         onClick={stopImpersonation}
         style={{
           background: '#fff', color: '#d32f2f', border: 'none',
-          borderRadius: 'var(--radius-lg)', padding: '8px 16px', font: '600 13px \'Inter\', sans-serif',
+          borderRadius: 'var(--radius-lg)', padding: '8px 16px', font: '500 13px var(--font-ui)',
           cursor: 'pointer', flex: 'none', fontWeight: 'bold',
         }}
       >

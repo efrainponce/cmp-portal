@@ -16,8 +16,19 @@ body {
   font-family: var(--font-ui);
   color: var(--ink);
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-variant-numeric: tabular-nums;
   -webkit-tap-highlight-color: transparent;
 }
+
+b, strong { font-weight: 600; }
+
+::selection { background: #cfe5d6; }
+
+/* Foco solo con teclado: anillo verde tenue, sin el azul del navegador. */
+:focus-visible { outline: 2px solid rgba(22, 77, 56, .35); outline-offset: 1px; }
+.search-box:focus-within { border-color: #9cc3ae !important; box-shadow: 0 0 0 3px var(--accent-soft); }
 
 input, textarea, select, button {
   font-family: inherit;
@@ -31,14 +42,34 @@ input, textarea, select, button {
   height: 100dvh;
 }
 
+/* Sidebar en verde Tratto (mismo look que la demo). Mismos componentes; aquí
+   adentro la tinta es blanca translúcida y el acento es lima. Los paneles que
+   abren desde aquí (campana, menús) van por portal, así que no heredan esto. */
+.sidebar-verde {
+  --surface-sidebar: #164d38;
+  --surface: rgba(255, 255, 255, .12);
+  --bg-raised: rgba(255, 255, 255, .06);
+  --border: rgba(255, 255, 255, .12);
+  --ink: #ffffff;
+  --ink-secondary: rgba(255, 255, 255, .8);
+  --ink-tertiary: rgba(255, 255, 255, .64);
+  --ink-quiet: rgba(255, 255, 255, .52);
+  --ink-faint: rgba(255, 255, 255, .36);
+  --accent: var(--accent-lime);
+  --ink-on-accent: #164d38;
+  --fill-hover: rgba(255, 255, 255, .07);
+  --fill-active: rgba(255, 255, 255, .13);
+}
+.sidebar-verde :focus-visible { outline-color: rgba(217, 243, 172, .6); }
+
 /* Solo con puntero real — en touch el :hover se "pega" tras el tap. */
 @media (hover: hover) {
   .row-hover:hover {
-    background: #faf7f0;
+    background: #fafafa !important;
   }
 
   .nav-item:hover {
-    background: rgba(43, 41, 37, .05);
+    background: var(--fill-hover);
   }
 
   .sidebar-collapse-btn:hover {

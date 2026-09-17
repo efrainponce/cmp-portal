@@ -149,7 +149,7 @@ function QuoteRowInner({
     // toda la fila incluso scrolleada.
     <div style={{ background: rowTint }}>
       {bannerText && (
-        <div style={{ padding: '8px 10px 0', font: '700 11px \'Inter\', sans-serif', color: '#ce3048' }}>
+        <div style={{ padding: '8px 10px 0', font: '600 11px var(--font-ui)', color: '#ce3048' }}>
           ⚠ {bannerText}
         </div>
       )}
@@ -158,7 +158,7 @@ function QuoteRowInner({
         display: 'grid', gridTemplateColumns: `28px ${colsTemplate(visibleCols)}${canDelete ? ' 32px' : ''}`,
         gap: 6, alignItems: 'center', padding: '8px 10px', background: rowTint,
       }}>
-        <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)', fontWeight: 700 }}>{partida}</div>
+        <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)', fontWeight: 600 }}>{partida}</div>
         {visibleCols.map((c, idx) => {
           // lookup_mm0x4kda es un mirror — Monday nunca lo deja escribir
           // directo, así que no está en writableIds. Lo real editable son

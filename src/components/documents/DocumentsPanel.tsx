@@ -131,7 +131,7 @@ function DocumentRow({ doc, canSign, onSign }: { doc: DocumentDTO; canSign: bool
         <div style={{ font: 'var(--text-body-strong)', color: 'var(--ink)' }}>{template?.label ?? doc.title}</div>
         {doc.folio && <span style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)' }}>Folio {doc.folio}</span>}
         <span style={{
-          font: '600 10px \'Inter\', sans-serif', textTransform: 'uppercase', letterSpacing: '.3px',
+          font: '500 10px var(--font-ui)', textTransform: 'uppercase', letterSpacing: '.3px',
           color: doc.complete ? 'var(--status-ganada)' : signed ? 'var(--status-esperando)' : 'var(--ink-faint)',
         }}>
           {acuse

@@ -36,7 +36,7 @@ export function PhoneGateScreen() {
         height: '100vh', gap: 16, background: 'var(--bg)', textAlign: 'center', padding: 24,
       }}
     >
-      <div style={{ font: '700 16px var(--font-ui)', color: 'var(--ink)' }}>Falta tu teléfono</div>
+      <div style={{ font: '600 16px var(--font-ui)', color: 'var(--ink)' }}>Falta tu teléfono</div>
       <div style={{ font: '400 12.5px var(--font-ui)', color: 'var(--ink-quiet)', maxWidth: 340 }}>
         Captura el número de WhatsApp con el que vas a usar el bot. Lo necesitamos para identificarte cuando escribas.
       </div>
@@ -58,7 +58,7 @@ export function PhoneGateScreen() {
         disabled={!valid || saving}
         style={{
           border: 'none', background: valid && !saving ? 'var(--accent)' : 'var(--border)', color: '#fff',
-          borderRadius: 'var(--radius-lg)', padding: '10px 20px', font: '700 12.5px var(--font-ui)',
+          borderRadius: 'var(--radius-lg)', padding: '10px 20px', font: '600 12.5px var(--font-ui)',
           cursor: valid && !saving ? 'pointer' : 'default',
         }}
       >

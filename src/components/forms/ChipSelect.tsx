@@ -23,7 +23,7 @@ export function ChipSelect({ value, onChange, options }: ChipSelectProps) {
             style={{
               cursor: 'pointer', font: 'var(--text-label-strong)', padding: '7px 14px',
               borderRadius: 'var(--radius-pill)', border: '1px solid var(--border)',
-              background: isSelected ? '#2b2925' : 'var(--bg-raised)',
+              background: isSelected ? 'var(--ink)' : 'var(--bg-raised)',
               color: isSelected ? '#fff' : 'var(--ink-secondary)',
             }}
           >

@@ -28,8 +28,8 @@ export function PersonAvatar({ name, color, style, secondary }: PersonAvatarProp
         position: 'relative',
         width: 24, height: 24, borderRadius: '50%', flex: 'none',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        background: color, color: '#fff', font: '700 10px \'Inter\', sans-serif',
-        border: '2px solid var(--bg-raised)', boxShadow: '0 0 0 1px var(--border)',
+        background: color, color: '#fff', font: '500 9.5px var(--font-ui)', letterSpacing: '-.2px',
+        border: '2px solid var(--bg-raised)',
         ...style,
       }}
     >
@@ -37,13 +37,13 @@ export function PersonAvatar({ name, color, style, secondary }: PersonAvatarProp
       {secondary && (
         <div
           // top-left: el avatar de Compras se traslapa desde la derecha
-          // (PersonPair, marginLeft: -8) y taparía el badge si fuera bottom-right.
+          // (PersonPair, marginLeft: -4) y taparía el badge si fuera bottom-right.
           style={{
             position: 'absolute', top: -3, left: -3,
             width: 13, height: 13, borderRadius: '50%',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             background: 'var(--ink-tertiary)', color: '#fff',
-            font: '700 8px \'Inter\', sans-serif', lineHeight: 1,
+            font: '600 8px var(--font-ui)', lineHeight: 1,
             border: '1.5px solid var(--bg-raised)',
           }}
         >
@@ -66,8 +66,10 @@ export function PersonPair({ vendedor, compras, vendedorSecondary }: PersonPairP
   if (!vendedor && !compras) return null;
   return (
     <div style={{ display: 'flex', alignItems: 'center', flex: 'none' }}>
-      {vendedor && <PersonAvatar name={vendedor} color="var(--accent)" secondary={vendedorSecondary} />}
-      {compras && <PersonAvatar name={compras} color="var(--accent-blue)" style={vendedor ? { marginLeft: -8 } : undefined} />}
+      {/* El primero va encima y el traslape es de 4 px: con 8 se tapaban las
+          iniciales ("MI", "CI"). */}
+      {vendedor && <PersonAvatar name={vendedor} color="var(--accent)" secondary={vendedorSecondary} style={{ zIndex: 1 }} />}
+      {compras && <PersonAvatar name={compras} color="var(--accent-blue)" style={vendedor ? { marginLeft: -4 } : undefined} />}
     </div>
   );
 }

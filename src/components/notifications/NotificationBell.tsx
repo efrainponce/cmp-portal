@@ -95,7 +95,7 @@ export function NotificationBell({ onNavigate }: NotificationBellProps) {
           <span style={{
             position: 'absolute', top: 1, right: 1, minWidth: 14, height: 14, padding: '0 3px',
             borderRadius: 'var(--radius-pill)', background: 'var(--status-perdida)', color: '#fff',
-            font: '700 8.5px \'Inter\', sans-serif', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            font: '600 8.5px var(--font-ui)', display: 'flex', alignItems: 'center', justifyContent: 'center',
             lineHeight: 1, boxSizing: 'border-box',
           }}>
             {badgeCount}

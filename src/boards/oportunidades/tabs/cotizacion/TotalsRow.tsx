@@ -88,7 +88,7 @@ export function TotalsRow({ variant, visibleCols, products, rows, isMobile = fal
         {entries.map((c) => (
           <div key={c.id} style={{ minWidth: 0 }}>
             <div style={{
-              font: '700 9px \'Inter\', sans-serif', color: 'var(--ink-tertiary)',
+              font: '600 9px var(--font-ui)', color: 'var(--ink-tertiary)',
               textTransform: 'uppercase', letterSpacing: '.3px', marginBottom: 4,
             }}>
               {c.label}

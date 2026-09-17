@@ -44,7 +44,7 @@ export interface Opportunity {
 }
 
 export const statuses: Status[] = [
-  { key: 'nueva', label: 'Nueva oportunidad', color: '#9a958a', tint: '#eeece7' },
+  { key: 'nueva', label: 'Nueva oportunidad', color: '#949494', tint: '#ededed' },
   { key: 'en_coste', label: 'En costeo', color: '#a97c3a', tint: '#f3e9d8' },
   { key: 'costeo_validacion', label: 'Costeo en validación', color: '#a97c3a', tint: '#f3e9d8' },
   { key: 'costeo_confirmado', label: 'Costeo confirmado', color: '#6f7f57', tint: '#e9eee2' },

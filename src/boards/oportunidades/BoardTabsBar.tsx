@@ -58,7 +58,7 @@ export function BoardTabsBar({ active, onChange, updatesCount = 0, showPostventa
       <UnderlineTab active={active === 'actualizaciones'} onClick={() => onChange('actualizaciones')}>
         <span>Actualizaciones</span>
         {updatesCount > 0 && (
-          <span style={{ font: '700 9px \'Inter\', sans-serif', color: '#fff', background: 'var(--accent)', padding: '1px 6px', borderRadius: 'var(--radius-pill)' }}>
+          <span style={{ font: '600 9px var(--font-ui)', color: '#fff', background: 'var(--accent)', padding: '1px 6px', borderRadius: 'var(--radius-pill)' }}>
             {updatesCount}
           </span>
         )}
@@ -95,7 +95,7 @@ function UnderlineTab({ active, onClick, children }: { active: boolean; onClick:
       onClick={onClick}
       style={{
         display: 'flex', alignItems: 'center', gap: 6, padding: '9px 4px', marginRight: 14,
-        font: '600 11.5px \'Inter\', sans-serif', cursor: 'pointer', whiteSpace: 'nowrap', flex: 'none',
+        font: '500 11.5px var(--font-ui)', cursor: 'pointer', whiteSpace: 'nowrap', flex: 'none',
         color: active ? 'var(--ink)' : 'var(--ink-quiet)',
         borderBottom: '2px solid ' + (active ? 'var(--accent)' : 'transparent'),
       }}
@@ -110,7 +110,7 @@ function PillTab({ active, onClick, children }: { active: boolean; onClick: () =
     <div
       onClick={onClick}
       style={{
-        padding: '6px 10px', marginRight: 6, borderRadius: 7, font: '600 11.5px \'Inter\', sans-serif',
+        padding: '6px 10px', marginRight: 6, borderRadius: 7, font: '500 11.5px var(--font-ui)',
         cursor: 'pointer', whiteSpace: 'nowrap', flex: 'none',
         color: active ? 'var(--ink)' : 'var(--ink-quiet)',
         background: active ? 'var(--status-ganada-tint)' : 'transparent',
@@ -123,7 +123,7 @@ function PillTab({ active, onClick, children }: { active: boolean; onClick: () =
 
 function SectionLabel({ children, color }: { children: React.ReactNode; color: string }) {
   return (
-    <div style={{ font: '700 8.5px \'Inter\', sans-serif', color, letterSpacing: '.4px', textTransform: 'uppercase', marginRight: 8, flex: 'none', whiteSpace: 'nowrap' }}>
+    <div style={{ font: '600 8.5px var(--font-ui)', color, letterSpacing: '.4px', textTransform: 'uppercase', marginRight: 8, flex: 'none', whiteSpace: 'nowrap' }}>
       {children}
     </div>
   );

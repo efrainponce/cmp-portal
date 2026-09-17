@@ -57,7 +57,7 @@ function PdfThumb({ oppId, kind, available, label, accentColor, onPreview }: {
   return (
     <div style={{ width: 108 }}>
       <div style={{
-        font: '600 10px \'Inter\', sans-serif', color: accentColor, textTransform: 'uppercase',
+        font: '500 10px var(--font-ui)', color: accentColor, textTransform: 'uppercase',
         letterSpacing: '.3px', marginBottom: 6,
       }}>
         {label}
@@ -103,7 +103,7 @@ function CotizacionPreviewThumb({ oppId, hasLineas }: { oppId: string; hasLineas
   return (
     <div style={{ width: 108 }}>
       <div style={{
-        font: '600 10px \'Inter\', sans-serif', color: 'var(--accent)', textTransform: 'uppercase',
+        font: '500 10px var(--font-ui)', color: 'var(--accent)', textTransform: 'uppercase',
         letterSpacing: '.3px', marginBottom: 6,
       }}>
         Vista previa
@@ -173,7 +173,7 @@ function ValidacionCosteoThumb({ oppId }: { oppId: string }) {
   return (
     <div style={{ width: 108 }}>
       <div style={{
-        font: '600 10px \'Inter\', sans-serif', color: 'var(--status-esperando)', textTransform: 'uppercase',
+        font: '500 10px var(--font-ui)', color: 'var(--status-esperando)', textTransform: 'uppercase',
         letterSpacing: '.3px', marginBottom: 6,
       }}>
         Validación
@@ -244,7 +244,7 @@ function InventarioThumb({ oppId, item, onUploaded }: { oppId: string; item: Ite
 
   return (
     <div style={{ width: 108 }}>
-      <div style={{ font: '600 10px \'Inter\', sans-serif', color: 'var(--status-en-coste)', textTransform: 'uppercase', letterSpacing: '.3px', marginBottom: 6 }}>
+      <div style={{ font: '500 10px var(--font-ui)', color: 'var(--status-en-coste)', textTransform: 'uppercase', letterSpacing: '.3px', marginBottom: 6 }}>
         Inventario
       </div>
       {latest ? (

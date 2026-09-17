@@ -48,7 +48,7 @@ function KindBadge({ kind }: { kind: string }) {
     <div style={{
       width: 26, height: 26, borderRadius: 'var(--radius-full)', background: color, opacity: 0.9,
       color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
-      font: '700 12px \'Inter\', sans-serif', flex: 'none',
+      font: '600 12px var(--font-ui)', flex: 'none',
     }}>
       {letter}
     </div>

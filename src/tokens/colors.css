@@ -1,37 +1,46 @@
 :root {
-  /* canvas & surfaces (warm neutral) */
-  --bg: #f7f4ee;
+  /* canvas & surfaces (gris neutro, sin tinte) */
+  --bg: #f7f7f7;
   --bg-raised: #ffffff;
-  --bg-sunken: #efeae0;
-  --surface-sidebar: #efeae0;
-  --border: #e2ded3;
-  --border-subtle: #f0ebe0;
+  --bg-sunken: #efefef;
+  --surface-sidebar: #f2f2f2;
+  --border: #e6e6e6;
+  --border-subtle: #f0f0f0;
 
-  /* ink (warm near-black, on warm-white) */
-  --ink: #2b2925;
-  --ink-secondary: #726d61;
-  --ink-tertiary: #918b7c;
-  --ink-quiet: #a49d8e;
-  --ink-faint: #c4bcaa;
+  /* ink (grafito casi negro, sobre gris neutro) */
+  --ink: #1c1c1c;
+  --ink-secondary: #5c5c5c;
+  --ink-tertiary: #737373;
+  --ink-quiet: #929292;
+  --ink-faint: #b3b3b3;
   --ink-on-accent: #ffffff;
 
-  /* brand accent + alternates (same family, offered as a Tweak) */
-  --accent: #c96f3e;
+  /* brand accent + alternates (same family, offered as a Tweak). */
+  --accent: #164d38;        /* verde Tratto (landing) — acción primaria */
+  --accent-hover: #0f3a2a;
+  --accent-soft: #eaf3ed;   /* fondos tenues: selección, foco, filtros activos */
+  --accent-lime: #d9f3ac;   /* acento sobre el verde (sidebar) */
+  
   --accent-blue: #5b7794;
   --accent-green: #6f7f57;
   --accent-red: #9c4c3d;
 
   /* semantic status colors (color + tint pairs used on chips/badges) */
-  --status-nueva: #9a958a;         --status-nueva-tint: #eeece7;
+  --status-nueva: #949494;         --status-nueva-tint: #ededed;
   --status-en-coste: #a97c3a;      --status-en-coste-tint: #f3e9d8;
   --status-confirmado: #6f7f57;    --status-confirmado-tint: #e9eee2;
   --status-seguimiento: #5b7794;   --status-seguimiento-tint: #e6ebf0;
   --status-esperando: #b6842f;     --status-esperando-tint: #f5ecd9;
   --status-ganada: #4f7a41;        --status-ganada-tint: #e6efe1;
   --status-perdida: #9c4c3d;       --status-perdida-tint: #f3e5e1;
-  --status-cancelada: #8f897b;     --status-cancelada-tint: #efece7;
+  --status-cancelada: #8c8c8c;     --status-cancelada-tint: #ededed;
 
   /* overlays */
-  --overlay-scrim: rgba(43, 41, 37, .35);
-  --shadow-modal: 0 12px 32px rgba(43, 41, 37, .2);
+  /* hover y selección neutros (filas, chips) */
+  --fill-hover: rgba(28, 28, 28, .04);
+  --fill-active: rgba(28, 28, 28, .065);
+
+  --overlay-scrim: rgba(28, 28, 28, .35);
+  --shadow-modal: 0 0 0 1px rgba(28, 28, 28, .06), 0 16px 40px -12px rgba(28, 28, 28, .16);
+  --shadow-card: 0 1px 2px rgba(28, 28, 28, .04), 0 1px 1px rgba(28, 28, 28, .02);
 }

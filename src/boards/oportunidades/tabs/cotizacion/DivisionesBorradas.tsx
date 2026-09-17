@@ -50,7 +50,7 @@ export function DivisionesBorradas({ ajustes, canRestaurar, onRestaurar, onDesca
       borderRadius: 'var(--radius-lg)', background: 'var(--bg-raised)',
       font: 'var(--text-label)', color: 'var(--ink-secondary)',
     }}>
-      <div style={{ fontWeight: 700, color: 'var(--ink)', marginBottom: 4 }}>
+      <div style={{ fontWeight: 600, color: 'var(--ink)', marginBottom: 4 }}>
         {borradas.length === 1
           ? 'Una línea se dividió y la parte nueva se borró directo en Monday'
           : `${borradas.length} líneas se dividieron y la parte nueva se borró directo en Monday`}

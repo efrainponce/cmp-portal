@@ -45,11 +45,11 @@ interface MonoTagProps {
   style?: CSSProperties;
 }
 
-/** Monospace tag for identifiers — folios, SKUs — on a flat sunken chip. */
+/** Monospace tag for identifiers — folios, SKUs — sin fondo desde el rediseño. */
 export function MonoTag({ children, style }: MonoTagProps) {
   return (
     <div style={{
-      font: 'var(--text-mono)', color: 'var(--ink-quiet)', background: 'var(--bg-sunken)',
+      font: 'var(--text-mono)', color: 'var(--ink-tertiary)', background: 'transparent',
       padding: '3px 8px', borderRadius: 'var(--radius-sm)', maxWidth: '100%', boxSizing: 'border-box',
       overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', ...style,
     }}>

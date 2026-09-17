@@ -6,19 +6,25 @@
  * Para cambiar pesos, edita FAMILIES en el script y vuelve a correrlo. */
 
 @font-face {
-  font-family: 'Inter';
+  font-family: 'Geist';
   font-style: normal;
-  font-weight: 400 800;
+  font-weight: 400 700;
   font-display: swap;
-  src: url('/fonts/inter.woff2') format('woff2');
+  src: url('/fonts/geist.woff2') format('woff2');
+  ascent-override: 96.875%;
+  descent-override: 24.121%;
+  line-gap-override: 0%;
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
 @font-face {
-  font-family: 'JetBrains Mono';
+  font-family: 'Geist Mono';
   font-style: normal;
   font-weight: 500 500;
   font-display: swap;
-  src: url('/fonts/jetbrains-mono.woff2') format('woff2');
+  src: url('/fonts/geist-mono.woff2') format('woff2');
+  ascent-override: 102%;
+  descent-override: 30%;
+  line-gap-override: 0%;
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }

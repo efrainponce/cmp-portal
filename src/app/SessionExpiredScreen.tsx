@@ -39,7 +39,7 @@ export function SessionExpiredScreen() {
         height: '100vh', gap: 16, background: 'var(--bg)', textAlign: 'center', padding: 24,
       }}
     >
-      <div style={{ font: '700 16px var(--font-ui)', color: 'var(--ink)' }}>Tu sesión terminó</div>
+      <div style={{ font: '600 16px var(--font-ui)', color: 'var(--ink)' }}>Tu sesión terminó</div>
       <div style={{ font: '400 12.5px var(--font-ui)', color: 'var(--ink-quiet)', maxWidth: 320 }}>
         {retrying ? 'Reintentando…' : 'Vuelve a iniciar sesión con tu cuenta de Google para continuar.'}
       </div>
@@ -47,7 +47,7 @@ export function SessionExpiredScreen() {
         onClick={logout}
         style={{
           border: 'none', background: 'var(--accent)', color: '#fff', borderRadius: 'var(--radius-lg)',
-          padding: '10px 20px', font: '700 12.5px var(--font-ui)', cursor: 'pointer',
+          padding: '10px 20px', font: '600 12.5px var(--font-ui)', cursor: 'pointer',
         }}
       >
         Iniciar sesión

@@ -97,12 +97,12 @@ export function CotizacionVirtualTab({ proyectoId }: { proyectoId: string }) {
       ) : (
         <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
           <div style={rowStyle('header')}>
-            <div style={{ ...cellStyle, fontWeight: 700 }}>Producto</div>
-            <div style={{ ...cellStyle, fontWeight: 700 }}>Color</div>
-            <div style={{ ...cellStyle, fontWeight: 700 }}>Cantidad</div>
-            <div style={{ ...cellStyle, fontWeight: 700 }}>Embellecimiento</div>
-            <div style={{ ...cellStyle, fontWeight: 700 }}>Precio</div>
-            <div style={{ ...cellStyle, fontWeight: 700 }}>Subtotal</div>
+            <div style={{ ...cellStyle, fontWeight: 600 }}>Producto</div>
+            <div style={{ ...cellStyle, fontWeight: 600 }}>Color</div>
+            <div style={{ ...cellStyle, fontWeight: 600 }}>Cantidad</div>
+            <div style={{ ...cellStyle, fontWeight: 600 }}>Embellecimiento</div>
+            <div style={{ ...cellStyle, fontWeight: 600 }}>Precio</div>
+            <div style={{ ...cellStyle, fontWeight: 600 }}>Subtotal</div>
             <div style={{ ...cellStyle, flex: '0 0 110px' }} />
           </div>
           {lines.map((l) => (
@@ -132,12 +132,12 @@ export function CotizacionVirtualTab({ proyectoId }: { proyectoId: string }) {
             </div>
           ))}
           <div style={rowStyle('footer')}>
-            <div style={{ ...cellStyle, fontWeight: 700 }}>Total</div>
+            <div style={{ ...cellStyle, fontWeight: 600 }}>Total</div>
             <div style={cellStyle} />
             <div style={cellStyle} />
             <div style={cellStyle} />
             <div style={cellStyle} />
-            <div style={{ ...cellStyle, fontWeight: 700 }}>{fmtMoney(total)}</div>
+            <div style={{ ...cellStyle, fontWeight: 600 }}>{fmtMoney(total)}</div>
             <div style={{ ...cellStyle, flex: '0 0 110px' }} />
           </div>
         </div>

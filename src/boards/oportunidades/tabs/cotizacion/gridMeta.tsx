@@ -467,7 +467,7 @@ export function monedaDe(row: ItemDTO, preview?: Record<string, ColVal>): { labe
 export function chevronButtonStyle(expanded: boolean): React.CSSProperties {
   return {
     background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px',
-    marginRight: 4, marginLeft: -4, font: '700 15px \'Inter\', sans-serif', color: 'var(--ink)',
+    marginRight: 4, marginLeft: -4, font: '600 15px var(--font-ui)', color: 'var(--ink)',
     transform: expanded ? 'rotate(90deg)' : undefined, display: 'inline-block', lineHeight: 1,
   };
 }

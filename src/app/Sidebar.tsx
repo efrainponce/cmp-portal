@@ -107,7 +107,7 @@ export function Sidebar({ activeBoard, onSelectBoard, collapsed, onToggleCollaps
   const inventarioItems = visible(INVENTARIO_ITEMS);
   const catalogItems = visible(CATALOG_ITEMS);
   return (
-    <div style={{
+    <div className="sidebar-verde" style={{
       width: collapsed ? 60 : 220,
       height: '100%',
       minHeight: 0,
@@ -135,9 +135,9 @@ export function Sidebar({ activeBoard, onSelectBoard, collapsed, onToggleCollaps
       }}>
         <div style={{ display: 'flex', flexDirection: collapsed ? 'column' : 'row', alignItems: 'center', gap: collapsed ? 6 : 8, padding: '4px 8px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: collapsed ? 'auto' : '100%', height: 32 }}>
-            <img src={logo} alt="CMP" style={{ width: 28, height: 28, flex: 'none' }} />
+            <img src={logo} alt="CMP" style={{ width: 28, height: 28, flex: 'none', borderRadius: 6, boxShadow: '0 0 0 1px rgba(255, 255, 255, .16)' }} />
             {!collapsed && (
-              <div style={{ font: '800 12px \'Inter\', sans-serif', color: 'var(--ink)', letterSpacing: '.2px', whiteSpace: 'nowrap', overflow: 'hidden', flex: 1 }}>
+              <div style={{ font: '600 12px var(--font-ui)', color: 'var(--ink)', letterSpacing: '.2px', whiteSpace: 'nowrap', overflow: 'hidden', flex: 1 }}>
                 CMP Portal
               </div>
             )}
@@ -196,7 +196,7 @@ export function Sidebar({ activeBoard, onSelectBoard, collapsed, onToggleCollaps
           <>
             <Divider />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              {!collapsed && <SectionLabel color="#7f8f78">Proyectos</SectionLabel>}
+              {!collapsed && <SectionLabel>Proyectos</SectionLabel>}
               {proyectosItems.map((item) => (
                 <NavItem
                   key={item.key}
@@ -215,7 +215,7 @@ export function Sidebar({ activeBoard, onSelectBoard, collapsed, onToggleCollaps
           <>
             <Divider />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              {!collapsed && <SectionLabel color="#a9835a">Inventario</SectionLabel>}
+              {!collapsed && <SectionLabel>Inventario</SectionLabel>}
               {inventarioItems.map((item) => (
                 <NavItem
                   key={item.key}
@@ -294,7 +294,7 @@ export function Sidebar({ activeBoard, onSelectBoard, collapsed, onToggleCollaps
             alignItems: 'center',
             justifyContent: 'center',
             cursor: 'pointer',
-            boxShadow: '0 1px 2px rgba(0,0,0,.15)',
+            boxShadow: '0 1px 3px rgba(0, 0, 0, .25)',
             padding: 0,
           }}
         >
@@ -307,7 +307,7 @@ export function Sidebar({ activeBoard, onSelectBoard, collapsed, onToggleCollaps
 
 function SectionLabel({ children, color }: { children: React.ReactNode; color?: string }) {
   return (
-    <div style={{ font: '700 8.5px \'Inter\', sans-serif', color: color ?? 'var(--ink-quiet)', letterSpacing: '.5px', textTransform: 'uppercase', padding: '0 10px 6px' }}>
+    <div style={{ font: '600 8.5px var(--font-ui)', color: color ?? 'var(--ink-quiet)', letterSpacing: '.5px', textTransform: 'uppercase', padding: '0 10px 6px' }}>
       {children}
     </div>
   );

@@ -28,7 +28,7 @@ import {
 const EMB_DESC_COL = 'long_text_mm1bj4pt';
 
 const fieldLabel: React.CSSProperties = {
-  font: '700 9px \'Inter\', sans-serif', color: 'var(--ink-tertiary)',
+  font: '600 9px var(--font-ui)', color: 'var(--ink-tertiary)',
   textTransform: 'uppercase', letterSpacing: '.3px', marginBottom: 4,
 };
 

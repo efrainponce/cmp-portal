@@ -121,7 +121,7 @@ export function HomeView({ onOpenPendiente }: Props) {
     <div style={{ height: '100%', overflowY: 'auto', boxSizing: 'border-box', padding: pad }}>
       <div style={{ maxWidth: 720, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 24 }}>
         <div>
-          <div style={{ font: '800 22px \'Inter\', sans-serif', color: 'var(--ink)' }}>
+          <div style={{ font: '600 22px var(--font-ui)', color: 'var(--ink)' }}>
             Hola, {home?.greetingName ?? me?.nombre ?? ''}
           </div>
           <div style={{ font: 'var(--text-label)', color: 'var(--ink-quiet)', marginTop: 4 }}>

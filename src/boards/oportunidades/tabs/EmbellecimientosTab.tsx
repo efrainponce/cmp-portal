@@ -34,7 +34,7 @@ const SKU_COL = 'lookup_mkzn7x9a';
 const NAME_COL = 'lookup_mm0x4kda';
 const COLOR_COL = 'text_mm07s2mg';
 
-const ImageIcon = ({ size = 14, color = '#918b7c' }: { size?: number; color?: string }) => (
+const ImageIcon = ({ size = 14, color = 'var(--ink-tertiary)' }: { size?: number; color?: string }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ flex: 'none' }}>
     <rect x="3" y="3" width="18" height="18" rx="2" />
     <circle cx="9" cy="9" r="1.8" />
@@ -42,7 +42,7 @@ const ImageIcon = ({ size = 14, color = '#918b7c' }: { size?: number; color?: st
   </svg>
 );
 
-const FileIcon = ({ size = 14, color = '#918b7c' }: { size?: number; color?: string }) => (
+const FileIcon = ({ size = 14, color = 'var(--ink-tertiary)' }: { size?: number; color?: string }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ flex: 'none' }}>
     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
     <path d="M14 2v6h6" />

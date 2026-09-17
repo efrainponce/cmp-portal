@@ -276,7 +276,7 @@ export function ProyectoDrawer({ id, boardKey, backLabel, defaultTab, openTab, o
             key={t.key}
             onClick={() => cambiarTab(t.key)}
             style={{
-              padding: '9px 4px', marginRight: 14, font: "600 11.5px 'Inter', sans-serif", cursor: 'pointer', whiteSpace: 'nowrap',
+              padding: '9px 4px', marginRight: 14, font: '500 11.5px var(--font-ui)', cursor: 'pointer', whiteSpace: 'nowrap',
               color: tab === t.key ? 'var(--ink)' : 'var(--ink-quiet)',
               borderBottom: '2px solid ' + (tab === t.key ? 'var(--accent)' : 'transparent'),
             }}

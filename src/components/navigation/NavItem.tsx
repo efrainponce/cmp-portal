@@ -22,10 +22,10 @@ export function NavItem({ icon, label, active, collapsed, onClick, activeColor =
       style={{
         display: 'flex', alignItems: 'center', gap: 11, padding: '8px 10px',
         borderRadius: 'var(--radius-lg)', cursor: 'pointer',
-        background: active ? activeColor + '1a' : 'transparent',
+        background: active ? 'var(--fill-active)' : 'transparent',
       }}
     >
-      <div style={{ width: 16, height: 16, flex: 'none', color: active ? activeColor : '#877f6f', position: 'relative' }}>
+      <div style={{ width: 16, height: 16, flex: 'none', color: active ? activeColor : 'var(--ink-quiet)', position: 'relative' }}>
         {icon}
         {collapsed && !!badge && (
           <span style={{
@@ -35,15 +35,15 @@ export function NavItem({ icon, label, active, collapsed, onClick, activeColor =
         )}
       </div>
       {!collapsed && (
-        <div style={{ font: '600 10.5px var(--font-ui)', color: active ? activeColor : '#726d61', whiteSpace: 'nowrap' }}>
+        <div style={{ font: (active ? '500' : '400') + ' 10.5px var(--font-ui)', color: active ? 'var(--ink)' : 'var(--ink-secondary)', whiteSpace: 'nowrap' }}>
           {label}
         </div>
       )}
       {!collapsed && !!badge && (
         <span style={{
           marginLeft: 'auto', minWidth: 16, height: 16, padding: '0 5px', boxSizing: 'border-box',
-          borderRadius: 'var(--radius-full)', background: 'var(--accent)', color: 'var(--ink-on-accent)',
-          font: '700 9px var(--font-ui)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          borderRadius: 'var(--radius-pill)', background: 'var(--fill-active)', color: 'var(--ink-secondary)',
+          font: '600 9px var(--font-ui)', display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}>
           {badge > 9 ? '9+' : badge}
         </span>

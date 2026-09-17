@@ -12,7 +12,7 @@ const fieldStyle: React.CSSProperties = {
   borderRadius: 'var(--radius-lg)', padding: '8px 10px', boxSizing: 'border-box', background: 'var(--bg-raised)',
 };
 
-const ImageIcon = ({ size = 16, color = '#918b7c' }: { size?: number; color?: string }) => (
+const ImageIcon = ({ size = 16, color = 'var(--ink-tertiary)' }: { size?: number; color?: string }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ flex: 'none' }}>
     <rect x="3" y="3" width="18" height="18" rx="2" />
     <circle cx="9" cy="9" r="1.8" />

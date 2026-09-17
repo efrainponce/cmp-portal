@@ -44,7 +44,7 @@ export function DuplicarOportunidadModal({
       </div>
 
       <div style={{
-        font: '700 10px \'Inter\', sans-serif', color: 'var(--ink-tertiary)',
+        font: '600 10px var(--font-ui)', color: 'var(--ink-tertiary)',
         textTransform: 'uppercase', letterSpacing: '.3px', marginBottom: 4,
       }}>
         ¿A qué etapa se manda?

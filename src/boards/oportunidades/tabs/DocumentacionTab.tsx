@@ -130,7 +130,7 @@ function DocSection({ title, subtitle, label, accentColor, files, signable }: {
       {title && <SectionTitle>{title}</SectionTitle>}
       {subtitle && <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)', marginTop: 2, marginBottom: 4 }}>{subtitle}</div>}
       {label && (
-        <div style={{ font: '600 10.5px \'Inter\', sans-serif', color: accentColor, textTransform: 'uppercase', letterSpacing: '.3px', marginBottom: 8 }}>
+        <div style={{ font: '500 10.5px var(--font-ui)', color: accentColor, textTransform: 'uppercase', letterSpacing: '.3px', marginBottom: 8 }}>
           {label}
         </div>
       )}

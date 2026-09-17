@@ -23,7 +23,7 @@ export function groupByColumn(
   items: ItemDTO[],
   col: ColMeta | undefined,
   fallbackLabel = 'Sin etapa',
-  fallbackColor = '#9a958a',
+  fallbackColor = '#949494',
   /** Explicit key order (e.g. Monday's real deal_stage pipeline order) —
    *  groups not listed here keep their natural (first-seen) order, after
    *  the listed ones. */

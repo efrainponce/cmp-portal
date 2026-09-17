@@ -357,7 +357,7 @@ export function AnunciosView() {
       <div style={{ maxWidth: 720, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 20 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ font: '800 22px \'Inter\', sans-serif', color: 'var(--ink)' }}>Anuncios</div>
+            <div style={{ font: '600 22px var(--font-ui)', color: 'var(--ink)' }}>Anuncios</div>
             <div style={{ font: 'var(--text-label)', color: 'var(--ink-quiet)', marginTop: 4 }}>
               {cargando
                 ? 'Cargando…'

@@ -70,7 +70,7 @@ export class ChunkReloadBoundary extends Component<Props, State> {
           height: '100vh', gap: 16, background: 'var(--bg)', textAlign: 'center', padding: 24,
         }}
       >
-        <div style={{ font: '700 16px var(--font-ui)', color: 'var(--ink)' }}>
+        <div style={{ font: '600 16px var(--font-ui)', color: 'var(--ink)' }}>
           {isChunkError ? 'Hay una versión nueva del portal' : 'Algo salió mal'}
         </div>
         <div style={{ font: '400 12.5px var(--font-ui)', color: 'var(--ink-quiet)', maxWidth: 320 }}>
@@ -81,7 +81,7 @@ export class ChunkReloadBoundary extends Component<Props, State> {
             onClick={() => window.location.reload()}
             style={{
               border: 'none', background: 'var(--accent)', color: '#fff', borderRadius: 'var(--radius-lg)',
-              padding: '10px 20px', font: '700 12.5px var(--font-ui)', cursor: 'pointer',
+              padding: '10px 20px', font: '600 12.5px var(--font-ui)', cursor: 'pointer',
             }}
           >
             Recargar

@@ -4,22 +4,25 @@
 @import './fonts.css';
 
 :root {
-  --font-ui: 'Inter', system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
+  --font-ui: 'Geist', system-ui, sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, monospace;
+
+  /* Pesos: 400 texto, 500 énfasis, 600 títulos. Nada más pesado — la jerarquía
+     sale del color (ink → secondary → tertiary → quiet), no de la negrita. */
 
   /* scale as used in the boards — dense, data-heavy UI. Sizes are irregular
      by design (.5px steps), not snapped to a rounder scale. */
-  --text-display: 700 22px var(--font-ui);
-  --text-title: 700 20px var(--font-ui);
-  --text-subtitle: 700 14px var(--font-ui);
-  --text-body-strong: 600 11px var(--font-ui);
+  --text-display: 600 22px var(--font-ui);
+  --text-title: 600 20px var(--font-ui);
+  --text-subtitle: 600 14px var(--font-ui);
+  --text-body-strong: 500 11px var(--font-ui);
   --text-body: 400 11px var(--font-ui);
-  --text-label-strong: 600 10.5px var(--font-ui);
+  --text-label-strong: 500 10.5px var(--font-ui);
   --text-label: 400 10.5px var(--font-ui);
   --text-caption: 400 10px var(--font-ui);
-  --text-small-strong: 600 10.5px var(--font-ui);
-  --text-eyebrow: 700 10.5px var(--font-ui); /* uppercase, letter-spacing .5px */
-  --text-chip: 600 9.5px var(--font-ui);
-  --text-micro: 700 9px var(--font-ui); /* uppercase table headers */
+  --text-small-strong: 500 10.5px var(--font-ui);
+  --text-eyebrow: 600 10.5px var(--font-ui); /* uppercase, letter-spacing .5px */
+  --text-chip: 500 9.5px var(--font-ui);
+  --text-micro: 600 9px var(--font-ui); /* uppercase table headers */
   --text-mono: 500 10px var(--font-mono); /* SKUs, folios */
 }

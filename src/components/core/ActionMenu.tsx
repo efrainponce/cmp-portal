@@ -93,7 +93,7 @@ export function ActionMenu({ items, label = '⋯', title = 'Más acciones', styl
             ...(alinear === 'right' ? { right: 0 } : { left: 0 }),
             minWidth: 220, maxWidth: 'calc(100vw - 28px)',
             background: 'var(--bg-raised)', border: '1px solid var(--border)',
-            borderRadius: 'var(--radius-lg)', boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+            borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-modal)',
             padding: 6, display: 'flex', flexDirection: 'column', gap: 2,
           }}
         >

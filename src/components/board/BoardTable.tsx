@@ -89,7 +89,7 @@ const Row = memo(function Row({ item, visibleCols, onRowClick }: {
       style={{ cursor: onRowClick ? 'pointer' : 'default', borderTop: '1px solid var(--border-subtle)' }}
     >
       <td style={{ ...tdStyle('left'), maxWidth: NAME_COL_MAX_WIDTH, overflow: 'hidden', textOverflow: 'ellipsis' }} title={item.name}>
-        <span style={{ font: '600 13px \'Inter\', sans-serif', color: 'var(--ink)' }}>{item.name}</span>
+        <span style={{ font: '500 13px var(--font-ui)', color: 'var(--ink)' }}>{item.name}</span>
         {item.pendingWrite && <span title="guardado, sincronizando…" style={{ marginLeft: 6 }}>⏳</span>}
       </td>
       {visibleCols.map((c) => (
