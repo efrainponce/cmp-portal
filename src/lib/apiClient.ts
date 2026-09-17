@@ -20,6 +20,7 @@ import { getImpersonateTarget } from './impersonation';
 import { tomarPrecarga } from './apiPreload';
 import { markSessionExpired } from './sessionState';
 import { uxApiLatency, uxEdit } from './telemetry';
+import { beginWrite } from './readConsistency';
 import { CATALOGO_COLS } from './productSearch';
 
 export type {
@@ -96,9 +97,18 @@ export async function apiFetch(path: string, init?: RequestInit): Promise<Respon
   // (src/lib/telemetry.ts), y los GET van muestreados porque la lista poletea
   // cada 5s y medirlos todos ahogaría la tabla.
   const t0 = performance.now();
-  const res = precargada
-    ? await precargada.catch(() => fetch(url, { credentials: 'same-origin', ...init, headers }))
-    : await fetch(url, { credentials: 'same-origin', ...init, headers });
+  // Toda escritura (PATCH/POST/DELETE, menos telemetría) cuenta como "write
+  // en vuelo" para el refresco en vivo de los drawers (src/lib/readConsistency.ts):
+  // una lectura de fondo que arrancó antes de que la escritura aterrizara en
+  // el espejo D1 traería el snapshot viejo y "regresaría" el cambio en pantalla.
+  const method = (init?.method ?? 'GET').toUpperCase();
+  const finishWrite = method !== 'GET' && method !== 'HEAD' && !path.startsWith('/telemetry/') ? beginWrite() : null;
+  let res: Response;
+  try {
+    res = precargada
+      ? await precargada.catch(() => fetch(url, { credentials: 'same-origin', ...init, headers }))
+      : await fetch(url, { credentials: 'same-origin', ...init, headers });
+  } finally { finishWrite?.(); }
   // La petición precargada arrancó antes que este cronómetro (script inline de
   // index.html), así que su latencia saldría absurdamente corta — no se mide.
   // `res.ok` NO alcanza para decidir si salió bien: es false para 304 Not

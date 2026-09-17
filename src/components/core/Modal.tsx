@@ -45,6 +45,8 @@ export function Modal({ title, onClose, children, footer, width = 480 }: ModalPr
       }}
     >
       <div
+        role="dialog"
+        aria-modal="true"
         onClick={(e) => e.stopPropagation()}
         style={{
           width, maxWidth: 'calc(100vw - 24px)', maxHeight: 'calc(100vh - 64px)',

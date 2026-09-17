@@ -1,5 +1,45 @@
 # Log de commits
 
+## 2026-09-16
+
+- **Monday tarda en verse en el portal — refresco en vivo del drawer y
+  "Actualizar" que sí espera** (continúa el trabajo de Astra/Codex del
+  2026-09-12, que quedó sin commitear en el checkout principal: Efraín, "one
+  of my worst problems now is that monday data takes too long to update").
+  Diagnóstico de Astra en prod: sync_log sin fallas ni backlog desde el 6 de
+  septiembre, latido cada ~35 s — o sea D1 ya tenía los cambios y la PANTALLA
+  no: el drawer cargaba una vez al abrir y se quedaba con ese snapshot hasta
+  reabrir o picar "Actualizar", y compras/ventas pasan el día dentro de una
+  oportunidad. Además el "Actualizar" de la lista caía seguido sobre un latido
+  en curso: `deltaSyncIfStale` regresaba `false` al instante y contestaba con
+  el espejo de ANTES del latido.
+  - Front: `src/lib/liveRefresh.ts` + `useLiveRefresh` — OpportunityDrawer y
+    ProyectoDrawer releen el espejo D1 cada 5 s (GET con ETag, 304 sin cuerpo
+    si nada cambió). Pausa: pestaña oculta, write en vuelo, campo enfocado,
+    modal/menú abierto (Modal.tsx ahora lleva `role="dialog"`), o mientras el
+    drawer ya verifica con Monday. `src/lib/readConsistency.ts`: `apiFetch`
+    cuenta las escrituras en vuelo y una lectura de fondo que se cruzó con un
+    PATCH se tira (el siguiente tick trae el bueno) — sin esto un snapshot
+    viejo podía "regresar" el cambio recién guardado. La sección Proyecto
+    dentro del drawer de Oportunidad NO se refresca sola (su `reload` pinta
+    "cargando"); el ProyectoDrawer sí.
+  - Worker: `delta_started_at`/`delta_finished_at` en sync_state;
+    `deltaSyncIfStale(..., { esperarEnCurso })` espera (mismo isolate: la
+    promesa; otro: poleo a D1 cada 500 ms, hasta 8 s) a la corrida en vuelo
+    cuando no gana el lease — solo lo pide `?fresh=1`. `latidoEnCurso` es puro
+    (test): una corrida sin FINISHED de >45 s se da por muerta para no esperar
+    en vano. La fila de sync_log del delta cierra con `ms= logs_ms=
+    refetch_ms=` para ver dónde se va el tiempo sin migrar la tabla.
+  - Medido en local (worker + vite, item nativo sembrado y borrado): cambio en
+    D1 visible en el drawer en 3.8 s sin recargar; 0 GETs al detalle en 11 s
+    con un textarea enfocado vs 2 sin foco; 304 en 5 de 10 lecturas;
+    "Actualizar" concurrente: A corrió el latido en 2.9 s, B (0.3 s después)
+    esperó 2.6 s en vez de contestar al instante con el espejo viejo, C ya
+    fresco en 0.06 s. Latido de ejemplo: `ms=2770 logs_ms=880 refetch_ms=1886`.
+  - Sin tocar: LATIDO_MS sigue en 30 s (decisión de Efraín del 2026-09-02;
+    bajarlo a 15 s duplicaría a ~5,000 llamadas/día en el peor caso, 20 % de la
+    cuota). Es el único knob que queda para acortar más el retraso.
+
 ## 2026-09-15
 
 - **Actas de entrega en Documentación del Proyecto**: Efraín preguntó por qué no

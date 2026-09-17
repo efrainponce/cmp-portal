@@ -40,6 +40,11 @@ import { logSync } from './log';
 const STATE_PREFIX = 'delta_last_polled_at:';
 const LEGACY_STATE_KEY = 'delta_last_polled_at';
 const LEASE_KEY = 'delta_lease_until';
+// Cuándo ARRANCÓ y cuándo TERMINÓ la última corrida (cron o latido). Con esto
+// el botón "Actualizar" (?fresh=1) puede ESPERAR a un latido que ya va en
+// camino en vez de contestar con el espejo viejo (ver esperarLatidoEnCurso).
+const STARTED_KEY = 'delta_started_at';
+const FINISHED_KEY = 'delta_finished_at';
 
 // Primera corrida de un board (sin checkpoint todavía): cubre los últimos 20
 // min en vez de desde siempre — evita un refetch masivo de "todo lo reciente"
@@ -240,9 +245,66 @@ export function calcularCheckpoints(
 let leaseHintUntil = 0;
 const LEASE_HINT_LOST_MS = 10_000;
 
-export async function deltaSyncIfStale(env: Env, minIntervalMs: number): Promise<boolean> {
+// Promesa del latido que ESTE isolate tiene en vuelo (null si ninguno): un
+// ?fresh=1 que cae en el mismo isolate la espera directo, sin poleo a D1.
+let latidoEnVuelo: Promise<void> | null = null;
+
+/**
+ * ¿Hay una corrida del delta en curso? Pura y con test: `started` > `finished`
+ * significa "arrancó y no ha terminado", pero una corrida que tronó a medias
+ * (isolate muerto, presupuesto agotado antes de escribir FINISHED) dejaría ese
+ * estado para siempre y cada "Actualizar" esperaría el plazo entero en vano —
+ * pasado `maxRunMs` se da por muerta. Un latido tarda 2-8 s; el cron, hasta
+ * ~30 s con 300 refetches.
+ */
+export function latidoEnCurso(
+  started: string | undefined, finished: string | undefined, ahoraMs: number, maxRunMs = 45_000,
+): boolean {
+  if (!started) return false;
+  const startedMs = Date.parse(started);
+  if (!Number.isFinite(startedMs) || ahoraMs - startedMs > maxRunMs) return false;
+  if (!finished) return true;
+  const finishedMs = Date.parse(finished);
+  return !Number.isFinite(finishedMs) || finishedMs < startedMs;
+}
+
+/**
+ * Espera (hasta `deadlineMs`) a que termine la corrida que otro llamador tiene
+ * en vuelo. Lo usa el botón "Actualizar" cuando NO ganó el lease: antes
+ * `deltaSyncIfStale` regresaba `false` al instante y la ruta contestaba con
+ * el espejo de ANTES del latido — medido por Astra (2026-09-12) en sync_log:
+ * el latido de fondo corre cada ~35 s, así que el botón caía sobre uno en
+ * curso con frecuencia y "no hacía nada". Mismo isolate → se espera la
+ * promesa; otro isolate → se polea sync_state cada 500 ms. Devuelve true si
+ * se esperó a una corrida completa.
+ */
+export async function esperarLatidoEnCurso(env: Env, deadlineMs: number): Promise<boolean> {
+  if (latidoEnVuelo) {
+    await Promise.race([latidoEnVuelo, new Promise(r => setTimeout(r, deadlineMs))]);
+    return true;
+  }
+  const vence = Date.now() + deadlineMs;
+  let esperado = false;
+  for (;;) {
+    const st = await readState(env, [STARTED_KEY, FINISHED_KEY]);
+    if (!latidoEnCurso(st.get(STARTED_KEY), st.get(FINISHED_KEY), Date.now())) return esperado;
+    esperado = true;
+    if (Date.now() + 500 > vence) return false;
+    await new Promise(r => setTimeout(r, 500));
+  }
+}
+
+export async function deltaSyncIfStale(
+  env: Env,
+  minIntervalMs: number,
+  opts: { esperarEnCurso?: number } = {},
+): Promise<boolean> {
   const ahora = Date.now();
-  if (ahora < leaseHintUntil) return false;
+  // `esperarEnCurso` (ms): si no se gana el lease, esperar a la corrida en
+  // vuelo en vez de contestar de inmediato — solo lo pide ?fresh=1.
+  if (ahora < leaseHintUntil) {
+    return opts.esperarEnCurso ? esperarLatidoEnCurso(env, opts.esperarEnCurso) : false;
+  }
   await ensureStateTable(env);
   const proximo = String(ahora + minIntervalMs);
 
@@ -259,16 +321,18 @@ export async function deltaSyncIfStale(env: Env, minIntervalMs: number): Promise
       // Otro latido va en camino. No sabemos hasta cuándo tiene el lease
       // (lo tomó otro isolate), así que la pista es corta.
       leaseHintUntil = ahora + LEASE_HINT_LOST_MS;
-      return false;
+      return opts.esperarEnCurso ? esperarLatidoEnCurso(env, opts.esperarEnCurso) : false;
     }
   }
   leaseHintUntil = ahora + minIntervalMs;
 
-  await deltaSync(env, {
+  const corrida = deltaSync(env, {
     maxRefetch: MAX_REFETCH_PER_HEARTBEAT,
     deadlineMs: HEARTBEAT_DEADLINE_MS,
     trigger: 'latido',
   });
+  latidoEnVuelo = corrida;
+  try { await corrida; } finally { if (latidoEnVuelo === corrida) latidoEnVuelo = null; }
   return true;
 }
 
@@ -278,8 +342,12 @@ export async function deltaSync(
 ): Promise<void> {
   const maxRefetch = opts.maxRefetch ?? MAX_REFETCH_PER_RUN;
   const trigger = opts.trigger ?? 'cron';
-  const vence = opts.deadlineMs ? Date.now() + opts.deadlineMs : Infinity;
+  const t0 = Date.now();
+  const vence = opts.deadlineMs ? t0 + opts.deadlineMs : Infinity;
   await ensureStateTable(env);
+  // Marca de "corrida en vuelo" (ver esperarLatidoEnCurso). Un statement más
+  // por corrida (una cada 30 s como mucho), no por poll.
+  await writeStateMany(env, [[STARTED_KEY, new Date(t0).toISOString()]]);
 
   const boardIds = Object.values(BOARDS).map(b => b.id);
   const keys = boardIds.flatMap(id => [STATE_PREFIX + id, WINDOW_PREFIX + id]);
@@ -309,9 +377,11 @@ export async function deltaSync(
   try {
     ({ entries, saturated } = await fetchActivityLogs(env, windows));
   } catch (e) {
-    await logSync(env, 'delta', 0, null, false, `activity_logs failed: ${e}`);
+    await writeStateMany(env, [[FINISHED_KEY, new Date().toISOString()]]);
+    await logSync(env, 'delta', 0, null, false, `activity_logs failed: ${e} (${Date.now() - t0} ms)`);
     return;
   }
+  const msLogs = Date.now() - t0;
 
   // Log de actividad (worker/lib/activityLog.ts) — mismos `entries` que ya se
   // pidieron para el refetch de abajo, filtrados y persistidos aparte. Nunca
@@ -377,8 +447,10 @@ export async function deltaSync(
   noAtendidos.push(...lotes.slice(lanzables.length).flat());
   // `conPadres`: el lote de líneas relee también sus oportunidades/proyectos
   // (espejos del padre que agregan las líneas — ver refetch.ts).
+  const tRefetch = Date.now();
   const resultados = await Promise.allSettled(lanzables.map(lote =>
     refetchItems(env, lote[0]!.boardId, lote.map(p => p.itemId), { conPadres: true })));
+  const msRefetch = Date.now() - tRefetch;
   for (let i = 0; i < resultados.length; i++) {
     const res = resultados[i]!;
     const lote = lanzables[i]!;
@@ -443,15 +515,21 @@ export async function deltaSync(
     // checkpoint por board y la próxima corrida ya no cae al `legacy`.
     estado.push([STATE_PREFIX + boardId, checkpoint]);
   }
+  estado.push([FINISHED_KEY, new Date().toISOString()]);
   await writeStateMany(env, estado);
   const saturados = saturated.size + atorados.size;
 
+  // Tiempos al final de la línea (ms totales, lectura de activity_logs,
+  // refetch en lote): para saber DÓNDE se va el tiempo de un latido lento sin
+  // migrar sync_log. Van al final para no mover los campos que ya leen
+  // salud.ts y scripts/salud.mjs.
   await logSync(env, 'delta', 0, null, true,
     `[${trigger}] events=${entries.length} refetched=${refetched} cambiados=${cambiados}` +
     (borrados ? ` borrados=${borrados}` : '') +
     ` failed=${failed} activity=${activityLogged}` +
     (pendientes.length ? ` pendientes=${pendientes.length}` : '') +
-    (saturados ? ` saturados=${saturados}` : ''));
+    (saturados ? ` saturados=${saturados}` : '') +
+    ` ms=${Date.now() - t0} logs_ms=${msLogs} refetch_ms=${msRefetch}`);
 }
 
 /** Parte la cola en lotes por board, conservando el orden de la cola (el

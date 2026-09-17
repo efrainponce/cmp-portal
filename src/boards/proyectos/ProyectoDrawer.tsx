@@ -8,7 +8,9 @@
 // worker/lib/proyectoCotizacionVirtual.ts); "Editar/Dividir" en Cotización SÍ
 // escribe a Monday desde 2026-08-13. Capturar zonas/imágenes de embellecimiento
 // sigue siendo exclusivo de la Oportunidad (link cruzado abajo).
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useLiveRefresh } from '../../lib/useLiveRefresh';
+import { readIsCurrent, readRevision } from '../../lib/readConsistency';
 import { Button } from '../../components/core/Button';
 import { IconBack } from '../../components/icons';
 import { SyncIndicator } from '../../components/board/SyncIndicator';
@@ -150,12 +152,29 @@ export function ProyectoDrawer({ id, boardKey, backLabel, defaultTab, openTab, o
   const { boards } = useBoards();
   const canEditNombre = !!colForBoard(boards, 'proyectos').find((c) => c.id === 'name')?.w;
 
-  const load = () => {
-    setError(null);
-    getItemDetail('proyectos', id)
-      .then(({ item: it }) => { detailCache.set(id, it); setItem(it); })
-      .catch(() => setError('No se pudo cargar el proyecto. Verifica tu acceso o que el servidor esté disponible.'));
+  // Mismo patrón que OpportunityDrawer: loadSeq descarta respuestas viejas que
+  // llegan tarde, y una lectura DE FONDO que se cruzó con un write se tira
+  // (src/lib/readConsistency.ts) para no "regresar" el cambio en pantalla.
+  const loadSeqRef = useRef(0);
+  const cargar = (fondo: boolean) => {
+    if (!fondo) setError(null);
+    const seq = ++loadSeqRef.current;
+    const rev = readRevision();
+    return getItemDetail('proyectos', id)
+      .then(({ item: it }) => {
+        if (loadSeqRef.current !== seq || (fondo && !readIsCurrent(rev))) return;
+        detailCache.set(id, it);
+        setItem(it);
+      })
+      .catch(() => {
+        if (loadSeqRef.current !== seq || fondo) return;
+        setError('No se pudo cargar el proyecto. Verifica tu acceso o que el servidor esté disponible.');
+      });
   };
+  const load = () => { void cargar(false); };
+  // Refresco en vivo cada 5 s (ver liveRefresh.ts): tallas, OC y ejecución
+  // que escribe cmp-tallas o el equipo en Monday aparecen sin reabrir.
+  useLiveRefresh(id, () => cargar(true), refreshing);
 
   useEffect(() => {
     setItem(detailCache.get(id) ?? null);

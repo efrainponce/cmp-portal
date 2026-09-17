@@ -3,7 +3,7 @@
 // una sola fila de error (pasó 3 días en 2026-08-14), y uno que avanza de más
 // pierde cambios hasta el reconcile de 12h (2026-08-27, ventana saturada).
 import { describe, it, expect } from 'vitest';
-import { ordenarCola, calcularCheckpoints, agruparPorBoard } from './delta';
+import { ordenarCola, calcularCheckpoints, agruparPorBoard, latidoEnCurso } from './delta';
 
 const OPP = 18395657596;
 const LINEAS = 18395657607;
@@ -117,5 +117,31 @@ describe('calcularCheckpoints con traslape', () => {
 
   it('saturado sigue quedándose en `from`', () => {
     expect(calcularCheckpoints(w, [], new Set([OPP]), 10_000).get(OPP)).toBe('2026-09-02T17:00:00.000Z');
+  });
+});
+
+// "Actualizar" espera a un latido en curso (2026-09-16). Va con test porque
+// el error silencioso es el peor: si esto dijera "en curso" para siempre
+// (corrida muerta), cada botón esperaría 8 s en vano; si dijera "terminado"
+// de más, el botón contestaría con el espejo viejo como antes.
+describe('latidoEnCurso', () => {
+  const ahora = Date.parse('2026-09-16T18:00:10Z');
+  it('sin marca de arranque no hay nada que esperar', () => {
+    expect(latidoEnCurso(undefined, undefined, ahora)).toBe(false);
+  });
+  it('arrancó y no ha terminado → en curso', () => {
+    expect(latidoEnCurso('2026-09-16T18:00:05Z', '2026-09-16T17:59:40Z', ahora)).toBe(true);
+    expect(latidoEnCurso('2026-09-16T18:00:05Z', undefined, ahora)).toBe(true);
+  });
+  it('terminó después de arrancar → libre', () => {
+    expect(latidoEnCurso('2026-09-16T18:00:00Z', '2026-09-16T18:00:06Z', ahora)).toBe(false);
+  });
+  it('una corrida que arrancó hace más de maxRunMs y nunca terminó se da por muerta', () => {
+    expect(latidoEnCurso('2026-09-16T17:58:00Z', undefined, ahora)).toBe(false);
+    expect(latidoEnCurso('2026-09-16T17:59:50Z', undefined, ahora, 10_000)).toBe(false);
+  });
+  it('valores corruptos no bloquean', () => {
+    expect(latidoEnCurso('no-es-fecha', undefined, ahora)).toBe(false);
+    expect(latidoEnCurso('2026-09-16T18:00:05Z', 'no-es-fecha', ahora)).toBe(true);
   });
 });

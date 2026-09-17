@@ -5,6 +5,8 @@
 // que los botones de Monday (docs/cmp-tallas-endpoint-map.md): los botones se
 // deshabilitan hasta que todo está listo y los rechazos se muestran legibles.
 import { useEffect, useRef, useState } from 'react';
+import { useLiveRefresh } from '../../lib/useLiveRefresh';
+import { readIsCurrent, readRevision } from '../../lib/readConsistency';
 import { Button } from '../../components/core/Button';
 import { ConfirmButton } from '../../components/core/ConfirmButton';
 import { IconBack, IconEdit } from '../../components/icons';
@@ -172,20 +174,34 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, openTab, onTabCha
   // 2026-07-31). loadSeqRef descarta cualquier respuesta que no sea la del
   // load() más reciente que se haya llamado.
   const loadSeqRef = useRef(0);
-  const load = () => {
-    setError(null);
+  const cargar = (fondo: boolean) => {
+    if (!fondo) setError(null);
     const seq = ++loadSeqRef.current;
-    getItemDetail('oportunidades', id)
+    const rev = readRevision();
+    return getItemDetail('oportunidades', id)
       .then(({ item: it }) => {
         if (loadSeqRef.current !== seq) return;
+        // Lectura de fondo (refresco en vivo) que se cruzó con un write: el
+        // snapshot puede ser de ANTES de que el PATCH aterrizara en el espejo
+        // — se tira, el siguiente tick trae el bueno (src/lib/readConsistency.ts).
+        if (fondo && !readIsCurrent(rev)) return;
         cacheSet(detailCache, id, it);
         setItem(it);
       })
       .catch(() => {
-        if (loadSeqRef.current !== seq) return;
+        if (loadSeqRef.current !== seq || fondo) return;
         setError('No se pudo cargar el detalle. Verifica tu acceso o que el servidor esté disponible.');
       });
   };
+  const load = () => { void cargar(false); };
+  // Refresco en vivo (2026-09-16, trabajo de Astra terminado): relee el espejo
+  // D1 cada 5 s mientras el drawer esté abierto — GET con ETag, 304 sin cuerpo
+  // si nada cambió. Antes el drawer cargaba UNA vez y lo que el latido traía
+  // de Monday (costos de compras, etapa de costeo, cmp-tallas) no se veía
+  // hasta reabrir o picar "Actualizar". Se pausa con la pestaña oculta, con
+  // un write en vuelo, tecleando en un campo o con un modal/menú abierto
+  // (liveRefresh.ts), y mientras ya se está verificando con Monday.
+  useLiveRefresh(id, () => cargar(true), syncing || refreshing);
   // Parity con Monday al abrir (Efraín, 2026-07-30 — OPP-0795 salía con costos
   // en 0): `fresh` hace que el worker relea la oportunidad Y SUS LÍNEAS de
   // Monday antes de responder, en vez de servir el mirror D1 (que solo se

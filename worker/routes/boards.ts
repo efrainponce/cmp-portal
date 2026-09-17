@@ -84,6 +84,9 @@ const FRESCO_POR_LATIDO_MS = 40_000;
 // hasta cada 20 s (el de fondo, LATIDO_MS, vive en worker/index.ts: cuelga de
 // todos los GET, no solo de este); el lease impide que se vuelva un martillo.
 const LATIDO_FORZADO_MS = 20_000;
+// Cuánto espera "Actualizar" a un latido ajeno en curso (ver delta.ts
+// esperarLatidoEnCurso). Igual que el plazo del propio latido.
+const LATIDO_ESPERA_MS = 8_000;
 
 /** Trae el item (y sus líneas, si el board tiene subitems) directo de Monday
  * antes de responder. Nunca lanza: si Monday falla o va lento, se sirve el
@@ -270,8 +273,12 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
     // decía que picarle no servía (2026-08-27). El latido de fondo ya corrió
     // en el middleware, en waitUntil; este `await` solo gana si el lease de
     // fondo venció.
+    // Si el lease lo tiene un latido EN CURSO (lo más común: corre cada ~35 s
+    // y tarda 2-8 s), se le espera hasta LATIDO_ESPERA_MS en vez de contestar
+    // con el espejo de antes — así el botón siempre refleja Monday (o, si el
+    // latido se alarga, lo que alcanzó a entrar).
     if (c.req.query('fresh')) {
-      await deltaSyncIfStale(c.env, LATIDO_FORZADO_MS);
+      await deltaSyncIfStale(c.env, LATIDO_FORZADO_MS, { esperarEnCurso: LATIDO_ESPERA_MS });
     }
 
     const tvServer = conTotales ? await totalesVersion(c.env) : null;
