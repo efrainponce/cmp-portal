@@ -2,6 +2,18 @@
 
 ## 2026-09-17
 
+- **Botón claro para traer las tallas del archivo al portal** (Efraín, captura
+  del tab Tallas: "¿cómo le hago para traer las tallas del archivo de excel al
+  portal? puedes crear un botón claro"). Ya existía — "Importar tallas a Monday
+  (compras)" es justo eso (import_tallas: lee el Sheet, recrea las líneas del
+  Proyecto en Monday y el portal las muestra por el espejo) — pero el nombre
+  decía "a Monday" y nadie lo relacionaba con el portal. `shared.tsx`
+  (`ProyectoActionBar`): ahora se llama "Traer tallas del archivo al portal
+  (compras)", es el botón principal del tab (el de regenerar queda secundario),
+  el mensaje de éxito dice que ya aparecen abajo, y debajo de los botones va el
+  orden del flujo (capturar en el archivo → Validar → Traer). Mismo gate de rol
+  (compras/admin), sin cambios en el server.
+
 - **El Sheet de tallas del Proyecto se regenera solo cuando cambian las líneas
   de la cotización** (Efraín: PRO-0205 / OPP-0768 "dividimos las tallas de
   hombre y mujer pero no se refleja en el Google Sheets… la división la hizo el

@@ -164,7 +164,7 @@ export function describeResult(action: ProyectoAction, res: Record<string, unkno
     switch (action) {
       case 'tallas-regenerar': return { kind: 'ok', text: 'Archivo de tallas generado. El link aparece en unos segundos (Actualizar).' };
       case 'tallas-confirmar': return { kind: 'ok', text: `Tallas validadas (${String(res.validation ?? 'TODO CUADRA')}). PDF ${String(res.pdf_filename ?? '')} enviado a firma del vendedor.` };
-      case 'tallas-importar': return { kind: 'ok', text: `Tallas importadas a Monday: ${String(res.talla_subitems ?? '?')} líneas + ${String(res.embell_subitems ?? 0)} embellecimientos.` };
+      case 'tallas-importar': return { kind: 'ok', text: `Tallas traídas del archivo al portal: ${String(res.talla_subitems ?? '?')} líneas + ${String(res.embell_subitems ?? 0)} embellecimientos. Ya aparecen abajo (también en Monday).` };
       case 'generar-oc': {
         const folios = foliosDe(res);
         return { kind: 'ok', text: `Órdenes generadas y enviadas a firma${folios ? `: ${folios}` : ''}.` };
@@ -251,14 +251,19 @@ export function ProyectoActionBar({ proyecto, reload, actions }: {
             onConfirm={run('tallas-confirmar')}
           />
         )}
+        {/* "Traer tallas del archivo" (Efraín, 2026-09-17: "¿cómo le hago para
+            traer las tallas del archivo de excel al portal? un botón claro"):
+            es el import_tallas de siempre — lee el Sheet, borra y recrea las
+            líneas del Proyecto en Monday, y el portal las muestra por el
+            espejo. Antes decía "Importar tallas a Monday" y nadie entendía que
+            ESO era lo que llenaba el portal. Sigue siendo de Compras/admin. */}
         {actions.includes('tallas-importar') && canCompras && (
           <ConfirmButton
-            label="Importar tallas a Monday (compras)"
-            confirmLabel="¿Importar? Reemplaza las líneas del proyecto"
-            busyLabel="Importando…"
-            variant="secondary"
+            label="Traer tallas del archivo al portal (compras)"
+            confirmLabel="¿Traer? Reemplaza las tallas del proyecto con las del archivo"
+            busyLabel="Trayendo tallas del archivo…"
             disabled={!sheetUrl}
-            title={!sheetUrl ? 'Primero crea el archivo de tallas' : 'Borra y recrea los subitems del proyecto desde el archivo'}
+            title={!sheetUrl ? 'Primero crea el archivo de tallas' : 'Lee el archivo de tallas y llena las líneas del proyecto (aquí y en Monday)'}
             onConfirm={run('tallas-importar')}
           />
         )}
@@ -273,6 +278,12 @@ export function ProyectoActionBar({ proyecto, reload, actions }: {
           />
         )}
       </div>
+      {actions.includes('tallas-importar') && !native && (
+        <div style={{ marginTop: 8, font: 'var(--text-label)', color: 'var(--ink-secondary)' }}>
+          Orden: 1) capturar las tallas en el archivo → 2) Validar tallas (vendedor) → 3) Traer tallas del archivo al portal (compras).
+          Si cambió una línea de la cotización, el archivo se regenera solo; "Regenerar" es por si quieres forzarlo.
+        </div>
+      )}
       {outcome && (
         <div style={{
           marginTop: 10, padding: '10px 14px', borderRadius: 'var(--radius-lg)',
