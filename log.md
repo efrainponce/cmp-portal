@@ -2,6 +2,12 @@
 
 ## 2026-09-17
 
+- **Tarjeta de tallas en NARANJA cuando sobran 1 a 3 piezas** (Efraín:
+  "cuando sobran 1 o 2 es normal, lo hacemos para tener muestras; cuando son
+  1-3 ponlos en naranja"). `TallasSection.tsx`: tono nuevo `muestras`
+  (`MUESTRAS_MAX = 3`, colores `--status-esperando`) y el texto dice
+  "— muestras"; de 4 en adelante sigue en rojo.
+
 - **Tarjeta de tallas: "cambió de color" explícito** (Efraín, PRO-0205: la
   tarjeta Porta Esposas NEGRO decía "sin línea de cotización para comparar"
   y la cotización sí tenía Porta Esposas, en PLATA — "que sea explícito, así

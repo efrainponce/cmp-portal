@@ -148,7 +148,12 @@ const boxInputStyle = {
   padding: '6px 4px', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border)', background: '#fff',
 } as const;
 
-type CardTone = 'empty' | 'unknown' | 'ok' | 'mismatch';
+type CardTone = 'empty' | 'unknown' | 'ok' | 'muestras' | 'mismatch';
+
+/** Sobran hasta MUESTRAS_MAX piezas sobre lo cotizado = muestras a propósito
+ * (Efraín, 2026-09-17: "cuando sobran 1 o 2 es normal, lo hacemos para tener
+ * muestras; cuando son 1-3 ponlos en naranja"). Más que eso sigue en rojo. */
+const MUESTRAS_MAX = 3;
 
 /** empty = nada capturado todavía (gris); unknown = sin línea de cotización
  * contra qué comparar (neutro); ok/mismatch = cuadra o no contra lo cotizado
@@ -157,6 +162,7 @@ const CARD_TONE_STYLE: Record<CardTone, { border: string; background: string; te
   empty: { border: 'var(--border)', background: 'var(--bg-sunken)', text: 'var(--ink-tertiary)' },
   unknown: { border: 'var(--border)', background: '#fff', text: 'var(--ink-tertiary)' },
   ok: { border: 'var(--status-ganada)', background: 'var(--status-ganada-tint)', text: 'var(--status-ganada)' },
+  muestras: { border: 'var(--status-esperando)', background: 'var(--status-esperando-tint)', text: 'var(--status-esperando)' },
   mismatch: { border: 'var(--status-perdida)', background: 'var(--status-perdida-tint)', text: 'var(--status-perdida)' },
 };
 
@@ -209,10 +215,13 @@ function TallaBoxCard({ group, cotizado, sinCotizadoPorque, canEditCantidad, can
     progresoTexto = `${asignadas} asignadas — cuadra con lo cotizado`;
   } else if (asignadas < cotizado) {
     progresoTexto = `Faltan ${cotizado - asignadas} de ${cotizado} (${asignadas} asignadas)`;
+  } else if (asignadas - cotizado <= MUESTRAS_MAX) {
+    progresoTexto = `Sobran ${asignadas - cotizado} sobre los ${cotizado} cotizados (${asignadas} asignadas) — muestras`;
   } else {
     progresoTexto = `Sobran ${asignadas - cotizado} sobre los ${cotizado} cotizados (${asignadas} asignadas)`;
   }
-  const cardTone: CardTone = asignadas === 0 ? 'empty' : cotizado === null ? 'unknown' : cuadra ? 'ok' : 'mismatch';
+  const muestras = cotizado !== null && asignadas > cotizado && asignadas - cotizado <= MUESTRAS_MAX;
+  const cardTone: CardTone = asignadas === 0 ? 'empty' : cotizado === null ? 'unknown' : cuadra ? 'ok' : muestras ? 'muestras' : 'mismatch';
   const tone = CARD_TONE_STYLE[cardTone];
 
   const reportar = async () => {
