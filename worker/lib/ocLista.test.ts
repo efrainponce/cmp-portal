@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { MirrorItem } from '../../shared/types';
-import { ordenesDeProyecto } from './ocLista';
+import { ordenesDeProyecto, unaFilaPorFolio } from './ocLista';
 
 const M = 'https://mexicanaproteccion.monday.com/protected_static/1/resources';
 
@@ -32,20 +32,44 @@ describe('ordenesDeProyecto', () => {
     ]));
     expect(rows).toHaveLength(1);
     expect(rows[0].url).toBe('/api/files/proyectos/555/oc/OC_OC-310_GDL_TACTICAL.pdf');
+    expect(rows[0].proveedor).toBe('GDL TACTICAL');
     expect(rows[0].urlSinCostos).toBe('/api/files/proyectos/555/oc/OC_OC-310_GDL_TACTICAL_SIN-COSTOS.pdf');
   });
 
-  it('el archivo cuelga de la Oportunidad ligada cuando la hay', () => {
+  it('el link cuelga SIEMPRE del proyecto, aunque tenga Oportunidad ligada', () => {
+    // El key por oportunidad hace que /api/files adivine el proyecto, y con
+    // proyectos clonados (misma oportunidad) caía en el otro: 404.
     const rows = ordenesDeProyecto(proyecto([
-      { id: 'file_mm0hj9pn', text: `${M}/1/OC_OC-9_ACME.pdf` },
+      { id: 'file_mm0hj9pn', text: `${M}/3144927875/OC_OC-9_ACME.pdf` },
       { id: 'board_relation_mm0hf0y3', text: 'OPP', value: JSON.stringify({ linked_item_ids: [777] }) },
     ]));
-    expect(rows[0].url).toBe('/api/files/oportunidades/777/oc/OC_OC-9_ACME.pdf');
+    expect(rows[0].url).toBe('/api/files/proyectos/555/oc/OC_OC-9_ACME.pdf');
+    expect(rows[0].assetId).toBe('3144927875');
     expect(rows[0].zona).toBeNull();
+  });
+
+  it('el clon de Monday guarda "….pdf.pdf": el link lleva el nombre COMPLETO', () => {
+    const rows = ordenesDeProyecto(proyecto([
+      { id: 'file_mm0hj9pn', text: `${M}/1/OC_OC-107_ARMOR%20LIFE%20LAB.pdf.pdf` },
+    ]));
+    expect(rows[0]).toMatchObject({ folio: 'OC-107', proveedor: 'ARMOR LIFE LAB' });
+    expect(rows[0].url).toBe('/api/files/proyectos/555/oc/OC_OC-107_ARMOR%20LIFE%20LAB.pdf.pdf');
   });
 
   it('un proyecto sin OC, o con columnas ilegibles, no produce filas', () => {
     expect(ordenesDeProyecto(proyecto([{ id: 'file_mm0hj9pn', text: '' }]))).toEqual([]);
     expect(ordenesDeProyecto({ ...proyecto([]), columns: '{roto' })).toEqual([]);
+  });
+});
+
+describe('unaFilaPorFolio', () => {
+  it('el mismo folio en el original y en su clon es UNA orden (no se paga dos veces)', () => {
+    const archivo = { id: 'file_mm0hj9pn', text: `${M}/1/OC_OC-40_ZAPATOS.pdf` };
+    const clon = ordenesDeProyecto({ ...proyecto([archivo, { id: 'pulse_id_mm1a12gy', text: 'PRO-0091' }], 900), name: 'Zapato (copy)' });
+    const original = ordenesDeProyecto(proyecto([archivo, { id: 'pulse_id_mm1a12gy', text: 'PRO-0082' }], 800));
+    const filas = unaFilaPorFolio([...clon, ...original]);
+    expect(filas).toHaveLength(1);
+    expect(filas[0]).toMatchObject({ proyectoId: '800', proyectoFolio: 'PRO-0082' });
+    expect(filas[0].tambienEn).toEqual([{ proyectoId: '900', proyectoFolio: 'PRO-0091', proyecto: 'Zapato (copy)' }]);
   });
 });

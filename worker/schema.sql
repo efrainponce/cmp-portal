@@ -602,6 +602,20 @@ CREATE TABLE IF NOT EXISTS oc_pago (
   updated_at TEXT NOT NULL
 );
 
+-- Subtotal / IVA / Total de cada OC, LEIDOS DE SU PDF (shared/ocMontoPdf.ts) por
+-- el navegador y asentados una vez. Ligados al asset de Monday: una orden
+-- regenerada trae asset nuevo y se vuelve a leer.
+CREATE TABLE IF NOT EXISTS oc_monto (
+  folio      TEXT PRIMARY KEY,
+  subtotal   REAL NOT NULL,
+  iva        REAL NOT NULL,
+  total      REAL NOT NULL,
+  moneda     TEXT,
+  asset_id   TEXT,
+  por_email  TEXT,
+  updated_at TEXT NOT NULL
+);
+
 -- Carpeta de Drive de una Oportunidad (Fase 5, plan "salir de Monday",
 -- 2026-08-13, worker/lib/drive.ts getOrCreateDriveFolder) — cache de la carpeta
 -- raíz + las 12 subcarpetas de licitación creadas en Drive, para que Fases 2-4

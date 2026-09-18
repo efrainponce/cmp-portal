@@ -2,6 +2,42 @@
 
 ## 2026-09-18
 
+- **Lista de OC: subtotal por orden + tres bugs del tablero recién hecho**
+  (Efraín: "agrega el subtotal").
+  - **De dónde sale el subtotal — del PDF, no de las líneas.** Lo obvio era
+    sumar las líneas del Proyecto por proveedor (`groupTotals`). Medido antes:
+    las líneas no dicen a qué OC pertenecen y 179 de 279 órdenes comparten
+    proyecto+proveedor con otra. Caso real: OC-312, 313 y 317 son del mismo
+    proveedor en PRO-0205 y sus PDFs dicen $55,193 / $55,489 / $55,455 — con las
+    líneas las tres habrían mostrado el mismo número, y ninguno el del papel.
+    `shared/ocMontoPdf.ts` lee el bloque "SUBTOTAL | IVA | TOTAL" del texto del
+    PDF (formato estable de OC-11 a OC-317, con una variante vieja en OC-60/63) y
+    se autoverifica: si subtotal + IVA no da el total, no devuelve nada.
+  - pdfjs no corre en el Worker: lo lee el NAVEGADOR en segundo plano (2 a la
+    vez, `import()` diferido) y lo asienta por `PUT /api/oc-lista/:folio/monto`
+    en `oc_monto` — una vez por orden, no por visita; ligado al asset de Monday
+    para que una orden regenerada se relea. El server valida que las cifras
+    cuadren. OJO: el monto lo reporta el cliente (solo quien tiene el board).
+  - UI: columna Subtotal (tooltip con IVA y total) y sumas del filtro actual —
+    total y por pagar — POR MONEDA (hay 14 OC en USD, no se mezclan).
+  - Verificado con las 269 órdenes reales: 263 con monto, idénticas a una
+    corrida independiente en Node, todas cuadran. 6 sin monto (OC-200 a 205: su
+    PDF salió sin el bloque de totales) — se quedan en "—" y no suman.
+  - **Bugs encontrados al hacerlo, los tres míos de la mañana:** (1) 10 folios
+    salían DOS veces — un proyecto clonado en Monday se lleva la columna de
+    archivos; ahora es una fila por folio, en el proyecto original, con
+    "+ PRO-xxxx" (una orden se paga una vez). (2) 15 links "Ver OC" daban 404:
+    el key por oportunidad hace que /api/files adivine el proyecto y con clones
+    cae en el otro; ahora el link cuelga siempre del proyecto, que la lista ya
+    conoce. (3) el clon guarda "….pdf.pdf" y el regex heredado cortaba el nombre.
+  - PENDIENTE de criterio de Efraín/Elisa: "Por pagar" suma TODOS los PDFs,
+    incluidas las re-emisiones de una misma orden (312/313/317). El tablero no
+    sabe cuál reemplazó a cuál.
+- **Buscador al mismo alto que los filtros, en todos los boards** (Efraín, con
+  captura). Los filtros ya medían 36 px; el distinto era `SearchInput`, cuyo alto
+  salía del padding (~34). Fijado a 36 en el componente compartido (14 usos).
+  Medido en el navegador: 36 / 36.
+
 - **Tablero nuevo "Lista de OC"** (Elisa por WhatsApp: "que estén todas ahí, que
   se pueda filtrar por zona, por proveedor y que haga la referencia a qué
   proyecto" — para no entrar a cada proyecto a buscarlas; Efraín sumó "si está

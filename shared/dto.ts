@@ -725,8 +725,8 @@ export interface UpdateAbonoRequest { monto?: number; fecha?: string | null; fec
 export interface UpdateAbonoResponse { ok: boolean; error?: string }
 
 /** Una orden de compra del tablero "Lista de OC" (worker/lib/ocLista.ts). Sale
- * de la columna de archivos del Proyecto; monto/moneda/emitidaAt solo llegan
- * cuando la orden quedó en el ledger del portal (las de cmp-tallas no). */
+ * de la columna de archivos del Proyecto. subtotal/iva/total son lo que dice
+ * el PDF (shared/ocMontoPdf.ts): null = todavía no se lee, o no se pudo leer. */
 export interface OcListaRow {
   folio: string;
   proveedor: string;
@@ -734,9 +734,15 @@ export interface OcListaRow {
   proyecto: string;
   proyectoFolio: string | null;
   zona: string | null;
+  /** Otros proyectos (clones) que traen el mismo PDF. */
+  tambienEn: { proyectoId: string; proyectoFolio: string | null; proyecto: string }[];
   url: string | null;
   urlSinCostos: string | null;
-  monto: number | null;
+  /** Asset de Monday del PDF con costos: a él queda ligado el monto leído. */
+  assetId: string | null;
+  subtotal: number | null;
+  iva: number | null;
+  total: number | null;
   moneda: string | null;
   emitidaAt: string | null;
   pagada: boolean;

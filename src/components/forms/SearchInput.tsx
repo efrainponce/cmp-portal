@@ -13,7 +13,9 @@ export function SearchInput({ value, onChange, placeholder = 'Buscar…', style 
     <div className="search-box" style={{
       flex: 1, maxWidth: 320, display: 'flex', alignItems: 'center', gap: 8,
       background: 'var(--bg-raised)', border: '1px solid var(--border)',
-      borderRadius: 'var(--radius-lg)', padding: '8px 12px', boxSizing: 'border-box', ...style,
+      // Mismo alto que los selects/pills de FilterBar (36): antes salía del padding
+      // y quedaba ~2 px más chaparro que el filtro de junto.
+      height: 36, borderRadius: 'var(--radius-lg)', padding: '0 12px', boxSizing: 'border-box', ...style,
     }}>
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--ink-quiet)" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style={{ flex: 'none' }}>
         <circle cx="11" cy="11" r="7" /><path d="M21 21l-4.35-4.35" />

@@ -1230,3 +1230,11 @@ export async function setOcPagada(folio: string, pagada: boolean): Promise<void>
   });
   if (!res.ok) throw new Error(`No se pudo guardar (${res.status}).`);
 }
+
+/** Asienta lo que se leyó del PDF de la orden (src/lib/ocPdfMonto.ts). */
+export async function setOcMonto(folio: string, m: { subtotal: number; iva: number; total: number; moneda: string | null }): Promise<void> {
+  const res = await apiFetch(`/oc-lista/${encodeURIComponent(folio)}/monto`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(m),
+  });
+  if (!res.ok) throw new Error(`No se pudo guardar el monto (${res.status}).`);
+}
