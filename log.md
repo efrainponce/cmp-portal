@@ -2,6 +2,34 @@
 
 ## 2026-09-18
 
+- **Lista de OC: estado de los productos + selector de columnas reutilizable**
+  (Efraín: "jalar el estado de los productos, si ya está entregado o no" y "un
+  tooltip para agregar o quitar columnas… podría servir para todos los boards").
+  - Estado: columna con la batería del portal (`ProgressBattery`, mismos
+    buckets que el Reporte de Proyectos) + "Entregado" / "62% entregado" / la
+    etapa dominante, y el desglose en piezas al pasar el cursor. Filtro nuevo
+    "Entrega: sin entregar / entregadas". Aquí SÍ se usan las líneas del
+    Proyecto (proyectos_sub) y no el PDF: el estado es del presente, y la línea
+    sí dice quién es su proveedor. Se agrupa por proyecto+proveedor, en piezas,
+    y cuelga solo de la OC VIGENTE — una re-emisión muestra "—" y remite a la
+    que la reemplazó. `conEstados`/`lineaEstadoDe` (puras, con test); las
+    líneas se piden de a 80 proyectos (tope de binds de D1) y solo de proyectos
+    que el viewer ya puede leer.
+  - El empate OC↔líneas va por razón social o nombre del proveedor,
+    normalizados, y por prefijo ≥12 caracteres porque el nombre del archivo
+    corta la razón social a 40. Medido: 139 de 162 vigentes con estado; en el
+    resto el proveedor de la OC ya no está en las líneas del proyecto (se
+    movieron a otro) y sale "—" con esa explicación. Cruce: OC-317 da 911
+    piezas por líneas, las mismas 911 que trae su PDF.
+  - Selector de columnas: `src/lib/useColumnasVisibles.ts` +
+    `src/components/board/ColumnPicker.tsx`, hechos genéricos. Preferencia por
+    persona (localStorage por correo+board, como useSavedView); guarda las
+    OCULTAS para que una columna nueva no nazca escondida; "Restablecer". La
+    Lista de OC declara sus columnas y arma el grid (filas, encabezado y pie)
+    de las visibles. NO se llevó todavía a los otros boards: StageBoardList,
+    ProyectoBoardList y GenericBoardView arman su fila a mano y cada uno es su
+    propio cambio. En móvil no aplica (la fila es tarjeta, no columnas).
+
 - **Lista de OC: fecha, orden por fecha de creación y subtotal al pie**
   (Efraín: "agrega fecha… ordenarlas por fecha de creación" y "el subtotal al
   final, de todas las que vemos en los filtros").

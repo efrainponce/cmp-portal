@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { MirrorItem } from '../../shared/types';
-import { marcarReemplazadas, ordenesDeProyecto, porFechaDeCreacion, unaFilaPorFolio } from './ocLista';
+import { conEstados, lineaEstadoDe, marcarReemplazadas, ordenesDeProyecto, porFechaDeCreacion, unaFilaPorFolio } from './ocLista';
 
 const M = 'https://mexicanaproteccion.monday.com/protected_static/1/resources';
 
@@ -108,5 +108,48 @@ describe('porFechaDeCreacion', () => {
   it('una orden sin fecha (PDF aún sin leer) se acomoda por folio, no se va al fondo', () => {
     const out = [fila('OC-10', '2026-09-01'), fila('OC-11', null), fila('OC-12', '2026-09-18')].sort(porFechaDeCreacion);
     expect(out.map(o => o.folio)).toEqual(['OC-12', 'OC-11', 'OC-10']);
+  });
+});
+
+describe('estado de los productos de la OC', () => {
+  const linea = (parent: number, proveedor: string, rz: string, estado: string, cantidad: string): MirrorItem => ({
+    ...proyecto([
+      { id: 'board_relation_mm1cfgv5', text: proveedor }, { id: 'lookup_mm1d2y9b', text: rz },
+      { id: 'color_mm0hqf79', text: estado }, { id: 'numeric_mm0hj2q4', text: cantidad },
+    ], 1), board_id: 18395657609, parent_item_id: parent,
+  });
+  const ordenes = (archivos: string[]) => marcarReemplazadas(
+    ordenesDeProyecto(proyecto([{ id: 'file_mm0hj9pn', text: archivos.map((a, i) => `${M}/${i}/${a}`).join(', ') }])));
+
+  it('suma PIEZAS por etiqueta de las líneas del proveedor, empatando por razón social', () => {
+    const lineas = [
+      linea(555, 'UNIMX', 'Diana Laura Morales del Razo', 'Entregado', '13'),
+      linea(555, 'UNIMX', 'Diana Laura Morales del Razo', 'Entregado', '34'),
+      linea(555, 'UNIMX', 'Diana Laura Morales del Razo', 'En tránsito', '21'),
+      linea(555, 'GDL', 'GDL TACTICAL', 'Entregado', '99'), // otro proveedor
+      linea(777, 'UNIMX', 'Diana Laura Morales del Razo', 'Entregado', '500'), // otro proyecto
+    ].map(l => lineaEstadoDe(l)!);
+    const [o] = conEstados(ordenes(['OC_OC-317_DIANA LAURA MORALES DEL RAZO.pdf']), lineas);
+    expect(o.estados).toEqual([{ label: 'Entregado', piezas: 47 }, { label: 'En tránsito', piezas: 21 }]);
+  });
+
+  it('una re-emisión no lleva estado: es el de la orden vigente', () => {
+    const lineas = [lineaEstadoDe(linea(555, 'ACME', 'ACME', 'Entregado', '5'))!];
+    const out = conEstados(ordenes(['OC_OC-10_ACME.pdf', 'OC_OC-12_ACME.pdf']), lineas);
+    expect(out.find(o => o.folio === 'OC-10')?.estados).toBeNull();
+    expect(out.find(o => o.folio === 'OC-12')?.estados).toEqual([{ label: 'Entregado', piezas: 5 }]);
+  });
+
+  it('razón social cortada a 40 en el nombre del archivo: empata por prefijo', () => {
+    const rz = 'CREACIONES Y DISEÑOS SAN ANTONIO DE PADUA SA DE CV';
+    const lineas = [lineaEstadoDe(linea(555, 'Creaciones', rz, 'En produccion', '8'))!];
+    const [o] = conEstados(ordenes([`OC_OC-178_${rz.slice(0, 40).trim()}.pdf`]), lineas);
+    expect(o.estados).toEqual([{ label: 'En produccion', piezas: 8 }]);
+  });
+
+  it('un nombre corto no empata por prefijo con medio mundo; sin líneas → null', () => {
+    const lineas = [lineaEstadoDe(linea(555, 'GRUPO TEXTIL BEGOSA', 'GRUPO TEXTIL BEGOSA SA', 'Entregado', '5'))!];
+    expect(conEstados(ordenes(['OC_OC-1_GRUPO.pdf']), lineas)[0].estados).toBeNull();
+    expect(lineaEstadoDe(linea(555, '', '', 'Entregado', '5'))).toBeNull();
   });
 });

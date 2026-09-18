@@ -751,6 +751,10 @@ export interface OcListaRow {
   moneda: string | null;
   /** El PDF vigente ya se leyó (aunque no trajera totales): no se vuelve a bajar. */
   pdfLeido: boolean;
+  /** Estado de los productos de la orden HOY: piezas por etiqueta de "Estado
+   * del producto" de las líneas de su proveedor en el proyecto. null = es una
+   * re-emisión, o el proveedor ya no está en las líneas del proyecto. */
+  estados: { label: string; piezas: number }[] | null;
   pagada: boolean;
 }
 export interface OcListaResponse { ordenes: OcListaRow[] }

@@ -15,12 +15,18 @@ import type { Env } from '../env';
 import type { Identity, MirrorItem } from '../../shared/types';
 import type { OcListaRow } from '../../shared/dto';
 import { listItems } from './dal';
+import { BOARDS } from '../../shared/boards';
 import { ensureOcLedger, numeroDeFolio, type OcEmitidaRow } from './ocLedger';
 import { fechaValida, montoCuadra } from '../../shared/ocMontoPdf';
 
 const PROYECTO_OC_PDF = 'file_mm0hj9pn';
 const PROYECTO_ZONA = 'dropdown_mm0hnyv';
 const PROYECTO_FOLIO = 'pulse_id_mm1a12gy';
+// Líneas del Proyecto (proyectos_sub) — mismos ids que worker/lib/oc.ts.
+const SUB_ESTADO = 'color_mm0hqf79';
+const SUB_CANTIDAD = 'numeric_mm0hj2q4';
+const SUB_PROVEEDOR_REL = 'board_relation_mm1cfgv5';
+const SUB_PROVEEDOR_RZ = 'lookup_mm1d2y9b';
 
 export class OcListaError extends Error {
   status: 400 | 404;
@@ -97,7 +103,7 @@ export function ordenesDeProyecto(row: MirrorItem): OcListaRow[] {
         proyectoId: String(row.item_id), proyecto: row.name, proyectoFolio: texto(PROYECTO_FOLIO) || null,
         zona: texto(PROYECTO_ZONA) || null, tambienEn: [], reemplazadaPor: null,
         url: null, urlSinCostos: null, assetId: null,
-        fecha: null, subtotal: null, iva: null, total: null, moneda: null, pdfLeido: false, pagada: false,
+        fecha: null, subtotal: null, iva: null, total: null, moneda: null, pdfLeido: false, pagada: false, estados: null,
       };
       porFolio.set(folio, fila);
     }
@@ -159,11 +165,69 @@ export function marcarReemplazadas(filas: OcListaRow[]): OcListaRow[] {
   });
 }
 
+export interface LineaEstado { proyectoId: string; proveedores: string[]; estado: string; piezas: number }
+
+/** Lo que importa de una línea del Proyecto para el estado de su OC. Pura. */
+export function lineaEstadoDe(row: MirrorItem): LineaEstado | null {
+  if (row.parent_item_id == null) return null;
+  let cols: (Col & { value?: string | null })[] = [];
+  try { cols = JSON.parse(row.columns || '[]'); } catch { return null; }
+  const texto = (id: string) => cols.find(c => c.id === id)?.text?.trim() ?? '';
+  // Una OC se nombra con la razón social, o con el nombre del proveedor cuando
+  // no la tiene (worker/lib/oc.ts): la línea responde por los dos.
+  const proveedores = [...new Set([texto(SUB_PROVEEDOR_REL), texto(SUB_PROVEEDOR_RZ)].map(claveProveedor).filter(Boolean))];
+  const estado = texto(SUB_ESTADO);
+  if (proveedores.length === 0 || !estado) return null;
+  const piezas = Number(texto(SUB_CANTIDAD));
+  return { proyectoId: String(row.parent_item_id), proveedores, estado, piezas: Number.isFinite(piezas) && piezas > 0 ? piezas : 0 };
+}
+
+/** Estado de los productos de cada OC VIGENTE = el de las líneas de su
+ * proveedor en su proyecto HOY, en piezas por etiqueta (Efraín, 2026-09-18:
+ * "si ya está entregado o no"). Aquí sí se usan las líneas y no el PDF: el
+ * estado es del presente, y la línea sí dice quién es su proveedor. Una
+ * re-emisión no lleva estado — es el de la orden que la reemplazó.
+ *
+ * El nombre del archivo corta la razón social a 40 caracteres, así que también
+ * empata por prefijo (mínimo 12, para que "GRUPO" no empate con medio mundo).
+ * Medido: 241 de 269 empatan; en el resto el proveedor de la OC ya no está en
+ * las líneas del proyecto (se movieron a otro) y se queda sin estado. Pura. */
+export function conEstados(filas: OcListaRow[], lineas: LineaEstado[]): OcListaRow[] {
+  const porProyecto = new Map<string, LineaEstado[]>();
+  for (const l of lineas) (porProyecto.get(l.proyectoId) ?? porProyecto.set(l.proyectoId, []).get(l.proyectoId)!).push(l);
+  return filas.map(o => {
+    if (o.reemplazadaPor) return o;
+    const clave = claveProveedor(o.proveedor);
+    const empata = (p: string) => p === clave || (clave.length >= 12 && (p.startsWith(clave) || clave.startsWith(p)) && p.length >= 12);
+    const suyas = (porProyecto.get(o.proyectoId) ?? []).filter(l => l.proveedores.some(empata));
+    if (suyas.length === 0) return o;
+    const piezas = new Map<string, number>();
+    for (const l of suyas) piezas.set(l.estado, (piezas.get(l.estado) ?? 0) + l.piezas);
+    return { ...o, estados: [...piezas].map(([label, n]) => ({ label, piezas: n })) };
+  });
+}
+
+/** Líneas de los proyectos dados. De a 80 ids: D1 topa ~100 binds por query. */
+async function lineasDeProyectos(env: Env, proyectoIds: string[]): Promise<LineaEstado[]> {
+  const out: LineaEstado[] = [];
+  for (let i = 0; i < proyectoIds.length; i += 80) {
+    const ids = proyectoIds.slice(i, i + 80).map(Number);
+    const { results } = await env.DB.prepare(
+      `SELECT * FROM items WHERE board_id = ? AND parent_item_id IN (${ids.map(() => '?').join(',')})`,
+    ).bind(BOARDS.proyectos_sub.id, ...ids).all<MirrorItem>();
+    for (const row of results ?? []) { const l = lineaEstadoDe(row); if (l) out.push(l); }
+  }
+  return out;
+}
+
 /** Todas las OC de los proyectos que el viewer puede LEER (scoping de dal.ts),
  * de la más reciente a la más vieja (`porFechaDeCreacion`). */
 export async function listarOrdenesCompra(env: Env, viewer: Identity): Promise<OcListaRow[]> {
   const proyectos = await listItems(env, 'proyectos', viewer);
-  const ordenes = marcarReemplazadas(unaFilaPorFolio(proyectos.flatMap(ordenesDeProyecto)));
+  const base = marcarReemplazadas(unaFilaPorFolio(proyectos.flatMap(ordenesDeProyecto)));
+  // Solo líneas de proyectos que el viewer ya puede leer (los de `base`): el
+  // scoping de Proyectos se hereda, no se vuelve a decidir aquí.
+  const ordenes = conEstados(base, await lineasDeProyectos(env, [...new Set(base.map(o => o.proyectoId))]));
 
   await Promise.all([ensureOcLedger(env), ensureOcListaTables(env)]);
   const [ledger, pagos, montos] = await Promise.all([
