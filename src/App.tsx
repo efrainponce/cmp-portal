@@ -19,6 +19,7 @@ const StageBoard = lazy(() => import('./boards/oportunidades/StageBoard').then((
 // Documentación y Tallas / Órdenes de Compra / Logística viven en el board
 // Proyectos directo (no filtrando Oportunidades por etapa) — ver ProyectoBoard.
 const ProyectoBoard = lazy(() => import('./boards/proyectos/ProyectoBoard').then((m) => ({ default: m.ProyectoBoard })));
+const OcListaBoard = lazy(() => import('./boards/proyectos/OcListaBoard'));
 const GenericBoardView = lazy(() => import('./boards/generic/GenericBoardView').then((m) => ({ default: m.GenericBoardView })));
 const InventarioBoard = lazy(() => import('./boards/inventario/InventarioBoard').then((m) => ({ default: m.InventarioBoard })));
 const SettingsPage = lazy(() => import('./app/SettingsPage').then((m) => ({ default: m.SettingsPage })));
@@ -79,6 +80,12 @@ function App() {
           onOpenChange={onOpenChange}
           onOpenOportunidad={(oppId) => navigate('oportunidades', oppId)}
         />
+      )}
+      {activeBoard === 'oc_lista' && (
+        // El proyecto se abre en "Reporte de Proyectos" (lista TODOS, sin filtro
+        // de etapa) directo en su tab de órdenes; sin ese acceso, en el otro
+        // board que trae el tab.
+        <OcListaBoard onOpenProyecto={(id) => navigate(me?.boardAccess.includes('ejecucion') ? 'ejecucion' : 'ordenescompra', id, 'ordenes')} />
       )}
       {activeBoard === 'productos' && <GenericBoardView slug="productos" title="Productos" />}
       {activeBoard === 'instituciones' && <GenericBoardView slug="instituciones" title="Instituciones" />}

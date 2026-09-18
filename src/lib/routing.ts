@@ -9,7 +9,7 @@ import type { BoardKey } from '../app/Sidebar';
 
 const VALID_BOARDS = new Set<BoardKey>([
   'home', 'anuncios',
-  'oportunidades', 'oportunidades_web', 'costeo', 'validacion', 'doctallas', 'ordenescompra', 'ejecucion', 'logistica',
+  'oportunidades', 'oportunidades_web', 'costeo', 'validacion', 'doctallas', 'ordenescompra', 'oc_lista', 'ejecucion', 'logistica',
   'productos', 'instituciones', 'contactos', 'proveedores', 'inventario', 'settings', 'zona_efrain',
   'analisis', 'zona_efrain_proy', 'estadocuenta',
 ]);

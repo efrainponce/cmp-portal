@@ -13,6 +13,7 @@ import type {
   ProductoResumenDTO, ProductoResumenResponse, ProductoGeneroResponse,
   UpdateAttachmentDTO, UpdateDTO, VendedorDTO, WriteResponse, ZonaDTO,
   OportunidadLigadaDTO, ProyectoOportunidadResponse, WaPreferenciasDTO,
+  OcListaRow, OcListaResponse,
 } from '../../shared/dto';
 import type { AddProposedProductResponse, ProposedProductDTO, ProposedProductsResponse } from '../../shared/productosPropuestos';
 import { mockBoardMeta, mockItemDetail, mockPatch } from './mockFallback';
@@ -1212,3 +1213,20 @@ export async function resetAssistant(): Promise<void> {
 }
 
 export { mockBoardMeta };
+
+/** Tablero "Lista de OC" (worker/lib/ocLista.ts): todas las órdenes de los
+ * proyectos que el viewer puede leer. Truena en vez de devolver [] — una lista
+ * vacía por un 403/500 se leería como "no hay órdenes". */
+export async function listOcLista(): Promise<OcListaRow[]> {
+  const res = await apiFetch('/oc-lista');
+  if (!res.ok) throw new Error(`No se pudo cargar la lista de OC (${res.status}).`);
+  const body: OcListaResponse = await res.json();
+  return body.ordenes ?? [];
+}
+
+export async function setOcPagada(folio: string, pagada: boolean): Promise<void> {
+  const res = await apiFetch(`/oc-lista/${encodeURIComponent(folio)}/pagada`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pagada }),
+  });
+  if (!res.ok) throw new Error(`No se pudo guardar (${res.status}).`);
+}

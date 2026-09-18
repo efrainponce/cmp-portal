@@ -16,7 +16,7 @@ import {
 
 export type BoardKey =
   | 'home' | 'anuncios'
-  | 'oportunidades' | 'oportunidades_web' | 'costeo' | 'validacion' | 'doctallas' | 'ordenescompra' | 'ejecucion' | 'logistica'
+  | 'oportunidades' | 'oportunidades_web' | 'costeo' | 'validacion' | 'doctallas' | 'ordenescompra' | 'oc_lista' | 'ejecucion' | 'logistica'
   | 'productos' | 'instituciones' | 'contactos' | 'proveedores' | 'inventario' | 'settings' | 'analisis'
   | 'zona_efrain' | 'zona_efrain_proy' | 'estadocuenta';
 
@@ -52,6 +52,9 @@ const ESTADO_CUENTA_ITEM: NavItemConfig = { key: 'estadocuenta', label: 'Estado 
 const PROYECTOS_ITEMS: NavItemConfig[] = [
   { key: 'doctallas', label: 'Documentación y Tallas', icon: IconDocTallas },
   { key: 'ordenescompra', label: 'Órdenes de Compra', icon: IconOrdenesCompra },
+  // Las mismas OC, pero todas en una lista (Elisa, 2026-09-18) — el de arriba
+  // lista PROYECTOS y hay que entrar a cada uno a buscarlas.
+  { key: 'oc_lista', label: 'Lista de OC', icon: IconOrdenesCompra },
   { key: 'ejecucion', label: 'Reporte de Proyectos', icon: IconEjecucion },
   { key: 'logistica', label: 'Logística', icon: IconLogistica },
 ];

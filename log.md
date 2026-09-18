@@ -2,6 +2,37 @@
 
 ## 2026-09-18
 
+- **Tablero nuevo "Lista de OC"** (Elisa por WhatsApp: "que estén todas ahí, que
+  se pueda filtrar por zona, por proveedor y que haga la referencia a qué
+  proyecto" — para no entrar a cada proyecto a buscarlas; Efraín sumó "si está
+  pagado o no"). Una fila por orden: folio, proveedor, proyecto (clic → abre el
+  proyecto en su tab de órdenes), zona, links al PDF (y a la copia sin costos) y
+  checkbox de pagada. Buscador + filtros por zona / proveedor / pago; los
+  filtros NO se guardan entre sesiones a propósito (un filtro recordado deja la
+  lista en 0 sin avisar). Se ve bien a 390 px.
+  - **De dónde sale la lista — hallazgo**: el plan obvio era leer `oc_emitida`
+    (el ledger del 2026-08-25). Revisado en producción antes de usarlo: el
+    ledger tiene SOLO las 235 filas del backfill y `oc_folios` sigue en 230,
+    mientras el espejo ya va en OC-317. Producción emite por cmp-tallas
+    (`OC_NATIVE` apagado), que sube el PDF directo a Monday y nunca escribe en
+    el ledger. Sobre esa tabla el tablero habría nacido sin las ~75 órdenes más
+    recientes y sin ningún error. La lista se arma de la columna de archivos de
+    cada Proyecto (`file_mm0hj9pn`, la verdad 1-1 con Monday) reusando
+    `ocDeColumna`; el ledger solo enriquece monto/fecha cuando hay fila real.
+    PENDIENTE de decisión de Efraín: el ledger está muerto en la práctica
+    mientras OC_NATIVE siga apagado (y `findLatestOcFile` cae siempre al match
+    por nombre).
+  - "Pagada" es propia del portal (tabla `oc_pago`, llave = folio; no existe en
+    Monday). Solo se puede marcar un folio que el viewer SÍ ve.
+  - Acceso: board key `oc_lista` en `shared/boardAccess.ts`. Nace SOLO para
+    admin — hoy mismo Efraín dejó a Compras con dos boards de flujo, así que
+    dárselo es decisión suya (matriz de Configuración, sin deploy). La ruta
+    también checa ese acceso (403), y los renglones van acotados por el scoping
+    de Proyectos. Sin monto por orden: solo lo traería el ledger.
+  - Verificado en local (D1 sembrada con proyectos nativos): lista, marcar
+    pagada, 404 folio ajeno, 400 body/query malos, 403 con rol compras, capturas
+    desktop y móvil sin errores de consola. Test: `worker/lib/ocLista.test.ts`.
+
 - **Brincos de pantalla (CLS) al abrir oportunidades y proyectos** (Efraín mandó
   la captura de Clarity: LCP 0.7 s y INP 150 ms bien, CLS 0.69 mal, 3 pageviews).
   Primero se midió: `scripts/perf-cls.mjs` (nuevo, hermano de `perf-bench.mjs`)

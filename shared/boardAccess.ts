@@ -8,7 +8,7 @@ import type { Role } from './types';
 
 export const BOARD_KEYS = [
   'oportunidades', 'oportunidades_web', 'costeo', 'validacion',
-  'doctallas', 'ordenescompra', 'ejecucion', 'logistica',
+  'doctallas', 'ordenescompra', 'oc_lista', 'ejecucion', 'logistica',
   'productos', 'instituciones', 'contactos', 'proveedores',
   'inventario',
 ] as const;
@@ -42,6 +42,10 @@ export const TEAM_ROLES: Role[] = ['vendedor', 'compras', 'almacen'];
 // dia: "esto si se queda". Ojo: quitarle 'inventario' no es solo declutter —
 // /api/inventario/* y el PDF de movimiento tambien lo checan
 // (worker/routes/inventario.ts, worker/lib/documents.ts) y ahora responden 403.
+// 2026-09-18 (Elisa): 'oc_lista' = todas las OC en una lista. Nace SOLO para
+// admin (que entra por BOARD_KEYS): ese mismo dia Efraín le dejo a Compras dos
+// boards de flujo y nada mas, asi que darselo es decision suya — se prende desde
+// la matriz de Configuracion, sin deploy.
 export const DEFAULT_BOARD_ACCESS: Record<Role, readonly ConfigurableBoardKey[]> = {
   vendedor: ['oportunidades', 'oportunidades_web', 'doctallas',
     'productos', 'instituciones', 'contactos'],

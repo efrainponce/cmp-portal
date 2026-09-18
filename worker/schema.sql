@@ -592,6 +592,16 @@ CREATE TABLE IF NOT EXISTS oc_emitida (
 CREATE INDEX IF NOT EXISTS idx_oc_emitida_proyecto ON oc_emitida (proyecto_id);
 CREATE INDEX IF NOT EXISTS idx_oc_emitida_at ON oc_emitida (emitida_at DESC);
 
+-- "Pagada" del tablero Lista de OC (worker/lib/ocLista.ts, 2026-09-18). Propia
+-- del portal: no existe en Monday. Llave = folio, y NO cuelga de oc_emitida
+-- porque las OC que emite cmp-tallas nunca llegan a ese ledger.
+CREATE TABLE IF NOT EXISTS oc_pago (
+  folio      TEXT PRIMARY KEY,
+  pagada     INTEGER NOT NULL DEFAULT 0,
+  por_email  TEXT,
+  updated_at TEXT NOT NULL
+);
+
 -- Carpeta de Drive de una Oportunidad (Fase 5, plan "salir de Monday",
 -- 2026-08-13, worker/lib/drive.ts getOrCreateDriveFolder) — cache de la carpeta
 -- raíz + las 12 subcarpetas de licitación creadas en Drive, para que Fases 2-4

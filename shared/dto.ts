@@ -723,3 +723,22 @@ export interface AddAbonoResponse { ok: boolean; id?: string; error?: string }
  * monto si entró distinto de lo acordado). */
 export interface UpdateAbonoRequest { monto?: number; fecha?: string | null; fechaEstimada?: string | null; nota?: string }
 export interface UpdateAbonoResponse { ok: boolean; error?: string }
+
+/** Una orden de compra del tablero "Lista de OC" (worker/lib/ocLista.ts). Sale
+ * de la columna de archivos del Proyecto; monto/moneda/emitidaAt solo llegan
+ * cuando la orden quedó en el ledger del portal (las de cmp-tallas no). */
+export interface OcListaRow {
+  folio: string;
+  proveedor: string;
+  proyectoId: string;
+  proyecto: string;
+  proyectoFolio: string | null;
+  zona: string | null;
+  url: string | null;
+  urlSinCostos: string | null;
+  monto: number | null;
+  moneda: string | null;
+  emitidaAt: string | null;
+  pagada: boolean;
+}
+export interface OcListaResponse { ordenes: OcListaRow[] }
