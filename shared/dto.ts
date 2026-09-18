@@ -736,6 +736,9 @@ export interface OcListaRow {
   zona: string | null;
   /** Otros proyectos (clones) que traen el mismo PDF. */
   tambienEn: { proyectoId: string; proyectoFolio: string | null; proyecto: string }[];
+  /** Folio de la OC más reciente del mismo proveedor en el mismo proyecto,
+   * cuando NO es ésta: es una re-emisión y no suma. null = vigente. */
+  reemplazadaPor: string | null;
   url: string | null;
   urlSinCostos: string | null;
   /** Asset de Monday del PDF con costos: a él queda ligado el monto leído. */

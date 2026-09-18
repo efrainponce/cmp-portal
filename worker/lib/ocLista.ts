@@ -92,7 +92,7 @@ export function ordenesDeProyecto(row: MirrorItem): OcListaRow[] {
       fila = {
         folio, proveedor: m[2].replace(/_/g, ' ').trim(),
         proyectoId: String(row.item_id), proyecto: row.name, proyectoFolio: texto(PROYECTO_FOLIO) || null,
-        zona: texto(PROYECTO_ZONA) || null, tambienEn: [],
+        zona: texto(PROYECTO_ZONA) || null, tambienEn: [], reemplazadaPor: null,
         url: null, urlSinCostos: null, assetId: null,
         subtotal: null, iva: null, total: null, moneda: null, emitidaAt: null, pagada: false,
       };
@@ -127,12 +127,41 @@ export function unaFilaPorFolio(filas: OcListaRow[]): OcListaRow[] {
   return out;
 }
 
+/** Mismo proveedor aunque el nombre del archivo lo haya saneado distinto
+ * ("5_11 Tactical de México" vs "5 11 TACTICAL DE MEXICO"). */
+function claveProveedor(nombre: string): string {
+  return nombre.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim();
+}
+
+/** Re-emisiones (Efraín, 2026-09-18: "no sumes las reemisiones, solo la última
+ * OC"): "Generar OC" rehace la orden COMPLETA del proveedor, así que dentro de
+ * un proyecto la OC más reciente de un proveedor reemplaza a las anteriores —
+ * OC-312, 313 y 317 son la misma compra corregida dos veces, no tres compras.
+ * La de folio más alto queda vigente y las demás apuntan a ella; se siguen
+ * listando (el papel existe y se le mandó a alguien), pero no suman. Pura.
+ *
+ * Límite conocido: el día que se escribió, en 14 de 102 pares la anterior y la
+ * vigente tenían montos muy distintos (OC-100 $92k → OC-109 $6k), que huele a
+ * orden complementaria y no a corrección. La regla las trata igual. */
+export function marcarReemplazadas(filas: OcListaRow[]): OcListaRow[] {
+  const vigente = new Map<string, OcListaRow>();
+  const clave = (o: OcListaRow) => `${o.proyectoId}|${claveProveedor(o.proveedor)}`;
+  for (const o of filas) {
+    const actual = vigente.get(clave(o));
+    if (!actual || numeroDeFolio(o.folio) > numeroDeFolio(actual.folio)) vigente.set(clave(o), o);
+  }
+  return filas.map(o => {
+    const v = vigente.get(clave(o))!;
+    return { ...o, reemplazadaPor: v.folio === o.folio ? null : v.folio };
+  });
+}
+
 /** Todas las OC de los proyectos que el viewer puede LEER (scoping de dal.ts),
  * de la más reciente a la más vieja — el folio es global y nunca decrece, así
  * que ordena mejor que cualquier fecha (las del backfill comparten una sola). */
 export async function listarOrdenesCompra(env: Env, viewer: Identity): Promise<OcListaRow[]> {
   const proyectos = await listItems(env, 'proyectos', viewer);
-  const ordenes = unaFilaPorFolio(proyectos.flatMap(ordenesDeProyecto));
+  const ordenes = marcarReemplazadas(unaFilaPorFolio(proyectos.flatMap(ordenesDeProyecto)));
 
   await Promise.all([ensureOcLedger(env), ensureOcListaTables(env)]);
   const [ledger, pagos, montos] = await Promise.all([

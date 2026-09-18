@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { MirrorItem } from '../../shared/types';
-import { ordenesDeProyecto, unaFilaPorFolio } from './ocLista';
+import { marcarReemplazadas, ordenesDeProyecto, unaFilaPorFolio } from './ocLista';
 
 const M = 'https://mexicanaproteccion.monday.com/protected_static/1/resources';
 
@@ -71,5 +71,27 @@ describe('unaFilaPorFolio', () => {
     expect(filas).toHaveLength(1);
     expect(filas[0]).toMatchObject({ proyectoId: '800', proyectoFolio: 'PRO-0082' });
     expect(filas[0].tambienEn).toEqual([{ proyectoId: '900', proyectoFolio: 'PRO-0091', proyecto: 'Zapato (copy)' }]);
+  });
+});
+
+describe('marcarReemplazadas', () => {
+  const filas = (itemId: number, archivos: string[]) =>
+    ordenesDeProyecto(proyecto([{ id: 'file_mm0hj9pn', text: archivos.map((a, i) => `${M}/${i}/${a}`).join(', ') }], itemId));
+
+  it('de un proveedor en un proyecto solo la OC más reciente queda vigente', () => {
+    const out = marcarReemplazadas(filas(555, ['OC_OC-312_DIANA LAURA.pdf', 'OC_OC-317_DIANA LAURA.pdf', 'OC_OC-313_DIANA LAURA.pdf', 'OC_OC-310_GDL TACTICAL.pdf']));
+    expect(Object.fromEntries(out.map(o => [o.folio, o.reemplazadaPor]))).toEqual({
+      'OC-312': 'OC-317', 'OC-313': 'OC-317', 'OC-317': null, 'OC-310': null,
+    });
+  });
+
+  it('el mismo proveedor en OTRO proyecto es otra compra', () => {
+    const out = marcarReemplazadas([...filas(555, ['OC_OC-10_ACME.pdf']), ...filas(556, ['OC_OC-20_ACME.pdf'])]);
+    expect(out.every(o => o.reemplazadaPor === null)).toBe(true);
+  });
+
+  it('el saneo del nombre de archivo no parte al proveedor en dos', () => {
+    const out = marcarReemplazadas(filas(555, ['OC_OC-21_5_11 Tactical de México SA.pdf', 'OC_OC-31_5 11 TACTICAL DE MEXICO SA.pdf']));
+    expect(out.find(o => o.folio === 'OC-21')?.reemplazadaPor).toBe('OC-31');
   });
 });

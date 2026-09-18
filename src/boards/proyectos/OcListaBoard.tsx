@@ -27,10 +27,12 @@ function ilegiblesGuardados(): Set<string> {
   try { return new Set(JSON.parse(sessionStorage.getItem(ILEGIBLES_KEY) ?? '[]') as string[]); } catch { return new Set(); }
 }
 
-/** Suma por moneda: las OC en dólares no se mezclan con las de pesos. */
+/** Suma por moneda: las OC en dólares no se mezclan con las de pesos. Las
+ * re-emisiones no entran: de cada proveedor en un proyecto solo cuenta la
+ * última OC (Efraín, 2026-09-18). */
 function sumaPorMoneda(filas: OcListaRow[]): string {
   const porMoneda = new Map<string, number>();
-  for (const o of filas) if (o.subtotal != null) porMoneda.set(o.moneda ?? 'MXN', (porMoneda.get(o.moneda ?? 'MXN') ?? 0) + o.subtotal);
+  for (const o of filas) if (o.subtotal != null && !o.reemplazadaPor) porMoneda.set(o.moneda ?? 'MXN', (porMoneda.get(o.moneda ?? 'MXN') ?? 0) + o.subtotal);
   if (porMoneda.size === 0) return '—';
   return [...porMoneda].sort(([a], [b]) => a.localeCompare(b)).map(([m, n]) => `${fmtMoney2(n)} ${m}`).join(' + ');
 }
@@ -54,6 +56,7 @@ export default function OcListaBoard({ onOpenProyecto }: Props) {
   const [zona, setZona] = useState(TODAS);
   const [proveedor, setProveedor] = useState(TODAS);
   const [pago, setPago] = useState(TODAS);
+  const [soloVigentes, setSoloVigentes] = useState(false);
 
   const cargar = useCallback(async () => {
     try {
@@ -128,8 +131,9 @@ export default function OcListaBoard({ onOpenProyecto }: Props) {
     (zona === TODAS || (o.zona ?? SIN_ZONA) === zona)
     && (proveedor === TODAS || o.proveedor === proveedor)
     && (pago === TODAS || (pago === 'si') === o.pagada)
+    && (!soloVigentes || !o.reemplazadaPor)
     && (!q.trim() || [o.folio, o.proveedor, o.proyecto, o.proyectoFolio ?? ''].some(t => textIncludes(t, q))),
-  ), [ordenes, zona, proveedor, pago, q]);
+  ), [ordenes, zona, proveedor, pago, soloVigentes, q]);
 
   // Optimista: la marca se ve de inmediato y se revierte si el server la rechaza.
   const togglePagada = async (o: OcListaRow) => {
@@ -144,9 +148,13 @@ export default function OcListaBoard({ onOpenProyecto }: Props) {
     }
   };
 
-  const hayFiltro = zona !== TODAS || proveedor !== TODAS || pago !== TODAS || !!q.trim();
-  const pagadas = visibles.filter(o => o.pagada).length;
-  const sinMonto = visibles.filter(o => o.subtotal == null).length;
+  const hayFiltro = zona !== TODAS || proveedor !== TODAS || pago !== TODAS || soloVigentes || !!q.trim();
+  // Los conteos y las sumas son de las VIGENTES: una re-emisión no es una
+  // orden más por pagar.
+  const vigentes = visibles.filter(o => !o.reemplazadaPor);
+  const reemplazadas = visibles.length - vigentes.length;
+  const pagadas = vigentes.filter(o => o.pagada).length;
+  const sinMonto = vigentes.filter(o => o.subtotal == null).length;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -154,12 +162,12 @@ export default function OcListaBoard({ onOpenProyecto }: Props) {
         <div style={{ font: 'var(--text-title)', color: 'var(--ink)' }}>Lista de OC</div>
         <div style={{ font: 'var(--text-label)', color: 'var(--ink-tertiary)', marginTop: 2 }}>
           {ordenes == null ? 'Cargando…'
-            : `${hayFiltro ? `${visibles.length} de ${ordenes.length}` : ordenes.length} órdenes · ${pagadas} pagadas · ${visibles.length - pagadas} por pagar`}
+            : `${hayFiltro ? `${visibles.length} de ${ordenes.length}` : ordenes.length} órdenes · ${pagadas} pagadas · ${vigentes.length - pagadas} por pagar${reemplazadas > 0 ? ` · ${reemplazadas} reemplazadas (no suman)` : ''}`}
         </div>
         {ordenes != null && (
           <div style={{ font: 'var(--text-label)', color: 'var(--ink-secondary)', marginTop: 6, display: 'flex', gap: isMobile ? 4 : 18, flexDirection: isMobile ? 'column' : 'row', flexWrap: 'wrap' }}>
             <span>Subtotal: <b style={{ color: 'var(--ink)' }}>{sumaPorMoneda(visibles)}</b></span>
-            <span>Por pagar: <b style={{ color: 'var(--ink)' }}>{sumaPorMoneda(visibles.filter(o => !o.pagada))}</b></span>
+            <span>Por pagar: <b style={{ color: 'var(--ink)' }}>{sumaPorMoneda(vigentes.filter(o => !o.pagada))}</b></span>
             {sinMonto > 0 && (
               <span style={{ color: 'var(--ink-tertiary)' }} title="El subtotal se lee del PDF de cada orden. Las que no traen el bloque de totales en el PDF se quedan sin monto.">
                 {enCurso > 0 ? `leyendo PDFs… faltan ${enCurso}` : `${sinMonto} sin monto (no suman)`}
@@ -186,9 +194,13 @@ export default function OcListaBoard({ onOpenProyecto }: Props) {
             <option value="no">Por pagar</option>
             <option value="si">Pagadas</option>
           </select>
+          <select aria-label="Vigencia" value={soloVigentes ? 'vigentes' : TODAS} onChange={(e) => setSoloVigentes(e.target.value === 'vigentes')} style={selectStyle}>
+            <option value={TODAS}>Órdenes: todas</option>
+            <option value="vigentes">Solo vigentes</option>
+          </select>
           {hayFiltro && (
             <button
-              onClick={() => { setQ(''); setZona(TODAS); setProveedor(TODAS); setPago(TODAS); }}
+              onClick={() => { setQ(''); setZona(TODAS); setProveedor(TODAS); setPago(TODAS); setSoloVigentes(false); }}
               style={{ ...linkStyle, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
             >
               Quitar filtros
@@ -245,10 +257,23 @@ function Fila({ o, ilegible, isMobile, onOpenProyecto, onToggle }: {
   );
   const subtotal = (
     <div
-      style={{ font: 'var(--text-body)', color: o.subtotal == null ? 'var(--ink-quiet)' : 'var(--ink)', textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}
-      title={o.subtotal != null && o.total != null ? `IVA ${fmtMoney2(o.iva ?? 0)} · Total ${fmtMoney2(o.total)}` : ilegible ? 'El PDF de esta orden no trae el bloque de totales.' : undefined}
+      style={{
+        font: 'var(--text-body)', color: o.subtotal == null || o.reemplazadaPor ? 'var(--ink-quiet)' : 'var(--ink)', textAlign: 'right',
+        fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', textDecoration: o.reemplazadaPor && o.subtotal != null ? 'line-through' : undefined,
+      }}
+      title={o.reemplazadaPor ? `No suma: la reemplazó ${o.reemplazadaPor}, la OC más reciente de este proveedor en el proyecto.` : o.subtotal != null && o.total != null ? `IVA ${fmtMoney2(o.iva ?? 0)} · Total ${fmtMoney2(o.total)}` : ilegible ? 'El PDF de esta orden no trae el bloque de totales.' : undefined}
     >
       {o.subtotal != null ? <>{fmtMoney2(o.subtotal)}{o.moneda && o.moneda !== 'MXN' ? <span style={{ color: 'var(--ink-tertiary)' }}> {o.moneda}</span> : null}</> : ilegible || !o.url ? '—' : '…'}
+    </div>
+  );
+  const folio = (
+    <div style={{ minWidth: 0 }}>
+      <MonoTag style={{ padding: 0 }}>{o.folio}</MonoTag>
+      {o.reemplazadaPor && (
+        <div style={{ font: 'var(--text-label)', color: 'var(--ink-quiet)', whiteSpace: 'nowrap' }} title={`Re-emisión: la vigente es ${o.reemplazadaPor}. No suma.`}>
+          → {o.reemplazadaPor}
+        </div>
+      )}
     </div>
   );
   const pdfs = (
@@ -268,7 +293,7 @@ function Fila({ o, ilegible, isMobile, onOpenProyecto, onToggle }: {
     return (
       <div style={{ padding: '12px 0', borderBottom: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 6 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-          <MonoTag style={{ padding: 0 }}>{o.folio}</MonoTag>
+          {folio}
           {pagada}
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
@@ -285,8 +310,8 @@ function Fila({ o, ilegible, isMobile, onOpenProyecto, onToggle }: {
   }
   return (
     <div style={{ display: 'grid', gridTemplateColumns: GRID, gap: 12, alignItems: 'center', padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
-      <MonoTag style={{ padding: 0 }}>{o.folio}</MonoTag>
-      <div style={{ font: 'var(--text-body)', color: 'var(--ink)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={o.proveedor}>{o.proveedor}</div>
+      {folio}
+      <div style={{ font: 'var(--text-body)', color: o.reemplazadaPor ? 'var(--ink-tertiary)' : 'var(--ink)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={o.proveedor}>{o.proveedor}</div>
       {proyecto}
       <div style={{ font: 'var(--text-label)', color: 'var(--ink-tertiary)' }}>{o.zona ?? SIN_ZONA}</div>
       {subtotal}

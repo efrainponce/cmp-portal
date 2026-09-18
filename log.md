@@ -2,6 +2,22 @@
 
 ## 2026-09-18
 
+- **Lista de OC: las re-emisiones no suman, solo la última OC** (Efraín: "no
+  sumes las reemisiones, solo la ultima OC"). Regla: dentro de un proyecto, la
+  OC de folio más alto de cada proveedor es la vigente y las anteriores quedan
+  `reemplazadaPor` (worker/lib/ocLista.ts `marcarReemplazadas`, pura, con test;
+  el proveedor se compara normalizado porque el saneo del nombre de archivo lo
+  escribe distinto). Se apoya en cómo funciona "Generar OC": rehace la orden
+  COMPLETA del proveedor. Las reemplazadas se siguen listando —el papel existe—
+  pero atenuadas, con "→ OC-317", el monto tachado y fuera de sumas y conteos;
+  filtro nuevo "Solo vigentes". Con datos reales: 269 órdenes → 162 vigentes +
+  107 reemplazadas; la suma baja de $41.66 M a $32.07 M MXN (y de 76.3 k a
+  67.5 k USD), igual en el server, en la pantalla y en una simulación aparte.
+  Límite medido y anotado en el código: en 14 de 102 pares la anterior y la
+  vigente tienen montos muy distintos (OC-85 $86 k y OC-100 $92 k → OC-109 $6 k;
+  OC-17 $471 k → OC-31 $328 k), que huele a orden complementaria y no a
+  corrección — la regla las deja fuera igual. Sin override por orden todavía.
+
 - **Lista de OC: subtotal por orden + tres bugs del tablero recién hecho**
   (Efraín: "agrega el subtotal").
   - **De dónde sale el subtotal — del PDF, no de las líneas.** Lo obvio era
