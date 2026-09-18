@@ -32,12 +32,21 @@ export const TEAM_ROLES: Role[] = ['vendedor', 'compras', 'almacen'];
 // tramo que le toca: subir OC/cotización firmada y confirmar tallas); compras
 // pierde ese acceso y ve el funnel completo en "Órdenes de Compra" (statuses
 // ampliados en src/lib/projectStages.ts).
+// 2026-09-18 (Efraín): de los boards de FLUJO, Compras se queda con DOS y nada
+// mas — "Costeo" en Ventas y "Reporte de Proyectos" en Proyectos. Los dos ya
+// listan TODO sin filtro de etapa (src/lib/dealStages.ts STAGE_BOARDS.costeo sin
+// `stages`, src/lib/projectStages.ts PROJECT_BOARDS.ejecucion sin `statuses`), y
+// el scoping por renglon ya los acota a lo suyo (worker/lib/dal.ts
+// comprasScopeFor, comprasCol en Oportunidades y Proyectos). Los CATALOGOS
+// (Productos, Instituciones, Contactos, Proveedores) se quedan — Efraín el mismo
+// dia: "esto si se queda". Ojo: quitarle 'inventario' no es solo declutter —
+// /api/inventario/* y el PDF de movimiento tambien lo checan
+// (worker/routes/inventario.ts, worker/lib/documents.ts) y ahora responden 403.
 export const DEFAULT_BOARD_ACCESS: Record<Role, readonly ConfigurableBoardKey[]> = {
   vendedor: ['oportunidades', 'oportunidades_web', 'doctallas',
     'productos', 'instituciones', 'contactos'],
-  compras: ['oportunidades', 'oportunidades_web', 'costeo', 'validacion',
-    'ordenescompra', 'ejecucion', 'logistica',
-    'productos', 'instituciones', 'contactos', 'proveedores', 'inventario'],
+  compras: ['costeo', 'ejecucion',
+    'productos', 'instituciones', 'contactos', 'proveedores'],
   almacen: ['inventario'],
   admin: BOARD_KEYS,
 };

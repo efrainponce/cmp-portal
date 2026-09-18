@@ -286,11 +286,11 @@ INSERT OR IGNORE INTO role_board_access (role, board_key) VALUES
   ('vendedor', 'oportunidades'), ('vendedor', 'oportunidades_web'),
   ('vendedor', 'doctallas'),
   ('vendedor', 'productos'), ('vendedor', 'instituciones'), ('vendedor', 'contactos'),
-  ('compras', 'oportunidades'), ('compras', 'oportunidades_web'),
-  ('compras', 'costeo'), ('compras', 'validacion'),
-  ('compras', 'ordenescompra'), ('compras', 'ejecucion'), ('compras', 'logistica'),
-  ('compras', 'productos'), ('compras', 'instituciones'), ('compras', 'contactos'),
-  ('compras', 'proveedores'), ('compras', 'inventario'),
+  -- compras (Efraín, 2026-09-18): solo estos dos boards de flujo + los
+  -- catálogos — ver shared/boardAccess.ts.
+  ('compras', 'costeo'), ('compras', 'ejecucion'),
+  ('compras', 'productos'), ('compras', 'instituciones'),
+  ('compras', 'contactos'), ('compras', 'proveedores'),
   ('almacen', 'inventario');
 
 -- Zonas de ventas (2026-07-30, worker/lib/zonas.ts). Ensanchan el scope de LECTURA del

@@ -27,6 +27,26 @@
   está quieta, así que no mide los brincos de una lista que se re-ordena con
   datos vivos — revisar Clarity por URL tras unos días con más pageviews.
 
+- **Compras se queda con DOS accesos: "Costeo" y "Reporte de Proyectos"**
+  (Efraín: "el equipo de compras SOLO NECESITA dos boards"). `shared/boardAccess.ts`
+  `DEFAULT_BOARD_ACCESS.compras = ['costeo', 'ejecucion']` + los catálogos, y el seed de
+  `worker/schema.sql` igual; aplicado también a la D1 de producción (la tabla
+  `role_board_access` es la que manda en vivo — el seed solo aplica a bases
+  nuevas). Compras pierde del nav: Oportunidades, Oportunidades Web, Validación
+  Costeo, Órdenes de Compra, Logística e Inventario. Los CATÁLOGOS (Productos,
+  Instituciones, Contactos, Proveedores) se quedan — Efraín el mismo día:
+  "esto sí se queda".
+- Los dos accesos que quedan ya listaban TODO sin filtro de etapa, no hizo falta
+  tocarlos: `STAGE_BOARDS.costeo` sin `stages` (pipeline completo desde
+  2026-08-12) y `PROJECT_BOARDS.ejecucion` sin `statuses` (desde 2026-08-13).
+  El "solo sus propios items" también estaba: `comprasScopeFor`
+  (`worker/lib/dal.ts`) acota por `comprasCol` en Oportunidades
+  (`multiple_person_mm03qyw9`) y en Proyectos (`project_owner`).
+- OJO, efecto real más allá del nav: quitarle `inventario` a compras apaga
+  `/api/inventario/*` y el PDF de movimiento de inventario (403 —
+  `worker/routes/inventario.ts`, `worker/lib/documents.ts`). Si Compras seguía
+  capturando movimientos, hay que devolverles ese acceso desde Configuración.
+
 ## 2026-09-17
 
 - **Tarjeta de tallas en NARANJA cuando sobran 1 a 3 piezas** (Efraín:
