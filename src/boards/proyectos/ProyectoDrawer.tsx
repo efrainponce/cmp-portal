@@ -100,6 +100,9 @@ interface Props {
 
 // SWR de sesión — mismo patrón que OpportunityDrawer.
 const detailCache = new Map<string, ItemDetailDTO>();
+// Oportunidad ligada por proyecto: la liga no cambia, y sin recordarla el link
+// "Ver Oportunidad…" aparecía tarde y empujaba las pestañas en cada apertura.
+const oportunidadCache = new Map<string, OportunidadLigadaDTO | null>();
 
 function Cargando() {
   return <div style={{ padding: 24, font: 'var(--text-label)', color: 'var(--ink-quiet)' }}>Cargando…</div>;
@@ -179,11 +182,12 @@ export function ProyectoDrawer({ id, boardKey, backLabel, defaultTab, openTab, o
   useEffect(() => {
     setItem(detailCache.get(id) ?? null);
     setTab(esTab(openTab) ? openTab : defaultTab as ProyectoTabKey);
-    setOportunidad(null);
-    setOppResuelta(false);
+    const oppPrevia = oportunidadCache.get(id);
+    setOportunidad(oppPrevia ?? null);
+    setOppResuelta(oppPrevia !== undefined);
     load();
     getProyectoOportunidad(id)
-      .then(setOportunidad)
+      .then((o) => { oportunidadCache.set(id, o); setOportunidad(o); })
       .catch(() => setOportunidad(null))
       .finally(() => setOppResuelta(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -246,12 +250,18 @@ export function ProyectoDrawer({ id, boardKey, backLabel, defaultTab, openTab, o
             </Button>
           </div>
         </div>
-        {oportunidad && (
+        {/* Mientras no se sabe si hay oportunidad ligada se aparta el renglón
+            (casi todos los proyectos la tienen): el link llegaba ~0.7 s después
+            y brincaba pestañas y contenido 21 px (medido, perf-cls.mjs). */}
+        {(oportunidad || !oppResuelta) && (
           <div
-            onClick={() => onOpenOportunidad(oportunidad.id)}
-            style={{ marginTop: 8, font: 'var(--text-label-strong)', color: 'var(--accent)', cursor: 'pointer', width: 'fit-content' }}
+            onClick={oportunidad ? () => onOpenOportunidad(oportunidad.id) : undefined}
+            style={{
+              marginTop: 8, font: 'var(--text-label-strong)', color: 'var(--accent)', cursor: 'pointer', width: 'fit-content',
+              visibility: oportunidad ? 'visible' : 'hidden',
+            }}
           >
-            Ver Oportunidad {oportunidad.folio || 'ligada'} (cotización, embellecimientos) ↗
+            Ver Oportunidad {oportunidad?.folio || 'ligada'} (cotización, embellecimientos) ↗
           </div>
         )}
       </div>

@@ -151,8 +151,8 @@ function CotizacionPreviewThumb({ oppId, hasLineas }: { oppId: string; hasLineas
  * (ver el filtro en CotizacionPdfRow más abajo), y el server la vuelve a filtrar
  * igual por rol (`DOC_TEMPLATES['validacion-costeo'].view`, worker/lib/documents.ts):
  * un vendedor nunca ve costos ni utilidad (Efraín, 2026-08-14).
- * `undefined` = todavía buscando el documento (evita parpadear "Sin PDF" antes
- * de saber si existe); la búsqueda es solo metadata (GET /api/documents), nunca
+ * `undefined` = todavía buscando el documento (cuadro vacío: evita parpadear
+ * "Sin PDF" antes de saber si existe); la búsqueda es solo metadata (GET /api/documents), nunca
  * los bytes del PDF — esos se piden hasta dar clic en "Ver", mismo criterio que
  * el resto de la fila. */
 function ValidacionCosteoThumb({ oppId }: { oppId: string }) {
@@ -167,7 +167,6 @@ function ValidacionCosteoThumb({ oppId }: { oppId: string }) {
     return () => { alive = false; };
   }, [oppId]);
 
-  if (doc === undefined) return null;
   const url = doc ? documentPdfUrl(doc, false) : '';
 
   return (
@@ -201,7 +200,10 @@ function ValidacionCosteoThumb({ oppId }: { oppId: string }) {
           width: 108, height: 92, border: '1px dashed var(--ink-faint)', borderRadius: 'var(--radius-lg)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: 8,
         }}>
-          <span style={{ font: 'var(--text-caption)', color: 'var(--ink-faint)' }}>Sin PDF</span>
+          {/* Buscando todavía: el cuadro ya ocupa su lugar (sin él, al llegar la
+              respuesta empujaba a Inventario un lugar a la derecha — medido,
+              perf-cls.mjs), pero sin decir "Sin PDF" antes de saberlo. */}
+          {doc === null && <span style={{ font: 'var(--text-caption)', color: 'var(--ink-faint)' }}>Sin PDF</span>}
         </div>
       )}
       {preview && doc && (

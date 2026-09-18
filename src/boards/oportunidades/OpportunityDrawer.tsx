@@ -81,6 +81,12 @@ const COMPRAS_COL = 'multiple_person_mm03qyw9'; // people ("Comprador")
 const CACHE_MAX = 6;
 const detailCache = new Map<string, ItemDetailDTO>();
 const versionsCache = new Map<string, QuoteVersionDTO[]>();
+// Último resultado del chequeo de "Mandar a costeo" por oportunidad. Sin él, el
+// aviso "Falta esto para…" aparecía ~1 s DESPUÉS de pintar el drawer y empujaba
+// pestañas y cotización ~90 px hacia abajo en cada apertura (medido,
+// perf-cls.mjs). Solo adelanta lo que se pinta: el chequeo se sigue pidiendo
+// igual y el server re-valida al enviar.
+const costeoCheckCache = new Map<string, { ok: boolean; errors?: string[] }>();
 
 /** set con tope LRU — Map preserva orden de inserción, así que re-insertar
  * manda la entrada al final y la primera llave es la más vieja. */
@@ -281,8 +287,10 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, openTab, onTabCha
       || COSTEO_STAGE_BLOCKED[stage ?? ''] || (stage !== '4' && !hayPendiente)) { setCosteoReady(null); return; }
     let cancelled = false;
     let ready = false;
+    const previo = costeoCheckCache.get(id);
+    if (previo) setCosteoReady(previo);
     const check = () => checkCosteo(id)
-      .then(r => { if (cancelled) return; setCosteoReady(r); ready = r.ok; })
+      .then(r => { if (cancelled) return; cacheSet(costeoCheckCache, id, r); setCosteoReady(r); ready = r.ok; })
       .catch(() => { if (!cancelled) { setCosteoReady({ ok: true }); ready = true; } }); // el server re-valida al enviar
     check();
     // Pestaña oculta: no gastes requests (mismo criterio que usePoll).
@@ -790,10 +798,16 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, openTab, onTabCha
           <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginTop: 4, font: 'var(--text-caption)', color: 'var(--ink-faint)' }}>
             {/* Mientras corre la relectura contra Monday el "sincronizado hace X"
                 mentiría — se muestra el estado real de la verificación. */}
-            {syncing
-              ? <span style={{ color: 'var(--accent)' }}>⟳ verificando con Monday…</span>
-              : <SyncIndicator syncedAt={item.syncedAt} pending={item.pendingWrite ? 1 : 0} />}
-            <span>·</span>
+            {/* En cel va en su propio renglón: "verificando…" y "sincronizado hace
+                X" miden distinto, y compartiendo renglón con Vendedor/Comprador
+                el cambio de uno a otro re-acomodaba el wrap y brincaba todo el
+                drawer ~22 px a los 4 s de abrirlo (medido, perf-cls.mjs). */}
+            <span style={isMobile ? { flexBasis: '100%' } : undefined}>
+              {syncing
+                ? <span style={{ color: 'var(--accent)' }}>⟳ verificando con Monday…</span>
+                : <SyncIndicator syncedAt={item.syncedAt} pending={item.pendingWrite ? 1 : 0} />}
+            </span>
+            {!isMobile && <span>·</span>}
             <span>
               Vendedor: <span style={{ color: 'var(--ink-tertiary)' }}>{item.cols[VENDEDOR_COL]?.text || '—'}</span>
             </span>

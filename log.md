@@ -1,5 +1,32 @@
 # Log de commits
 
+## 2026-09-18
+
+- **Brincos de pantalla (CLS) al abrir oportunidades y proyectos** (Efraín mandó
+  la captura de Clarity: LCP 0.7 s y INP 150 ms bien, CLS 0.69 mal, 3 pageviews).
+  Primero se midió: `scripts/perf-cls.mjs` (nuevo, hermano de `perf-bench.mjs`)
+  registra cada layout-shift con el nodo que se movió; por ruta o con `--flujo`
+  (abrir oportunidad → pestañas → reabrir → cambiar de board → abrir proyecto),
+  `--movil` para 390 px. Reporta el CLS de verdad (peor ventana de sesión) Y la
+  suma de todos los brincos — Clarity suma toda la visita, y en una SPA que vive
+  horas abierta eso es lo que crece. Resultado: la CARGA no brinca (≤0.02 en las
+  6 rutas, escritorio y cel — el redirect de `/` y el sidebar que el plan
+  sospechaba miden 0.001, no se tocaron); lo que brincaba era ABRIR cosas:
+  - Cel, drawer de oportunidad: "⟳ verificando con Monday…" → "sincronizado
+    hace X" re-acomodaba el wrap del renglón de Vendedor/Comprador y subía todo
+    el drawer 22 px a los ~4 s (0.10 por apertura). Ahora va en su propio renglón.
+  - Aviso "Falta esto para Mandar a costeo": llegaba ~1 s después de pintar y
+    empujaba pestañas y cotización ~90 px. `costeoCheckCache` (LRU de sesión)
+    lo pinta de entrada al REABRIR; la primera apertura todavía brinca (0.017).
+  - Drawer de proyecto: el link "Ver Oportunidad…" llegaba tarde (+21 px). Se
+    aparta el renglón mientras se resuelve + `oportunidadCache`.
+  - Cuadro "Validación" de la fila de PDFs: aparecía tarde y recorría a
+    Inventario un lugar. Ahora el cuadro ocupa su lugar vacío mientras busca.
+  Flujo completo, suma de brincos (red lenta, CPU 4x): cel 0.130 → 0.002;
+  escritorio 0.011 → 0.004. **No se reprodujo el 0.69 en local**: la D1 local
+  está quieta, así que no mide los brincos de una lista que se re-ordena con
+  datos vivos — revisar Clarity por URL tras unos días con más pageviews.
+
 ## 2026-09-17
 
 - **Tarjeta de tallas en NARANJA cuando sobran 1 a 3 piezas** (Efraín:
