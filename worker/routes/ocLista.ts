@@ -7,7 +7,7 @@ import type { Env } from '../env';
 import { getBoardAccess } from '../lib/boardAccess';
 import { jsonStatus, rejectUnknownQuery } from '../lib/http';
 import { errorInterno } from '../lib/errores';
-import { guardarPdfDatos, listarOrdenesCompra, marcarPagada, OcListaError } from '../lib/ocLista';
+import { etagOcLista, guardarPdfDatos, listarOrdenesCompra, marcarPagada, OcListaError } from '../lib/ocLista';
 
 async function requireAccess(c: Context<{ Bindings: Env }>): Promise<Response | null> {
   const access = await getBoardAccess(c.env, c.get('viewer').role);
@@ -22,6 +22,11 @@ export function ocListaRoutes(app: Hono<{ Bindings: Env }>) {
     const bad = rejectUnknownQuery(c.req.url, []);
     if (bad) return bad;
     try {
+      // El front refresca cada minuto: si nada cambió, 304 y no se arma nada.
+      const etag = await etagOcLista(c.env, c.get('viewer'));
+      if (c.req.header('If-None-Match') === etag) return c.body(null, 304);
+      c.header('ETag', etag);
+      c.header('Cache-Control', 'private, no-cache');
       return c.json({ ordenes: await listarOrdenesCompra(c.env, c.get('viewer')) });
     } catch (err) {
       return errorInterno(c, err, { error: 'internal error' });

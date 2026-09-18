@@ -602,6 +602,15 @@ CREATE TABLE IF NOT EXISTS oc_pago (
   updated_at TEXT NOT NULL
 );
 
+-- Cache del resumen de estados de las lineas de Proyecto para la Lista de OC
+-- (worker/lib/ocLista.ts lineasEstadoCacheadas): evita traer 7 MB de lineas en
+-- cada carga. `sello` = COUNT + MAX(synced_at) de proyectos_sub.
+CREATE TABLE IF NOT EXISTS oc_lista_cache (
+  clave TEXT PRIMARY KEY,
+  sello TEXT NOT NULL,
+  json  TEXT NOT NULL
+);
+
 -- Fecha y Subtotal / IVA / Total de cada OC, LEIDOS DE SU PDF
 -- (shared/ocMontoPdf.ts) por el navegador y asentados una vez. Fila = ese PDF ya
 -- se leyo; los totales pueden faltar (OC-200 a 205). Ligados al asset de Monday:

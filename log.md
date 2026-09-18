@@ -2,6 +2,30 @@
 
 ## 2026-09-18
 
+- **Lista de OC: "tarda en cargar" — medido y arreglado** (Efraín: "¿hay manera
+  de guardar la info en D1?"). Primero se midió, en producción:
+  - Lo que se sentía lento eran los PDFs: en prod se leen a ~1 por segundo
+    (Worker → Monday → S3), ~4.5 min para las 269, y solo mientras alguien tenga
+    la pestaña abierta; iba en 153. Las 153 que leyó el navegador en prod
+    salieron IDÉNTICAS a la lectura local (validación cruzada gratis), así que
+    se subieron las demás con `INSERT OR IGNORE` (sin pisar nada; solo filas
+    cuyo asset sigue vigente en prod — las 269). `oc_pdf_datos` quedó 269/269:
+    la carga ya no baja ningún PDF; de aquí en adelante solo las OC nuevas.
+  - La ruta traía las 1,910 líneas de Proyecto completas — 7.1 MB de JSON del
+    D1 al Worker — en cada carga y cada refresco de 60 s, para usar 4 campos.
+    Agregar en SQL con json_each se MIDIÓ y se descartó: 200-317 ms vs 165, y
+    70,627 filas leídas en vez de 1,911 (cuota de D1). Solución: el resumen de
+    estados se guarda agregado en D1 (`oc_lista_cache`, 26 KB) con un sello
+    COUNT+MAX(synced_at) de proyectos_sub; solo se rehace cuando el sync toca
+    alguna línea. Es global: el scoping ya lo decide `listItems`.
+  - `ETag`/`304` en `GET /api/oc-lista` (`etagOcLista`: proyectos del viewer +
+    líneas + pagos + PDFs leídos + ledger). El refresco de cada minuto ya no
+    arma nada si nada cambió; en 304 el front conserva lo de pantalla.
+  - Local con datos de prod: 72 ms → 17 ms, 304 en 3.6 ms, respuesta idéntica
+    byte a byte con y sin caché; marcar pagada invalida el ETag. El efecto en
+    prod es mayor (allá los 7 MB viajan por red) pero no se pudo medir: la
+    sesión de Access del perfil de pruebas está expirada.
+
 - **Lista de OC: la ven admin y compras** (Efraín: "este board solo lo ven
   admins y compras"). `oc_lista` entra a `DEFAULT_BOARD_ACCESS.compras` y al
   seed de `schema.sql`; vendedor y almacén siguen fuera, y como la ruta checa el

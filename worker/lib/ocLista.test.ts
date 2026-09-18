@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { MirrorItem } from '../../shared/types';
-import { conEstados, lineaEstadoDe, marcarReemplazadas, ordenesDeProyecto, porFechaDeCreacion, unaFilaPorFolio } from './ocLista';
+import { agruparLineas, conEstados, lineaEstadoDe, marcarReemplazadas, ordenesDeProyecto, porFechaDeCreacion, unaFilaPorFolio } from './ocLista';
 
 const M = 'https://mexicanaproteccion.monday.com/protected_static/1/resources';
 
@@ -151,5 +151,19 @@ describe('estado de los productos de la OC', () => {
     const lineas = [lineaEstadoDe(linea(555, 'GRUPO TEXTIL BEGOSA', 'GRUPO TEXTIL BEGOSA SA', 'Entregado', '5'))!];
     expect(conEstados(ordenes(['OC_OC-1_GRUPO.pdf']), lineas)[0].estados).toBeNull();
     expect(lineaEstadoDe(linea(555, '', '', 'Entregado', '5'))).toBeNull();
+  });
+
+  it('agruparLineas: lo que se guarda en caché da el MISMO estado que las líneas sueltas', () => {
+    const sueltas = [
+      linea(555, 'UNIMX', 'Diana Laura Morales del Razo', 'Entregado', '13'),
+      linea(555, 'UNIMX', 'Diana Laura Morales del Razo', 'Entregado', '34'),
+      linea(555, 'UNIMX', 'Diana Laura Morales del Razo', 'En tránsito', '21'),
+      linea(777, 'UNIMX', 'Diana Laura Morales del Razo', 'Entregado', '500'),
+    ].map(l => lineaEstadoDe(l)!);
+    const agrupadas = agruparLineas(sueltas);
+    expect(agrupadas).toHaveLength(3);
+    const oc = ordenes(['OC_OC-317_DIANA LAURA MORALES DEL RAZO.pdf']);
+    // Sobrevive a guardarse como JSON, que es como vive en oc_lista_cache.
+    expect(conEstados(oc, JSON.parse(JSON.stringify(agrupadas)))).toEqual(conEstados(oc, sueltas));
   });
 });

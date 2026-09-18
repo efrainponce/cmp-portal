@@ -1214,12 +1214,21 @@ export async function resetAssistant(): Promise<void> {
 
 export { mockBoardMeta };
 
+let ocListaEtag: string | undefined;
+
 /** Tablero "Lista de OC" (worker/lib/ocLista.ts): todas las órdenes de los
  * proyectos que el viewer puede leer. Truena en vez de devolver [] — una lista
- * vacía por un 403/500 se leería como "no hay órdenes". */
-export async function listOcLista(): Promise<OcListaRow[]> {
-  const res = await apiFetch('/oc-lista');
+ * vacía por un 403/500 se leería como "no hay órdenes".
+ *
+ * `null` = 304, nada cambió desde la última vez: quien llama se queda con lo
+ * que ya tiene en pantalla (que además trae sus cambios optimistas). Pasa
+ * `desdeCero` en la primera carga de la vista, que no tiene nada que conservar. */
+export async function listOcLista(desdeCero = false): Promise<OcListaRow[] | null> {
+  if (desdeCero) ocListaEtag = undefined;
+  const res = await apiFetch('/oc-lista', ocListaEtag ? { headers: { 'If-None-Match': ocListaEtag } } : undefined);
+  if (res.status === 304) return null;
   if (!res.ok) throw new Error(`No se pudo cargar la lista de OC (${res.status}).`);
+  ocListaEtag = res.headers.get('ETag') ?? undefined;
   const body: OcListaResponse = await res.json();
   return body.ordenes ?? [];
 }

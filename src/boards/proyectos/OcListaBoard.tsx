@@ -111,16 +111,17 @@ export default function OcListaBoard({ onOpenProyecto }: Props) {
     return next;
   });
 
-  const cargar = useCallback(async () => {
+  const cargar = useCallback(async (desdeCero = false) => {
     try {
-      setOrdenes(await listOcLista());
+      const nuevas = await listOcLista(desdeCero);
+      if (nuevas) setOrdenes(nuevas); // null = 304: lo de pantalla sigue vigente
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo cargar.');
     }
   }, []);
   useEffect(() => {
-    void cargar();
+    void cargar(true);
     const t = window.setInterval(() => { if (!document.hidden) void cargar(); }, 60_000);
     return () => window.clearInterval(t);
   }, [cargar]);

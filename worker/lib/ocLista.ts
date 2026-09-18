@@ -14,7 +14,7 @@
 import type { Env } from '../env';
 import type { Identity, MirrorItem } from '../../shared/types';
 import type { OcListaRow } from '../../shared/dto';
-import { listItems } from './dal';
+import { etagFor, listItems } from './dal';
 import { BOARDS } from '../../shared/boards';
 import { ensureOcLedger, numeroDeFolio, type OcEmitidaRow } from './ocLedger';
 import { fechaValida, montoCuadra } from '../../shared/ocMontoPdf';
@@ -57,6 +57,14 @@ async function ensureOcListaTables(env: Env): Promise<void> {
       asset_id   TEXT,
       por_email  TEXT,
       updated_at TEXT NOT NULL
+    )`),
+    // Resumen de estados de las líneas de Proyecto, ya agregado (ver
+    // lineasEstadoCacheadas). `sello` = cuántas líneas hay y cuándo se
+    // sincronizó la última: si cambia cualquiera, se recalcula.
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS oc_lista_cache (
+      clave TEXT PRIMARY KEY,
+      sello TEXT NOT NULL,
+      json  TEXT NOT NULL
     )`),
   ]);
   tablaLista = true;
@@ -207,29 +215,81 @@ export function conEstados(filas: OcListaRow[], lineas: LineaEstado[]): OcListaR
   });
 }
 
-/** Líneas de los proyectos dados. De a 80 ids: D1 topa ~100 binds por query. */
-async function lineasDeProyectos(env: Env, proyectoIds: string[]): Promise<LineaEstado[]> {
-  const out: LineaEstado[] = [];
-  for (let i = 0; i < proyectoIds.length; i += 80) {
-    const ids = proyectoIds.slice(i, i + 80).map(Number);
-    const { results } = await env.DB.prepare(
-      `SELECT * FROM items WHERE board_id = ? AND parent_item_id IN (${ids.map(() => '?').join(',')})`,
-    ).bind(BOARDS.proyectos_sub.id, ...ids).all<MirrorItem>();
-    for (const row of results ?? []) { const l = lineaEstadoDe(row); if (l) out.push(l); }
+/** Junta las líneas iguales (mismo proyecto, proveedor y estado) sumando
+ * piezas: ~1,900 líneas quedan en unos cientos de renglones. Pura. */
+export function agruparLineas(lineas: LineaEstado[]): LineaEstado[] {
+  const grupos = new Map<string, LineaEstado>();
+  for (const l of lineas) {
+    const k = `${l.proyectoId}|${l.proveedores.join('~')}|${l.estado}`;
+    const g = grupos.get(k);
+    if (g) g.piezas += l.piezas; else grupos.set(k, { ...l });
   }
-  return out;
+  return [...grupos.values()];
+}
+
+async function selloLineas(env: Env): Promise<string> {
+  const r = await env.DB.prepare('SELECT COUNT(*) AS c, MAX(synced_at) AS m FROM items WHERE board_id = ?')
+    .bind(BOARDS.proyectos_sub.id).first<{ c: number; m: string | null }>();
+  return `${r?.c ?? 0}:${r?.m ?? ''}`;
+}
+
+/** El resumen de estados de TODAS las líneas de Proyecto, guardado en D1.
+ *
+ * Medido en producción (2026-09-18, "tarda en cargar"): sacar el estado obligaba
+ * a traer las 1,910 líneas completas — 7.1 MB de JSON del D1 al Worker, y a
+ * parsearlos — en CADA carga y en cada refresco de 60 s, para usar 4 campos.
+ * Agregar en SQL con json_each se midió y se descartó: no era más rápido
+ * (200-317 ms vs 165) y leía 70,627 filas en vez de 1,911, que es cuota de D1.
+ * Así que se calcula una vez, se guarda agregado (decenas de KB) y solo se
+ * rehace cuando el sello cambia — es decir, cuando el sync tocó alguna línea.
+ *
+ * Es GLOBAL, no por viewer: el scoping ya lo hizo `listItems` al decidir qué
+ * proyectos entran, y `conEstados` solo busca en esos. */
+async function lineasEstadoCacheadas(env: Env): Promise<LineaEstado[]> {
+  const sello = await selloLineas(env);
+  const fila = await env.DB.prepare(`SELECT sello, json FROM oc_lista_cache WHERE clave = 'lineas-estado'`)
+    .first<{ sello: string; json: string }>();
+  if (fila?.sello === sello) {
+    try { return JSON.parse(fila.json) as LineaEstado[]; } catch { /* caché corrupta: se rehace */ }
+  }
+  const { results } = await env.DB.prepare('SELECT * FROM items WHERE board_id = ? AND parent_item_id IS NOT NULL')
+    .bind(BOARDS.proyectos_sub.id).all<MirrorItem>();
+  const lineas = agruparLineas((results ?? []).map(lineaEstadoDe).filter((l): l is LineaEstado => l != null));
+  await env.DB.prepare(
+    `INSERT INTO oc_lista_cache (clave, sello, json) VALUES ('lineas-estado', ?, ?)
+     ON CONFLICT(clave) DO UPDATE SET sello = excluded.sello, json = excluded.json`,
+  ).bind(sello, JSON.stringify(lineas)).run();
+  return lineas;
+}
+
+/** ETag de la lista: cambia si cambia algo de lo que la compone — los
+ * proyectos que ve ESTE viewer (etagFor ya trae su scope), las líneas, los
+ * pagos o lo leído de los PDFs. Con él, el refresco de cada minuto contesta 304
+ * sin tocar nada pesado. */
+export async function etagOcLista(env: Env, viewer: Identity): Promise<string> {
+  await Promise.all([ensureOcLedger(env), ensureOcListaTables(env)]);
+  const [proyectos, lineas, propias] = await Promise.all([
+    etagFor(env, 'proyectos', viewer),
+    selloLineas(env),
+    env.DB.prepare(
+      `SELECT (SELECT COUNT(*) || ':' || COALESCE(MAX(updated_at), '') FROM oc_pago)
+        || '|' || (SELECT COUNT(*) || ':' || COALESCE(MAX(updated_at), '') FROM oc_pdf_datos)
+        || '|' || (SELECT COUNT(*) || ':' || COALESCE(MAX(emitida_at), '') FROM oc_emitida) AS s`,
+    ).first<{ s: string }>(),
+  ]);
+  return `"oc-lista:${proyectos.replace(/"/g, '')}:${lineas}:${propias?.s ?? ''}"`;
 }
 
 /** Todas las OC de los proyectos que el viewer puede LEER (scoping de dal.ts),
  * de la más reciente a la más vieja (`porFechaDeCreacion`). */
 export async function listarOrdenesCompra(env: Env, viewer: Identity): Promise<OcListaRow[]> {
+  await Promise.all([ensureOcLedger(env), ensureOcListaTables(env)]);
   const proyectos = await listItems(env, 'proyectos', viewer);
   const base = marcarReemplazadas(unaFilaPorFolio(proyectos.flatMap(ordenesDeProyecto)));
-  // Solo líneas de proyectos que el viewer ya puede leer (los de `base`): el
-  // scoping de Proyectos se hereda, no se vuelve a decidir aquí.
-  const ordenes = conEstados(base, await lineasDeProyectos(env, [...new Set(base.map(o => o.proyectoId))]));
+  // `conEstados` solo mira los proyectos de `base` (los que el viewer ya puede
+  // leer): el scoping de Proyectos se hereda, no se vuelve a decidir aquí.
+  const ordenes = conEstados(base, await lineasEstadoCacheadas(env));
 
-  await Promise.all([ensureOcLedger(env), ensureOcListaTables(env)]);
   const [ledger, pagos, montos] = await Promise.all([
     env.DB.prepare(`SELECT folio, monto, moneda, emitida_at FROM oc_emitida WHERE motor != 'backfill'`)
       .all<Pick<OcEmitidaRow, 'folio' | 'monto' | 'moneda' | 'emitida_at'>>(),
