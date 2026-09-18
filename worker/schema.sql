@@ -602,14 +602,16 @@ CREATE TABLE IF NOT EXISTS oc_pago (
   updated_at TEXT NOT NULL
 );
 
--- Subtotal / IVA / Total de cada OC, LEIDOS DE SU PDF (shared/ocMontoPdf.ts) por
--- el navegador y asentados una vez. Ligados al asset de Monday: una orden
--- regenerada trae asset nuevo y se vuelve a leer.
-CREATE TABLE IF NOT EXISTS oc_monto (
+-- Fecha y Subtotal / IVA / Total de cada OC, LEIDOS DE SU PDF
+-- (shared/ocMontoPdf.ts) por el navegador y asentados una vez. Fila = ese PDF ya
+-- se leyo; los totales pueden faltar (OC-200 a 205). Ligados al asset de Monday:
+-- una orden regenerada trae asset nuevo y se vuelve a leer.
+CREATE TABLE IF NOT EXISTS oc_pdf_datos (
   folio      TEXT PRIMARY KEY,
-  subtotal   REAL NOT NULL,
-  iva        REAL NOT NULL,
-  total      REAL NOT NULL,
+  fecha      TEXT,
+  subtotal   REAL,
+  iva        REAL,
+  total      REAL,
   moneda     TEXT,
   asset_id   TEXT,
   por_email  TEXT,

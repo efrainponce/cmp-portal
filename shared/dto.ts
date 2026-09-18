@@ -725,8 +725,8 @@ export interface UpdateAbonoRequest { monto?: number; fecha?: string | null; fec
 export interface UpdateAbonoResponse { ok: boolean; error?: string }
 
 /** Una orden de compra del tablero "Lista de OC" (worker/lib/ocLista.ts). Sale
- * de la columna de archivos del Proyecto. subtotal/iva/total son lo que dice
- * el PDF (shared/ocMontoPdf.ts): null = todavía no se lee, o no se pudo leer. */
+ * de la columna de archivos del Proyecto. fecha/subtotal/iva/total son lo que
+ * dice el PDF (shared/ocMontoPdf.ts): null = todavía no se lee, o no lo trae. */
 export interface OcListaRow {
   folio: string;
   proveedor: string;
@@ -743,11 +743,14 @@ export interface OcListaRow {
   urlSinCostos: string | null;
   /** Asset de Monday del PDF con costos: a él queda ligado el monto leído. */
   assetId: string | null;
+  /** Fecha impresa en la orden, aaaa-mm-dd. */
+  fecha: string | null;
   subtotal: number | null;
   iva: number | null;
   total: number | null;
   moneda: string | null;
-  emitidaAt: string | null;
+  /** El PDF vigente ya se leyó (aunque no trajera totales): no se vuelve a bajar. */
+  pdfLeido: boolean;
   pagada: boolean;
 }
 export interface OcListaResponse { ordenes: OcListaRow[] }

@@ -2,6 +2,26 @@
 
 ## 2026-09-18
 
+- **Lista de OC: fecha, orden por fecha de creación y subtotal al pie**
+  (Efraín: "agrega fecha… ordenarlas por fecha de creación" y "el subtotal al
+  final, de todas las que vemos en los filtros").
+  - La fecha es la IMPRESA en la orden ("FECHA | 18-09-2026"), leída del PDF en
+    la misma pasada que los totales (`fechaDeTextoOc`). Medido: la traen los 269
+    PDFs —también OC-200 a 205, que no traen totales— y ordena igual que el
+    folio (cero inversiones), así que la lista ya estaba en orden de creación;
+    ahora el criterio es explícito (`porFechaDeCreacion`: fecha desc, folio de
+    desempate; una orden aún sin leer se acomoda por folio, no al fondo).
+  - `oc_monto` → `oc_pdf_datos` (nunca llegó a producción): una fila por PDF
+    LEÍDO, con fecha y totales opcionales. La fila es la marca de "ya leído"
+    (`pdfLeido`), lo que jubila el parche de localStorage de hace un rato: los
+    PDFs sin totales ya no se rebajan. Ruta: `PUT /api/oc-lista/:folio/pdf-datos`
+    (valida fecha de calendario y que las cifras cuadren).
+  - Pie sticky con el subtotal de lo filtrado, por moneda, solo vigentes; dice
+    cuántas reemplazadas y cuántas sin monto quedaron fuera. Verificado: con
+    Zona = Golfo el pie da $3,388,984.66 MXN + $5,883.00 USD, igual que el
+    cálculo aparte. Bug propio cazado en la captura: el padding inferior del
+    contenedor dejaba asomar una fila debajo del pie.
+
 - **Lista de OC: color a las re-emisiones dudosas, PDF en el lector del portal
   y chevron con lo que trae cada orden** (tres pedidos seguidos de Efraín).
   - "Vamos a dejarlo sin confirmar, solo con un pequeño color": las re-emisiones

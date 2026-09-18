@@ -16,7 +16,7 @@ import type { Identity, MirrorItem } from '../../shared/types';
 import type { OcListaRow } from '../../shared/dto';
 import { listItems } from './dal';
 import { ensureOcLedger, numeroDeFolio, type OcEmitidaRow } from './ocLedger';
-import { montoCuadra } from '../../shared/ocMontoPdf';
+import { fechaValida, montoCuadra } from '../../shared/ocMontoPdf';
 
 const PROYECTO_OC_PDF = 'file_mm0hj9pn';
 const PROYECTO_ZONA = 'dropdown_mm0hnyv';
@@ -38,12 +38,15 @@ async function ensureOcListaTables(env: Env): Promise<void> {
       updated_at TEXT NOT NULL
     )`),
     // Lo que dice el PDF de la orden (shared/ocMontoPdf.ts). Lo lee el
-    // navegador —pdfjs no corre en el Worker— y lo asienta una sola vez.
-    env.DB.prepare(`CREATE TABLE IF NOT EXISTS oc_monto (
+    // navegador —pdfjs no corre en el Worker— y lo asienta una sola vez. La
+    // fila existe = ese PDF ya se leyó; los totales pueden ir vacíos (OC-200 a
+    // 205 traen fecha pero no el bloque de totales).
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS oc_pdf_datos (
       folio      TEXT PRIMARY KEY,
-      subtotal   REAL NOT NULL,
-      iva        REAL NOT NULL,
-      total      REAL NOT NULL,
+      fecha      TEXT,
+      subtotal   REAL,
+      iva        REAL,
+      total      REAL,
       moneda     TEXT,
       asset_id   TEXT,
       por_email  TEXT,
@@ -94,7 +97,7 @@ export function ordenesDeProyecto(row: MirrorItem): OcListaRow[] {
         proyectoId: String(row.item_id), proyecto: row.name, proyectoFolio: texto(PROYECTO_FOLIO) || null,
         zona: texto(PROYECTO_ZONA) || null, tambienEn: [], reemplazadaPor: null,
         url: null, urlSinCostos: null, assetId: null,
-        subtotal: null, iva: null, total: null, moneda: null, emitidaAt: null, pagada: false,
+        fecha: null, subtotal: null, iva: null, total: null, moneda: null, pdfLeido: false, pagada: false,
       };
       porFolio.set(folio, fila);
     }
@@ -157,8 +160,7 @@ export function marcarReemplazadas(filas: OcListaRow[]): OcListaRow[] {
 }
 
 /** Todas las OC de los proyectos que el viewer puede LEER (scoping de dal.ts),
- * de la más reciente a la más vieja — el folio es global y nunca decrece, así
- * que ordena mejor que cualquier fecha (las del backfill comparten una sola). */
+ * de la más reciente a la más vieja (`porFechaDeCreacion`). */
 export async function listarOrdenesCompra(env: Env, viewer: Identity): Promise<OcListaRow[]> {
   const proyectos = await listItems(env, 'proyectos', viewer);
   const ordenes = marcarReemplazadas(unaFilaPorFolio(proyectos.flatMap(ordenesDeProyecto)));
@@ -168,23 +170,37 @@ export async function listarOrdenesCompra(env: Env, viewer: Identity): Promise<O
     env.DB.prepare(`SELECT folio, monto, moneda, emitida_at FROM oc_emitida WHERE motor != 'backfill'`)
       .all<Pick<OcEmitidaRow, 'folio' | 'monto' | 'moneda' | 'emitida_at'>>(),
     env.DB.prepare(`SELECT folio FROM oc_pago WHERE pagada = 1`).all<{ folio: string }>(),
-    env.DB.prepare(`SELECT folio, subtotal, iva, total, moneda, asset_id FROM oc_monto`)
-      .all<{ folio: string; subtotal: number; iva: number; total: number; moneda: string | null; asset_id: string | null }>(),
+    env.DB.prepare(`SELECT folio, fecha, subtotal, iva, total, moneda, asset_id FROM oc_pdf_datos`)
+      .all<{ folio: string; fecha: string | null; subtotal: number | null; iva: number | null; total: number | null; moneda: string | null; asset_id: string | null }>(),
   ]);
   const delLedger = new Map((ledger.results ?? []).map(r => [r.folio, r]));
   const pagadas = new Set((pagos.results ?? []).map(r => r.folio));
   const delPdf = new Map((montos.results ?? []).map(r => [r.folio, r]));
   for (const o of ordenes) {
     const l = delLedger.get(o.folio);
-    if (l) { o.emitidaAt = l.emitida_at; o.subtotal = l.monto; o.moneda = l.moneda; }
+    if (l) { o.fecha = l.emitida_at.slice(0, 10); o.subtotal = l.monto; o.moneda = l.moneda; }
     // Lo leído del PDF gana, y solo vale si es del asset que HOY está en la
     // columna. Por asset y no por nombre: una orden regenerada conserva el
     // nombre del archivo, pero Monday le da un asset nuevo — y se vuelve a leer.
     const m = delPdf.get(o.folio);
-    if (m && m.asset_id === o.assetId) { o.subtotal = m.subtotal; o.iva = m.iva; o.total = m.total; o.moneda = m.moneda ?? o.moneda; }
+    if (m && m.asset_id === o.assetId) {
+      o.pdfLeido = true;
+      o.fecha = m.fecha ?? o.fecha;
+      if (m.subtotal != null) { o.subtotal = m.subtotal; o.iva = m.iva; o.total = m.total; o.moneda = m.moneda ?? o.moneda; }
+    }
     o.pagada = pagadas.has(o.folio);
   }
-  return ordenes.sort((a, b) => numeroDeFolio(b.folio) - numeroDeFolio(a.folio));
+  return ordenes.sort(porFechaDeCreacion);
+}
+
+/** De la más reciente a la más vieja por la FECHA impresa en la orden (Efraín,
+ * 2026-09-18), con el folio de desempate — es global y nunca decrece, así que
+ * dentro de un mismo día sigue siendo el orden de creación. Una orden cuyo PDF
+ * aún no se lee no tiene fecha: se acomoda por folio junto a sus vecinas en vez
+ * de irse al fondo (medido: fecha y folio ordenan igual, cero inversiones). */
+export function porFechaDeCreacion(a: OcListaRow, b: OcListaRow): number {
+  if (a.fecha && b.fecha && a.fecha !== b.fecha) return a.fecha < b.fecha ? 1 : -1;
+  return numeroDeFolio(b.folio) - numeroDeFolio(a.folio);
 }
 
 async function ordenVisible(env: Env, viewer: Identity, folio: string): Promise<OcListaRow> {
@@ -205,23 +221,28 @@ export async function marcarPagada(env: Env, viewer: Identity, folio: string, pa
   ).bind(orden.folio, pagada ? 1 : 0, viewer.email, new Date().toISOString()).run();
 }
 
-export interface MontoInput { subtotal: number; iva: number; total: number; moneda?: string | null }
+export interface PdfDatosInput { fecha?: string | null; subtotal?: number | null; iva?: number | null; total?: number | null; moneda?: string | null }
 
-/** Asienta lo que el navegador leyó del PDF de la orden. El server no puede
- * releer el PDF, así que valida lo que sí puede: que la orden sea visible, que
- * las tres cifras cuadren entre sí y que la moneda tenga forma de moneda.
- * Queda ligado al asset vigente y a quien lo leyó. */
-export async function guardarMonto(env: Env, viewer: Identity, folio: string, input: MontoInput): Promise<void> {
+/** Asienta lo que el navegador leyó del PDF de la orden: fecha y totales. El
+ * server no puede releer el PDF, así que valida lo que sí puede: que la orden
+ * sea visible, que la fecha exista en el calendario, que las tres cifras
+ * cuadren entre sí y que la moneda tenga forma de moneda. Los totales son
+ * todo-o-nada; pueden faltar (PDF sin bloque de totales) y la fila igual se
+ * guarda, para no rebajar ese PDF en cada visita. Ligado al asset vigente. */
+export async function guardarPdfDatos(env: Env, viewer: Identity, folio: string, input: PdfDatosInput): Promise<void> {
   const orden = await ordenVisible(env, viewer, folio);
   if (!orden.url || !orden.assetId) throw new OcListaError('la orden no tiene PDF con costos');
-  const { subtotal, iva, total } = input;
-  if (![subtotal, iva, total].every(n => typeof n === 'number' && Number.isFinite(n)) || !montoCuadra(subtotal, iva, total)) {
+  const fecha = input.fecha ?? null;
+  if (fecha != null && !fechaValida(fecha)) throw new OcListaError('fecha inválida');
+  const { subtotal = null, iva = null, total = null } = input;
+  const hayTotales = subtotal != null || iva != null || total != null;
+  if (hayTotales && (![subtotal, iva, total].every(n => typeof n === 'number' && Number.isFinite(n)) || !montoCuadra(subtotal!, iva!, total!))) {
     throw new OcListaError('subtotal + IVA no da el total');
   }
-  const moneda = input.moneda && /^[A-Z]{3}$/.test(input.moneda) ? input.moneda : null;
+  const moneda = hayTotales && input.moneda && /^[A-Z]{3}$/.test(input.moneda) ? input.moneda : null;
   await env.DB.prepare(
-    `INSERT INTO oc_monto (folio, subtotal, iva, total, moneda, asset_id, por_email, updated_at) VALUES (?,?,?,?,?,?,?,?)
-     ON CONFLICT(folio) DO UPDATE SET subtotal = excluded.subtotal, iva = excluded.iva, total = excluded.total,
+    `INSERT INTO oc_pdf_datos (folio, fecha, subtotal, iva, total, moneda, asset_id, por_email, updated_at) VALUES (?,?,?,?,?,?,?,?,?)
+     ON CONFLICT(folio) DO UPDATE SET fecha = excluded.fecha, subtotal = excluded.subtotal, iva = excluded.iva, total = excluded.total,
        moneda = excluded.moneda, asset_id = excluded.asset_id, por_email = excluded.por_email, updated_at = excluded.updated_at`,
-  ).bind(orden.folio, subtotal, iva, total, moneda, orden.assetId, viewer.email, new Date().toISOString()).run();
+  ).bind(orden.folio, fecha, subtotal, iva, total, moneda, orden.assetId, viewer.email, new Date().toISOString()).run();
 }

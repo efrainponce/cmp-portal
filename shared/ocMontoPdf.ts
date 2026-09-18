@@ -43,3 +43,21 @@ export function montoDeTextoOc(texto: string): OcMontoPdf | null {
 export function montoCuadra(subtotal: number, iva: number, total: number): boolean {
   return Math.abs(subtotal + iva - total) <= 0.02;
 }
+
+/** La FECHA impresa en la orden ("FECHA | 18-09-2026", dd-mm-aaaa) como
+ * aaaa-mm-dd. La traen los 269 PDFs del 2026-09-18 —también OC-200 a 205, que
+ * no traen totales— y ordena igual que el folio (cero inversiones ese día).
+ * null si no aparece o no es una fecha de verdad. Pura. */
+export function fechaDeTextoOc(texto: string): string | null {
+  const m = /\bFECHA\b[\s|:]*(\d{2})-(\d{2})-(\d{4})/i.exec(texto);
+  if (!m) return null;
+  const iso = `${m[3]}-${m[2]}-${m[1]}`;
+  return fechaValida(iso) ? iso : null;
+}
+
+/** aaaa-mm-dd que existe en el calendario (no 31-02) y no es un disparate. */
+export function fechaValida(iso: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return false;
+  const d = new Date(`${iso}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === iso && iso >= '2020-01-01';
+}

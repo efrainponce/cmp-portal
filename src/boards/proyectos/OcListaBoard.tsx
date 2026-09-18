@@ -8,7 +8,7 @@
 // pregunta típica es "¿dónde está la OC tal?".
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { OcListaRow } from '../../../shared/dto';
-import { listOcLista, setOcMonto, setOcPagada } from '../../lib/apiClient';
+import { listOcLista, setOcPdfDatos, setOcPagada } from '../../lib/apiClient';
 import { fmtMoney2 } from '../../lib/format';
 import { esReemplazoDudoso } from '../../../shared/ocReemplazo';
 import { lineasCuadran, type OcLineasPdf } from '../../../shared/ocLineasPdf';
@@ -20,26 +20,30 @@ import { textIncludes } from '../../lib/textMatch';
 
 const TODAS = '__todas__';
 const SIN_ZONA = 'Sin zona';
-const GRID = '16px 76px 1.2fr 1.5fr 0.6fr 130px 120px 90px';
+const GRID = '16px 76px 78px 1.2fr 1.5fr 0.6fr 130px 120px 90px';
 const GRID_LINEAS = '1.6fr 1.1fr 0.9fr 60px 90px 60px 100px';
 
-/** PDFs que ya se abrieron y no traen totales legibles (OC-200 a 205 salieron
- * sin el bloque): no se vuelven a bajar en cada visita. En localStorage y no
- * en sessionStorage — con sesión, cada pestaña nueva los rebajaba. Por asset,
- * para que una orden regenerada sí se reintente. */
-const ILEGIBLES_KEY = 'cmp:oc-lista:ilegibles';
-function ilegiblesGuardados(): Set<string> {
-  try { return new Set(JSON.parse(localStorage.getItem(ILEGIBLES_KEY) ?? '[]') as string[]); } catch { return new Set(); }
+const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+/** aaaa-mm-dd → "18 sep 26". A mano y no con Date: una fecha sin hora pasada
+ * por Date se recorre un día en zonas al oeste de UTC (México). */
+function fmtFechaOc(iso: string): string {
+  const [a, m, d] = iso.split('-');
+  return `${Number(d)} ${MESES[Number(m) - 1] ?? m} ${a.slice(2)}`;
+}
+
+/** Subtotal por moneda de las órdenes que SUMAN (vigentes con monto leído). */
+function totalesPorMoneda(filas: OcListaRow[]): [string, number][] {
+  const porMoneda = new Map<string, number>();
+  for (const o of filas) if (o.subtotal != null && !o.reemplazadaPor) porMoneda.set(o.moneda ?? 'MXN', (porMoneda.get(o.moneda ?? 'MXN') ?? 0) + o.subtotal);
+  return [...porMoneda].sort(([a], [b]) => a.localeCompare(b));
 }
 
 /** Suma por moneda: las OC en dólares no se mezclan con las de pesos. Las
  * re-emisiones no entran: de cada proveedor en un proyecto solo cuenta la
  * última OC (Efraín, 2026-09-18). */
 function sumaPorMoneda(filas: OcListaRow[]): string {
-  const porMoneda = new Map<string, number>();
-  for (const o of filas) if (o.subtotal != null && !o.reemplazadaPor) porMoneda.set(o.moneda ?? 'MXN', (porMoneda.get(o.moneda ?? 'MXN') ?? 0) + o.subtotal);
-  if (porMoneda.size === 0) return '—';
-  return [...porMoneda].sort(([a], [b]) => a.localeCompare(b)).map(([m, n]) => `${fmtMoney2(n)} ${m}`).join(' + ');
+  const t = totalesPorMoneda(filas);
+  return t.length === 0 ? '—' : t.map(([m, n]) => `${fmtMoney2(n)} ${m}`).join(' + ');
 }
 
 const selectStyle: React.CSSProperties = {
@@ -88,12 +92,11 @@ export default function OcListaBoard({ onOpenProyecto }: Props) {
     return () => window.clearInterval(t);
   }, [cargar]);
 
-  // Subtotales: los que faltan se leen del PDF en segundo plano, de a dos, y se
+  // Fecha y subtotal: lo que falta se lee del PDF en segundo plano, de a dos, y se
   // asientan en el server — cada orden se lee UNA vez en la vida, no por visita.
   // La cola vive en refs y NO en el efecto: cada lectura exitosa cambia
   // `ordenes`, y si los trabajadores colgaran del cleanup del efecto se
   // cancelarían a sí mismos después de la primera orden.
-  const [ilegibles, setIlegibles] = useState<Set<string>>(ilegiblesGuardados);
   const vistos = useRef(new Set<string>());
   const cola = useRef<OcListaRow[]>([]);
   const trabajadores = useRef(0);
@@ -104,21 +107,19 @@ export default function OcListaBoard({ onOpenProyecto }: Props) {
   const trabajar = useCallback(async () => {
     trabajadores.current++;
     try {
-      const { leerMontoDeOc } = await import('../../lib/ocPdfMonto');
+      const { leerDatosDeOc } = await import('../../lib/ocPdfMonto');
       for (let orden = cola.current.shift(); orden && montado.current; orden = cola.current.shift()) {
         const { folio, url, assetId } = orden;
         try {
-          const m = await leerMontoDeOc(url!);
-          if (m) {
-            await setOcMonto(folio, m);
-            setOrdenes(prev => prev?.map(x => (x.folio === folio ? { ...x, ...m, moneda: m.moneda ?? x.moneda } : x)) ?? prev);
-          } else {
-            setIlegibles(prev => {
-              const next = new Set(prev).add(assetId!);
-              localStorage.setItem(ILEGIBLES_KEY, JSON.stringify([...next]));
-              return next;
-            });
-          }
+          const { fecha, monto } = await leerDatosDeOc(url!);
+          // Se asienta SIEMPRE, aunque el PDF no traiga totales: la fila es la
+          // marca de "ya leído" y evita rebajarlo en cada visita.
+          await setOcPdfDatos(folio, {
+            fecha, subtotal: monto?.subtotal ?? null, iva: monto?.iva ?? null, total: monto?.total ?? null, moneda: monto?.moneda ?? null,
+          });
+          setOrdenes(prev => prev?.map(x => (x.folio === folio
+            ? { ...x, pdfLeido: true, fecha: fecha ?? x.fecha, ...(monto ? { ...monto, moneda: monto.moneda ?? x.moneda } : {}) }
+            : x)) ?? prev);
         } catch {
           // Red o PDF caído: se suelta para reintentarlo en la próxima carga.
           vistos.current.delete(assetId!);
@@ -131,14 +132,13 @@ export default function OcListaBoard({ onOpenProyecto }: Props) {
   }, []);
 
   useEffect(() => {
-    const nuevas = (ordenes ?? []).filter(o => o.subtotal == null && o.url && o.assetId
-      && !ilegibles.has(o.assetId) && !vistos.current.has(o.assetId));
+    const nuevas = (ordenes ?? []).filter(o => !o.pdfLeido && o.url && o.assetId && !vistos.current.has(o.assetId));
     if (nuevas.length === 0) return;
     for (const o of nuevas) vistos.current.add(o.assetId!);
     cola.current.push(...nuevas);
     setEnCurso(cola.current.length);
     while (trabajadores.current < 2) void trabajar();
-  }, [ordenes, ilegibles, trabajar]);
+  }, [ordenes, trabajar]);
 
   const zonas = useMemo(() => [...new Set((ordenes ?? []).map(o => o.zona ?? SIN_ZONA))].sort(), [ordenes]);
   const proveedores = useMemo(() => [...new Set((ordenes ?? []).map(o => o.proveedor))].sort(), [ordenes]);
@@ -235,14 +235,16 @@ export default function OcListaBoard({ onOpenProyecto }: Props) {
         </div>
       </div>
 
-      <div style={{ overflowY: 'auto', flex: 1, padding: isMobile ? '4px 14px 16px' : '0 32px 24px' }}>
+      {/* Sin padding abajo: el pie de totales es sticky y el padding del contenedor
+          dejaba asomar una fila por debajo de él. */}
+      <div style={{ overflowY: 'auto', flex: 1, padding: isMobile ? '4px 14px 0' : '0 32px 0' }}>
         {error && <div style={{ padding: '16px 0', font: 'var(--text-label)', color: 'var(--danger, #b42318)' }}>{error}</div>}
         {!isMobile && ordenes != null && (
           <div style={{
             display: 'grid', gridTemplateColumns: GRID, gap: 12, padding: '12px 0 8px', position: 'sticky', top: 0,
             background: 'var(--bg)', borderBottom: '1px solid var(--border)', font: 'var(--text-label)', color: 'var(--ink-tertiary)', zIndex: 1,
           }}>
-            <div /><div>Folio</div><div>Proveedor</div><div>Proyecto</div><div>Zona</div><div style={{ textAlign: 'right' }}>Subtotal</div><div>PDF</div><div>Pagada</div>
+            <div /><div>Folio</div><div>Fecha</div><div>Proveedor</div><div>Proyecto</div><div>Zona</div><div style={{ textAlign: 'right' }}>Subtotal</div><div>PDF</div><div>Pagada</div>
           </div>
         )}
         {ordenes != null && visibles.length === 0 && !error && (
@@ -251,8 +253,28 @@ export default function OcListaBoard({ onOpenProyecto }: Props) {
           </div>
         )}
         {visibles.map(o => (
-          <Fila key={o.folio} o={o} dudosa={dudosas.has(o.folio)} ilegible={!!o.assetId && ilegibles.has(o.assetId)} isMobile={isMobile} onOpenProyecto={onOpenProyecto} onVer={setViendo} abierta={abiertas.has(o.folio)} onAbrir={() => toggleAbierta(o.folio)} onToggle={() => void togglePagada(o)} />
+          <Fila key={o.folio} o={o} dudosa={dudosas.has(o.folio)} ilegible={o.pdfLeido && o.subtotal == null} isMobile={isMobile} onOpenProyecto={onOpenProyecto} onVer={setViendo} abierta={abiertas.has(o.folio)} onAbrir={() => toggleAbierta(o.folio)} onToggle={() => void togglePagada(o)} />
         ))}
+        {/* Total de lo que deja ver el filtro (Efraín, 2026-09-18). Pegado abajo:
+            con 269 filas, un total al final de la lista no lo vería nadie. */}
+        {visibles.length > 0 && (
+          <div style={{
+            position: 'sticky', bottom: 0, zIndex: 1, background: 'var(--bg)', borderTop: '1px solid var(--border)',
+            marginTop: -1, padding: '10px 0', display: isMobile ? 'flex' : 'grid', gridTemplateColumns: GRID, gap: 12,
+            justifyContent: 'space-between', alignItems: 'start', font: 'var(--text-label)', color: 'var(--ink-secondary)',
+          }}>
+            <div style={isMobile ? undefined : { gridColumn: '1 / 7' }}>
+              Subtotal de {vigentes.length} {vigentes.length === 1 ? 'orden' : 'órdenes'}{hayFiltro ? ' (con los filtros de arriba)' : ''}
+              {reemplazadas > 0 ? ` · ${reemplazadas} reemplazadas no suman` : ''}
+              {sinMonto > 0 ? ` · ${sinMonto} sin monto` : ''}
+            </div>
+            <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', font: 'var(--text-body)', color: 'var(--ink)', fontWeight: 600 }}>
+              {totalesPorMoneda(vigentes).length === 0 ? '—' : totalesPorMoneda(vigentes).map(([m, n]) => (
+                <div key={m}>{fmtMoney2(n)} <span style={{ color: 'var(--ink-tertiary)', fontWeight: 400 }}>{m}</span></div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
       {viendo && <FilePreviewModal url={viendo} onClose={() => setViendo(null)} />}
     </div>
@@ -323,6 +345,11 @@ function Fila({ o, dudosa, ilegible, isMobile, onOpenProyecto, onVer, abierta, o
       )}
     </div>
   );
+  const fecha = (
+    <div style={{ font: 'var(--text-label)', color: 'var(--ink-tertiary)', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }} title={o.fecha ? 'Fecha impresa en la orden' : undefined}>
+      {o.fecha ? fmtFechaOc(o.fecha) : o.pdfLeido || !o.url ? '—' : '…'}
+    </div>
+  );
   const pdfs = (
     <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
       {o.url && <button onClick={() => onVer(o.url!)} style={botonLink}>Ver OC</button>}
@@ -340,7 +367,7 @@ function Fila({ o, dudosa, ilegible, isMobile, onOpenProyecto, onVer, abierta, o
     return (
       <div style={{ padding: '12px 0', borderBottom: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 6 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>{chevron}{folio}</div>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>{chevron}{folio}{fecha}</div>
           {pagada}
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
@@ -361,6 +388,7 @@ function Fila({ o, dudosa, ilegible, isMobile, onOpenProyecto, onVer, abierta, o
     <div style={{ display: 'grid', gridTemplateColumns: GRID, gap: 12, alignItems: 'center', padding: '10px 0' }}>
       {chevron}
       {folio}
+      {fecha}
       <div style={{ font: 'var(--text-body)', color: o.reemplazadaPor ? 'var(--ink-tertiary)' : 'var(--ink)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={o.proveedor}>{o.proveedor}</div>
       {proyecto}
       <div style={{ font: 'var(--text-label)', color: 'var(--ink-tertiary)' }}>{o.zona ?? SIN_ZONA}</div>

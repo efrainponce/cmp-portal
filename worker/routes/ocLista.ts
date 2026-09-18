@@ -7,7 +7,7 @@ import type { Env } from '../env';
 import { getBoardAccess } from '../lib/boardAccess';
 import { jsonStatus, rejectUnknownQuery } from '../lib/http';
 import { errorInterno } from '../lib/errores';
-import { guardarMonto, listarOrdenesCompra, marcarPagada, OcListaError } from '../lib/ocLista';
+import { guardarPdfDatos, listarOrdenesCompra, marcarPagada, OcListaError } from '../lib/ocLista';
 
 async function requireAccess(c: Context<{ Bindings: Env }>): Promise<Response | null> {
   const access = await getBoardAccess(c.env, c.get('viewer').role);
@@ -42,16 +42,18 @@ export function ocListaRoutes(app: Hono<{ Bindings: Env }>) {
     }
   });
 
-  // Lo que el navegador leyó del PDF (shared/ocMontoPdf.ts) — pdfjs no corre
-  // en el Worker. El server valida que las cifras cuadren entre sí.
-  app.put('/api/oc-lista/:folio/monto', async c => {
+  // Lo que el navegador leyó del PDF (shared/ocMontoPdf.ts): fecha y totales —
+  // pdfjs no corre en el Worker. El server valida fecha y que las cifras cuadren.
+  app.put('/api/oc-lista/:folio/pdf-datos', async c => {
     const denied = await requireAccess(c);
     if (denied) return denied;
-    const body = await c.req.json<{ subtotal?: unknown; iva?: unknown; total?: unknown; moneda?: unknown }>().catch(() => null);
-    if (!body) return jsonStatus({ error: 'body inválido' }, 400);
+    const body = await c.req.json<Record<string, unknown>>().catch(() => null);
+    if (!body || typeof body !== 'object') return jsonStatus({ error: 'body inválido' }, 400);
+    const n = (v: unknown) => (typeof v === 'number' ? v : v == null ? null : NaN);
     try {
-      await guardarMonto(c.env, c.get('viewer'), c.req.param('folio'), {
-        subtotal: body.subtotal as number, iva: body.iva as number, total: body.total as number,
+      await guardarPdfDatos(c.env, c.get('viewer'), c.req.param('folio'), {
+        fecha: typeof body.fecha === 'string' ? body.fecha : null,
+        subtotal: n(body.subtotal), iva: n(body.iva), total: n(body.total),
         moneda: typeof body.moneda === 'string' ? body.moneda : null,
       });
       return c.json({ ok: true });

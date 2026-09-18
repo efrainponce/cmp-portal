@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { MirrorItem } from '../../shared/types';
-import { marcarReemplazadas, ordenesDeProyecto, unaFilaPorFolio } from './ocLista';
+import { marcarReemplazadas, ordenesDeProyecto, porFechaDeCreacion, unaFilaPorFolio } from './ocLista';
 
 const M = 'https://mexicanaproteccion.monday.com/protected_static/1/resources';
 
@@ -93,5 +93,20 @@ describe('marcarReemplazadas', () => {
   it('el saneo del nombre de archivo no parte al proveedor en dos', () => {
     const out = marcarReemplazadas(filas(555, ['OC_OC-21_5_11 Tactical de México SA.pdf', 'OC_OC-31_5 11 TACTICAL DE MEXICO SA.pdf']));
     expect(out.find(o => o.folio === 'OC-21')?.reemplazadaPor).toBe('OC-31');
+  });
+});
+
+describe('porFechaDeCreacion', () => {
+  const fila = (folio: string, fecha: string | null) =>
+    ({ ...ordenesDeProyecto(proyecto([{ id: 'file_mm0hj9pn', text: `${M}/1/OC_${folio}_ACME.pdf` }]))[0], fecha });
+
+  it('la más reciente primero; mismo día → folio más alto primero', () => {
+    const out = [fila('OC-10', '2026-09-01'), fila('OC-12', '2026-09-18'), fila('OC-11', '2026-09-18')].sort(porFechaDeCreacion);
+    expect(out.map(o => o.folio)).toEqual(['OC-12', 'OC-11', 'OC-10']);
+  });
+
+  it('una orden sin fecha (PDF aún sin leer) se acomoda por folio, no se va al fondo', () => {
+    const out = [fila('OC-10', '2026-09-01'), fila('OC-11', null), fila('OC-12', '2026-09-18')].sort(porFechaDeCreacion);
+    expect(out.map(o => o.folio)).toEqual(['OC-12', 'OC-11', 'OC-10']);
   });
 });

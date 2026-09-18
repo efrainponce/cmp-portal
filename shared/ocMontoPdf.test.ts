@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { montoDeTextoOc, montoCuadra } from './ocMontoPdf';
+import { fechaDeTextoOc, fechaValida, montoDeTextoOc, montoCuadra } from './ocMontoPdf';
 
 // Textos REALES, tal como los entrega pdfjs (fragmentos unidos con " | ").
 const LINEAS = 'PRODUCTO | MODELO/COLOR | UNIDAD | MONEDA | TALLA | CANTIDAD | PRECIO | DESCUENTO | SUBTOTAL | Sudadera | AZUL | PIEZA | MXN | CH | 13 | $295.00 | 0% | $3,835.00 | ';
@@ -38,5 +38,17 @@ describe('montoDeTextoOc', () => {
     expect(montoDeTextoOc(LINEAS + 'SUBTOTAL | IVA (16%) | TOTAL | $100.00 | $16.00 | $999.00')).toBeNull();
     expect(montoCuadra(100, 16, 116.01)).toBe(true);
     expect(montoCuadra(100, 16, 117)).toBe(false);
+  });
+});
+
+describe('fechaDeTextoOc', () => {
+  it('lee la fecha impresa (texto real de OC-317) como aaaa-mm-dd', () => {
+    expect(fechaDeTextoOc('Elizabeth Ocaña Roldan |  | FOLIO ORDEN |  | OC-317 |  | FECHA |  | 18-09-2026 |  | PRODUCTO')).toBe('2026-09-18');
+  });
+  it('sin rótulo FECHA, o con una fecha imposible → null', () => {
+    expect(fechaDeTextoOc('FOLIO ORDEN | OC-1 | 18-09-2026')).toBeNull();
+    expect(fechaDeTextoOc('FECHA | 31-02-2026')).toBeNull();
+    expect(fechaValida('2026-13-01')).toBe(false);
+    expect(fechaValida('2026-09-18')).toBe(true);
   });
 });

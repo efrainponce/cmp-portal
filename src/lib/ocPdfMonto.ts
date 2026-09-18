@@ -3,14 +3,17 @@
 // SIEMPRE con import() dinámico desde OcListaBoard, nunca estático.
 import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
-import { montoDeTextoOc, type OcMontoPdf } from '../../shared/ocMontoPdf';
+import { fechaDeTextoOc, montoDeTextoOc, type OcMontoPdf } from '../../shared/ocMontoPdf';
 import { lineasDeItemsOc, type OcLineasPdf, type PdfItem } from '../../shared/ocLineasPdf';
 
 GlobalWorkerOptions.workerSrc = workerUrl;
 
-/** null = el PDF se abrió pero no trae un bloque de totales que cuadre.
- * Truena si el PDF no se pudo bajar o abrir (eso sí se reintenta otro día). */
-export async function leerMontoDeOc(url: string): Promise<OcMontoPdf | null> {
+export interface OcPdfDatos { fecha: string | null; monto: OcMontoPdf | null }
+
+/** Fecha y totales impresos en la orden. Cada uno puede venir null (OC-200 a
+ * 205 traen fecha pero no el bloque de totales). Truena si el PDF no se pudo
+ * bajar o abrir — eso sí se reintenta en otra visita. */
+export async function leerDatosDeOc(url: string): Promise<OcPdfDatos> {
   const res = await fetch(url, { credentials: 'same-origin' });
   if (!res.ok) throw new Error(`PDF ${res.status}`);
   const tarea = getDocument({ data: new Uint8Array(await res.arrayBuffer()) });
@@ -21,7 +24,7 @@ export async function leerMontoDeOc(url: string): Promise<OcMontoPdf | null> {
       const contenido = await (await doc.getPage(i)).getTextContent();
       texto += contenido.items.map(it => ('str' in it ? it.str : '')).filter(s => s.trim()).join(' | ') + '\n';
     }
-    return montoDeTextoOc(texto);
+    return { fecha: fechaDeTextoOc(texto), monto: montoDeTextoOc(texto) };
   } finally {
     void tarea.destroy();
   }
