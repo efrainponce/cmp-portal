@@ -2,6 +2,19 @@
 
 ## 2026-09-18
 
+- **Lista de OC: la ven admin y compras** (Efraín: "este board solo lo ven
+  admins y compras"). `oc_lista` entra a `DEFAULT_BOARD_ACCESS.compras` y al
+  seed de `schema.sql`; vendedor y almacén siguen fuera, y como la ruta checa el
+  acceso, reciben 403 (no es solo el nav). Probado en local con las 5
+  identidades reales de compras: entran, y el scoping de Proyectos
+  (`comprasScopeFor`) le da a cada quien las OC de SUS proyectos — 46, 41, 87,
+  74 y 0 — no las 269 que ve un admin; dos vendedores, 403. OJO al desplegar:
+  en producción manda la tabla `role_board_access`, no el seed (INSERT OR IGNORE
+  no toca una base que ya tiene filas de compras) — falta correr allá
+  `INSERT OR IGNORE INTO role_board_access (role, board_key) VALUES ('compras','oc_lista')`
+  o prenderlo desde la matriz de Configuración. No se corrió todavía: sin el
+  deploy no hace nada.
+
 - **Lista de OC: estado de los productos + selector de columnas reutilizable**
   (Efraín: "jalar el estado de los productos, si ya está entregado o no" y "un
   tooltip para agregar o quitar columnas… podría servir para todos los boards").

@@ -286,9 +286,9 @@ INSERT OR IGNORE INTO role_board_access (role, board_key) VALUES
   ('vendedor', 'oportunidades'), ('vendedor', 'oportunidades_web'),
   ('vendedor', 'doctallas'),
   ('vendedor', 'productos'), ('vendedor', 'instituciones'), ('vendedor', 'contactos'),
-  -- compras (Efraín, 2026-09-18): solo estos dos boards de flujo + los
-  -- catálogos — ver shared/boardAccess.ts.
-  ('compras', 'costeo'), ('compras', 'ejecucion'),
+  -- compras (Efraín, 2026-09-18): costeo, reporte de proyectos y la lista de
+  -- OC + los catálogos — ver shared/boardAccess.ts.
+  ('compras', 'costeo'), ('compras', 'ejecucion'), ('compras', 'oc_lista'),
   ('compras', 'productos'), ('compras', 'instituciones'),
   ('compras', 'contactos'), ('compras', 'proveedores'),
   ('almacen', 'inventario');

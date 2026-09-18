@@ -42,14 +42,16 @@ export const TEAM_ROLES: Role[] = ['vendedor', 'compras', 'almacen'];
 // dia: "esto si se queda". Ojo: quitarle 'inventario' no es solo declutter —
 // /api/inventario/* y el PDF de movimiento tambien lo checan
 // (worker/routes/inventario.ts, worker/lib/documents.ts) y ahora responden 403.
-// 2026-09-18 (Elisa): 'oc_lista' = todas las OC en una lista. Nace SOLO para
-// admin (que entra por BOARD_KEYS): ese mismo dia Efraín le dejo a Compras dos
-// boards de flujo y nada mas, asi que darselo es decision suya — se prende desde
-// la matriz de Configuracion, sin deploy.
+// 2026-09-18 (Elisa): 'oc_lista' = todas las OC en una lista. Efraín, mismo dia:
+// "este board solo lo ven admins y compras" — es el tercer board de flujo de
+// Compras. Igual que 'inventario', aqui el acceso no es solo declutter: las
+// rutas /api/oc-lista/* lo checan y responden 403 (worker/routes/ocLista.ts).
+// Los renglones van acotados por el scoping de Proyectos: cada quien de compras
+// ve las OC de SUS proyectos (comprasScopeFor), no todas.
 export const DEFAULT_BOARD_ACCESS: Record<Role, readonly ConfigurableBoardKey[]> = {
   vendedor: ['oportunidades', 'oportunidades_web', 'doctallas',
     'productos', 'instituciones', 'contactos'],
-  compras: ['costeo', 'ejecucion',
+  compras: ['costeo', 'ejecucion', 'oc_lista',
     'productos', 'instituciones', 'contactos', 'proveedores'],
   almacen: ['inventario'],
   admin: BOARD_KEYS,
