@@ -2,6 +2,32 @@
 
 ## 2026-09-18
 
+- **Lista de OC: color a las re-emisiones dudosas, PDF en el lector del portal
+  y chevron con lo que trae cada orden** (tres pedidos seguidos de Efraín).
+  - "Vamos a dejarlo sin confirmar, solo con un pequeño color": las re-emisiones
+    cuyo monto difiere más de 25% de la orden que las reemplazó (puede ser una
+    compra aparte, no una corrección) salen en naranja (`--status-esperando`)
+    con su explicación al pasar el cursor. Siguen SIN sumar y sin override.
+    `shared/ocReemplazo.ts` (pura, con test); se calcula en el front porque los
+    montos van llegando conforme se leen los PDFs. Con datos reales pinta
+    exactamente las 14 medidas antes.
+  - "Ver OC" / "Sin costos" abren en `FilePreviewModal` (el lector del portal),
+    ya no en otra pestaña; el modal conserva "Abrir en pestaña" y "Descargar".
+  - Chevron ">" por orden: despliega sus renglones (producto, modelo/color,
+    talla, cantidad, precio, descuento, subtotal) + piezas y suma. Otra vez del
+    PDF y no del proyecto: una OC reemplazada ya no se parece a las líneas de
+    hoy. `shared/ocLineasPdf.ts` lee la tabla por GEOMETRÍA (la x de cada
+    columna sale del encabezado; los números marcan el renglón y el texto se
+    envuelve hacia abajo), soporta las 4 variantes de encabezado que existen y
+    el texto que brinca de página. Medido contra los 269 PDFs reales: en 263 la
+    suma de renglones da EXACTO el subtotal del PDF; los otros 6 son OC-200 a
+    205 (tabla rota en el propio PDF) y muestran un aviso en vez de inventar.
+    Si algún día no cuadra, la UI lo dice en naranja. Se lee al abrir el
+    chevron (no se guarda), con caché en memoria. Test con geometría real de
+    OC-63 y OC-204, recortada a la tabla (sin datos del proveedor).
+  - Los PDFs ilegibles se recuerdan en localStorage por asset: antes cada
+    pestaña nueva los volvía a bajar.
+
 - **Lista de OC: las re-emisiones no suman, solo la última OC** (Efraín: "no
   sumes las reemisiones, solo la ultima OC"). Regla: dentro de un proyecto, la
   OC de folio más alto de cada proveedor es la vigente y las anteriores quedan
