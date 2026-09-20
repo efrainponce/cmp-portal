@@ -5,7 +5,7 @@ import type {
   AjusteDTO, AjustarLineaRequest, AjustarLineaResponse,
   AssistantChatRequest, AssistantChatResponse, AssistantHistoryResponse, AssistantMessage,
   BoardAccessDTO, ColMeta, ColVal, CostoDivergenciaDTO, CotizacionVirtualDTO, CreateResponse, DuplicarOportunidadRequest, DuplicarOportunidadResponse, DuplicarVersionResponse, EnviarCosteoResponse, IdentityDTO, ItemDTO, ItemDetailDTO,
-  ListResponse, MeDTO, MentionUserDTO, MondayUserDTO, ProyectoActionResponse, ProyectoResponse,
+  ListResponse, MeDTO, MentionUserDTO, MondayUserDTO, PersonaBoardAccessDTO, ProyectoActionResponse, ProyectoResponse,
   QuoteLineSnapshot, QuoteVersionDTO, QuoteVersionsResponse, SetInstitucionRequest, SetInstitucionResponse,
   TallaBoxInput, CapturarTallasResponse, CambiarProductoLineasRequest, CambiarProductoLineasResponse,
   CambioProductoDTO, CambiosProductoResponse, ProyectoImagenDTO, ProyectoImagenesResponse,
@@ -1146,6 +1146,20 @@ export async function putBoardAccess(role: string, boardKeys: string[]): Promise
     method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ boardKeys }),
   });
   if (!res.ok) throw new Error('PUT board-access failed: ' + res.status);
+}
+
+export async function getPersonaBoardAccess(): Promise<PersonaBoardAccessDTO> {
+  const res = await apiFetch('/admin/board-access-persona');
+  if (!res.ok) throw new Error('GET board-access-persona failed: ' + res.status);
+  return res.json();
+}
+
+/** Lista vacía = quitarle el menú personal (vuelve al de su rol). */
+export async function putPersonaBoardAccess(email: string, boardKeys: string[]): Promise<void> {
+  const res = await apiFetch(`/admin/board-access-persona/${encodeURIComponent(email)}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ boardKeys }),
+  });
+  if (!res.ok) throw new Error('PUT board-access-persona failed: ' + res.status);
 }
 
 // Zonas de ventas: el líder ve (solo lectura) las oportunidades de sus miembros.

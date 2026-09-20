@@ -547,6 +547,9 @@ export interface MondayUserDTO { id: number; nombre: string; email: string; phon
 // el admin en Settings. Las llaves son Role; 'admin' siempre trae todos los boardKeys
 // y no es editable (ver worker/lib/boardAccess.ts).
 export type BoardAccessDTO = Record<Role, string[]>;
+// Menú por PERSONA (correo -> boardKeys): recorta el sidebar de alguien en
+// particular por debajo de lo que su rol permite. Solo trae a quien tiene uno.
+export type PersonaBoardAccessDTO = Record<string, string[]>;
 
 // Zonas de ventas (worker/lib/zonas.ts): el líder ve, además de lo suyo, las
 // oportunidades de sus miembros — solo lectura. Se administra en Configuración.

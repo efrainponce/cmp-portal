@@ -1,5 +1,23 @@
 # Log de commits
 
+## 2026-09-19
+
+- **Menú del sidebar POR PERSONA** (Efraín: "Pam quiere ver el board parecido a
+  como lo ven compras sin tantos boards y Eli igual pero Eli sí debe ver
+  validación de costeo — ¿lo hacemos por mail? Yo tengo que poder ver todo").
+  - Sí, por correo, y SIN tocar roles: PAM y Elisa siguen siendo admin. Tabla
+    nueva `identity_board_access` (correo → boards); `/api/me` arma el menú con
+    `getNavBoards` = menú personal si existe, si no el del rol. Efraín no tiene
+    renglones → ve todo.
+  - Es SOLO el menú: los gates reales (inventario, oc_lista, documentos) siguen
+    por ROL vía `getBoardAccess`, así que un admin con menú corto nunca recibe
+    403 y los deep links/notificaciones a un board oculto siguen abriendo. Por
+    lo mismo el menú personal solo RECORTA lo que el rol permite, nunca agrega.
+  - Configuración → "Menú por persona": "+ Persona" arranca con el menú de
+    Compras, palomitas por board, "Quitar" regresa al menú del equipo.
+  - Si la tabla falta (migración sin aplicar) cae al menú del rol, sin tronar.
+    Migración: `worker/migrations/2026-09-19-identity-board-access.sql`.
+
 ## 2026-09-18
 
 - **Lista de OC: "tarda en cargar" — medido y arreglado** (Efraín: "¿hay manera

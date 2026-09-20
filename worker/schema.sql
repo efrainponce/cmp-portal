@@ -293,6 +293,15 @@ INSERT OR IGNORE INTO role_board_access (role, board_key) VALUES
   ('compras', 'contactos'), ('compras', 'proveedores'),
   ('almacen', 'inventario');
 
+-- Menú del sidebar POR PERSONA (worker/lib/boardAccess.ts getNavBoards, Efraín
+-- 2026-09-19): PAM y Elisa son admin y veían los 14 boards. Solo declutter — los
+-- gates reales siguen por rol. Sin renglones = el menú de su rol.
+CREATE TABLE IF NOT EXISTS identity_board_access (
+  email      TEXT NOT NULL,          -- en minúsculas
+  board_key  TEXT NOT NULL,
+  PRIMARY KEY (email, board_key)
+);
+
 -- Zonas de ventas (2026-07-30, worker/lib/zonas.ts). Ensanchan el scope de LECTURA del
 -- líder: ve sus oportunidades y las de los miembros de su zona. La ESCRITURA no se
 -- ensancha — el write path pide scope 'own' (worker/lib/dal.ts getItem opts.scope), así

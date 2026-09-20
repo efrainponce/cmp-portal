@@ -5,7 +5,7 @@
 import { useEffect, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import {
-  getIdentities, putIdentity, createIdentity, getMondayUsers, getBoardAccess, putBoardAccess,
+  getIdentities, putIdentity, createIdentity, getMondayUsers, getBoardAccess, putBoardAccess, getPersonaBoardAccess, putPersonaBoardAccess,
   getZonas, createZona, putZona, deleteZona,
   type IdentityDTO, type MondayUserDTO, type BoardAccessDTO, type ZonaDTO,
 } from '../lib/api';
@@ -137,6 +137,13 @@ export function SettingsPage() {
         <BoardAccessSection
           onSaved={(role) => showToast('success', `Accesos de ${ROLE_LABELS[role]} actualizados.`)}
           onError={() => showToast('error', 'No se pudieron guardar los accesos.')}
+        />
+
+        <div style={{ height: 24 }} />
+
+        <PersonaBoardAccessSection
+          identities={identities}
+          onToast={showToast}
         />
 
         <div style={{ height: 24 }} />
@@ -608,6 +615,161 @@ function BoardAccessRow({ role, boardKeys, onSaved, onError }: {
             {saving ? 'Guardando…' : 'Guardar'}
           </Button>
         )}
+      </td>
+    </tr>
+  );
+}
+
+// Menú por PERSONA (worker/lib/boardAccess.ts getNavBoards): le recorta el sidebar a
+// alguien por debajo de lo que su rol permite — un admin que no quiere los 14 boards.
+// Igual que la matriz de arriba, solo declutter. Quitar todas las palomitas (o
+// "Quitar") lo regresa al menú de su rol.
+function PersonaBoardAccessSection({ identities, onToast }: {
+  identities: IdentityDTO[] | null;
+  onToast: (kind: Toast['kind'], message: string) => void;
+}) {
+  const [porPersona, setPorPersona] = useState<Record<string, string[]> | null>(null);
+  const [porRol, setPorRol] = useState<BoardAccessDTO | null>(null);
+  const [loadError, setLoadError] = useState(false);
+  const [nuevo, setNuevo] = useState('');
+  // Filas agregadas aquí que todavía no se guardan: nacen con "Guardar" prendido.
+  const [sinGuardar, setSinGuardar] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    Promise.all([getPersonaBoardAccess(), getBoardAccess()])
+      .then(([p, r]) => { setPorPersona(p); setPorRol(r); })
+      .catch(() => setLoadError(true));
+  }, []);
+
+  const activos = (identities ?? []).filter((i) => i.active);
+  const emails = Object.keys(porPersona ?? {}).sort();
+  const candidatos = activos.filter((i) => !(porPersona ?? {})[i.email.toLowerCase()]);
+
+  return (
+    <GroupCard label="Menú por persona" color="var(--accent-red)" tint="var(--status-esperando-tint)" count={emails.length}>
+      {loadError ? (
+        <RowMessage>No se pudo cargar el menú por persona.</RowMessage>
+      ) : !porPersona || !porRol ? (
+        <RowMessage>Cargando…</RowMessage>
+      ) : (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr>
+                <th style={thStyle}>Persona</th>
+                {BOARD_KEYS.map((k) => <th key={k} style={{ ...thStyle, textAlign: 'center' }}>{BOARD_LABELS[k]}</th>)}
+                <th style={thStyle} />
+              </tr>
+            </thead>
+            <tbody>
+              {emails.map((email) => {
+                const identity = activos.find((i) => i.email.toLowerCase() === email);
+                return (
+                  <PersonaBoardAccessRow
+                    key={email}
+                    email={email}
+                    nombre={identity?.nombre ?? email}
+                    permitidos={porRol[identity?.role ?? 'admin'] ?? []}
+                    boardKeys={porPersona[email]}
+                    nueva={sinGuardar.has(email)}
+                    onSaved={(keys) => {
+                      setPorPersona((prev) => {
+                        const next = { ...(prev ?? {}) };
+                        if (keys.length) next[email] = keys; else delete next[email];
+                        return next;
+                      });
+                      onToast('success', keys.length ? `Menú de ${identity?.nombre ?? email} actualizado.` : `${identity?.nombre ?? email} vuelve al menú de su equipo.`);
+                    }}
+                    onError={() => onToast('error', 'No se pudo guardar el menú.')}
+                  />
+                );
+              })}
+            </tbody>
+          </table>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '12px 16px' }}>
+            <select value={nuevo} onChange={(e) => setNuevo(e.target.value)} style={{ padding: '6px 8px' }}>
+              <option value="">+ Persona…</option>
+              {candidatos.map((i) => <option key={i.email} value={i.email}>{i.nombre ?? i.email} ({ROLE_LABELS[i.role]})</option>)}
+            </select>
+            <Button
+              variant={nuevo ? 'secondary' : 'disabled'}
+              onClick={() => {
+                const identity = activos.find((i) => i.email === nuevo);
+                if (!identity) return;
+                // Arranca con el menú de Compras (lo que pidieron PAM y Elisa), acotado a su rol.
+                const base = porRol.compras.filter((k) => (porRol[identity.role] ?? []).includes(k));
+                setPorPersona((prev) => ({ ...(prev ?? {}), [nuevo.toLowerCase()]: base }));
+                setSinGuardar((prev) => new Set(prev).add(nuevo.toLowerCase()));
+                setNuevo('');
+              }}
+              style={{ padding: '6px 12px', whiteSpace: 'nowrap' }}
+            >
+              Agregar con el menú de Compras
+            </Button>
+          </div>
+        </div>
+      )}
+    </GroupCard>
+  );
+}
+
+function PersonaBoardAccessRow({ email, nombre, permitidos, boardKeys, nueva, onSaved, onError }: {
+  email: string;
+  nueva: boolean;
+  nombre: string;
+  /** Lo que su ROL permite: el menú personal solo recorta, nunca agrega. */
+  permitidos: string[];
+  boardKeys: string[];
+  onSaved: (boardKeys: string[]) => void;
+  onError: () => void;
+}) {
+  const [guardado, setGuardado] = useState<string[] | null>(nueva ? null : boardKeys);
+  const [draft, setDraft] = useState(new Set(boardKeys));
+  const [saving, setSaving] = useState(false);
+  const dirty = !guardado || draft.size !== guardado.length || guardado.some((k) => !draft.has(k));
+
+  function toggle(k: string) {
+    setDraft((prev) => {
+      const next = new Set(prev);
+      if (next.has(k)) next.delete(k); else next.add(k);
+      return next;
+    });
+  }
+
+  async function save(keys: string[]) {
+    setSaving(true);
+    try {
+      await putPersonaBoardAccess(email, keys);
+      setGuardado(keys);
+      onSaved(keys);
+    } catch {
+      onError();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <tr style={{ borderTop: '1px solid var(--border-subtle)' }}>
+      <td style={tdStyle}>{nombre}</td>
+      {BOARD_KEYS.map((k) => (
+        <td key={k} style={{ ...tdStyle, textAlign: 'center' }}>
+          <input
+            type="checkbox"
+            checked={draft.has(k)}
+            disabled={!permitidos.includes(k)}
+            onChange={() => toggle(k)}
+            style={{ cursor: permitidos.includes(k) ? 'pointer' : 'default' }}
+          />
+        </td>
+      ))}
+      <td style={{ ...tdStyle, whiteSpace: 'nowrap' }}>
+        <Button variant={dirty && !saving ? 'primary' : 'disabled'} onClick={() => save([...draft])} style={{ padding: '6px 12px', marginRight: 6 }}>
+          {saving ? 'Guardando…' : 'Guardar'}
+        </Button>
+        <Button variant={saving ? 'disabled' : 'secondary'} onClick={() => save([])} style={{ padding: '6px 12px' }}>
+          Quitar
+        </Button>
       </td>
     </tr>
   );

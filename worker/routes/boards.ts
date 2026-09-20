@@ -32,7 +32,7 @@ import {
 import { listActivity, actorNameResolver } from '../lib/activityLog';
 import { cachedFetchUsers } from '../lib/rosterCache';
 import { firmaAutor } from '../lib/firmaUpdate';
-import { getBoardAccess } from '../lib/boardAccess';
+import { getNavBoards } from '../lib/boardAccess';
 import { isZonaPrivadaAdminPermitido } from '../lib/zonas';
 import { refetchItem, refetchItemTree, deltaSyncIfStale, mirrorVerificadoAt } from '../sync';
 import { jsonStatus, rejectUnknownQuery, contentDisposition } from '../lib/http';
@@ -132,7 +132,7 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
       email: viewer.email, nombre: viewer.nombre ?? '', role: viewer.role, mondayUserId: viewer.monday_user_id,
       phone: viewer.phone ?? null,
       impersonatedBy: admin ? { email: admin.email, nombre: admin.nombre ?? admin.email } : null,
-      boardAccess: await getBoardAccess(c.env, viewer.role),
+      boardAccess: await getNavBoards(c.env, viewer),
       zonaEfrainAccess: isZonaPrivadaAdminPermitido(viewer.email),
       estadoCuentaAccess: puedeVerEstadoCuenta(viewer.email),
     };

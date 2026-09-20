@@ -4,12 +4,12 @@
 import type { Hono } from 'hono';
 import type { Env } from '../env';
 import type { Role } from '../../shared/types';
-import type { IdentityDTO, MondayUserDTO, BoardAccessDTO, ZonaDTO } from '../../shared/dto';
+import type { IdentityDTO, MondayUserDTO, BoardAccessDTO, PersonaBoardAccessDTO, ZonaDTO } from '../../shared/dto';
 import { TEAM_ROLES } from '../../shared/boardAccess';
 import { BOARDS, type BoardSlug } from '../../shared/boards';
 import { listIdentities, getIdentityByEmail, upsertIdentity, createNativeIdentity, mondayUserIdExists } from '../lib/dal';
 import { cachedFetchUsers } from '../lib/rosterCache';
-import { listAllBoardAccess, setBoardAccess, BoardAccessError } from '../lib/boardAccess';
+import { listAllBoardAccess, setBoardAccess, listPersonaBoardAccess, setPersonaBoardAccess, BoardAccessError } from '../lib/boardAccess';
 import {
   listZonas, createZona, updateZona, deleteZona, ZonaError,
   zonaPrivadaMemberIds, isZonaPrivadaAdminPermitido,
@@ -208,6 +208,27 @@ export function adminRoutes(app: Hono<{ Bindings: Env }>) {
     if (!Array.isArray(body.boardKeys)) return c.json({ error: 'boardKeys is required' }, 400);
     try {
       await setBoardAccess(c.env, role, body.boardKeys);
+      return c.json({ ok: true });
+    } catch (err) {
+      if (err instanceof BoardAccessError) return c.json({ error: err.message }, 400);
+      throw err;
+    }
+  });
+
+  // Menú por PERSONA (worker/lib/boardAccess.ts getNavBoards): recorta el sidebar
+  // de alguien en particular — un admin que no quiere ver los 14 boards.
+  app.get('/api/admin/board-access-persona', async c => {
+    if (c.get('viewer').role !== 'admin') return c.json({ error: 'forbidden' }, 403);
+    const dto: PersonaBoardAccessDTO = await listPersonaBoardAccess(c.env);
+    return c.json(dto);
+  });
+
+  app.put('/api/admin/board-access-persona/:email', async c => {
+    if (c.get('viewer').role !== 'admin') return c.json({ error: 'forbidden' }, 403);
+    const body = await c.req.json<{ boardKeys: string[] }>();
+    if (!Array.isArray(body.boardKeys)) return c.json({ error: 'boardKeys is required' }, 400);
+    try {
+      await setPersonaBoardAccess(c.env, c.req.param('email'), body.boardKeys);
       return c.json({ ok: true });
     } catch (err) {
       if (err instanceof BoardAccessError) return c.json({ error: err.message }, 400);
