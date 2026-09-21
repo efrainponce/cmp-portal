@@ -5,7 +5,7 @@ import type { Env } from '../env';
 import type { Identity } from '../../shared/types';
 import type { CreateResponse } from '../../shared/dto';
 import { BOARDS, type BoardSlug } from '../../shared/boards';
-import { CREATE_DEFAULTS, CREATE_FIELDS, isCreatable } from '../../shared/createFields';
+import { CREATE_DEFAULTS, CREATE_FIELDS, CREATE_ROLES, isCreatable } from '../../shared/createFields';
 import { COLUMN_META } from '../../shared/column-meta.gen';
 import { encodeColumnValue } from './columnEncode';
 import { createItem, fetchItem, firstPersonId, updateItemColumns } from './monday';
@@ -78,6 +78,7 @@ export async function submitCreate(
     return submitCreateNative(env, slug, name, cols, viewer);
   }
   if (!CREATOR_ROLES.includes(viewer.role)) throw new CreateError(403, 'cannot create');
+  if (CREATE_ROLES[slug] && !CREATE_ROLES[slug].includes(viewer.role)) throw new CreateError(403, 'cannot create');
   // Usuario dado de alta desde el portal (sin persona real en Monday, ver
   // dal.createNativeIdentity): el auto-estampado de Vendedor en Contactos
   // (abajo) mandaría un id inventado a la columna de personas de Monday.

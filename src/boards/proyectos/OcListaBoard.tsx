@@ -16,6 +16,8 @@ import { SearchInput } from '../../components/forms/SearchInput';
 import { MonoTag } from '../../components/core/Badges';
 import { FilePreviewModal } from '../../components/core/FilePreviewModal';
 import { ColumnPicker } from '../../components/board/ColumnPicker';
+import { ExportExcelButton } from '../../components/board/ExportExcelButton';
+import type { ColumnaExport } from '../../lib/exportXlsx';
 import { ProgressBattery } from '../../components/board/ProgressBattery';
 import { useColumnasVisibles, type ColumnaDef } from '../../lib/useColumnasVisibles';
 import { batteryFromLabelWeights, type BatteryData } from '../../lib/estadoProductoBuckets';
@@ -50,6 +52,33 @@ function estadoDe(o: OcListaRow): { bateria: BatteryData; entregadas: number; te
     : mayor.bucket.label;
   return { bateria, entregadas, texto };
 }
+
+/** "Exportar a Excel": qué columnas del Excel salen de cada columna del
+ * tablero. Subtotal arrastra IVA, Total y Moneda (vienen en el mismo renglón y
+ * sin la moneda el monto no se puede sumar); el PDF no va — es un link que
+ * pide sesión. La fecha se queda 'aaaa-mm-dd', que Excel ordena bien. */
+const EXPORT_POR_COLUMNA: Record<string, ColumnaExport<OcListaRow>[]> = {
+  folio: [
+    { titulo: 'Folio', valor: o => o.folio },
+    { titulo: 'Reemplazada por', valor: o => o.reemplazadaPor },
+  ],
+  fecha: [{ titulo: 'Fecha', valor: o => o.fecha }],
+  proveedor: [{ titulo: 'Proveedor', valor: o => o.proveedor }],
+  proyecto: [
+    { titulo: 'Folio del proyecto', valor: o => o.proyectoFolio },
+    { titulo: 'Proyecto', valor: o => o.proyecto },
+  ],
+  zona: [{ titulo: 'Zona', valor: o => o.zona }],
+  estado: [{ titulo: 'Estado', valor: o => estadoDe(o)?.texto }],
+  subtotal: [
+    { titulo: 'Subtotal', valor: o => o.subtotal, moneda: true, ancho: 18 },
+    { titulo: 'IVA', valor: o => o.iva, moneda: true, ancho: 18 },
+    { titulo: 'Total', valor: o => o.total, moneda: true, ancho: 18 },
+    { titulo: 'Moneda', valor: o => (o.subtotal == null ? null : o.moneda ?? 'MXN') },
+  ],
+  pagada: [{ titulo: 'Pagada', valor: o => (o.pagada ? 'Sí' : 'No') }],
+};
+
 const GRID_LINEAS = '1.6fr 1.1fr 0.9fr 60px 90px 60px 100px';
 
 const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
@@ -101,6 +130,8 @@ export default function OcListaBoard({ onOpenProyecto }: Props) {
   const cols = useColumnasVisibles('oc_lista', COLUMNAS);
   const visiblesCols = COLUMNAS.filter(c => cols.visible(c.key));
   const grid = ['16px', ...visiblesCols.map(c => c.ancho)].join(' ');
+  // En cel no hay selector de columnas y la tarjeta las pinta todas.
+  const columnasExport = (isMobile ? COLUMNAS : visiblesCols).flatMap(c => EXPORT_POR_COLUMNA[c.key] ?? []);
   // El PDF se abre en el lector del portal, no en otra pestaña (Efraín,
   // 2026-09-18) — el modal ya trae "Abrir en pestaña" y "Descargar".
   const [viendo, setViendo] = useState<string | null>(null);
@@ -275,6 +306,7 @@ export default function OcListaBoard({ onOpenProyecto }: Props) {
               Quitar filtros
             </button>
           )}
+          <ExportExcelButton titulo="Lista de OC" columnas={columnasExport} filas={visibles} />
         </div>
       </div>
 

@@ -2,6 +2,28 @@
 
 ## 2026-09-21
 
+- **Salida de Monday — se cierran los huecos que obligaban a entrar a Monday**
+  (Efraín: "todos los demás GAPs necesitamos corregirlos YA"; logística:
+  "claro"; Airtable sigue siendo el catálogo de productos, así que NO hay alta
+  de productos en el portal).
+  - **Proveedores completo** (era solo lectura, 5 de 13 columnas): "+ Nuevo
+    proveedor" y clic en el renglón para editar nombre, contacto, teléfono,
+    correo, Razón Social, RFC, Dirección y Link, más subir/ver Constancia,
+    Cuenta de Banco y Actas (`worker/routes/proveedores.ts`, dual-write Monday +
+    R2 `proveedores/<id>/<col>/<asset>-<nombre>`). Solo compras y admin
+    (`CREATE_ROLES`); el vendedor sigue sin ver el board. Borrar un archivo
+    todavía no se puede desde aquí.
+  - `columnEncode` aprende `link` ({url,text}) y `canon` compara `link` por URL
+    y `phone` por dígitos: sin eso todo write a esas columnas quedaba en
+    conflicto en el outbox.
+  - **Tab Logística del Proyecto**: Almacén 5.11, Fecha de Llegada, Fecha
+    Entrega Cliente y Flete Extra Final (archivo) por línea — compras/admin.
+  - **Exportar a Excel** en todas las listas (catálogos, etapas de
+    Oportunidades, Proyectos, Lista de OC): se arma en el navegador con los
+    renglones filtrados y las columnas que ya están en pantalla — no hay
+    endpoint nuevo, así que no puede sacar una columna que el rol no ve.
+    `src/lib/exportXlsx.ts` + `ExportExcelButton`; xlsxWrite en chunk lazy.
+
 - **Plan de salida de Monday** (Efraín: "vamos a empezar a salir de Monday en
   octubre… check profundo para saber si estamos listos y si no, plan de
   transición"). Solo documento + script, cero cambio de comportamiento.

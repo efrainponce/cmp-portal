@@ -173,3 +173,10 @@ export const IconLink = (p: IconProps) => (
     <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
   </svg>
 );
+
+// Bajar un archivo — "Exportar a Excel" de las listas.
+export const IconDescargar = (p: IconProps) => (
+  <svg {...base} {...p}>
+    <path d="M12 4v11" /><path d="M7.5 10.5L12 15l4.5-4.5" /><path d="M5 19h14" />
+  </svg>
+);

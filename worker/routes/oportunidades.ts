@@ -1994,6 +1994,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
   const LOGISTICA_FILE_COLS: Record<string, string> = {
     'guia-empresa': 'file_mm4pz90b',
     'evidencia-recoleccion': 'file_mm4pc4tj',
+    'flete-extra-final': 'file_mm6bsjm5',
   };
   app.post('/api/proyectos_sub/:id/logistica/:field', async c => {
     const itemId = Number(c.req.param('id'));

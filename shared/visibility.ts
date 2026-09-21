@@ -251,6 +251,14 @@ export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
     file_mm4pc4tj: { vis: AC, w: AC },
     boolean_mm4p7eqb: { vis: AC, w: AC },
     date_mm4p59q2: { vis: AC, w: AC },
+    // Llegada y entrega (Efraín, 2026-09-21, salida de Monday: "claro"): las
+    // cuatro columnas que Compras seguía capturando en Monday porque el portal
+    // no las tenía. Mismo grupo que la recolección de arriba: el vendedor no
+    // las ve.
+    color_mm6b7zad: { vis: AC, w: AC },   // ALMACEN 5.11 (MEXICO / USA / USA Y MX / OTROS)
+    date_mm6b3gxe:  { vis: AC, w: AC },   // Fecha de Llegada
+    date_mm6br6j2:  { vis: AC, w: AC },   // Fecha Entrega Cliente
+    file_mm6bsjm5:  { vis: AC, w: AC },   // Flete Extra Final
   },
 
   productos: {
@@ -300,11 +308,25 @@ export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
     multiple_person_mm03vqwx: { vis: V, w: V },   // Vendedor
   },
 
-  // Catálogo interno para el picker de "línea manual" en el Proyecto (OC
-  // independiente) — solo lectura, nunca visible al vendedor (Efraín, 2026-07-17).
+  // Catálogo de proveedores — nunca visible al vendedor ("ventas cero
+  // proveedores", Efraín 2026-07-17 / 2026-07-30). Nació de solo lectura, como
+  // picker de "línea manual" del Proyecto, con 5 de 13 columnas: el alta y los
+  // datos fiscales/bancarios (RFC, Dirección, Constancia, Cuenta de Banco,
+  // Actas) solo existían en Monday. Salida de Monday (2026-09-21): Compras y
+  // admin lo mantienen completo desde el portal. Los `file_*` llevan `w` como
+  // gate de la subida (worker/routes/proveedores.ts), no pasan por el outbox.
   proveedores: {
-    ...vis(['name', 'text_mm3kwjde', 'phone_mm21sp93', 'email_mm21c4ng',
-      'text_mm1d43t4'], AC),
+    name:               { vis: AC, w: WAC },
+    text_mm3kwjde:      { vis: AC, w: WAC },   // Contacto
+    phone_mm21sp93:     { vis: AC, w: WAC },   // teléfono
+    email_mm21c4ng:     { vis: AC, w: WAC },   // correo
+    text_mm1d43t4:      { vis: AC, w: WAC },   // Razon Social
+    text_mm00x00:       { vis: AC, w: WAC },   // RFC
+    long_text_mm00jhfd: { vis: AC, w: WAC },   // Direccion
+    link_mm21rg0s:      { vis: AC, w: WAC },   // Link
+    file_mm21ggd2:      { vis: AC, w: WAC },   // Constancia
+    file_mm208m11:      { vis: AC, w: WAC },   // Cuenta de Banco
+    file_mm3krzd:       { vis: AC, w: WAC },   // Actas
   },
 };
 

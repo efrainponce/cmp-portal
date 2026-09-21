@@ -12,6 +12,8 @@ import { MonoTag, StatusBadge } from '../../components/core/Badges';
 import { BoardStatus } from '../../components/board/BoardStatus';
 import { SyncIndicator } from '../../components/board/SyncIndicator';
 import { SearchInput } from '../../components/forms/SearchInput';
+import { ExportExcelButton } from '../../components/board/ExportExcelButton';
+import { columnasDeCifras, columnasDeItems, type ColumnaExport } from '../../lib/exportXlsx';
 import { lastMondayUpdateFromItems } from '../../lib/syncStatus';
 import { fmtSyncAgo } from '../../lib/format';
 import { chipFor } from '../../components/board/cellHelpers';
@@ -195,6 +197,24 @@ export function ProyectoBoardList({ config, q, onSearch, onOpen, onReady, header
   const ecGranTotal = useMemo(() => (esEstadoCuenta ? sumaEc(items) : undefined), [esEstadoCuenta, items, ecResumen]); // eslint-disable-line react-hooks/exhaustive-deps
   const hayHeader = !isMobile && (metricas.length > 0 || esEstadoCuenta);
 
+  // "Exportar a Excel": lo que pinta el renglón (más Etapa y Zona, que en
+  // pantalla son el encabezado del grupo). Las cifras solo van si este acceso
+  // las pinta Y el worker las mandó: `totales` no llega sin ser admin en el
+  // Reporte, y `ecResumen` no llega fuera de la whitelist del Estado de cuenta.
+  const columnasExport = useMemo((): ColumnaExport<ItemDTO>[] => {
+    const orden = [FOLIO_COL, INSTITUCION_COL, STATUS_COL, ZONA_COL, VENDEDOR_COL, ESTADO_PRODUCTOS_COL, FECHA_ENTREGA_COL];
+    const visibles = orden.map((id) => cols.find((c) => c.id === id)).filter((c): c is NonNullable<typeof c> => !!c);
+    const [nombre, folio, ...resto] = columnasDeItems(visibles, 'Proyecto');
+    return [
+      nombre, folio,
+      { titulo: 'Oportunidad', valor: (it) => it.oportunidad?.folio },
+      ...resto,
+      ...columnasDeCifras(metricasVisibles(totales, false), (it: ItemDTO, key) => totales?.[it.id]?.[key]),
+      ...(esEstadoCuenta && ecResumen ? columnasDeCifras(ecMetricas(false), (it: ItemDTO, key) => ecResumen[it.id]?.[key]) : []),
+      { titulo: 'Actualizado', valor: (it) => it.mondayUpdatedAt?.slice(0, 10) },
+    ];
+  }, [cols, totales, esEstadoCuenta, ecResumen]);
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <div style={{ padding: isMobile ? '14px 14px 12px' : '26px 32px 16px', borderBottom: '1px solid var(--border)', flex: 'none' }}>
@@ -230,6 +250,7 @@ export function ProyectoBoardList({ config, q, onSearch, onOpen, onReady, header
               <option key={o.value} value={o.value}>Agrupar: {o.label}</option>
             ))}
           </select>
+          <ExportExcelButton titulo={config.title} columnas={columnasExport} filas={items} />
         </div>
       </div>
 

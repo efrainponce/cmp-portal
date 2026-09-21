@@ -571,6 +571,24 @@ export async function uploadZoneImage(
   return body;
 }
 
+/** Archivos del proveedor por columna `file` (Constancia, Cuenta de Banco, Actas). */
+export interface ProveedorArchivo { assetId: number; name: string; url: string }
+export async function getProveedorArchivos(id: string): Promise<Record<string, ProveedorArchivo[]>> {
+  const res = await apiFetch(`/proveedores/${id}/archivos`);
+  if (!res.ok) throw new Error('No se pudieron leer los archivos del proveedor.');
+  return (await res.json()).archivos;
+}
+
+export async function uploadProveedorArchivo(id: string, colId: string, file: File): Promise<void> {
+  const form = new FormData();
+  form.append('file', file);
+  const res = await apiFetch(`/proveedores/${id}/archivos/${colId}`, { method: 'POST', body: form });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error && body.error !== 'internal error' ? body.error : 'No se pudo subir el archivo.');
+  }
+}
+
 /** Productos propuestos por Ventas para una oportunidad (tab "Nuevos productos"). */
 export async function getProposedProducts(oppId: string): Promise<ProposedProductDTO[]> {
   const res = await apiFetch(`/oportunidades/${oppId}/productos-propuestos`);
@@ -829,7 +847,7 @@ export async function borrarProyectoDocumento(
 /** Sube "# Guia - empresa" / "Evidencia recolección" (tab Logística) a un
  * subitem de proyectos_sub. */
 export async function uploadLogisticaArchivo(
-  subitemId: string, field: 'guia-empresa' | 'evidencia-recoleccion', file: File,
+  subitemId: string, field: 'guia-empresa' | 'evidencia-recoleccion' | 'flete-extra-final', file: File,
 ): Promise<{ ok: boolean; name?: string; url?: string; error?: string }> {
   const form = new FormData();
   form.append('file', file);

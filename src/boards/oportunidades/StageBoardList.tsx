@@ -11,6 +11,8 @@ import { StatusBadge, MonoTag } from '../../components/core/Badges';
 import { BoardStatus } from '../../components/board/BoardStatus';
 import { SyncIndicator } from '../../components/board/SyncIndicator';
 import { SearchInput } from '../../components/forms/SearchInput';
+import { ExportExcelButton } from '../../components/board/ExportExcelButton';
+import { columnasDeCifras, columnasDeItems, type ColumnaExport } from '../../lib/exportXlsx';
 import { FilterBar, ALL_VALUE, type FilterOption } from '../../components/forms/FilterBar';
 import { lastMondayUpdateFromItems } from '../../lib/syncStatus';
 import { fmtSyncAgo } from '../../lib/format';
@@ -216,6 +218,20 @@ export function StageBoardList({ config, groupColId = 'deal_stage', q, onSearch,
 
   const hayHeader = !isMobile && metricas.length > 0;
 
+  // "Exportar a Excel": lo mismo que pinta el renglón, en el orden en que se
+  // lee — las columnas de LIST_COLS que el rol sí recibe (las que no, no están
+  // en `cols`) y las métricas que el worker sí mandó. En cel la lista pinta
+  // cuatro métricas, pero al Excel van todas las que llegaron.
+  const columnasExport = useMemo((): ColumnaExport<ItemDTO>[] => {
+    const orden = [FOLIO_COL, INSTITUCION_COL, ETAPA_COL, ETAPA_COSTEO_COL, VENDEDOR_COL, VENDEDOR_SECUNDARIO_COL, COMPRAS_COL, CONTACTO_COL];
+    const visibles = orden.map((id) => cols.find((c) => c.id === id)).filter((c): c is NonNullable<typeof c> => !!c);
+    return [
+      ...columnasDeItems(visibles, 'Oportunidad'),
+      ...columnasDeCifras(metricasVisibles(totales, false), (it: ItemDTO, key) => totales?.[it.id]?.[key]),
+      { titulo: 'Actualizado', valor: (it) => it.mondayUpdatedAt?.slice(0, 10) },
+    ];
+  }, [cols, totales]);
+
   const groups = useMemo(() => {
     const order = groupColId === 'deal_stage' ? DEAL_STAGE_ORDER : undefined;
     return groupByColumn(items, groupCol, undefined, undefined, order);
@@ -269,6 +285,7 @@ export function StageBoardList({ config, groupColId = 'deal_stage', q, onSearch,
             active={hasActiveFilters}
             onClear={clearFilters}
           />
+          <ExportExcelButton titulo={config.title} columnas={columnasExport} filas={items} />
         </div>
       </div>
 
