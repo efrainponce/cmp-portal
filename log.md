@@ -1,5 +1,18 @@
 # Log de commits
 
+## 2026-09-21
+
+- **Plan de salida de Monday** (Efraín: "vamos a empezar a salir de Monday en
+  octubre… check profundo para saber si estamos listos y si no, plan de
+  transición"). Solo documento + script, cero cambio de comportamiento.
+  - `docs/plan-salida-monday.md`: veredicto (técnica casi, adopción NO: ~98% de
+    las ediciones humanas siguen en Monday, 12 de 14 vendedores sin tocar el
+    portal), 6 huecos que bloquean quitar acceso, protocolo por ola (bajar a
+    Viewer, no desactivar) y lo que falta para la decisión de febrero.
+  - `scripts/adopcion.mjs`: quién sigue editando en Monday, por persona/board/
+    columna (solo lectura, misma atribución que `uxMetrics.ts`). Es el semáforo
+    de cada ola.
+
 ## 2026-09-19
 
 - **Menú del sidebar POR PERSONA** (Efraín: "Pam quiere ver el board parecido a
