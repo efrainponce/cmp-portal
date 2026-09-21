@@ -16,6 +16,7 @@ import { isNativeId } from '../../shared/nativeId';
 import { getItem, proyectoForOportunidad, PROYECTO_OPP_REL } from './dal';
 import { createItem, moveItemToGroup, addFileToColumn, fetchAssetPublicUrls } from './monday';
 import { upsertItem, refetchItem } from '../sync';
+import { crearCarpetaProyectoAuto } from './drive';
 import { submitWrite, boardRelationValue } from './outbox';
 import { reserveNativeId } from './nativeSeq';
 import { rawHash, type RawColumn } from './canon';
@@ -253,6 +254,9 @@ export async function ganarOportunidad(
   // tumbar "Ganar" si falla.
   try { await moveItemToGroup(env, itemId, OPORTUNIDADES_GANADAS_GROUP); } catch { /* best-effort */ }
 
-  ctx.waitUntil(refetchItem(env, BOARDS.proyectos.id, proyectoId));
+  // Carpeta de Drive propia del Proyecto (worker/lib/drive.ts, 2026-09-15):
+  // después del refetch para que el mirror ya traiga el folio PRO-nnnn con el
+  // que se nombra. Best-effort y gateada por DRIVE_PROYECTOS.
+  ctx.waitUntil(refetchItem(env, BOARDS.proyectos.id, proyectoId).then(() => crearCarpetaProyectoAuto(env, proyectoId)));
   return { proyectoId };
 }

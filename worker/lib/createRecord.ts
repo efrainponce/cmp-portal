@@ -9,7 +9,8 @@ import { CREATE_DEFAULTS, CREATE_FIELDS, CREATE_ROLES, isCreatable } from '../..
 import { COLUMN_META } from '../../shared/column-meta.gen';
 import { encodeColumnValue } from './columnEncode';
 import { createItem, fetchItem, firstPersonId, updateItemColumns } from './monday';
-import { upsertItem } from '../sync';
+import { upsertItem, refetchItem } from '../sync';
+import { crearCarpetaProyectoAuto } from './drive';
 import { reserveNativeId } from './nativeSeq';
 import { assertNoNativeLink, NativeLinkError } from './nativeItems';
 import { rawHash, type RawColumn } from './canon';
@@ -155,6 +156,15 @@ export async function submitCreate(
   // El Vendedor puede ser un id PRESTADO: los avisos de dueño van por correo
   // (worker/lib/itemCreador.ts).
   await registrarCreador(env, Number(item.id), viewer.email);
+
+  // Un Proyecto hecho desde cero también estrena carpeta de Drive
+  // (worker/lib/drive.ts, 2026-09-15) — con ctx en segundo plano, sin él (bot)
+  // en línea; best-effort y gateada por DRIVE_PROYECTOS.
+  if (slug === 'proyectos') {
+    const carpeta = refetchItem(env, board.id, Number(item.id)).then(() => crearCarpetaProyectoAuto(env, Number(item.id)));
+    if (ctx) ctx.waitUntil(carpeta);
+    else await carpeta;
+  }
 
   // El board Contactos tiene una automatización de Monday ("When an item is
   // created → assign creator as Vendedor", id 530044968, de 2026-02-03, pensada

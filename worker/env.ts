@@ -42,6 +42,14 @@ export interface Env {
   // no crear carpetas duplicadas. Mismo criterio de fallback vivo que las fases
   // anteriores: sin definir = el comportamiento de siempre (Make + cmp-tallas).
   DRIVE_NATIVE?: string;
+  // 2026-09-15: '1' crea sola la carpeta de Drive del PROYECTO ("{PRO-nnnn} -
+  // {nombre}" bajo "Proyectos Portal" + 12 subcarpetas) al ganar una
+  // oportunidad o crear un proyecto desde cero (worker/lib/drive.ts
+  // crearCarpetaProyectoAuto). Independiente de DRIVE_NATIVE: la carpeta del
+  // Proyecto no la crea Make ni cmp-tallas, no hay duplicado posible. Las
+  // acciones explícitas del tab Documentación (crear carpeta, sincronizar,
+  // listar) NO dependen de esta flag, solo de las credenciales de Google.
+  DRIVE_PROYECTOS?: string;
   GOOGLE_SERVICE_ACCOUNT_EMAIL?: string;  // worker/lib/googleAuth.ts (JWT RS256)
   GOOGLE_PRIVATE_KEY?: string;            // PEM, service account de Drive
 
