@@ -51,16 +51,38 @@ escribe el token de servicio): **~7,200 en Monday vs ~125 en el portal.**
 - 20 hallazgos abiertos "tallas no cuadran": limpiar antes de que compras
   pierda Monday, o no sabrán si el error es suyo o heredado.
 
-## Huecos técnicos de la Salida A (bloquean quitar acceso)
+## Huecos técnicos de la Salida A — estado al 2026-09-21
 
-| # | Hueco | A quién bloquea | Tamaño |
-|---|---|---|---|
-| 1 | **Proveedores**: solo lectura, 5 de 13 columnas. RFC, banco, constancia, actas viven solo en Monday. Falta alta + edición | compras | 2–3 días |
-| 2 | **Productos**: no hay alta; costo/descuento/moneda/imagen nacen en Airtable (Make 001 cada ~8 h). Decidir: ¿Airtable sigue siendo el catálogo? Si sí, no es hueco del portal — solo hay que dejar de tocar el board de Productos en Monday (1,583 ediciones/mes, casi todas de 1 persona) | compras | decisión + 0–5 días |
-| 3 | **Logística en líneas de Proyecto**: ALMACEN 5.11, Fecha de Llegada, Fecha Entrega Cliente, Flete Extra Final sin UI | compras/almacén | 1 día (whitelist = decisión de Efraín) |
-| 4 | **Carpeta Drive en la Oportunidad** (`link_mm468m26`) no expuesta; mergear `feat/drive-proyectos` | ventas | 1 día |
-| 5 | **Tallas**: la captura real sigue en Google Sheets. No es Monday, pero si en enero "100% aquí" incluye tallas, hay que empujar la captura por boxes | compras | capacitación, no código |
-| 6 | **Exportar a Excel** solo existe en Estado de Cuenta; en Monday lo hacen en cualquier board | todos | 1–2 días |
+| # | Hueco | Estado |
+|---|---|---|
+| 1 | **Proveedores** solo lectura, 5 de 13 columnas | **Hecho**: alta, edición de todos los datos y subida/lectura de Constancia, Cuenta de Banco y Actas (compras/admin). Falta: borrar un archivo |
+| 2 | **Productos** sin alta | **No es hueco** (Efraín: Airtable es y seguirá siendo el catálogo). Lo que sí: dejar de editar el board de Productos en Monday — 1,583 ediciones/mes, casi todas de una persona; lo que no sea Tallas/Proveedor/confirmación se captura en Airtable |
+| 3 | **Logística en líneas de Proyecto** | **Hecho**: Almacén 5.11, Fecha de Llegada, Fecha Entrega Cliente y Flete Extra Final en el tab Logística (compras/admin) |
+| 4 | **Carpeta Drive en la Oportunidad** | **Hecho**: merge de `feat/drive-proyectos` — Documentación lista carpeta, subcarpetas y archivos de Drive |
+| 5 | **Tallas fuera de Google Sheets** | **A medias** — ver abajo |
+| 6 | **Exportar a Excel** | **Hecho**: botón en catálogos, etapas de Oportunidades, Proyectos y Lista de OC; exporta lo filtrado y solo lo que el rol ya ve |
+
+### Hueco 5 — tallas sin Sheet
+
+Hoy el Sheet es el camino OFICIAL (el texto del tab dice: capturar en el archivo
+→ validar → traer del archivo) y los boxes son el respaldo. Lo único que de
+verdad exige el Sheet es `confirm_tallas` de cmp-tallas (pide "TODO CUADRA" en
+el archivo) y que **el cliente externo lo llena sin tener cuenta en el portal**.
+
+- **Hecho**: pegar desde Excel en los boxes (fila de cantidades, encabezado +
+  cantidades, o talla | cantidad) y borrador que sobrevive a cerrar el drawer.
+- **Falta, en orden:**
+  1. Prender `TALLAS_NATIVE=1` tras probarlo con un proyecto real (decisión de
+     Efraín): confirma con el gate de D1 y el PDF propio, sin Sheet.
+  2. Invertir el texto del tab (boxes primero, Sheet como opción) y esconder
+     "Crear/Regenerar archivo" y "Traer del archivo" — solo después del punto 1.
+  3. Editar talla y borrar una línea equivocada desde el tab Tallas (hoy el 🗑
+     vive en Órdenes); embellecimiento por zona desde el portal (hoy solo entra
+     por el Sheet).
+  4. **Decisión de Efraín — ¿cómo manda sus tallas un cliente sin cuenta?**
+     (a) plantilla Excel que genera el portal y se sube de vuelta (archivo de
+     transporte, D1 sigue siendo la verdad), o (b) formulario público con
+     token, sin archivo (más trabajo: hoy no existe ninguna ruta pública).
 
 No bloquean, pero se van a pedir: búsqueda global entre boards, edición masiva,
 vistas compartidas, ayuda dentro del portal (hoy no hay ninguna).
@@ -70,7 +92,11 @@ vistas compartidas, ayuda dentro del portal (hoy no hay ninguna).
 **No desactivar usuarios en Monday: bajarlos a Viewer.** El portal asigna
 personas por `monday_user_id` (columnas Vendedor/Compras, scoping de `dal.ts`,
 roster). Un usuario desactivado puede dejar de ser asignable y las altas del
-portal fallarían. Viewer = no edita, sigue existiendo. **Probarlo con UN usuario
+portal fallarían. Viewer = no edita, sigue existiendo y se puede seguir
+asignando en columnas de personas. El backend no se entera: el portal escribe
+TODO con un solo token de servicio (el de Efraín), nunca con el usuario de cada
+quien — por eso en Monday todo sale firmado por Efraín y la autoría real vive en
+el portal (`outbox.author_email`, `accion_log`, `activity_log.actor_email`). **Probarlo con UN usuario
 de prueba antes de la Ola 1** (crear oportunidad a su nombre, mención, aviso).
 El asiento se libera hasta febrero, con la Salida B.
 
@@ -89,7 +115,7 @@ Cada ola, mismo protocolo (2 semanas):
 
 | Fecha | Qué | Hecho cuando |
 |---|---|---|
-| 22 sep – 9 oct | Cerrar huecos 1, 3, 4, 6; arreglar WhatsApp (template + teléfono de cotizaciones4); limpiar los 20 hallazgos de tallas; probar Viewer con usuario de prueba; decidir hueco 2 y la pregunta 1 | `salud.mjs` sin hallazgos heredados; WhatsApp >90% entregado |
+| 22 sep – 9 oct | Desplegar huecos 1, 3, 4, 6 (hechos el 21 sep) y cerrar el 5; arreglar WhatsApp (template + teléfono de cotizaciones4); limpiar los 20 hallazgos de tallas; probar Viewer con usuario de prueba; decidir hueco 2 y la pregunta 1 | `salud.mjs` sin hallazgos heredados; WhatsApp >90% entregado |
 | 12–23 oct | Ola 1 · Josué | ≥90% portal, Viewer |
 | 26 oct – 6 nov | Ola 2 · Elizabeth | ídem |
 | 9–20 nov | Ola 3 · Emily (la de mayor riesgo: 1 día en portal en un mes — empezar a sentarla ya, en capacitación) | ídem |
@@ -129,9 +155,11 @@ Estimado: 6–8 semanas de trabajo. Si se quiere no renovar en febrero, los punt
 
 ## Preguntas abiertas para Efraín
 
-1. **¿Los vendedores entran en las olas de su persona de compras, o tienen ola
-   propia?** Son 14, 12 sin tocar el portal, y son quienes crean las
-   oportunidades. Sin ellos no hay 100% en enero.
-2. ¿Airtable sigue siendo el catálogo de productos después de Monday?
-3. ¿Se exponen las 4 columnas de logística (hueco 3)? Whitelist.
-4. ¿"100% aquí" incluye sacar las tallas de Google Sheets?
+Resueltas el 2026-09-21: los vendedores entran en la ola de su persona de
+compras; Airtable sigue siendo el catálogo; las 4 columnas de logística se
+exponen; "100% aquí" sí incluye sacar las tallas de Google Sheets.
+
+Siguen abiertas:
+
+1. ¿Cuándo se prueba `TALLAS_NATIVE=1` y con qué proyecto?
+2. ¿Cómo captura tallas un cliente sin cuenta: plantilla Excel o formulario público?

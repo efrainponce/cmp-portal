@@ -24,6 +24,13 @@
     endpoint nuevo, así que no puede sacar una columna que el rol no ve.
     `src/lib/exportXlsx.ts` + `ExportExcelButton`; xlsxWrite en chunk lazy.
 
+- **Tallas sin Sheet, primer paso**: los boxes aceptan pegado desde Excel
+  (`src/lib/pegadoTallas.ts`: fila de cantidades, encabezado + cantidades, o
+  talla | cantidad) y guardan borrador por proyecto en el navegador. Lo que
+  falta (prender `TALLAS_NATIVE`, invertir el flujo del tab, captura del
+  cliente externo) quedó en `docs/plan-salida-monday.md` con las decisiones
+  que tocan a Efraín.
+
 - **Merge de `feat/drive-proyectos`** (pendiente desde 2026-09-16): cierra el
   hueco "la Carpeta Drive de la Oportunidad no se ve en el portal" — el tab
   Documentación ya lista carpeta, subcarpetas y archivos de Drive de la

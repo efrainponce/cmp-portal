@@ -96,7 +96,7 @@ export function EditProveedorModal({ proveedor, onClose, onSaved }: Props) {
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>Cerrar</Button>
-          <Button variant="primary" onClick={saving || !hayCambios ? undefined : guardar}>
+          <Button variant={saving || !hayCambios ? 'disabled' : 'primary'} onClick={saving || !hayCambios ? undefined : guardar}>
             {saving === 'datos' ? 'Guardando…' : 'Guardar'}
           </Button>
         </>
