@@ -57,6 +57,7 @@ import { toNativeColumns, insertNativeSubitem, stampNativeFileMarker } from '../
 import { insertSeguimiento } from '../lib/home';
 import { listZoneImages, uploadZoneImage, EmbellImageError } from '../lib/embellecimientoImagenes';
 import { listProposedProducts, addProposedProduct, ProposedProductError } from '../lib/productosPropuestos';
+import { listInventarioCotizacion, saveInventarioCotizacion, InventarioCotizacionError } from '../lib/inventarioCotizacion';
 import { resolveMondayAsset, keyLegado, PROYECTO_DOCUMENTO_COL, PROYECTO_ACTA_COL } from '../lib/portalFiles';
 import { putFile, oportunidadFileKey, proyectoFileKey } from '../lib/r2';
 import { resolveCotizacionPdfUrl, nativeCotizacionPdf, CotizacionPdfError, ETIQUETA_BY_KIND, type PdfKind } from '../lib/cotizacionPdfs';
@@ -985,6 +986,41 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       return c.json({ ok: true, producto } satisfies AddProposedProductResponse);
     } catch (err) {
       if (err instanceof ProposedProductError) return jsonStatus({ error: err.message }, err.status);
+      return errorInterno(c, err);
+    }
+  });
+
+  // Inventario 5.11 por producto de la cotización. Las dos imágenes y los
+  // comentarios pertenecen a la oportunidad, no al catálogo global.
+  app.get('/api/oportunidades/:id/inventario-cotizacion', async c => {
+    const itemId = Number(c.req.param('id'));
+    if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
+    try {
+      return c.json({ productos: await listInventarioCotizacion(c.env, itemId, c.get('viewer')) });
+    } catch (err) {
+      if (err instanceof InventarioCotizacionError) return jsonStatus({ error: err.message }, err.status);
+      return errorInterno(c, err);
+    }
+  });
+
+  app.post('/api/oportunidades/:id/inventario-cotizacion', async c => {
+    const itemId = Number(c.req.param('id'));
+    if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
+    const form = await c.req.formData();
+    const mexico = form.get('mexico');
+    const usa = form.get('usa');
+    try {
+      const producto = await saveInventarioCotizacion(c.env, itemId, c.get('viewer'), {
+        productoId: String(form.get('productoId') ?? ''),
+        productoNombre: String(form.get('productoNombre') ?? ''),
+        comentarios: String(form.get('comentarios') ?? ''),
+        agregadoManualmente: form.get('agregadoManualmente') === 'true',
+        mexico: mexico instanceof File ? mexico : undefined,
+        usa: usa instanceof File ? usa : undefined,
+      });
+      return c.json({ ok: true, producto });
+    } catch (err) {
+      if (err instanceof InventarioCotizacionError) return jsonStatus({ error: err.message }, err.status);
       return errorInterno(c, err);
     }
   });

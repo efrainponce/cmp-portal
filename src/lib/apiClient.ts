@@ -16,6 +16,7 @@ import type {
   OcListaRow, OcListaResponse, ProyectoFiltrosDTO, ProyectoFiltrosResponse,
 } from '../../shared/dto';
 import type { AddProposedProductResponse, ProposedProductDTO, ProposedProductsResponse } from '../../shared/productosPropuestos';
+import type { InventarioCotizacionProductoDTO, InventarioCotizacionResponse } from '../../shared/inventarioCotizacion';
 import { mockBoardMeta, mockItemDetail, mockPatch } from './mockFallback';
 import { getImpersonateTarget } from './impersonation';
 import { tomarPrecarga } from './apiPreload';
@@ -30,6 +31,7 @@ export type {
   MondayUserDTO, ProposedProductDTO, QuoteLineSnapshot, QuoteVersionDTO, TallaBoxInput, CapturarTallasResponse,
   CambiarProductoLineasRequest, CambiarProductoLineasResponse, CambioProductoDTO, ProyectoImagenDTO,
   EstadoHistorialEntryDTO, ProductoResumenDTO,
+  InventarioCotizacionProductoDTO,
   UpdateAttachmentDTO, UpdateDTO, VendedorDTO, ZonaDTO,
 };
 
@@ -1279,4 +1281,29 @@ export async function setOcPdfDatos(folio: string, d: {
     method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(d),
   });
   if (!res.ok) throw new Error(`No se pudo guardar lo leído del PDF (${res.status}).`);
+}
+
+export async function getInventarioCotizacion(oppId: string): Promise<InventarioCotizacionProductoDTO[]> {
+  const res = await apiFetch(`/oportunidades/${oppId}/inventario-cotizacion`);
+  if (!res.ok) throw new Error(`No se pudo cargar el inventario (${res.status}).`);
+  const body: InventarioCotizacionResponse = await res.json();
+  return body.productos;
+}
+
+export async function saveInventarioCotizacion(
+  oppId: string,
+  producto: { productoId: string; productoNombre: string; comentarios: string; agregadoManualmente: boolean },
+  files?: { mexico?: File; usa?: File },
+): Promise<{ ok: boolean; producto?: InventarioCotizacionProductoDTO; error?: string }> {
+  const form = new FormData();
+  form.append('productoId', producto.productoId);
+  form.append('productoNombre', producto.productoNombre);
+  form.append('comentarios', producto.comentarios);
+  form.append('agregadoManualmente', String(producto.agregadoManualmente));
+  if (files?.mexico) form.append('mexico', files.mexico);
+  if (files?.usa) form.append('usa', files.usa);
+  const res = await apiFetch(`/oportunidades/${oppId}/inventario-cotizacion`, { method: 'POST', body: form });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) return { ok: false, error: body.error ?? 'No se pudo guardar el inventario.' };
+  return body;
 }

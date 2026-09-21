@@ -34,6 +34,7 @@ import { EmbellecimientosTab } from './tabs/EmbellecimientosTab';
 import { ActualizacionesTab } from './tabs/ActualizacionesTab';
 import { ActividadTab } from './tabs/ActividadTab';
 import { NuevosProductosTab } from './tabs/NuevosProductosTab';
+import { InventarioCotizacionTab } from './tabs/InventarioCotizacionTab';
 import { DocumentacionTab } from './tabs/DocumentacionTab';
 import { TallasTab } from './tabs/TallasTab';
 import { useProyecto, ProyectoOrdenesSection, EjecucionSection, LogisticaSection } from './ProyectoSection';
@@ -1014,6 +1015,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, openTab, onTabCha
           zonaPrivada={zonaPrivada && !ajena}
         />
       )}
+      {activeTab === 'inventario' && <InventarioCotizacionTab oppId={id} quoteLines={products} readOnly={ajena} />}
       {activeTab === 'embellecimientos' && (
         <EmbellecimientosTab
           subCols={subCols} products={products} versions={versions} onSaved={load}

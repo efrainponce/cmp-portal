@@ -419,6 +419,22 @@ CREATE TABLE IF NOT EXISTS producto_propuesto (
 );
 CREATE INDEX IF NOT EXISTS idx_producto_propuesto_opp ON producto_propuesto(oportunidad_id);
 
+-- Evidencia de inventario 5.11 por producto de una cotización. Se mantiene en
+-- D1 porque una misma línea necesita dos fotos (México/USA) y una nota, campos
+-- que no corresponden al catálogo global ni a una sola columna de Monday.
+CREATE TABLE IF NOT EXISTS inventario_cotizacion_producto (
+  oportunidad_id INTEGER NOT NULL,
+  producto_id TEXT NOT NULL,
+  producto_nombre TEXT NOT NULL,
+  imagen_mexico_key TEXT,
+  imagen_usa_key TEXT,
+  comentarios TEXT NOT NULL DEFAULT '',
+  agregado_manualmente INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (oportunidad_id, producto_id)
+);
+CREATE INDEX IF NOT EXISTS idx_inventario_cotizacion_opp ON inventario_cotizacion_producto(oportunidad_id);
+
 -- Historial de "Estado del producto" (2026-08-05, worker/lib/estadoProducto.ts, tab
 -- "Ejecución" del Proyecto). En vez de seguir agregando una columna de fecha en Monday
 -- por cada estado nuevo que se quiera trackear (patrón usado hasta hoy: date_mm20y5t3,

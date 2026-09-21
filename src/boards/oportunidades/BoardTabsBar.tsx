@@ -6,13 +6,13 @@ import { useIsMobile } from '../../lib/useIsMobile';
 import { useCanVerActividad } from '../../lib/useMe';
 
 export type DrawerTabKey =
-  | 'actualizaciones' | 'cotizacion' | 'embellecimientos' | 'nuevosproductos' | 'actividad'
+  | 'actualizaciones' | 'cotizacion' | 'inventario' | 'embellecimientos' | 'nuevosproductos' | 'actividad'
   | 'documentacion' | 'tallas' | 'ordenes' | 'ejecucion' | 'logistica';
 
 // Mismas llaves, en runtime: el tercer segmento de la URL (/board/item/tab) se
 // valida contra esto antes de abrir el drawer en esa pestaña.
 export const DRAWER_TAB_KEYS: DrawerTabKey[] = [
-  'actualizaciones', 'cotizacion', 'embellecimientos', 'nuevosproductos', 'actividad',
+  'actualizaciones', 'cotizacion', 'inventario', 'embellecimientos', 'nuevosproductos', 'actividad',
   'documentacion', 'tallas', 'ordenes', 'ejecucion', 'logistica',
 ];
 
@@ -31,6 +31,7 @@ interface Props {
 
 const UNDERLINE_TABS: { key: DrawerTabKey; label: string }[] = [
   { key: 'cotizacion', label: 'Cotizaciones' },
+  { key: 'inventario', label: 'Inventario' },
   { key: 'embellecimientos', label: 'Embellecimientos' },
   { key: 'nuevosproductos', label: 'Nuevos productos' },
   { key: 'actividad', label: 'Actividad' },
