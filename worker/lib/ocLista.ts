@@ -355,7 +355,9 @@ export async function etagOcLista(env: Env, viewer: Identity): Promise<string> {
  * de la más reciente a la más vieja (`porFechaDeCreacion`). */
 export async function listarOrdenesCompra(env: Env, viewer: Identity): Promise<OcListaRow[]> {
   await Promise.all([ensureOcLedger(env), ensureOcListaTables(env)]);
-  const proyectos = await listItems(env, 'proyectos', viewer);
+  // compras lee los Proyectos de todo el equipo desde 2026-09-21, pero esta
+  // lista sigue siendo la de SUS proyectos (Efraín solo abrió Costeo y Reporte).
+  const proyectos = await listItems(env, 'proyectos', viewer, undefined, viewer.role === 'compras' ? 'own' : 'read');
   const base = marcarReemplazadas(unaFilaPorFolio(proyectos.flatMap(ordenesDeProyecto)));
   // `conEstados` solo mira los proyectos de `base` (los que el viewer ya puede
   // leer): el scoping de Proyectos se hereda, no se vuelve a decidir aquí.
