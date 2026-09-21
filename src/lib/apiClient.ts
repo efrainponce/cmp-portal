@@ -13,7 +13,7 @@ import type {
   ProductoResumenDTO, ProductoResumenResponse, ProductoGeneroResponse,
   UpdateAttachmentDTO, UpdateDTO, VendedorDTO, WriteResponse, ZonaDTO,
   OportunidadLigadaDTO, ProyectoOportunidadResponse, WaPreferenciasDTO,
-  OcListaRow, OcListaResponse,
+  OcListaRow, OcListaResponse, ProyectoFiltrosDTO, ProyectoFiltrosResponse,
 } from '../../shared/dto';
 import type { AddProposedProductResponse, ProposedProductDTO, ProposedProductsResponse } from '../../shared/productosPropuestos';
 import { mockBoardMeta, mockItemDetail, mockPatch } from './mockFallback';
@@ -1247,6 +1247,20 @@ export async function listOcLista(desdeCero = false): Promise<OcListaRow[] | nul
   ocListaEtag = res.headers.get('ETag') ?? undefined;
   const body: OcListaResponse = await res.json();
   return body.ordenes ?? [];
+}
+
+let proyectoFiltrosEtag: string | undefined;
+
+/** Proveedores y folios de OC por proyecto (filtros y buscador del Reporte de
+ * Proyectos). `null` = 304. A quien no lee esas columnas le llega `{}`. */
+export async function getProyectoFiltros(desdeCero = false): Promise<Record<string, ProyectoFiltrosDTO> | null> {
+  if (desdeCero) proyectoFiltrosEtag = undefined;
+  const res = await apiFetch('/proyectos-filtros', proyectoFiltrosEtag ? { headers: { 'If-None-Match': proyectoFiltrosEtag } } : undefined);
+  if (res.status === 304) return null;
+  if (!res.ok) throw new Error(`No se pudieron cargar los filtros de proyectos (${res.status}).`);
+  proyectoFiltrosEtag = res.headers.get('ETag') ?? undefined;
+  const body: ProyectoFiltrosResponse = await res.json();
+  return body.filtros ?? {};
 }
 
 export async function setOcPagada(folio: string, pagada: boolean): Promise<void> {

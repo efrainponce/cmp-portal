@@ -34,12 +34,15 @@ import {
   ecMetricas, sumarResumenes,
 } from './EstadoCuentaCells';
 import { getEstadoCuentaResumen } from '../../lib/estadoCuentaApi';
+import { getProyectoFiltros } from '../../lib/apiClient';
+import type { ProyectoFiltrosDTO } from '../../../shared/dto';
 import type { ResumenEstadoCuenta } from '../../../shared/estadoCuenta';
 
 const FOLIO_COL = 'pulse_id_mm1a12gy';
 const INSTITUCION_COL = 'lookup_mm1dwn6';
 const FECHA_ENTREGA_COL = 'date_mm0m1vfv';
 const VENDEDOR_COL = 'multiple_person_mm0hrnqq';
+const COMPRAS_COL = 'project_owner';
 const ESTADO_PRODUCTOS_COL = 'lookup_mm20g4n6';
 const STATUS_COL = 'project_status';
 const ZONA_COL = 'dropdown_mm0hnyv';
@@ -73,6 +76,19 @@ function vendedorNamesMatch(item: ItemDTO, names: string[] | undefined): boolean
     .map((s) => s.trim().toUpperCase())
     .some((v) => v && wanted.includes(v));
 }
+
+/** Las personas de una columna `people`: el texto del mirror las trae
+ * separadas por coma. */
+function personas(item: ItemDTO, col: string): string[] {
+  return (item.cols[col]?.text || '').split(',').map((s) => s.trim()).filter(Boolean);
+}
+
+const TODOS = '';
+const selectStyle: React.CSSProperties = {
+  height: 36, font: 'var(--text-label)', color: 'var(--ink)',
+  border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '0 10px',
+  boxSizing: 'border-box', background: 'var(--bg-raised)', cursor: 'pointer', maxWidth: '100%',
+};
 
 /** Una sola línea con puntos suspensivos — se usa donde el ancho ya está
  * comprometido por las columnas de métricas. */
@@ -127,7 +143,29 @@ export function ProyectoBoardList({ config, q, onSearch, onOpen, onReady, header
   // (worker/routes/boards.ts) y sin ese permiso ni siquiera calcula el mapa,
   // así que esto es nada más no pedir lo que no se va a recibir.
   const conTotales = config.key === 'ejecucion' && me?.role === 'admin';
-  const { status, data } = usePoll('proyectos', q, undefined, conTotales);
+  // Reporte de Proyectos (Efraín, 2026-09-21): filtros por Proveedor, Vendedor
+  // y Compras, y buscador por folio — el del proyecto, el de la Oportunidad y
+  // los de sus OC. Aquí la búsqueda es SOLO del cliente (como en Lista de OC):
+  // el `q` del server busca en columnas del proyecto, y ni el proveedor ni el
+  // folio de la OC ni el OPP viven ahí — mandarlo devolvía cero filas antes de
+  // que el cliente pudiera empatar nada. Los filtros NO se guardan entre
+  // sesiones, igual que en Lista de OC: uno recordado deja la lista en 0.
+  const conFiltros = config.key === 'ejecucion';
+  const { status, data } = usePoll('proyectos', conFiltros ? '' : q, undefined, conTotales);
+  const [extras, setExtras] = useState<Record<string, ProyectoFiltrosDTO>>({});
+  useEffect(() => {
+    if (!conFiltros) return;
+    let vivo = true;
+    const cargar = (desdeCero = false) => {
+      getProyectoFiltros(desdeCero).then((r) => { if (vivo && r) setExtras(r); }).catch(() => {});
+    };
+    cargar(true);
+    const t = setInterval(() => { if (!document.hidden) cargar(); }, 60_000);
+    return () => { vivo = false; clearInterval(t); };
+  }, [conFiltros]);
+  const [proveedor, setProveedor] = useState(TODOS);
+  const [vendedorF, setVendedorF] = useState(TODOS);
+  const [comprasF, setComprasF] = useState(TODOS);
   // Board "Estado de Cuenta" (Efraín, 2026-09-08): el resumen de cobros y
   // pagos de cada proyecto, en UNA consulta agregada aparte de la lista (no
   // viaja en /items: es otra fuente, D1 nativa, y solo para la whitelist).
@@ -160,16 +198,44 @@ export function ProyectoBoardList({ config, q, onSearch, onOpen, onReady, header
   const { collapsedGroups, toggleGroup, groupBy: groupBySaved, setGroupBy } = useSavedView(config.key);
   const groupBy = parseGroupBy(groupBySaved, config);
 
+  // Opciones de cada filtro = lo que hay en la lista. Un filtro sin opciones
+  // no se pinta (a ventas no le llegan ni Compras ni proveedores).
+  const opciones = useMemo(() => {
+    const orden = (s: Set<string>) => [...s].sort((a, b) => a.localeCompare(b));
+    const prov = new Set<string>(), vend = new Set<string>(), comp = new Set<string>();
+    if (conFiltros) for (const it of statusItems) {
+      extras[it.id]?.proveedores.forEach((p) => prov.add(p));
+      personas(it, VENDEDOR_COL).forEach((p) => vend.add(p));
+      personas(it, COMPRAS_COL).forEach((p) => comp.add(p));
+    }
+    return { proveedores: orden(prov), vendedores: orden(vend), compras: orden(comp) };
+  }, [conFiltros, statusItems, extras]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Cada palabra del buscador tiene que aparecer, en cualquier campo y orden
+  // (misma regla que el `q` del server, worker/lib/dal.ts searchTokens).
+  const palabras = q.trim().split(/\s+/).filter(Boolean);
   const items = statusItems.filter((it) => {
-    if (!q.trim()) return true;
+    if (conFiltros) {
+      if (proveedor !== TODOS && !extras[it.id]?.proveedores.includes(proveedor)) return false;
+      if (vendedorF !== TODOS && !personas(it, VENDEDOR_COL).includes(vendedorF)) return false;
+      if (comprasF !== TODOS && !personas(it, COMPRAS_COL).includes(comprasF)) return false;
+    }
+    if (palabras.length === 0) return true;
     const haystack = [
       it.name,
       it.cols[INSTITUCION_COL]?.text,
       it.cols[FOLIO_COL]?.text,
       it.cols[VENDEDOR_COL]?.text,
+      ...(conFiltros ? [
+        it.oportunidad?.folio,
+        it.cols[COMPRAS_COL]?.text,
+        ...(extras[it.id]?.proveedores ?? []),
+        ...(extras[it.id]?.ocs ?? []),
+      ] : []),
     ].filter(Boolean).join(' ');
-    return textIncludes(haystack, q);
+    return palabras.every((p) => textIncludes(haystack, p));
   });
+  const hayFiltro = proveedor !== TODOS || vendedorF !== TODOS || comprasF !== TODOS;
 
   const groups = groupBy === 'zona'
     ? groupByZona(items)
@@ -203,14 +269,16 @@ export function ProyectoBoardList({ config, q, onSearch, onOpen, onReady, header
           {headerAction}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
-          <div style={{ font: 'var(--text-label)', color: 'var(--ink-tertiary)' }}>{items.length} proyectos</div>
+          <div style={{ font: 'var(--text-label)', color: 'var(--ink-tertiary)' }}>
+            {hayFiltro || (conFiltros && palabras.length > 0) ? `${items.length} de ${statusItems.length}` : items.length} proyectos
+          </div>
           <SyncIndicator syncedAt={sync.updatedAt} pending={sync.pending} label="actualizado" />
         </div>
         <div style={{ marginTop: isMobile ? 10 : 14, display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 10, flexWrap: 'wrap' }}>
           <SearchInput
             value={q}
             onChange={(e) => onSearch(e.target.value)}
-            placeholder="Buscar proyecto, folio o institución…"
+            placeholder={conFiltros ? 'Buscar proyecto, folio (PRO, OPP u OC), proveedor…' : 'Buscar proyecto, folio o institución…'}
             style={isMobile ? { maxWidth: '100%', flexBasis: '100%' } : undefined}
           />
           {/* Mismo look que los selects de FilterBar (StageBoardList). Al
@@ -220,16 +288,39 @@ export function ProyectoBoardList({ config, q, onSearch, onOpen, onReady, header
             aria-label="Agrupar por"
             value={groupBy}
             onChange={(e) => setGroupBy(e.target.value)}
-            style={{
-              height: 36, font: 'var(--text-label)', color: 'var(--ink)',
-              border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '0 10px',
-              boxSizing: 'border-box', background: 'var(--bg-raised)', cursor: 'pointer',
-            }}
+            style={selectStyle}
           >
             {GROUP_BY_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>Agrupar: {o.label}</option>
             ))}
           </select>
+          {opciones.proveedores.length > 0 && (
+            <select aria-label="Proveedor" value={proveedor} onChange={(e) => setProveedor(e.target.value)} style={{ ...selectStyle, maxWidth: isMobile ? '100%' : 260 }}>
+              <option value={TODOS}>Proveedor: todos</option>
+              {opciones.proveedores.map((p) => <option key={p} value={p}>{p}</option>)}
+            </select>
+          )}
+          {opciones.vendedores.length > 0 && (
+            <select aria-label="Vendedor" value={vendedorF} onChange={(e) => setVendedorF(e.target.value)} style={selectStyle}>
+              <option value={TODOS}>Vendedor: todos</option>
+              {opciones.vendedores.map((p) => <option key={p} value={p}>{p}</option>)}
+            </select>
+          )}
+          {opciones.compras.length > 0 && (
+            <select aria-label="Compras" value={comprasF} onChange={(e) => setComprasF(e.target.value)} style={selectStyle}>
+              <option value={TODOS}>Compras: todos</option>
+              {opciones.compras.map((p) => <option key={p} value={p}>{p}</option>)}
+            </select>
+          )}
+          {hayFiltro && (
+            <button
+              type="button"
+              onClick={() => { setProveedor(TODOS); setVendedorF(TODOS); setComprasF(TODOS); }}
+              style={{ font: 'var(--text-label)', color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', padding: '0 4px' }}
+            >
+              Quitar filtros
+            </button>
+          )}
         </div>
       </div>
 
@@ -241,7 +332,9 @@ export function ProyectoBoardList({ config, q, onSearch, onOpen, onReady, header
           <TotalesHeader metricas={metricas} isMobile={isMobile} />
           {esEstadoCuenta && <EstadoCuentaHeader metricas={ecCols} isMobile={isMobile} />}
           {groups.length === 0 && (
-            <div style={{ padding: 24, font: 'var(--text-label)', color: 'var(--ink-quiet)' }}>Sin proyectos.</div>
+            <div style={{ padding: 24, font: 'var(--text-label)', color: 'var(--ink-quiet)' }}>
+              {hayFiltro || palabras.length > 0 ? 'Ningún proyecto con esos filtros.' : 'Sin proyectos.'}
+            </div>
           )}
           {groups.map((g) => (
             <GroupCard

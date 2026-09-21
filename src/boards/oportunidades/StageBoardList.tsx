@@ -130,7 +130,8 @@ interface Props {
 
 export function StageBoardList({ config, groupColId = 'deal_stage', q, onSearch, onOpen, onReady, headerAction }: Props) {
   const isMobile = useIsMobile();
-  const viewerNombre = useMe()?.nombre;
+  const me = useMe();
+  const viewerNombre = me?.nombre;
   const { boards } = useBoards();
   const cols = colForBoard(boards, 'oportunidades');
   const groupCol = cols.find((c) => c.id === groupColId);
@@ -176,7 +177,15 @@ export function StageBoardList({ config, groupColId = 'deal_stage', q, onSearch,
   // three selects only narrow what's already loaded, they never touch the
   // server request. Persisted per viewer (useSavedView) so it's still there
   // next time they open this board.
-  const { filters, setFilters, collapsedGroups, toggleGroup, clearFilters: clearSavedFilters } = useSavedView(config.key);
+  // Compras ahora puede consultar todo el equipo. La primera vista (también la
+  // que estaba guardada antes de abrir ese acceso) empieza en sus propias
+  // responsabilidades; puede escoger "Todos" para explorar el equipo.
+  const comprasDefault = me?.role === 'compras' && viewerNombre ? viewerNombre : ALL_VALUE;
+  const { filters, setFilters, collapsedGroups, toggleGroup, clearFilters: clearSavedFilters } = useSavedView(
+    config.key,
+    { vendedor: ALL_VALUE, compras: comprasDefault, etapa: ALL_VALUE },
+    me?.role === 'compras' ? 1 : undefined,
+  );
   const vendedorFilter = filters.vendedor;
   const comprasFilter = filters.compras;
   const etapaFilter = filters.etapa;
