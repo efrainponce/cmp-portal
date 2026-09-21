@@ -1027,7 +1027,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, openTab, onTabCha
       {activeTab === 'documentacion' && <DocumentacionTab item={item} proyecto={showPostventa ? proyecto : undefined} />}
       {activeTab === 'tallas' && <TallasTab subCols={subCols} products={products} proyecto={showPostventa ? proyecto : undefined} />}
       {activeTab === 'ordenes' && (
-        <div style={{ padding: '24px 32px 40px', maxWidth: 920, width: '100%', boxSizing: 'border-box' }}>
+        <div style={{ padding: '24px clamp(12px, 3vw, 32px) 40px', width: '100%', boxSizing: 'border-box' }}>
           <div style={{ font: 'var(--text-small-strong)', color: 'var(--ink)', marginBottom: 4 }}>Órdenes de compra a proveedores</div>
           <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)', marginBottom: 10 }}>Cuando se mandan de CMP a los proveedores.</div>
           <PaymentRequestButton slug="oportunidades" itemId={id} kind="proveedor" />

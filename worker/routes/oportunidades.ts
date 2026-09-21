@@ -1155,7 +1155,13 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     if (!gateCompras(c)) return jsonStatus({ error: 'forbidden' }, 403);
     const bad = rejectUnknownQuery(c.req.url, ['skus', 'sync']);
     if (bad) return bad;
-    const skus = (c.req.query('skus') ?? '').split(',').map(s => s.trim()).filter(Boolean).slice(0, 200);
+    // Arreglo JSON: la llave de una línea manual es texto libre y puede traer
+    // comas. La lista separada por comas se sigue aceptando (pestañas viejas).
+    const crudo = c.req.query('skus') ?? '';
+    let lista: unknown = null;
+    if (crudo.startsWith('[')) { try { lista = JSON.parse(crudo); } catch { /* cae a comas */ } }
+    const skus = (Array.isArray(lista) ? lista.map(String) : crudo.split(','))
+      .map(s => s.trim()).filter(isSkuUsable).slice(0, 200);
     if (skus.length === 0) return c.json({ imagenes: [] });
     // `sync=1`: además de leer lo guardado, jala del catálogo lo que nunca se
     // ha buscado. Es lo que hace que la foto de Airtable sea el default al abrir
@@ -1547,7 +1553,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
   // (worker/lib/nativeItems.ts).
   const LINEA_MANUAL_COL_TYPES: Record<string, string> = {
     text_mm0hs17x: 'text', board_relation_mm1cfgv5: 'board_relation', numeric_mm0hj2q4: 'numeric',
-    text_mm1antcb: 'text', text_mm0h4a1c: 'text', text_mm0hyrfs: 'text',
+    text_mm1antcb: 'text', text_mm0h4a1c: 'text', text_mm0hyrfs: 'text', text_mm56dbkm: 'text',
     numeric_mm1dj4fp: 'numbers', numeric_mm1dmsaz: 'numbers', text_mm1gdsvg: 'text',
   };
   // Cambiar el PRODUCTO (y su proveedor) de una línea de la OC conservando las
@@ -1677,6 +1683,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
 
     const body = await c.req.json<{
       producto?: string; proveedorId?: string; cantidad?: number; talla?: string; color?: string; sku?: string;
+      unidad?: string;
       costo?: number; descuento?: number; moneda?: string; zona?: string;
     }>();
     const producto = body.producto?.trim();
@@ -1702,6 +1709,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     if (body.talla?.trim()) subitemCols.text_mm1antcb = body.talla.trim();
     if (body.color?.trim()) subitemCols.text_mm0h4a1c = body.color.trim();
     if (body.sku?.trim()) subitemCols.text_mm0hyrfs = body.sku.trim();
+    if (body.unidad?.trim()) subitemCols.text_mm56dbkm = body.unidad.trim();
     // Costo/descuento/moneda desde el alta (Efraín, 2026-08-18): una OC "de la
     // nada" nace completa, sin tener que editar la línea inmediatamente después
     // — son las mismas columnas que el PDF de la OC lee (worker/lib/ocProveedorPdf.ts).

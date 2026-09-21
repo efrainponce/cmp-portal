@@ -1,5 +1,46 @@
 # Log de commits
 
+## 2026-09-21
+
+- **Órdenes de compra: imágenes, PDF sin "…", OC manual fácil y ancho completo**
+  (Efraín: "nadie puede agregar imágenes… el PDF no puede estar con ...",
+  "la orden de compra manual es SUPER difícil… necesitamos MÁS flexibilidad YA",
+  "solo: CREAR orden de compra", "usar siempre la totalidad de la pantalla").
+  - **Imágenes**: causa real en `accion_log` de prod — 16 de los 18
+    intentos del 21-sep salieron `400 SKU inválido`. La llave de la foto exigía SKU de
+    catálogo (alfanumérico con guiones) y las líneas MANUALES traen "LOGO AIC",
+    `Bota Táctica 8" 4863`… `isSkuUsable` ahora acepta texto libre (≤300, sin
+    caracteres de control); la regla vieja sigue como `esSkuDeCatalogo` solo
+    para el LIKE que busca en Productos/Airtable. El key de R2 del texto libre
+    va hasheado (`segmentoR2`), los keys existentes no cambian. Una línea SIN
+    SKU usa el nombre del producto como llave (`shared/ocFotoLlave.ts`, misma
+    función en el tab y en el PDF) — antes ni aparecía en la tira de fotos.
+    `GET /api/oc-imagenes?skus=` acepta arreglo JSON (los nombres traen comas).
+  - **PDF de la OC**: ya no recorta. Todas las columnas de texto envuelven
+    (Modelo salía "CODI…"), los encabezados y celdas que no envuelven se
+    ACHICAN hasta caber antes de recortar (`fitSize` en layout.ts; salía
+    "TAL…", "UNID…", "MON…"), una palabra larga baja de letra antes de partirse
+    a media palabra, y la Razón social envuelve en vez de cortarse. Anchos
+    rebalanceados (Modelo 0.08→0.13, "Moneda"→"Mon."). Aplica a todo
+    `wrapTable`/`kv` (solicitud de costeo y vista previa de cotización también).
+  - **"+ Crear orden de compra"** (`CrearOcModal`) reemplaza a "+ Agregar
+    producto (otro proveedor)": un proveedor + N renglones de texto libre
+    (producto, modelo/SKU, color, talla, unidad, cantidad, costo, desc.) y se
+    guarda todo de una vez, en orden; un fallo a medias no duplica al
+    reintentar. Sin endpoint nuevo — es el mismo alta de línea manual, que
+    ahora también acepta `unidad` (`text_mm56dbkm`).
+  - **SKU/Modelo editable inline** en la tabla de la OC para compras/admin
+    (whitelist `text_mm0hyrfs` → `w: AC`, anclado en visibility.test.ts). La
+    Talla sigue de solo lectura (cuadra contra el desglose de tallas).
+  - "Cambiar producto": el buscador abría con una pantalla de "-" (renglones
+    basura del catálogo, primeros en orden alfabético) — sin búsqueda ya no se
+    listan.
+  - El tab Órdenes de compra usa todo el ancho del drawer (antes maxWidth 920)
+    en Oportunidades y en Proyectos; Producto se lleva el sobrante.
+  - Probado en local con proyecto nativo: subida con SKU libre y por nombre,
+    OC con imágenes (la foto por nombre sale en su ficha), alta de 2 líneas por
+    el modal nuevo.
+
 ## 2026-09-19
 
 - **Menú del sidebar POR PERSONA** (Efraín: "Pam quiere ver el board parecido a

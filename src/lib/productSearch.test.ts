@@ -24,6 +24,14 @@ const CAT: ItemDTO[] = [
 const ids = (items: ItemDTO[]) => items.map((i) => i.id);
 
 describe('searchProductos', () => {
+  // 2026-09-21: "Cambiar producto" abría con una pantalla entera de "-".
+  it('sin búsqueda no lista los renglones basura llamados "-"', () => {
+    const conBasura = [producto('90', '-', ''), producto('91', ' - ', ''), ...CAT];
+    expect(ids(searchProductos(conBasura, ''))).not.toContain('90');
+    expect(ids(searchProductos(conBasura, ''))).not.toContain('91');
+    expect(searchProductos(conBasura, '')).toHaveLength(CAT.length);
+  });
+
   it('encuentra por SKU exacto y lo pone primero', () => {
     expect(ids(searchProductos(CAT, '72002'))).toEqual(['1', '4']);
   });

@@ -207,6 +207,16 @@ describe('cantidad por talla — editable inline post-import (Efraín, 2026-08-0
     expect(canRead('proyectos_sub', 'text_mm1antcb', 'vendedor')).toBe(true);
   });
 
+  // Efraín, 2026-09-21: "necesitamos MÁS flexibilidad YA en órdenes de compra".
+  // El SKU es el "Modelo" que imprime la OC; en una orden manual es texto libre.
+  it('el SKU de la línea lo corrigen compras/admin desde la OC; el vendedor solo lo ve', () => {
+    expect(canWrite('proyectos_sub', 'text_mm0hyrfs', 'compras')).toBe(true);
+    expect(canWrite('proyectos_sub', 'text_mm0hyrfs', 'admin')).toBe(true);
+    expect(canWrite('proyectos_sub', 'text_mm0hyrfs', 'vendedor')).toBe(false);
+    expect(canWrite('proyectos_sub', 'text_mm0hyrfs', 'almacen')).toBe(false);
+    expect(canRead('proyectos_sub', 'text_mm0hyrfs', 'vendedor')).toBe(true);
+  });
+
   // Efraín, 2026-08-19: "la opción de editar directamente el producto o su
   // color en la orden antes de enviarla". Es lo que sale impreso en la OC, así
   // que lo corrige quien la manda (Compras/Admin) — el vendedor solo lo ve.

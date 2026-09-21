@@ -652,7 +652,7 @@ export interface OcImagenDTO {
  * guardado (jalar del catálogo es explícito, `restablecerOcImagen`). */
 export async function listOcImagenes(skus: string[], sync = false): Promise<OcImagenDTO[]> {
   if (skus.length === 0) return [];
-  const res = await apiFetch(`/oc-imagenes?skus=${encodeURIComponent(skus.join(','))}${sync ? '&sync=1' : ''}`);
+  const res = await apiFetch(`/oc-imagenes?skus=${encodeURIComponent(JSON.stringify(skus))}${sync ? '&sync=1' : ''}`);
   if (!res.ok) return [];
   const body: { imagenes: OcImagenDTO[] } = await res.json();
   return body.imagenes ?? [];
@@ -875,6 +875,8 @@ export interface ProyectoLineaInput {
   talla?: string;
   color?: string;
   sku?: string;
+  /** Unidad de medida tal como sale en la OC (PIEZA, SERVICIO, PAR…). */
+  unidad?: string;
   costo?: number;
   descuento?: number;
   moneda?: string;
