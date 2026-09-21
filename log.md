@@ -24,6 +24,14 @@
     endpoint nuevo, así que no puede sacar una columna que el rol no ve.
     `src/lib/exportXlsx.ts` + `ExportExcelButton`; xlsxWrite en chunk lazy.
 
+- **Tallas sin Sheet: el corte queda en un switch** (Efraín: "el cliente nunca
+  toca un sheet, son solo los vendedores; no lo podíamos hacer nativo en
+  Monday"). Como todo el que captura tiene cuenta, no hace falta plantilla ni
+  formulario público. `/api/me` manda `tallasSinSheet` (= `TALLAS_NATIVE=1`) y
+  con eso el tab Tallas trata a todo proyecto como ya trataba a los nativos:
+  sin botones del archivo y "Validar tallas" sin exigir Sheet. Apagado (como
+  está hoy en prod) no cambia nada.
+
 - **Tallas sin Sheet, primer paso**: los boxes aceptan pegado desde Excel
   (`src/lib/pegadoTallas.ts`: fila de cantidades, encabezado + cantidades, o
   talla | cantidad) y guardan borrador por proyecto en el navegador. Lo que

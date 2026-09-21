@@ -64,25 +64,23 @@ escribe el token de servicio): **~7,200 en Monday vs ~125 en el portal.**
 
 ### Hueco 5 — tallas sin Sheet
 
-Hoy el Sheet es el camino OFICIAL (el texto del tab dice: capturar en el archivo
-→ validar → traer del archivo) y los boxes son el respaldo. Lo único que de
-verdad exige el Sheet es `confirm_tallas` de cmp-tallas (pide "TODO CUADRA" en
-el archivo) y que **el cliente externo lo llena sin tener cuenta en el portal**.
+El Sheet lo llenan SOLO los vendedores (Efraín, 2026-09-21: el cliente nunca lo
+toca; existía porque en Monday no se podía capturar nativo). Todos tienen cuenta
+en el portal, así que no hace falta ni plantilla ni formulario público: basta la
+captura del portal. Lo único que todavía exige el Sheet es `confirm_tallas` de
+cmp-tallas (pide "TODO CUADRA" en el archivo).
 
 - **Hecho**: pegar desde Excel en los boxes (fila de cantidades, encabezado +
-  cantidades, o talla | cantidad) y borrador que sobrevive a cerrar el drawer.
-- **Falta, en orden:**
-  1. Prender `TALLAS_NATIVE=1` tras probarlo con un proyecto real (decisión de
-     Efraín): confirma con el gate de D1 y el PDF propio, sin Sheet.
-  2. Invertir el texto del tab (boxes primero, Sheet como opción) y esconder
-     "Crear/Regenerar archivo" y "Traer del archivo" — solo después del punto 1.
-  3. Editar talla y borrar una línea equivocada desde el tab Tallas (hoy el 🗑
+  cantidades, o talla | cantidad), borrador que sobrevive a cerrar el drawer, y
+  **el corte queda en un solo switch**: con `TALLAS_NATIVE=1` el tab Tallas
+  esconde "Crear/Regenerar archivo" y "Traer del archivo", "Validar tallas" deja
+  de pedir el Sheet y confirma contra D1 con el PDF propio (`/api/me` →
+  `tallasSinSheet`). Apagado = todo igual que hoy.
+- **Falta:**
+  1. Probar `TALLAS_NATIVE=1` con un proyecto real y dejarlo prendido (Efraín).
+  2. Editar talla y borrar una línea equivocada desde el tab Tallas (hoy el 🗑
      vive en Órdenes); embellecimiento por zona desde el portal (hoy solo entra
      por el Sheet).
-  4. **Decisión de Efraín — ¿cómo manda sus tallas un cliente sin cuenta?**
-     (a) plantilla Excel que genera el portal y se sube de vuelta (archivo de
-     transporte, D1 sigue siendo la verdad), o (b) formulario público con
-     token, sin archivo (más trabajo: hoy no existe ninguna ruta pública).
 
 No bloquean, pero se van a pedir: búsqueda global entre boards, edición masiva,
 vistas compartidas, ayuda dentro del portal (hoy no hay ninguna).
@@ -162,4 +160,3 @@ exponen; "100% aquí" sí incluye sacar las tallas de Google Sheets.
 Siguen abiertas:
 
 1. ¿Cuándo se prueba `TALLAS_NATIVE=1` y con qué proyecto?
-2. ¿Cómo captura tallas un cliente sin cuenta: plantilla Excel o formulario público?

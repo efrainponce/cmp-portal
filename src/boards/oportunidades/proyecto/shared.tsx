@@ -235,7 +235,9 @@ export function ProyectoActionBar({ proyecto, reload, actions }: {
   // la Oportunidad. "Validar tallas" sí aplica (worker: confirmTallasNativeD1),
   // así que solo deja de exigir un Sheet que nunca va a haber (Efraín,
   // 2026-08-18: "escóndelo para que no confunda").
-  const native = isNativeId(Number(proyecto.id));
+  // `tallasSinSheet` (TALLAS_NATIVE=1 en el ambiente) pone a TODO proyecto en el
+  // mismo camino: sin archivo de tallas, confirmación contra D1.
+  const native = isNativeId(Number(proyecto.id)) || !!me?.tallasSinSheet;
   const canVendedor = role === 'vendedor' || role === 'admin';
   const canCompras = role === 'compras' || role === 'admin';
 

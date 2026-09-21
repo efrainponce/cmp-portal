@@ -110,6 +110,13 @@ export interface MeDTO {
   // igual que zonaEfrainAccess. Declutter del nav: el worker vuelve a checar
   // el correo en cada ruta de /estado-cuenta.
   estadoCuentaAccess: boolean;
+  // ¿El ambiente tiene `TALLAS_NATIVE=1`? Con eso "Validar tallas" confirma
+  // contra D1 (worker/lib/proyectoTallas.ts confirmTallasNative) y ya no exige
+  // el Google Sheet: el tab Tallas esconde los botones del archivo y deja la
+  // captura del portal como único camino (salida de Monday, 2026-09-21 —
+  // Efraín: el Sheet solo lo llenaban los vendedores, existía porque en Monday
+  // no se podía capturar nativo). Solo presentación: el gate es del server.
+  tallasSinSheet: boolean;
 }
 
 export interface WriteRequest { cols: Record<string, string> }  // colId -> new raw value
