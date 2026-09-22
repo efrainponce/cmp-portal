@@ -7,8 +7,8 @@
 //
 // El producto se elige del catálogo (ProductPicker: SKU y marca salen de ahí)
 // o se deja como texto libre — una muestra puede ser de algo que todavía no
-// está en Productos. Color y talla sugieren lo que el catálogo tiene para ese
-// producto, sin obligar (la marca a veces lo nombra distinto: "STORM").
+// está en Productos. El color es dropdown con los colores del catálogo para ese
+// producto (libre si no trae ninguno); la talla solo sugiere, sin obligar.
 import { useEffect, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { Modal } from '../../components/core/Modal';
@@ -169,20 +169,35 @@ export function MuestraModal({ padre, itemId, solicitud, onClose, onSaved }: Pro
                     style={inputStyle}
                     onPick={(choice) => {
                       if ('item' in choice) {
+                        // Producto nuevo = colores nuevos: el color del anterior no aplica
+                        // (si el catálogo trae uno solo, ya queda elegido).
+                        const nuevos = lista(choice.item.cols[CATALOGO_COLOR_COL]?.text);
                         set(r.key, {
                           producto: productoNombreCorto(choice.item), productoId: choice.item.id,
                           sku: productoSku(choice.item), marca: productoMarca(choice.item),
+                          ...(choice.item.id !== r.productoId ? { color: nuevos.length === 1 ? nuevos[0] : '' } : {}),
                         });
                       } else {
-                        set(r.key, { producto: choice.freeText, productoId: null, sku: '', marca: '' });
+                        set(r.key, {
+                          producto: choice.freeText, productoId: null, sku: '', marca: '',
+                          ...(r.productoId ? { color: '' } : {}),
+                        });
                       }
                     }}
                   />
                 </div>
                 <label style={{ flex: '1 1 110px', minWidth: 0 }}>
                   <div style={labelStyle}>Color</div>
-                  <input list={`muestra-colores-${r.key}`} value={r.color} onChange={(e) => set(r.key, { color: e.target.value })} style={inputStyle} />
-                  <datalist id={`muestra-colores-${r.key}`}>{colores.map(c => <option key={c} value={c} />)}</datalist>
+                  {colores.length > 0 ? (
+                    <select value={r.color} onChange={(e) => set(r.key, { color: e.target.value })} style={inputStyle}>
+                      <option value="">Elige…</option>
+                      {/* Un color que ya no está en el catálogo (solicitud vieja) no se pierde al editar. */}
+                      {r.color && !colores.includes(r.color) && <option value={r.color}>{r.color}</option>}
+                      {colores.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  ) : (
+                    <input value={r.color} placeholder="Libre" onChange={(e) => set(r.key, { color: e.target.value })} style={inputStyle} />
+                  )}
                 </label>
                 <label style={{ flex: '1 1 90px', minWidth: 0 }}>
                   <div style={labelStyle}>Talla</div>

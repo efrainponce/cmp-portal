@@ -1,6 +1,7 @@
 // Formulario "Nueva oportunidad" — deliberadamente mínimo (Efraín 2026-07-15):
 // nombre, vendedor, compras, contacto, zona, tipo de cotización, ¿nuevos
-// productos? y fecha límite. Las líneas de producto se capturan después; la
+// productos? y fecha límite. Desde 2026-09-22 TODO es obligatorio salvo
+// Vendedor secundario, y la fecha límite va al menos 7 días adelante. Las líneas de producto se capturan después; la
 // validación de enviar-costeo impide avanzar sin ellas. Cargado lazy desde
 // OportunidadesBoard para no pesar en el bundle inicial.
 // Contacto e Institución se dan de alta aquí mismo con «+ Nuevo» (Efraín,
@@ -18,6 +19,18 @@ import {
   type ColMeta, type ItemDTO, type ListResponse, type VendedorDTO,
 } from '../../lib/api';
 import { isNativeId } from '../../../shared/nativeId';
+import { sumarDias } from '../../../shared/muestras';
+
+// Todo el form es obligatorio salvo Vendedor secundario (Efraín, 2026-09-22), y
+// la fecha límite tiene que estar al menos a 7 días: una oportunidad con menos
+// no alcanza a costearse.
+const DIAS_MINIMOS_FECHA_LIMITE = 7;
+
+/** Hoy en la fecha local del navegador, como YYYY-MM-DD. */
+function hoyLocal(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 
 // Ids reales de Monday (docs/monday-column-map.md) — nunca fabricar.
 const COL_VENDEDOR = 'deal_owner';
@@ -219,6 +232,18 @@ export default function CreateOportunidadModal({
   const onSubmit = async () => {
     if (!name.trim()) { setError('El nombre es obligatorio.'); return; }
     if (!(cols[COL_VENDEDOR] ?? '').trim()) { setError('Falta elegir el vendedor.'); return; }
+    if (!(cols[COL_COMPRAS] ?? '').trim()) { setError('Falta elegir el responsable de compras.'); return; }
+    if (!(cols[COL_CONTACTO] ?? '').trim()) { setError('Falta elegir el contacto.'); return; }
+    if (!institucionId) { setError('Falta elegir la institución.'); return; }
+    if (!(cols[COL_ZONA] ?? '').trim()) { setError('Falta elegir la zona.'); return; }
+    if (!(cols[COL_TIPO] ?? '').trim()) { setError('Falta elegir el tipo de cotización.'); return; }
+    if (!(cols[COL_NUEVOS] ?? '').trim()) { setError('Falta indicar si se cotizan nuevos productos.'); return; }
+    const fechaLimite = (cols[COL_FECHA_LIMITE] ?? '').trim();
+    if (!fechaLimite) { setError('Falta la fecha límite.'); return; }
+    if (fechaLimite < fechaLimiteMinima) {
+      setError(`La fecha límite debe ser al menos ${DIAS_MINIMOS_FECHA_LIMITE} días después de hoy (desde ${fechaLimiteMinima}).`);
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -246,6 +271,8 @@ export default function CreateOportunidadModal({
       setSaving(false);
     }
   };
+
+  const fechaLimiteMinima = sumarDias(hoyLocal(), DIAS_MINIMOS_FECHA_LIMITE) ?? hoyLocal();
 
   const cerrar = confirmarCierre(onClose, { saving, mensaje: '¿Cerrar sin crear la oportunidad? Se pierde lo que capturaste.' });
 
@@ -279,14 +306,14 @@ export default function CreateOportunidadModal({
             placeholder="Buscar vendedor secundario…"
           />
         </Field>
-        <Field label="Compras">
+        <Field label="Compras" required>
           <SearchableSelect
             value={cols[COL_COMPRAS] ?? ''} onChange={set(COL_COMPRAS)}
             options={compras.map((v) => ({ value: String(v.id), label: v.nombre }))}
             placeholder="Buscar responsable de compras…"
           />
         </Field>
-        <Field label="Contacto (cliente)">
+        <Field label="Contacto (cliente)" required>
           <ConAlta label="+ Nuevo" activo={!!selectedVendedorKey} onClick={() => setAlta('contacto')}>
             <SearchableSelect
               value={cols[COL_CONTACTO] ?? ''} onChange={set(COL_CONTACTO)} options={contactOptions}
@@ -297,7 +324,7 @@ export default function CreateOportunidadModal({
             />
           </ConAlta>
         </Field>
-        <Field label="Institución">
+        <Field label="Institución" required>
           <ConAlta label="+ Nueva" activo={!!cols[COL_CONTACTO]} onClick={() => setAlta('institucion')}>
             <SearchableSelect
               value={institucionId} onChange={setInstitucionId}
@@ -314,24 +341,28 @@ export default function CreateOportunidadModal({
               : 'Se guarda en el contacto: la oportunidad la hereda de él.'}
           </div>
         </Field>
-        <Field label="Zona">
+        <Field label="Zona" required>
           <SearchableSelect value={cols[COL_ZONA] ?? ''} onChange={set(COL_ZONA)} options={labelOptions(oppCols, COL_ZONA)} placeholder="Buscar zona…" />
         </Field>
-        <Field label="Tipo de cotización">
+        <Field label="Tipo de cotización" required>
           <ChipSelect value={cols[COL_TIPO] ?? ''} onChange={set(COL_TIPO)} options={labelOptions(oppCols, COL_TIPO)} />
         </Field>
-        <Field label="¿Quieres cotizar nuevos productos?">
+        <Field label="¿Quieres cotizar nuevos productos?" required>
           <ChipSelect value={cols[COL_NUEVOS] ?? ''} onChange={set(COL_NUEVOS)} options={labelOptions(oppCols, COL_NUEVOS)} />
         </Field>
-        <Field label="Fecha límite">
+        <Field label="Fecha límite" required>
           <input
             ref={fechaLimiteRef}
             type="date"
+            min={fechaLimiteMinima}
             value={cols[COL_FECHA_LIMITE] ?? ''}
             onChange={(e) => set(COL_FECHA_LIMITE)(e.target.value)}
             onClick={() => fechaLimiteRef.current?.showPicker?.()}
             style={fieldStyle}
           />
+          <div style={{ font: 'var(--text-caption)', color: 'var(--ink-quiet)', marginTop: 4 }}>
+            Mínimo {DIAS_MINIMOS_FECHA_LIMITE} días a partir de hoy.
+          </div>
         </Field>
         {error && <div style={{ color: 'var(--status-perdida)', font: 'var(--text-label)' }}>{error}</div>}
 

@@ -8,6 +8,24 @@
   mandó el WhatsApp a los 5 de Compras). Ahora el respaldo "todo Compras" solo
   aplica si el item no tiene Responsable compras con usuario en el portal.
 
+- **Solicitud de muestra: Color como dropdown y se limpia al cambiar de
+  producto** (Efraín: "el color debe ser un dropdown o libre si no tiene. Pero
+  no se actualiza al elegir un nuevo producto"). En `MuestraModal` el color era
+  un input con datalist: al cambiar de producto se quedaba el color del
+  anterior y el datalist, filtrado por ese valor, ya no mostraba los nuevos.
+  Ahora es `<select>` con los colores del catálogo del producto (input libre si
+  no trae ninguno o es texto libre), se vacía al elegir otro producto y queda
+  elegido solo si el catálogo trae un único color. Al editar, un color que ya
+  no está en el catálogo se conserva como opción.
+
+- **Nueva oportunidad: todo obligatorio salvo Vendedor secundario; fecha
+  límite mínimo a 7 días** (Efraín: "TODO es obligatorio, fecha límite no
+  puede ser en los siguientes 7 días"). `CreateOportunidadModal` valida
+  Compras, Contacto, Institución, Zona, Tipo de cotización, ¿Nuevos productos?
+  y Fecha límite antes de crear, con mensaje por campo; el input de fecha lleva
+  `min` = hoy + 7 (fecha local del navegador) y una nota debajo. Solo front:
+  el bot de WhatsApp y el server siguen creando sin estas reglas.
+
 - **Muestras: escribe todo el que ve el item, Compras incluido** (Efraín:
   "todos pueden escribir incluyendo compras"). Crear, editar, enviar, sacar
   versión y borrar borradores pasan de scope 'own' a 'read' del item ligado
