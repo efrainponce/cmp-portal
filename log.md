@@ -2,6 +2,28 @@
 
 ## 2026-09-21
 
+- **Crear orden de compra: alto fijo, producto con búsqueda, caché en D1 y TOTAL en el PDF**
+  (Efraín: "está raro que cambie el alto… el Producto o concepto debe ser libre
+  pero poder buscar en el catálogo… un cache en D1 de lo que se pone aquí… tiene
+  que salir el TOTAL de todos los productos en el PDF… no puedes cerrar esto tan
+  fácil").
+  - La lista de proveedores ya no va en línea (empujaba los renglones y el modal
+    cambiaba de alto con cada tecla): flota sobre el formulario y solo se abre
+    con el buscador enfocado.
+  - "Producto o concepto" sigue siendo texto libre, pero al teclear sugiere del
+    catálogo (misma búsqueda flexible que la cotización) y de lo capturado antes
+    en otras OC. Elegir una sugerencia pone Producto + SKU y llena solo lo vacío
+    (color/talla/unidad/costo; el proveedor si aún no hay).
+  - Caché nuevo `oc_concepto` en D1 (`worker/lib/ocConceptos.ts`): cada alta de
+    línea manual (`POST /api/proyectos/:id/lineas`, también "+ Agregar línea")
+    deja su renglón por producto+SKU con `usos`; se lee con `GET /api/oc-conceptos`
+    (compras/admin). Tolera la tabla sin crear. Migración
+    `worker/migrations/2026-09-21-oc-concepto.sql`.
+  - Cerrar el modal con algo capturado (clic fuera, Escape, ✕, Cancelar) pide
+    confirmación.
+  - PDF de la OC: renglón TOTAL al pie de la tabla (piezas + importe antes de
+    IVA), también en la versión sin costos (solo piezas).
+
 - **Inventario 5.11: la cotización salía vacía** (Efraín: "esta oportunidad tiene
   productos 5.11 y no me sale para agregar un producto").
   - La pestaña leía la relación a Productos como `linkedPulseIds` (API vieja de

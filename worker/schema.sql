@@ -975,3 +975,8 @@ CREATE TABLE IF NOT EXISTS wa_resumen (     -- resumen matutino: una fila por pe
   id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT NOT NULL, fecha TEXT NOT NULL, enviado INTEGER NOT NULL, motivo TEXT,
   item_ids TEXT NOT NULL DEFAULT '[]', candidata_id INTEGER, wamid TEXT, created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS oc_concepto (    -- caché de productos/conceptos capturados a mano en OC (worker/lib/ocConceptos.ts)
+  clave TEXT PRIMARY KEY, producto TEXT NOT NULL, sku TEXT, color TEXT, talla TEXT, unidad TEXT, costo REAL, moneda TEXT,
+  proveedor_id INTEGER, proveedor_name TEXT, usos INTEGER NOT NULL DEFAULT 1, updated_by TEXT, updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS oc_concepto_updated ON oc_concepto (updated_at);

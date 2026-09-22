@@ -886,6 +886,28 @@ export interface ProyectoLineaInput {
 
 /** Línea manual del Proyecto (producto faltante / compra independiente) —
  * Compras/admin. Con Proveedor puesto, "Generar OC por proveedor" ya la toma. */
+/** Producto/concepto capturado a mano en una OC antes (caché D1 oc_concepto,
+ * worker/lib/ocConceptos.ts) — sugerencias del modal "Crear orden de compra". */
+export interface OcConcepto {
+  producto: string;
+  sku: string | null;
+  color: string | null;
+  talla: string | null;
+  unidad: string | null;
+  costo: number | null;
+  moneda: string | null;
+  proveedorId: string | null;
+  proveedorName: string | null;
+  usos: number;
+}
+
+export async function getOcConceptos(): Promise<OcConcepto[]> {
+  const res = await apiFetch('/oc-conceptos');
+  if (!res.ok) return [];
+  const body = await res.json() as { items?: OcConcepto[] };
+  return body.items ?? [];
+}
+
 export async function addProyectoLinea(
   proyectoId: string, input: ProyectoLineaInput,
 ): Promise<{ ok: boolean; id?: string; error?: string }> {
