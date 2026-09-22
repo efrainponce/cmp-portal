@@ -5,7 +5,8 @@
 // estatusProyecto.ts, la MISMA lógica que usa el PDF: lo que se ve es lo que se
 // imprime. Solo lectura; la captura sigue en Ejecución.
 import { useEffect, useState } from 'react';
-import { getProductoResumen, type ItemDTO } from '../../../lib/api';
+import { getProductoResumen, listOcImagenes, ocImagenUrl, type ItemDTO, type OcImagenDTO } from '../../../lib/api';
+import { llaveFotoOc } from '../../../../shared/ocFotoLlave';
 import { Button } from '../../../components/core/Button';
 import { FilePreviewModal } from '../../../components/core/FilePreviewModal';
 import { ProgressBattery } from '../../../components/board/ProgressBattery';
@@ -53,7 +54,23 @@ const td: React.CSSProperties = { padding: '8px 10px', font: 'var(--text-label)'
 export function ResumenSection({ state }: { state: ProyectoState }) {
   const [resumenes, setResumenes] = useState<Record<string, string>>({});
   const [verPdf, setVerPdf] = useState(false);
+  // Miniatura del producto (Efraín, 2026-09-21: "un thumbnail chico"): la misma
+  // foto por SKU de la OC con imágenes, servida por /api/oc-imagenes y encogida
+  // en pantalla — no se guarda una variante chica. `sync` jala del catálogo lo
+  // que nunca se ha buscado, igual que en Órdenes de compra.
+  const [fotos, setFotos] = useState<Record<string, OcImagenDTO>>({});
   const proyectoId = state.proyecto?.id;
+  const llaves = [...new Set((state.proyecto?.children ?? []).map((l) => llaveFotoOc(txt(l.cols, S_SKU), txt(l.cols, S_PRODUCTO))).filter(Boolean))].join('\n');
+
+  useEffect(() => {
+    let vivo = true;
+    const lista = llaves.split('\n').filter(Boolean);
+    if (lista.length === 0) { setFotos({}); return; }
+    listOcImagenes(lista, true)
+      .then((rows) => { if (vivo) setFotos(Object.fromEntries(rows.map((r) => [r.sku.toUpperCase(), r]))); })
+      .catch(() => { /* sin miniaturas, la tabla sale igual */ });
+    return () => { vivo = false; };
+  }, [llaves]);
 
   useEffect(() => {
     if (!proyectoId) return;
@@ -120,6 +137,7 @@ export function ResumenSection({ state }: { state: ProyectoState }) {
             <thead>
               <tr>
                 <th style={th}>#</th>
+                <th style={{ ...th, width: 40 }} aria-label="Foto" />
                 <th style={th}>Producto y color</th>
                 {conProveedor && <th style={th}>Proveedor</th>}
                 <th style={{ ...th, textAlign: 'right' }}>Cant.</th>
@@ -132,6 +150,7 @@ export function ResumenSection({ state }: { state: ProyectoState }) {
               {grupos.map((g, i) => (
                 <tr key={`${g.producto}|${g.color}`} style={{ background: TONO_FILL[g.tono] ?? (i % 2 ? 'var(--bg-sunken, #f6f8fa)' : 'transparent') }}>
                   <td style={td}>{i + 1}</td>
+                  <td style={{ ...td, padding: '4px 6px' }}><Miniatura llave={llaveFotoOc(g.sku, g.producto === '—' ? '' : g.producto)} fotos={fotos} /></td>
                   <td style={td}>{g.producto}{g.sku ? ` (${g.sku})` : ''}{g.color ? ` · ${g.color}` : ''}</td>
                   {conProveedor && <td style={td}>{g.proveedor || '—'}</td>}
                   <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>{g.cantidad.toLocaleString('es-MX')}</td>
@@ -152,4 +171,12 @@ export function ResumenSection({ state }: { state: ProyectoState }) {
       )}
     </div>
   );
+}
+
+/** 36×36 con la foto del catálogo; sin foto, un recuadro gris discreto. */
+function Miniatura({ llave, fotos }: { llave: string; fotos: Record<string, OcImagenDTO> }) {
+  const meta = fotos[llave.toUpperCase()];
+  const box: React.CSSProperties = { width: 36, height: 36, borderRadius: 6, border: '1px solid var(--border)', background: '#fff', display: 'block', objectFit: 'contain' };
+  if (!meta || meta.estado !== 'ok') return <div style={{ ...box, background: 'var(--bg-sunken, #efefef)' }} title="Sin foto en el catálogo" />;
+  return <img src={ocImagenUrl(llave, meta.updatedAt)} alt="" loading="lazy" style={box} />;
 }

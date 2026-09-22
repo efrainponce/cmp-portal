@@ -119,7 +119,11 @@
     PDF" (que se muda ahí desde Ejecución). La lógica de agrupado se movió a
     `shared/estatusProyecto.ts` para que tab y PDF calculen exactamente lo
     mismo. Está en el drawer de Proyectos (todos los accesos) y en el de la
-    Oportunidad (desde Esperando OC).
+    Oportunidad (desde Esperando OC). Con miniatura de 36 px del producto
+    (Efraín: "un thumbnail chico… la más pequeña"): es la misma foto por SKU
+    de la OC con imágenes servida por `/api/oc-imagenes` y encogida en
+    pantalla — Airtable solo tiene small (36 px, ilegible)/large/full y no
+    vale guardar una variante; el navegador la cachea 60 s.
   - **Tabs reordenadas** (Efraín): "Actualizaciones, Resumen | Cotización,
     Costeo, Embellecimientos | Documentación, Tallas, Órdenes de compra,
     Ejecución, Logística". Actividad (que no mencionó) cierra el grupo de en
