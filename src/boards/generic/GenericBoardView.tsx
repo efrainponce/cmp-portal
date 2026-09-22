@@ -5,11 +5,14 @@ import { BoardTable } from '../../components/board/BoardTable';
 import { BoardStatus } from '../../components/board/BoardStatus';
 import { SearchInput } from '../../components/forms/SearchInput';
 import { SyncIndicator } from '../../components/board/SyncIndicator';
+import { ExportExcelButton } from '../../components/board/ExportExcelButton';
+import { columnasDeItems } from '../../lib/exportXlsx';
 import { Button } from '../../components/core/Button';
 import { IconPlus } from '../../components/icons';
 import { lastMondayUpdateFromItems } from '../../lib/syncStatus';
 import { CreateRecordModal } from './CreateRecordModal';
 import { EditContactoModal } from './EditContactoModal';
+import { EditProveedorModal } from './EditProveedorModal';
 import { ProductoActividadDrawer } from './ProductoActividadDrawer';
 import { useIsMobile } from '../../lib/useIsMobile';
 import { useCanVerActividad } from '../../lib/useMe';
@@ -21,12 +24,16 @@ interface Props {
   title: string;
 }
 
-const CREATE_LABEL: Record<string, string> = { instituciones: 'Nueva institución', contactos: 'Nuevo contacto' };
+const CREATE_LABEL: Record<string, string> = { instituciones: 'Nueva institución', contactos: 'Nuevo contacto', proveedores: 'Nuevo proveedor' };
 
 // Columnas que existen y se pueden capturar, pero no se pintan en la tabla.
 // Correo y Teléfono de Contactos: escondidos por lo pronto (Efraín, 2026-07-30);
 // siguen en el form de "Nuevo contacto" (shared/createFields.ts).
-const HIDDEN_LIST_COLS: Partial<Record<BoardSlug, string[]>> = {};
+// Proveedores: las tres columnas de archivo (Constancia, Cuenta de Banco,
+// Actas) se ven y se suben desde el modal del proveedor, no en la tabla.
+const HIDDEN_LIST_COLS: Partial<Record<BoardSlug, string[]>> = {
+  proveedores: ['file_mm21ggd2', 'file_mm208m11', 'file_mm3krzd'],
+};
 
 // Boards donde la tabla muestra solo estas columnas, en este orden exacto —
 // Nombre siempre va primero (BoardTable lo pinta aparte). Contactos: Efraín
@@ -50,6 +57,7 @@ export function GenericBoardView({ slug, title }: Props) {
   const [q, setQ] = useState('');
   const [creating, setCreating] = useState(false);
   const [editingContact, setEditingContact] = useState<ItemDTO | null>(null);
+  const [editingProveedor, setEditingProveedor] = useState<ItemDTO | null>(null);
   const [activityProducto, setActivityProducto] = useState<ItemDTO | null>(null);
   const { boards } = useBoards();
   const cols = colForBoard(boards, slug);
@@ -62,14 +70,17 @@ export function GenericBoardView({ slug, title }: Props) {
   const sync = lastMondayUpdateFromItems(items);
   // Oportunidades también es creatable, pero tiene su propio modal en su board —
   // aquí solo aplican los dos catálogos genéricos.
-  const createSlug = slug === 'instituciones' || slug === 'contactos' ? slug : null;
+  // Proveedores (2026-09-21): solo quien puede escribirlo (compras/admin) —
+  // el vendedor ni siquiera llega a este board.
+  const canEditProveedor = slug === 'proveedores' && cols.some((c) => c.w);
+  const createSlug = slug === 'instituciones' || slug === 'contactos' ? slug : canEditProveedor ? 'proveedores' as const : null;
   const creatable = createSlug !== null;
   const canEditContacto = slug === 'contactos' && cols.some((c) => (c.id === 'contact_account' || c.id === 'multiple_person_mm03vqwx') && c.w);
   // El clic en un producto abre su historial de cambios — solo Compras/Admin
   // (shared/visibility.ts canReadActivity, Efraín 2026-08-18); para el resto la
   // fila deja de ser clicable en vez de abrir un panel que el server niega.
   const verActividad = useCanVerActividad();
-  const onRowClick = canEditContacto ? setEditingContact : (slug === 'productos' && verActividad) ? setActivityProducto : undefined;
+  const onRowClick = canEditContacto ? setEditingContact : canEditProveedor ? setEditingProveedor : (slug === 'productos' && verActividad) ? setActivityProducto : undefined;
   const hidden = HIDDEN_LIST_COLS[slug];
   const tableCols: ColMeta[] = listColIds
     ? listColIds.map((id) => cols.find((c) => c.id === id)).filter((c): c is ColMeta => !!c)
@@ -97,6 +108,8 @@ export function GenericBoardView({ slug, title }: Props) {
             placeholder={`Buscar en ${title.toLowerCase()}…`}
             style={isMobile ? { maxWidth: '100%' } : undefined}
           />
+          {/* Lo que está en pantalla: renglones de la búsqueda + columnas de la tabla. */}
+          <ExportExcelButton titulo={title} columnas={columnasDeItems(tableCols)} filas={items} />
         </div>
       </div>
 
@@ -119,6 +132,14 @@ export function GenericBoardView({ slug, title }: Props) {
         <EditContactoModal
           contact={editingContact}
           onClose={() => setEditingContact(null)}
+          onSaved={refetch}
+        />
+      )}
+
+      {editingProveedor && (
+        <EditProveedorModal
+          proveedor={editingProveedor}
+          onClose={() => setEditingProveedor(null)}
           onSaved={refetch}
         />
       )}

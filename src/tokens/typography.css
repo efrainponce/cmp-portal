@@ -20,6 +20,10 @@
   --text-label-strong: 500 10.5px var(--font-ui);
   --text-label: 400 10.5px var(--font-ui);
   --text-caption: 400 10px var(--font-ui);
+  /* Lo usaban 12 lugares (rótulos de Logística/Tallas/Ejecución, pastillas de
+     estado) sin que existiera: `font: var(<indefinido>)` es inválido y el texto
+     heredaba el tamaño de arriba — rótulos y pastillas "gigantes". */
+  --text-caption-strong: 500 10px var(--font-ui);
   --text-small-strong: 500 10.5px var(--font-ui);
   --text-eyebrow: 600 10.5px var(--font-ui); /* uppercase, letter-spacing .5px */
   --text-chip: 500 9.5px var(--font-ui);

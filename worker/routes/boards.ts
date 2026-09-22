@@ -135,6 +135,7 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
       boardAccess: await getNavBoards(c.env, viewer),
       zonaEfrainAccess: isZonaPrivadaAdminPermitido(viewer.email),
       estadoCuentaAccess: puedeVerEstadoCuenta(viewer.email),
+      tallasSinSheet: c.env.TALLAS_NATIVE === '1',
     };
     return c.json(dto);
   });

@@ -21,6 +21,7 @@ import { useMe } from '../../lib/useMe';
 import { ActualizacionesTab } from '../oportunidades/tabs/ActualizacionesTab';
 import { ActividadTab } from '../oportunidades/tabs/ActividadTab';
 import { FechaEntregaField, OcContratoSection, ActaEntregaSection } from '../oportunidades/tabs/DocumentacionTab';
+import { DriveCarpeta } from '../../components/documents/DriveCarpeta';
 import { ProyectoTallasSection, ProyectoOrdenesSection, EjecucionSection, LogisticaSection, ResumenSection, type ProyectoState } from '../oportunidades/ProyectoSection';
 import { CotizacionVirtualTab } from './CotizacionVirtualTab';
 import { CosteoProyectoTab } from './CosteoProyectoTab';
@@ -345,6 +346,10 @@ export function ProyectoDrawer({ id, boardKey, backLabel, defaultTab, openTab, o
           <FechaEntregaField proyecto={proyectoState} />
           <OcContratoSection proyecto={proyectoState} oppId={oportunidadId} />
           <ActaEntregaSection proyecto={proyectoState} oppId={oportunidadId} />
+          {/* Carpeta de Drive propia del Proyecto y, si tiene Oportunidad
+              ligada, la de ella (Efraín, 2026-09-15). */}
+          <DriveCarpeta kind="proyecto" itemId={id} etiqueta="Proyecto" editable={item.ownedByViewer !== false} />
+          {oportunidadId && <DriveCarpeta kind="oportunidad" itemId={oportunidadId} etiqueta="Oportunidad" editable={item.ownedByViewer !== false} />}
         </div>
       )}
       {tab === 'tallas' && (
