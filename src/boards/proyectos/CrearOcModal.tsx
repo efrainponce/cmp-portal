@@ -123,12 +123,14 @@ export function CrearOcModal({ proyectoId, onClose, onCreated }: Props) {
     return s + (Number(r.cantidad) || 0) * (Number(r.costo) || 0) * (1 - desc);
   }, 0);
 
-  // Cerrar con algo capturado pide confirmación (Efraín, 2026-09-21): un clic
-  // fuera del modal, Escape o la ✕ tiraban todos los renglones sin aviso.
-  const hayCaptura = llenos.length > 0 || proveedor !== null;
+  // Cerrar pide confirmación (Efraín, 2026-09-21/22): un clic fuera del modal
+  // ya no lo cierra (closeOnBackdrop=false) — solo Cancelar, la ✕ o Escape, y
+  // los tres preguntan antes de tirar lo capturado.
   const cerrar = () => {
     if (saving) return; // a medio guardar no se cierra
-    if (hayCaptura && !window.confirm('¿Cerrar sin crear la orden? Se pierde lo que capturaste.')) return;
+    const hayCaptura = llenos.length > 0 || proveedor !== null;
+    const msg = hayCaptura ? '¿Cerrar sin crear la orden? Se pierde lo que capturaste.' : '¿Cerrar sin crear la orden?';
+    if (!window.confirm(msg)) return;
     onClose();
   };
 
@@ -174,6 +176,7 @@ export function CrearOcModal({ proyectoId, onClose, onCreated }: Props) {
     <Modal
       title="Crear orden de compra"
       onClose={cerrar}
+      closeOnBackdrop={false}
       width={1080}
       footer={
         <>

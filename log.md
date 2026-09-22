@@ -2,6 +2,12 @@
 
 ## 2026-09-22
 
+- **Crear orden de compra: un clic fuera ya no cierra el modal** (Efraín: "no
+  puedes cerrar la modal haciendo click en otro lado… tienes que dar click en
+  cancelar o cerrar y pide confirmación"). `Modal` gana `closeOnBackdrop`
+  (default true, los demás modales igual); `CrearOcModal` lo apaga y Cancelar,
+  la ✕ y Escape siempre preguntan antes de cerrar (antes solo si había captura).
+
 - **Crear orden de compra: renglón en naranja si el producto es de otro proveedor**
   (Efraín: "pon en naranja cuando un producto no pertenece al mismo proveedor").
   - Al elegir un producto del catálogo (o del caché `oc_concepto`) el renglón
