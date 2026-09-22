@@ -7,7 +7,7 @@
 import type { Role } from './types';
 
 export const BOARD_KEYS = [
-  'oportunidades', 'oportunidades_web', 'costeo', 'validacion',
+  'oportunidades', 'oportunidades_web', 'costeo', 'validacion', 'muestras',
   'doctallas', 'ordenescompra', 'oc_lista', 'ejecucion', 'logistica',
   'productos', 'instituciones', 'contactos', 'proveedores',
   'inventario',
@@ -48,10 +48,14 @@ export const TEAM_ROLES: Role[] = ['vendedor', 'compras', 'almacen'];
 // rutas /api/oc-lista/* lo checan y responden 403 (worker/routes/ocLista.ts).
 // Los renglones van acotados por el scoping de Proyectos: cada quien de compras
 // ve las OC de SUS proyectos (comprasScopeFor), no todas.
+// 2026-09-21 (Efraín): 'muestras' = "Solicitudes de muestra", todas las
+// solicitudes en una lista (como Lista de OC). Ventas las pide y Compras las
+// consigue. Solo declutter: /api/muestras recorta por renglón con el scoping
+// del item ligado (worker/lib/muestras.ts).
 export const DEFAULT_BOARD_ACCESS: Record<Role, readonly ConfigurableBoardKey[]> = {
-  vendedor: ['oportunidades', 'oportunidades_web', 'doctallas',
+  vendedor: ['oportunidades', 'oportunidades_web', 'muestras', 'doctallas',
     'productos', 'instituciones', 'contactos'],
-  compras: ['costeo', 'ejecucion', 'oc_lista',
+  compras: ['costeo', 'muestras', 'ejecucion', 'oc_lista',
     'productos', 'instituciones', 'contactos', 'proveedores'],
   almacen: ['inventario'],
   admin: BOARD_KEYS,

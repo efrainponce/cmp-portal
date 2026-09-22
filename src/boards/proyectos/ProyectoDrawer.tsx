@@ -27,11 +27,12 @@ import { CotizacionVirtualTab } from './CotizacionVirtualTab';
 import { CosteoProyectoTab } from './CosteoProyectoTab';
 import { EmbellecimientosVirtualTab } from './EmbellecimientosVirtualTab';
 import { EstadoCuentaTab } from './EstadoCuentaTab';
+import { MuestrasTab } from '../muestras/MuestrasTab';
 import type { ProjectBoardKey } from '../../lib/projectStages';
 import type { OportunidadLigadaDTO } from '../../../shared/dto';
 import { canReadActivity } from '../../../shared/visibility';
 
-type ProyectoTabKey = 'estadocuenta' | 'actualizaciones' | 'resumen' | 'actividad' | 'cotizacion' | 'costeo' | 'embellecimientos' | 'documentacion' | 'tallas' | 'ordenes' | 'ejecucion' | 'logistica';
+type ProyectoTabKey = 'estadocuenta' | 'actualizaciones' | 'resumen' | 'actividad' | 'cotizacion' | 'costeo' | 'embellecimientos' | 'documentacion' | 'tallas' | 'ordenes' | 'muestras' | 'ejecucion' | 'logistica';
 
 const FOLIO_COL = 'pulse_id_mm1a12gy';
 const INSTITUCION_COL = 'lookup_mm1dwn6';
@@ -67,6 +68,8 @@ const TABS: { key: ProyectoTabKey; label: string; grupo: 1 | 2 | 3 }[] = [
   { key: 'documentacion', label: 'Documentación', grupo: 3 },
   { key: 'tallas', label: 'Tallas', grupo: 3 },
   { key: 'ordenes', label: 'Órdenes de compra', grupo: 3 },
+  // Solicitudes de muestra ligadas a este proyecto (Efraín, 2026-09-21).
+  { key: 'muestras', label: 'Muestras', grupo: 3 },
   { key: 'ejecucion', label: 'Ejecución', grupo: 3 },
   { key: 'logistica', label: 'Logística', grupo: 3 },
 ];
@@ -85,8 +88,8 @@ function esTab(v: string | null | undefined): v is ProyectoTabKey {
 }
 
 const TABS_BY_BOARD: Partial<Record<ProjectBoardKey, ProyectoTabKey[]>> = {
-  doctallas: ['actualizaciones', 'resumen', 'actividad', 'cotizacion', 'embellecimientos', 'documentacion', 'tallas'],
-  ordenescompra: ['actualizaciones', 'resumen', 'actividad', 'cotizacion', 'embellecimientos', 'documentacion', 'tallas', 'ordenes'],
+  doctallas: ['actualizaciones', 'resumen', 'actividad', 'cotizacion', 'embellecimientos', 'documentacion', 'tallas', 'muestras'],
+  ordenescompra: ['actualizaciones', 'resumen', 'actividad', 'cotizacion', 'embellecimientos', 'documentacion', 'tallas', 'ordenes', 'muestras'],
   // Estado de Cuenta: lo suyo más la cotización (qué se vendió) y las
   // actualizaciones. Sin OC/tallas/logística: aquí se cobra, no se produce.
   estadocuenta: ['estadocuenta', 'cotizacion', 'actualizaciones'],
@@ -319,6 +322,7 @@ export function ProyectoDrawer({ id, boardKey, backLabel, defaultTab, openTab, o
             : <EstadoCuentaTab proyectoId={id} editable={item.ownedByViewer !== false} />
       )}
       {tab === 'actualizaciones' && <ActualizacionesTab slug="proyectos" itemId={id} />}
+      {tab === 'muestras' && <MuestrasTab padre="proyectos" itemId={id} readOnly={item.ownedByViewer === false} />}
       {tab === 'actividad' && <ActividadTab slug="proyectos" itemId={id} />}
       {tab === 'cotizacion' && (
         !oppResuelta ? <Cargando />

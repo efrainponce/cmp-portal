@@ -20,6 +20,7 @@ const StageBoard = lazy(() => import('./boards/oportunidades/StageBoard').then((
 // Proyectos directo (no filtrando Oportunidades por etapa) — ver ProyectoBoard.
 const ProyectoBoard = lazy(() => import('./boards/proyectos/ProyectoBoard').then((m) => ({ default: m.ProyectoBoard })));
 const OcListaBoard = lazy(() => import('./boards/proyectos/OcListaBoard'));
+const MuestrasBoard = lazy(() => import('./boards/muestras/MuestrasBoard'));
 const GenericBoardView = lazy(() => import('./boards/generic/GenericBoardView').then((m) => ({ default: m.GenericBoardView })));
 const InventarioBoard = lazy(() => import('./boards/inventario/InventarioBoard').then((m) => ({ default: m.InventarioBoard })));
 const SettingsPage = lazy(() => import('./app/SettingsPage').then((m) => ({ default: m.SettingsPage })));
@@ -86,6 +87,15 @@ function App() {
         // de etapa) directo en su tab de órdenes; sin ese acceso, en el otro
         // board que trae el tab.
         <OcListaBoard onOpenProyecto={(id) => navigate(me?.boardAccess.includes('ejecucion') ? 'ejecucion' : 'ordenescompra', id, 'ordenes')} />
+      )}
+      {activeBoard === 'muestras' && (
+        // Directo al tab Muestras del item ligado. El proyecto se abre en el
+        // primer board de Proyectos al que la persona tenga acceso.
+        <MuestrasBoard onOpenItem={(s) => navigate(
+          s.padre === 'oportunidades' ? 'oportunidades'
+            : (['ejecucion', 'ordenescompra', 'doctallas'] as const).find((k) => me?.boardAccess.includes(k)) ?? 'doctallas',
+          s.itemId, 'muestras',
+        )} />
       )}
       {activeBoard === 'productos' && <GenericBoardView slug="productos" title="Productos" />}
       {activeBoard === 'instituciones' && <GenericBoardView slug="instituciones" title="Instituciones" />}

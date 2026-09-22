@@ -8,13 +8,13 @@ import { useIsMobile } from '../../lib/useIsMobile';
 import { useCanVerActividad } from '../../lib/useMe';
 
 export type DrawerTabKey =
-  | 'actualizaciones' | 'resumen' | 'cotizacion' | 'inventario' | 'embellecimientos' | 'nuevosproductos' | 'actividad'
+  | 'actualizaciones' | 'resumen' | 'cotizacion' | 'inventario' | 'embellecimientos' | 'nuevosproductos' | 'muestras' | 'actividad'
   | 'documentacion' | 'tallas' | 'ordenes' | 'ejecucion' | 'logistica';
 
 // Mismas llaves, en runtime: el tercer segmento de la URL (/board/item/tab) se
 // valida contra esto antes de abrir el drawer en esa pestaña.
 export const DRAWER_TAB_KEYS: DrawerTabKey[] = [
-  'actualizaciones', 'resumen', 'cotizacion', 'inventario', 'embellecimientos', 'nuevosproductos', 'actividad',
+  'actualizaciones', 'resumen', 'cotizacion', 'inventario', 'embellecimientos', 'nuevosproductos', 'muestras', 'actividad',
   'documentacion', 'tallas', 'ordenes', 'ejecucion', 'logistica',
 ];
 
@@ -36,6 +36,8 @@ const UNDERLINE_TABS: { key: DrawerTabKey; label: string }[] = [
   { key: 'inventario', label: 'Inventario' },
   { key: 'embellecimientos', label: 'Embellecimientos' },
   { key: 'nuevosproductos', label: 'Nuevos productos' },
+  // Solicitudes de muestra de esta oportunidad (Efraín, 2026-09-21).
+  { key: 'muestras', label: 'Muestras' },
   { key: 'actividad', label: 'Actividad' },
 ];
 

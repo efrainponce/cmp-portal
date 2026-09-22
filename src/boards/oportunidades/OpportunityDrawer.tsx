@@ -33,6 +33,7 @@ import { Modal } from '../../components/core/Modal';
 import { EmbellecimientosTab } from './tabs/EmbellecimientosTab';
 import { ActualizacionesTab } from './tabs/ActualizacionesTab';
 import { ActividadTab } from './tabs/ActividadTab';
+import { MuestrasTab } from '../muestras/MuestrasTab';
 import { NuevosProductosTab } from './tabs/NuevosProductosTab';
 import { InventarioCotizacionTab } from './tabs/InventarioCotizacionTab';
 import { DocumentacionTab } from './tabs/DocumentacionTab';
@@ -1030,6 +1031,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, openTab, onTabCha
         />
       )}
       {activeTab === 'nuevosproductos' && <NuevosProductosTab oppId={id} readOnly={noLineEdits} />}
+      {activeTab === 'muestras' && <MuestrasTab padre="oportunidades" itemId={id} readOnly={ajena} />}
       {activeTab === 'actividad' && <ActividadTab slug="oportunidades" itemId={id} />}
       {activeTab === 'documentacion' && <DocumentacionTab item={item} proyecto={showPostventa ? proyecto : undefined} />}
       {activeTab === 'tallas' && <TallasTab subCols={subCols} products={products} proyecto={showPostventa ? proyecto : undefined} />}

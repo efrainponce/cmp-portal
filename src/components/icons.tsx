@@ -72,6 +72,13 @@ export const IconOrdenesCompra = (p: IconProps) => (
   </svg>
 );
 
+// Caja abierta — solicitudes de muestra.
+export const IconMuestras = (p: IconProps) => (
+  <svg {...base} {...p}>
+    <path d="M21 8l-9-5-9 5 9 5 9-5z" /><path d="M3 8v8l9 5 9-5V8" /><path d="M12 13v8" />
+  </svg>
+);
+
 export const IconLogistica = (p: IconProps) => (
   <svg {...base} {...p}>
     <rect x="1" y="7" width="14" height="11" rx="1" /><path d="M15 10h4l3 3v5h-7z" />

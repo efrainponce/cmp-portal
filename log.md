@@ -2,6 +2,24 @@
 
 ## 2026-09-22
 
+- **Muestras: tab en Cotización y Proyectos + board "Solicitudes de muestra"**
+  (Efraín: "un nuevo tab que se llama Muestras… tiene que estar ligado a algo,
+  así como las órdenes de compra"; reemplaza el Excel "SOLICITUD DE MUESTRAS").
+  - Cada solicitud cuelga de UNA Oportunidad o UN Proyecto (CHECK en D1) y
+    trae renglones de producto (del catálogo con `ProductPicker` o texto
+    libre), color y talla (sugeridos del catálogo, sin obligar), cantidad y
+    comentarios por línea; encabezado con fecha de entrega, días de retorno y
+    notas. Solicitante = quien la crea; proyecto/cliente/folio salen del item.
+  - Estados Solicitada → Entregada al cliente → Devuelta (o Cancelada);
+    "retorno vencido" en rojo cuando sigue con el cliente pasada la fecha.
+  - 100 % nativo (`worker/lib/muestras.ts`, rutas `/api/muestras*`): nada va a
+    Monday. Permisos = los del item ligado (`getItem` 'read'/'own'); la lista
+    general recorta por renglón con `scopeFor`. Editar/borrar respaldan el
+    renglón completo en `muestra_borrado` antes.
+  - Board nuevo en Ventas para vendedor y compras (`shared/boardAccess.ts`);
+    en remoto hay que correr `worker/migrations/2026-09-21-muestras.sql` para
+    que aparezca en el menú (las tablas se crean solas).
+
 - **Exportar a Excel escondido para todos** (Efraín: "por lo pronto que no lo
   pueda hacer nadie"). `EXPORT_HABILITADO = false` en `ExportExcelButton.tsx`;
   las listas siguen cableadas para prenderlo con un solo cambio.
