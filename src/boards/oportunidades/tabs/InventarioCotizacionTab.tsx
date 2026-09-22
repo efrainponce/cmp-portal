@@ -3,35 +3,37 @@ import type { ChangeEvent } from 'react';
 import type { ItemDTO } from '../../../lib/apiClient';
 import { getCatalogoProductos, getInventarioCotizacion, saveInventarioCotizacion, type InventarioCotizacionProductoDTO } from '../../../lib/apiClient';
 import { Button } from '../../../components/core/Button';
+import { catalogIndex, displayProducto, linkedProductoId, PRODUCTO_REL_COL } from './cotizacion/gridMeta';
 
 const MARCA_COL = 'product_and_service_description';
-const PRODUCTO_REL_COL = 'board_relation_mkzmafgp';
-const PRODUCTO_MIRROR_COL = 'lookup_mm0x4kda';
-const PRODUCTO_TEXT_COL = 'text_mm0bkm1j';
 
-function es511(producto: ItemDTO) {
+// "5.11" por MARCA del catálogo ("5.11 Tactical"), ignorando puntos y espacios.
+export function es511(producto: ItemDTO) {
   const marca = producto.cols[MARCA_COL]?.text ?? '';
   return marca.replace(/[^a-z0-9]/gi, '').toLowerCase().includes('511');
 }
 
-function relationId(value: unknown): string | undefined {
-  if (value && typeof value === 'object') {
-    const id = (value as { linkedPulseIds?: Array<{ linkedPulseId?: number | string }> }).linkedPulseIds?.[0]?.linkedPulseId;
-    return id == null ? undefined : String(id);
+// Resolver la línea de cotización a su producto de catálogo va por el MISMO
+// camino que la grid (gridMeta): la relación es `{linked_item_ids:[...]}` —
+// `linkedPulseIds` es de la API vieja de Monday y aquí nunca llega, así que
+// leerlo dejaba TODA la cotización sin productos 5.11 (Efraín, 2026-09-21).
+// El fallback por nombre usa el texto de la relación primero: el mirror trae el
+// nombre corto ("Fast-Tac TDU Pant") y el catálogo lo guarda con SKU al frente
+// ("74462 - Fast-Tac TDU Pant"), así que comparar contra el mirror no casa.
+export function productForQuoteLine(line: ItemDTO, catalogo: ItemDTO[]): ItemDTO | undefined {
+  const idx = catalogIndex(catalogo);
+  const id = linkedProductoId(line);
+  if (id != null) {
+    const porId = idx.byId.get(id);
+    if (porId) return porId;
   }
-  if (typeof value !== 'string') return undefined;
-  try {
-    const parsed = JSON.parse(value) as { linkedPulseIds?: Array<{ linkedPulseId?: number | string }> };
-    const id = parsed.linkedPulseIds?.[0]?.linkedPulseId;
-    return id == null ? undefined : String(id);
-  } catch { return undefined; }
-}
-
-function productForQuoteLine(line: ItemDTO, catalogo: ItemDTO[]): ItemDTO | undefined {
-  const id = relationId(line.cols[PRODUCTO_REL_COL]?.value);
-  if (id) return catalogo.find((p) => p.id === id);
-  const name = (line.cols[PRODUCTO_MIRROR_COL]?.text || line.cols[PRODUCTO_TEXT_COL]?.text || '').trim().toLowerCase();
-  return name ? catalogo.find((p) => p.name.trim().toLowerCase() === name) : undefined;
+  const nombres = [line.cols[PRODUCTO_REL_COL]?.text, displayProducto(line)];
+  for (const nombre of nombres) {
+    const clave = (nombre ?? '').trim().toLowerCase();
+    const match = clave ? idx.byName.get(clave) : undefined;
+    if (match) return match;
+  }
+  return undefined;
 }
 
 type ProductRow = InventarioCotizacionProductoDTO & { fromQuote: boolean };

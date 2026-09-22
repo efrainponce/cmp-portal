@@ -2,6 +2,20 @@
 
 ## 2026-09-21
 
+- **Inventario 5.11: la cotización salía vacía** (Efraín: "esta oportunidad tiene
+  productos 5.11 y no me sale para agregar un producto").
+  - La pestaña leía la relación a Productos como `linkedPulseIds` (API vieja de
+    Monday). En el mirror la relación es `{linked_item_ids:[...]}`, así que
+    NINGUNA línea resolvía a su producto de catálogo y la pestaña mostraba
+    "todavía no tiene productos 5.11" aunque la cotización fuera toda 5.11.
+  - El fallback por nombre tampoco casaba: el mirror trae el nombre corto
+    ("Fast-Tac TDU Pant") y el catálogo lo guarda con SKU al frente
+    ("74462 - Fast-Tac TDU Pant"). Ahora resuelve por el mismo camino que la
+    grid (`linkedProductoId` + `catalogIndex` de gridMeta) y el fallback usa
+    primero el texto de la relación.
+  - Anclado en `src/boards/oportunidades/tabs/inventarioCotizacion.test.ts`
+    (el typecheck no cubre nada de esto: todo es JSON en strings).
+
 - **Órdenes de compra: imágenes, PDF sin "…", OC manual fácil y ancho completo**
   (Efraín: "nadie puede agregar imágenes… el PDF no puede estar con ...",
   "la orden de compra manual es SUPER difícil… necesitamos MÁS flexibilidad YA",
