@@ -52,6 +52,7 @@ export interface Env {
   DRIVE_PROYECTOS?: string;
   GOOGLE_SERVICE_ACCOUNT_EMAIL?: string;  // worker/lib/googleAuth.ts (JWT RS256)
   GOOGLE_PRIVATE_KEY?: string;            // PEM, service account de Drive
+  OC_SHEET_ID?: string;                   // SOLO pruebas: reemplaza el ledger de OC de cmp-tallas (worker/lib/ocSheetLedger.ts)
 
   // Claude agent, shared by two channels: WhatsApp bot (worker/wa/) and the
   // portal chat bubble (worker/assistant/). Both reply politely when unset.

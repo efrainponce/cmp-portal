@@ -22,6 +22,10 @@ import { mergeNativeCols } from './nativeMirrors';
 import { oportunidadFileKey, proyectoFileKey, putFile } from './r2';
 import { generarOcProveedorPdf, prepararOcProveedor, renderOcProveedor } from './ocProveedorPdf';
 import { registrarReserva, cerrarOc, fallarOc } from './ocLedger';
+import {
+  sheetLedgerDisponible, reservarFolioEnSheet, cerrarFolioEnSheet, marcarErrorEnSheet, OcSheetLedgerError,
+  type ReservaSheet,
+} from './ocSheetLedger';
 import { registrarArchivo } from './archivoLog';
 import { refetchItemTree } from '../sync';
 import { getOcNota } from './ocNotas';
@@ -223,22 +227,67 @@ async function folioMasAltoEnEspejo(env: Env): Promise<number> {
   return max;
 }
 
-// Folio GLOBAL "OC-n" — nunca decrece, una sola fila en D1 (a diferencia de
-// costeo/cotización/tallas, que son POR oportunidad/proyecto). Mirror 1:1 del
-// conteo de filas del ledger de Sheets que hacía cmp-tallas, más el piso de
-// arriba para no repetir un folio que ese ledger ya usó.
+// Folio GLOBAL "OC-n" — nunca decrece. Desde 2026-09-22 el contador es el
+// Sheet de cmp-tallas (worker/lib/ocSheetLedger.ts): un solo ledger para los
+// dos motores, o el siguiente folio de Monday repite el del portal. D1
+// (`oc_folios`) queda como espejo del número y como respaldo cuando no hay
+// credenciales de Google (dev local), con el piso del espejo de arriba.
 let ocFolioTableReady = false;
-async function nextOcFolio(env: Env): Promise<string> {
-  if (!ocFolioTableReady) {
-    await env.DB.prepare(`CREATE TABLE IF NOT EXISTS oc_folios (id INTEGER PRIMARY KEY CHECK (id = 1), seq INTEGER NOT NULL DEFAULT 0)`).run();
-    ocFolioTableReady = true;
-  }
+
+interface FolioTomado {
+  folio: string;
+  /** Fila del Sheet, si el folio salió de ahí — para cerrarla o marcarla. */
+  filaSheet?: number;
+}
+
+async function ensureOcFolioTable(env: Env): Promise<void> {
+  if (ocFolioTableReady) return;
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS oc_folios (id INTEGER PRIMARY KEY CHECK (id = 1), seq INTEGER NOT NULL DEFAULT 0)`).run();
+  ocFolioTableReady = true;
+}
+
+async function nextOcFolio(env: Env, reserva: ReservaSheet): Promise<FolioTomado> {
+  await ensureOcFolioTable(env);
   const piso = await folioMasAltoEnEspejo(env);
+
+  if (sheetLedgerDisponible(env)) {
+    const tomado = await reservarFolioEnSheet(env, reserva);
+    if (tomado.numero <= piso) {
+      // El Sheet va ATRÁS de Monday: el folio que dio ya existe como PDF. No
+      // se emite con él — se deja la fila marcada (el folio no se recicla) y
+      // se aborta con un error que sí se ve en el tab.
+      await marcarErrorEnSheet(env, tomado.fila, `folio ${tomado.folio} ya existe en Monday (máximo visto: OC-${piso}); el ledger de Sheets va atrasado`).catch(() => {});
+      throw new OcSheetLedgerError(`El ledger de OC va atrasado (dio ${tomado.folio}, Monday ya tiene OC-${piso}). No se emitió — avisa a Efraín.`);
+    }
+    // D1 sigue al Sheet, nunca al revés.
+    await env.DB.prepare(
+      `INSERT INTO oc_folios (id, seq) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET seq = MAX(seq, ?)`,
+    ).bind(tomado.numero, tomado.numero).run();
+    return { folio: tomado.folio, filaSheet: tomado.fila };
+  }
+
+  // Sin credenciales (dev local): contador de D1 con piso del espejo.
   await env.DB.prepare(
     `INSERT INTO oc_folios (id, seq) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET seq = MAX(seq, ?) + 1`,
   ).bind(piso + 1, piso).run();
   const row = await env.DB.prepare(`SELECT seq FROM oc_folios WHERE id = 1`).first<{ seq: number }>();
-  return `OC-${row?.seq ?? 1}`;
+  return { folio: `OC-${row?.seq ?? 1}` };
+}
+
+/** Los dos folios "humanos" del Proyecto (PRO-nnnn y OPP-nnnn) que van en la
+ * fila del Sheet, leídos de sus columnas; sin ellos, el id. */
+function foliosDelProyecto(row: MirrorItem | null, proyectoId: number): { folioProyecto: string; folioOpp: string } {
+  const cols = row ? asMondayItemShape(row).column_values : [];
+  return {
+    folioProyecto: cvText(cols, PROYECTO_FOLIO) || String(proyectoId),
+    folioOpp: cvText(cols, PROYECTO_FOLIO_OPP),
+  };
+}
+
+/** URL absoluta de un PDF del portal para la columna PdfUrl del Sheet. */
+function urlAbsolutaPortal(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  return url.startsWith('/') ? `https://portal.mexicanadeproteccion.com${url}` : url;
 }
 
 /** Nombre del PDF de una OC emitida POR EL PORTAL.
@@ -344,13 +393,19 @@ export async function generarOcNativeD1(
   const ordenes: OrdenResult[] = [];
   for (const group of groups.values()) {
     const orden: OrdenResult = { proveedorId: group.proveedorId, proveedorNombre: group.proveedorNombre };
+    let filaSheet: number | undefined;
     try {
       const { monto, moneda } = groupTotals(group);
       orden.monto = monto;
       orden.moneda = moneda;
 
-      const folioOrden = await nextOcFolio(env);
+      const tomado = await nextOcFolio(env, {
+        proyectoId, proveedorId: group.proveedorId, proveedorNombre: group.proveedorNombre,
+        proveedorRZ: group.proveedorRZ, ...foliosDelProyecto(proyectoRow, proyectoId), monto, moneda,
+      });
+      const folioOrden = tomado.folio;
       orden.folioOrden = folioOrden;
+      filaSheet = tomado.filaSheet;
       // El ledger se escribe ANTES de generar: si esto truena, el folio queda
       // documentado como 'fallida' en vez de perderse (worker/lib/ocLedger.ts).
       await registrarReserva(env, folioOrden, {
@@ -375,9 +430,11 @@ export async function generarOcNativeD1(
         bytes: pdfBytes.length, porEmail: viewer.email,
       });
       await cerrarOc(env, folioOrden, { archivo: filename, monto, moneda });
+      if (filaSheet) await cerrarFolioEnSheet(env, filaSheet, { status: 'Emitida (portal)', pdfUrl: urlAbsolutaPortal(orden.pdfUrl) }).catch(() => {});
     } catch (err) {
       orden.error = String(err);
       if (orden.folioOrden) await fallarOc(env, orden.folioOrden, String(err)).catch(() => {});
+      if (filaSheet) await marcarErrorEnSheet(env, filaSheet, String(err)).catch(() => {});
     }
     ordenes.push(orden);
   }
@@ -425,13 +482,19 @@ export async function generarOcPortal(
   const ordenes: OrdenResult[] = [];
   for (const group of groups.values()) {
     const orden: OrdenResult = { proveedorId: group.proveedorId, proveedorNombre: group.proveedorNombre };
+    let filaSheet: number | undefined;
     try {
       const { monto, moneda } = groupTotals(group);
       orden.monto = monto;
       orden.moneda = moneda;
 
-      const folioOrden = await nextOcFolio(env);
+      const tomado = await nextOcFolio(env, {
+        proyectoId, proveedorId: group.proveedorId, proveedorNombre: group.proveedorNombre,
+        proveedorRZ: group.proveedorRZ, ...foliosDelProyecto(proyectoRow, proyectoId), monto, moneda,
+      });
+      const folioOrden = tomado.folio;
       orden.folioOrden = folioOrden;
+      filaSheet = tomado.filaSheet;
       await registrarReserva(env, folioOrden, {
         proyectoId, proveedorId: group.proveedorId,
         proveedor: group.proveedorRZ || group.proveedorNombre,
@@ -499,9 +562,11 @@ export async function generarOcPortal(
         archivoSinCostos: orden.pdfSinCostosUrl ? nombreArchivoOc(folioOrden, razonSocial, true) : undefined,
         monto, moneda, conImagenes: opts.conImagenes,
       });
+      if (filaSheet) await cerrarFolioEnSheet(env, filaSheet, { status: 'Emitida (portal)', pdfUrl: urlAbsolutaPortal(orden.pdfUrl) }).catch(() => {});
     } catch (err) {
       orden.error = String(err);
       if (orden.folioOrden) await fallarOc(env, orden.folioOrden, String(err)).catch(() => {});
+      if (filaSheet) await marcarErrorEnSheet(env, filaSheet, String(err)).catch(() => {});
     }
     ordenes.push(orden);
   }
@@ -577,13 +642,19 @@ export async function generarOcNative(
   const ordenes: OrdenResult[] = [];
   for (const group of groups.values()) {
     const orden: OrdenResult = { proveedorId: group.proveedorId, proveedorNombre: group.proveedorNombre };
+    let filaSheet: number | undefined;
     try {
       const { monto, moneda } = groupTotals(group);
       orden.monto = monto;
       orden.moneda = moneda;
 
-      const folioOrden = await nextOcFolio(env);
+      const tomado = await nextOcFolio(env, {
+        proyectoId, proveedorId: group.proveedorId, proveedorNombre: group.proveedorNombre,
+        proveedorRZ: group.proveedorRZ, folioProyecto, folioOpp, monto, moneda,
+      });
+      const folioOrden = tomado.folio;
       orden.folioOrden = folioOrden;
+      filaSheet = tomado.filaSheet;
 
       await registrarReserva(env, folioOrden, {
         proyectoId, proveedorId: group.proveedorId,
@@ -633,9 +704,16 @@ export async function generarOcNative(
         orden.docusealId = `ERROR: ${String(err)}`;
       }
       await cerrarOc(env, folioOrden, { archivo: filename, monto, moneda });
+      if (filaSheet) {
+        await cerrarFolioEnSheet(env, filaSheet, {
+          status: 'Enviado a firma', pdfUrl: upload.publicUrl,
+          docusealId: orden.docusealId?.startsWith('ERROR') ? '' : orden.docusealId,
+        }).catch(() => {});
+      }
     } catch (err) {
       orden.error = String(err);
       if (orden.folioOrden) await fallarOc(env, orden.folioOrden, String(err)).catch(() => {});
+      if (filaSheet) await marcarErrorEnSheet(env, filaSheet, String(err)).catch(() => {});
     }
     ordenes.push(orden);
   }

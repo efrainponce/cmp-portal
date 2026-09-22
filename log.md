@@ -1,5 +1,35 @@
 # Log de commits
 
+## 2026-09-22 (3)
+
+- **El folio de OC del portal sale del Sheet de cmp-tallas — un solo contador
+  para los dos motores** (Efraín: "cuando el portal hace una OC, ¿lo mandamos
+  al Google Sheets? así sigue el conteo… para no tener duplicados" — "es super
+  importante"). cmp-tallas numera contando las filas de `historial` en su
+  Sheet (`1X9Uay20…`) y NUNCA mira Monday; el portal contaba en D1 con piso
+  del espejo. Seguro de su lado, pero el Sheet no se enteraba: la primera OC
+  del portal (OC-320) dejaba al Sheet en 319 y la siguiente de Monday salía
+  también OC-320. Hoy el ledger de D1 iba en 235, el Sheet y Monday en 319 —
+  no había chocado porque el portal aún no ha emitido ninguna OC en prod.
+- `worker/lib/ocSheetLedger.ts`: `nextOcFolio` reserva EXACTAMENTE como
+  cmp-tallas — cuenta filas, anexa la suya (A…O, Status "Generando") y toma
+  el número de fila que Sheets devolvió (`folio = fila - 1`). Si otra fila se
+  coló entre el conteo y el append, corrige el folio y reescribe la celda A.
+  Al terminar cierra L:N ("Emitida (portal)" + URL del PDF; el flujo Eledo
+  deja "Enviado a firma" + id de DocuSeal como cmp-tallas) y si truena marca
+  "Error" + mensaje — el folio no se recicla. D1 `oc_folios` sigue al Sheet.
+- **Fail-closed**: sin fila en el Sheet no se emite (Sheets caído = error
+  visible en el tab, no un folio inventado). Si el Sheet diera un folio ≤ al
+  máximo visto en Monday, se marca la fila y se aborta con "avisa a Efraín".
+  Sin credenciales de Google (dev local) cae al contador de D1 de siempre.
+- Misma cuenta de servicio que cmp-tallas (ya dueña del Sheet). Verificado
+  en vivo: el Sheet real trae 320 filas, OC-1…OC-319, sin huecos ni
+  duplicados, folio = fila - 1 en todas. Probado el módulo contra un Sheet
+  TEMPORAL (creado y tirado a la papelera en "Proyectos Portal"): 3 reservas
+  concurrentes → OC-4, OC-5, OC-6 sin repetir y con la celda A corregida,
+  cierre y marca de error en las celdas correctas. El real no se tocó.
+  `OC_SHEET_ID` en env solo existe para esa prueba.
+
 ## 2026-09-22 (2)
 
 - **Adjuntos PDF en las órdenes de compra** (Efraín: "poder agregar archivos
