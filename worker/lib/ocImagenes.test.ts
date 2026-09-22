@@ -2,7 +2,7 @@
 // es lo único que impide que un .webp renombrado a .jpg se guarde bien y después
 // salga como recuadro gris en la OC, sin que nadie sepa por qué.
 import { describe, it, expect } from 'vitest';
-import { skuKey, isSkuUsable, sniffTipo } from './ocImagenes';
+import { skuKey, isSkuUsable, sniffTipo, hayQueBuscar, SIN_FOTO_REINTENTO_DIAS } from './ocImagenes';
 
 describe('skuKey', () => {
   it('es la misma foto sin importar cómo escribieron el SKU en la línea', () => {
@@ -57,5 +57,39 @@ describe('marca de "el catálogo no tiene foto"', () => {
     // marcarFaltante=false ⇒ null, sin escribir.
     await expect(restablecerDesdeAirtable(env, 'ABC123')).resolves.toBeNull();
     await expect(jalarDeAirtable(env, 'ABC123', false)).resolves.toBeNull();
+  });
+});
+
+describe('hayQueBuscar (reintento automático de "sin-foto")', () => {
+  const dia = 86_400_000;
+  const ahora = Date.parse('2026-09-21T12:00:00Z');
+  it('sin fila se busca; con foto nunca', () => {
+    expect(hayQueBuscar(undefined, ahora)).toBe(true);
+    expect(hayQueBuscar({ estado: 'ok', updated_at: '2020-01-01T00:00:00Z' }, ahora)).toBe(false);
+  });
+  it('la marca "sin-foto" caduca y se vuelve a preguntar sola', () => {
+    const reciente = new Date(ahora - dia).toISOString();
+    const vieja = new Date(ahora - (SIN_FOTO_REINTENTO_DIAS + 1) * dia).toISOString();
+    expect(hayQueBuscar({ estado: 'sin-foto', updated_at: reciente }, ahora)).toBe(false);
+    expect(hayQueBuscar({ estado: 'sin-foto', updated_at: vieja }, ahora)).toBe(true);
+    expect(hayQueBuscar({ estado: 'sin-foto', updated_at: 'basura' }, ahora)).toBe(true);
+  });
+});
+
+describe('fallo de Airtable ≠ "sin foto"', () => {
+  it('sin API key no se marca nada aunque marcarFaltante sea true', async () => {
+    const { jalarDeAirtable } = await import('./ocImagenes');
+    const escrituras: string[] = [];
+    // El mirror sí conoce el producto (tiene id de Airtable); lo que falta es la llave.
+    const fila = { columns: JSON.stringify([{ id: 'product_and_service_sku', text: 'ABC123' }, { id: 'text_mkzmgvc7', text: 'recXYZ' }]) };
+    const env = {
+      AIRTABLE_API_KEY: '',
+      DB: { prepare: (sql: string) => ({
+        bind: () => ({ all: async () => ({ results: sql.includes('FROM items') ? [fila] : [] }), run: async () => { escrituras.push(sql); return {}; }, first: async () => null }),
+        run: async () => ({}), first: async () => null,
+      }) },
+    } as never;
+    await expect(jalarDeAirtable(env, 'ABC123', true)).resolves.toBeNull();
+    expect(escrituras.filter(q => q.includes('sin-foto'))).toEqual([]);
   });
 });

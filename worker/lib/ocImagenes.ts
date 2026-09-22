@@ -47,6 +47,21 @@ export const OC_IMAGEN_TIPOS = ['image/jpeg', 'image/png'] as const;
  * presupuesto de subrequests y una OC de 30 productos nuevos lo agotaría. */
 const MAX_AIRTABLE_POR_CORRIDA = 10;
 
+/** Cada cuánto se vuelve a preguntar a Airtable por un SKU marcado "sin-foto"
+ * (Efraín, 2026-09-21: "que se vuelva a buscar automático"). Antes la marca era
+ * para siempre y solo "Del catálogo" la quitaba; si suben la foto al catálogo
+ * después, con esto aparece sola en una semana. */
+export const SIN_FOTO_REINTENTO_DIAS = 7;
+
+/** ¿Hay que salir a Airtable por este SKU? Sin fila, sí; con foto, no; marcado
+ * "sin-foto", solo cuando la marca ya caducó. Pura — anclada en test. */
+export function hayQueBuscar(reg: { estado: string; updated_at: string } | undefined, ahora = Date.now()): boolean {
+  if (!reg) return true;
+  if (reg.estado !== 'sin-foto') return false;
+  const t = Date.parse(reg.updated_at);
+  return !Number.isFinite(t) || ahora - t >= SIN_FOTO_REINTENTO_DIAS * 86_400_000;
+}
+
 export class OcImagenError extends Error {
   status: number;
   constructor(status: number, message: string) {
@@ -213,6 +228,9 @@ export async function jalarDeAirtable(
   // 3.7 pulgadas de ancho imprime de sobra, y el `full` puede traer 3000px que
   // solo inflan el PDF y el CPU de descompresión.
   const url = await fetchAirtableImageUrl(env, airtableId, 'large');
+  // null = no se pudo consultar (sin llave, timeout, HTTP error): NO se marca,
+  // la próxima corrida lo vuelve a intentar. '' = Airtable dijo que no hay foto.
+  if (url === null) return null;
   if (!url) return sinFoto();
 
   try {
@@ -296,13 +314,13 @@ const MAX_AIRTABLE_AL_ABRIR = 8;
  * 2026-08-25: "esto tiene que ser POR DEFECTO del catálogo") en vez de algo que
  * alguien tenga que pedir con un botón.
  *
- * Solo sale a Airtable por los que NUNCA se han buscado: un producto ya
- * cacheado, o ya marcado como "el catálogo no tiene foto", no se vuelve a
+ * Solo sale a Airtable por los que nunca se han buscado o cuya marca "sin-foto"
+ * ya caducó (`hayQueBuscar`): un producto con foto cacheada no se vuelve a
  * consultar. Por eso el costo es de una vez por producto, no por apertura. */
 export async function sincronizarImagenes(env: Env, skus: string[]): Promise<OcImagenMeta[]> {
   const unicos = [...new Set(skus.map(skuKey).filter(Boolean))];
   const registros = await registrosDe(env, unicos);
-  const faltantes = unicos.filter(s => !registros.has(s)).slice(0, MAX_AIRTABLE_AL_ABRIR);
+  const faltantes = unicos.filter(s => hayQueBuscar(registros.get(s))).slice(0, MAX_AIRTABLE_AL_ABRIR);
   if (faltantes.length > 0) {
     await Promise.all(faltantes.map(sku => jalarDeAirtable(env, sku, true).catch(() => null)));
   }
@@ -319,7 +337,7 @@ export async function cargarImagenesParaPdf(
   const unicos = [...new Set(skus.map(skuKey).filter(Boolean))];
   const registros = await registrosDe(env, unicos);
 
-  const faltantes = unicos.filter(s => !registros.has(s)).slice(0, MAX_AIRTABLE_POR_CORRIDA);
+  const faltantes = unicos.filter(s => hayQueBuscar(registros.get(s))).slice(0, MAX_AIRTABLE_POR_CORRIDA);
   for (const sku of faltantes) {
     const meta = await jalarDeAirtable(env, sku, true);
     if (meta) {

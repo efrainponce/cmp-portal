@@ -36,6 +36,15 @@
     PDF (`ESTATUS_MAX_FOTOS`); los que sobran salen sin foto y la nota de arriba
     lo dice. Si la carga de fotos falla, el PDF sale sin ellas, nunca 500.
     `wrapTable` gana `imageCol`/`rowImages` (foto encajada sin deformar).
+  - **Caché de fotos: un fallo ya no se confunde con "el catálogo no tiene
+    foto"** (Efraín: "que se vuelva a buscar automático"). `fetchAirtableImageUrl`
+    ahora devuelve `null` cuando NO pudo consultar (sin llave, timeout, HTTP
+    error) y `''` solo cuando Airtable respondió que no hay imagen; `jalarDeAirtable`
+    no marca en el primer caso. Además la marca "sin-foto" caduca a los 7 días
+    (`SIN_FOTO_REINTENTO_DIAS`, `hayQueBuscar`): si suben la foto al catálogo
+    después, aparece sola. La foto sigue siendo la "mediana" de Airtable
+    (`large`, ~500 px; Airtable solo tiene small/large/full) — lo que pesa son
+    las fotos en PNG, que el motor embebe sin recomprimir.
 
 ## 2026-09-19
 
