@@ -2,6 +2,14 @@
 
 ## 2026-09-22
 
+- **Nueva oportunidad: todo obligatorio salvo Vendedor secundario; fecha
+  límite mínimo a 7 días** (Efraín: "TODO es obligatorio, fecha límite no
+  puede ser en los siguientes 7 días"). `CreateOportunidadModal` valida
+  Compras, Contacto, Institución, Zona, Tipo de cotización, ¿Nuevos productos?
+  y Fecha límite antes de crear, con mensaje por campo; el input de fecha lleva
+  `min` = hoy + 7 (fecha local del navegador) y una nota debajo. Solo front:
+  el bot de WhatsApp y el server siguen creando sin estas reglas.
+
 - **Muestras: escribe todo el que ve el item, Compras incluido** (Efraín:
   "todos pueden escribir incluyendo compras"). Crear, editar, enviar, sacar
   versión y borrar borradores pasan de scope 'own' a 'read' del item ligado
