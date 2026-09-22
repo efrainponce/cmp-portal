@@ -85,19 +85,32 @@ describe('scopeFor', () => {
     expect(scopeFor('proyectos', vendedor({ role: 'admin' }))).toEqual({ where: '1=1', binds: [] });
   });
 
-  it('compras ve solo lo suyo en Oportunidades/Proyectos (columna Compras)', () => {
-    const scope = scopeFor('oportunidades', compras(), 'read');
+  it('compras LEE a todo el equipo en Oportunidades/Proyectos (Efraín, 2026-09-21)', () => {
+    for (const slug of ['oportunidades', 'oportunidades_sub', 'proyectos', 'proyectos_sub'] as const) {
+      expect(scopeFor(slug, compras(), 'read')).toEqual({ where: '1=1', binds: [] });
+    }
+  });
+
+  it('compras ESCRIBE solo donde es Responsable compras (columna Compras)', () => {
+    const scope = scopeFor('oportunidades', compras(), 'own');
     expect(scope.binds).toEqual(['multiple_person_mm03qyw9', 44]);
     expect(scope.where).toContain('personsAndTeams');
 
-    const scopeProyectos = scopeFor('proyectos', compras(), 'read');
-    expect(scopeProyectos.binds).toEqual(['project_owner', 44]);
+    expect(scopeFor('proyectos', compras(), 'own').binds).toEqual(['project_owner', 44]);
+
+    const sub = scopeFor('oportunidades_sub', compras(), 'own');
+    expect(sub.where).toContain('items.parent_item_id');
+    expect(sub.binds).toEqual([expect.any(Number), 'multiple_person_mm03qyw9', 44]);
   });
 
-  it('compras: los subitems se scopean por la columna Compras del PADRE', () => {
-    const scope = scopeFor('oportunidades_sub', compras(), 'read');
-    expect(scope.where).toContain('items.parent_item_id');
-    expect(scope.binds).toEqual([expect.any(Number), 'multiple_person_mm03qyw9', 44]);
+  it('compras no lee la zona privada, salvo donde es Responsable compras', () => {
+    const scope = scopeFor('oportunidades', compras({ hidden_owner_ids: [77, 88] }), 'read');
+    expect(scope.where).toContain('NOT EXISTS');
+    expect(scope.where).toContain('personsAndTeams');
+    expect(scope.binds).toEqual([77, 88, 'multiple_person_mm03qyw9', 44]);
+
+    const sub = scopeFor('oportunidades_sub', compras({ hidden_owner_ids: [77] }), 'read');
+    expect(sub.binds).toEqual([expect.any(Number), 77, expect.any(Number), 'multiple_person_mm03qyw9', 44]);
   });
 
   it('compras sigue viendo todo en boards sin comprasCol (catálogos)', () => {

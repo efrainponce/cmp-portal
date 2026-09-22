@@ -75,6 +75,9 @@ export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
     // la cotización firmada (tab Documentación); el vendedor la ve (Efraín,
     // 2026-08-10).
     file_mm0hpefr: { vis: V, w: WAC },
+    // Fechas de solo lectura para la lista extendida de Oportunidades (admin,
+    // Efraín 2026-09-21): Creación (creation_log) y Fecha Creación Proyecto.
+    ...vis(['pulse_log_mkzm4v99', 'date_mm09wqah'], WA),
   },
 
   oportunidades_sub: {
@@ -198,8 +201,13 @@ export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
     // sigue de solo lectura: es la que cuadra contra el desglose de tallas.
     text_mm0hs17x: { vis: V, w: AC },
     text_mm0h4a1c: { vis: V, w: AC },
+    // SKU — la OC lo imprime como "Modelo". En una orden MANUAL es texto libre
+    // ("CODIGO DE BARRAS", "ETIQUETA DE PROPIEDAD") y corregirlo obligaba a
+    // borrar la línea y volverla a capturar (Efraín, 2026-09-21: "necesitamos
+    // MÁS flexibilidad YA en órdenes de compra"). Mismo grupo que Producto/Color.
+    text_mm0hyrfs: { vis: V, w: AC },
     ...vis(['name',
-      'text_mm1antcb', 'text_mm1a5yyq', 'text_mm0hyrfs',
+      'text_mm1antcb', 'text_mm1a5yyq',
       'text_mm52x1bx', 'text_mm56dbkm', 'text_mm0mzet0',
       'date_mm20fq6t', 'date_mm20y5t3', 'date_mm21p1ex',
       'date_mm217ms0', 'date_mm21w46m', 'date_mm20t4kr', 'date_mm21swc5',

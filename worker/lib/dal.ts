@@ -29,9 +29,12 @@ export function ownerIdsFor(viewer: Identity, mode: ScopeMode): number[] {
 // un admin fuera de su whitelist no ve las filas de sus miembros en
 // Oportunidades/Proyectos, vía viewer.hidden_owner_ids (resuelto en
 // mw/identity.ts). compras: everything on boards without comprasCol (catálogos
-// como productos/instituciones); en Oportunidades/Proyectos, solo lo propio
-// (comprasScopeFor) — Efraín, 2026-08-10: "el de compras SOLO puede ver sus
-// productos". vendedor/almacen (and any other non-privileged role): rows whose
+// como productos/instituciones). En Oportunidades/Proyectos LEE lo de todo el
+// equipo (Efraín, 2026-09-21: "pueden ver los items de todos… por defecto está
+// filtrado en ellos" — el filtro propio es de la UI) menos la zona privada, y
+// ESCRIBE (mode 'own') solo donde es Responsable compras (comprasScopeFor; la
+// regla del 2026-08-10 "SOLO puede ver sus productos" quedó solo para escribir).
+// vendedor/almacen (and any other non-privileged role): rows whose
 // owning board's authzCols include the viewer; subitem boards check the
 // PARENT's owners. Boards without authzCols (productos/instituciones) are open
 // to all (the serializer still strips columns per-role — shared/visibility.ts).
@@ -94,6 +97,24 @@ export function scopeFor(slug: BoardSlug, viewer: Identity, mode: ScopeMode = 'r
 function comprasScopeFor(board: BoardDef, owningBoard: BoardDef, viewer: Identity, mode: ScopeMode): Scope {
   if (!owningBoard.comprasCol) return { where: '1=1', binds: [] };
 
+  const propio = comprasPropioScope(board, owningBoard, viewer, mode);
+  if (mode === 'own') return propio;
+
+  // Lectura: todo el equipo, menos lo de los miembros de la zona privada
+  // 'Efrain' — salvo donde el viewer ES el Responsable compras (eso ya lo veía).
+  const hiddenOwners = viewer.hidden_owner_ids ?? [];
+  if (hiddenOwners.length === 0) return { where: '1=1', binds: [] };
+  const hp = hiddenOwners.map(() => '?').join(',');
+  const oculto = board.parent
+    ? { where: `EXISTS (
+        SELECT 1 FROM items hp, json_each(hp.vendedor_ids) hje
+        WHERE hp.board_id = ? AND hp.item_id = items.parent_item_id AND hje.value IN (${hp})
+      )`, binds: [owningBoard.id, ...hiddenOwners] }
+    : { where: `EXISTS (SELECT 1 FROM json_each(items.vendedor_ids) hje WHERE hje.value IN (${hp}))`, binds: [...hiddenOwners] };
+  return { where: `(NOT ${oculto.where} OR ${propio.where})`, binds: [...oculto.binds, ...propio.binds] };
+}
+
+function comprasPropioScope(board: BoardDef, owningBoard: BoardDef, viewer: Identity, mode: ScopeMode): Scope {
   const ids = ownerIdsFor(viewer, mode);
   const placeholders = ids.map(() => '?').join(',');
   const personsMatch = (alias: string) => `EXISTS (
@@ -111,17 +132,17 @@ function comprasScopeFor(board: BoardDef, owningBoard: BoardDef, viewer: Identit
         SELECT 1 FROM items p
         WHERE p.board_id = ? AND p.item_id = items.parent_item_id AND ${personsMatch('p')}
       )`,
-      binds: [owningBoard.id, owningBoard.comprasCol, ...ids],
+      binds: [owningBoard.id, owningBoard.comprasCol!, ...ids],
     };
   }
-  return { where: personsMatch('items'), binds: [owningBoard.comprasCol, ...ids] };
+  return { where: personsMatch('items'), binds: [owningBoard.comprasCol!, ...ids] };
 }
 
-/** ¿El viewer ve filas de alguien más que él? Solo cierto para un líder con zona
- * poblada. Sirve para no pagar la consulta extra de propiedad (ownsItem) en el
+/** ¿El viewer ve filas de alguien más que él? Cierto para un líder con zona
+ * poblada y para compras (lee a todo el equipo, escribe solo lo suyo). Sirve para no pagar la consulta extra de propiedad (ownsItem) en el
  * 99% de los requests, donde "lo veo" y "es mío" son lo mismo. */
 export function leadsOthers(viewer: Identity): boolean {
-  return ownerIdsFor(viewer, 'read').length > 1;
+  return viewer.role === 'compras' || ownerIdsFor(viewer, 'read').length > 1;
 }
 
 export function childSlugOf(slug: BoardSlug): BoardSlug | undefined {
@@ -241,6 +262,35 @@ export async function childrenOf(env: Env, parentSlug: BoardSlug, itemId: number
   return res.results ?? [];
 }
 
+/** `childrenOf` para VARIOS padres a la vez (PDF de estatus por zona/vendedor:
+ * una consulta por proyecto se comería el presupuesto de subrequests). Mismo
+ * scope y mismo orden que childrenOf; los padres van de 40 en 40 porque D1
+ * aguanta ~100 binds por query y el scope de un líder de zona ya trae varios. */
+export async function childrenOfMany(
+  env: Env, parentSlug: BoardSlug, itemIds: number[], viewer: Identity,
+): Promise<Map<number, MirrorItem[]>> {
+  const out = new Map<number, MirrorItem[]>();
+  const childSlug = childSlugOf(parentSlug);
+  if (!childSlug || itemIds.length === 0) return out;
+  const childBoard = BOARDS[childSlug];
+  const scope = scopeFor(childSlug, viewer);
+  await ensureItemOrderTable(env);
+  for (let i = 0; i < itemIds.length; i += 40) {
+    const lote = itemIds.slice(i, i + 40);
+    const sql = `SELECT items.* FROM items
+      LEFT JOIN item_order io ON io.board_id = items.board_id AND io.item_id = items.item_id
+      WHERE items.board_id = ? AND items.parent_item_id IN (${lote.map(() => '?').join(',')}) AND (${scope.where})
+      ORDER BY COALESCE(io.manual_order, io.monday_order, 999999), items.name`;
+    const res = await env.DB.prepare(sql).bind(childBoard.id, ...lote, ...scope.binds).all<MirrorItem>();
+    for (const row of res.results ?? []) {
+      if (row.parent_item_id == null) continue;
+      if (!out.has(row.parent_item_id)) out.set(row.parent_item_id, []);
+      out.get(row.parent_item_id)!.push(row);
+    }
+  }
+  return out;
+}
+
 // El Proyecto ligado a una Oportunidad (Proyectos board_relation_mm0hf0y3 →
 // Oportunidad). Filtra por LIKE sobre el JSON de columnas y verifica en JS que
 // linked_item_ids realmente contenga el id (el LIKE solo es el índice barato).
@@ -330,7 +380,10 @@ export async function etagFor(env: Env, slug: BoardSlug, viewer: Identity, varia
     ? 'all'
     : zonaPrivadaRestringe
       ? `h${hiddenOwners.sort((a, b) => a - b).join('.')}`
-      : `u${ownerIdsFor(viewer, 'read').sort((a, b) => a - b).join('.')}`;
+      // compras lee a todo el equipo menos la zona privada (comprasScopeFor):
+      // su llave sigue siendo por persona y además lleva a quién se le oculta.
+      : `u${ownerIdsFor(viewer, 'read').sort((a, b) => a - b).join('.')}${
+        viewer.role === 'compras' ? `h${[...(viewer.hidden_owner_ids ?? [])].sort((a, b) => a - b).join('.')}` : ''}`;
   // `variant !== undefined`, no `variant ?`: la cadena vacía es una proyección
   // legítima ("ninguna columna", los selectores de catálogo) y tiene que tener
   // llave propia — si cayera en el mismo ETag que la respuesta completa, un

@@ -24,20 +24,23 @@ export interface StageBoardConfig {
    * de 'oportunidades' mismo ya se los quita antes de llegar aquí. */
   vendedorNames?: string[];
   defaultTab: string;
+  /** Admin ve la lista EXTENDIDA (más totales + fechas) con botón "Columnas"
+   * (Efraín, 2026-09-21). Oportunidades y Costeo. */
+  columnasAdmin?: boolean;
 }
 
 // Sidebar order follows DEAL_STAGE_ORDER above: Nueva oportunidad (full
 // pipeline) -> En costeo -> Costeo en validación -> Costeo Confirmado
 // -> Esperando OC -> Ganada (doc/tallas + logística).
 export const STAGE_BOARDS: Record<StageBoardKey, StageBoardConfig> = {
-  oportunidades: { key: 'oportunidades', title: 'Oportunidades', subtitleSuffix: '', defaultTab: 'cotizacion' },
+  oportunidades: { key: 'oportunidades', title: 'Oportunidades', subtitleSuffix: '', defaultTab: 'cotizacion', columnasAdmin: true },
   // Mismo board/pipeline que 'oportunidades' — sin filtro de etapa, solo items
   // cuyo nombre viene prefijado "WEB -" (leads del sitio web, ya así en Monday).
   oportunidades_web: { key: 'oportunidades_web', title: 'Oportunidades Web', subtitleSuffix: ' · web', namePrefix: 'WEB -', defaultTab: 'cotizacion' },
   // Sin `stages` ni `excludeStages`: pipeline completo, todas las etapas
   // incl. Ganada (Efraín, 2026-08-12 — revierte el excludeStages de
   // 2026-07-20, que ocultaba Seguimiento/Negociación/Ganada/Perdida).
-  costeo: { key: 'costeo', title: 'Costeo', subtitleSuffix: '', defaultTab: 'cotizacion' },
+  costeo: { key: 'costeo', title: 'Costeo', subtitleSuffix: '', defaultTab: 'cotizacion', columnasAdmin: true },
   // De validación EN ADELANTE, no solo ['7','9'] (Efraín, 2026-08-20:
   // "necesitamos poder ver TODAS las oportunidades después de validación para
   // que se vea esta info"). El caso que lo destapó: en cuanto una oportunidad

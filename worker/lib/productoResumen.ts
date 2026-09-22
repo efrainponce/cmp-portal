@@ -45,6 +45,26 @@ export async function listProductoResumen(env: Env, proyectoId: number): Promise
   return results ?? [];
 }
 
+/** Resúmenes de VARIOS proyectos en una pasada (PDF de estatus por zona/vendedor),
+ * de 80 en 80 por el tope de binds de D1. Llave del mapa: proyecto_id. */
+export async function listProductoResumenMany(env: Env, proyectoIds: number[]): Promise<Map<number, ProductoResumenRow[]>> {
+  const out = new Map<number, ProductoResumenRow[]>();
+  if (proyectoIds.length === 0) return out;
+  await ensureResumenTable(env);
+  for (let i = 0; i < proyectoIds.length; i += 80) {
+    const lote = proyectoIds.slice(i, i + 80);
+    const { results } = await env.DB.prepare(
+      `SELECT proyecto_id, producto, color, resumen, updated_at, updated_by
+       FROM producto_resumen WHERE proyecto_id IN (${lote.map(() => '?').join(',')})`,
+    ).bind(...lote).all<ProductoResumenRow & { proyecto_id: number }>();
+    for (const r of results ?? []) {
+      if (!out.has(r.proyecto_id)) out.set(r.proyecto_id, []);
+      out.get(r.proyecto_id)!.push(r);
+    }
+  }
+  return out;
+}
+
 /** Upsert del resumen de un producto+color — compras/admin, mismo gate que
  * S_COMENTARIO por talla (shared/visibility.ts, grupo AC), aplicado en la ruta. */
 export async function upsertProductoResumen(env: Env, args: {

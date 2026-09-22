@@ -348,7 +348,7 @@ export function ProyectoDrawer({ id, boardKey, backLabel, defaultTab, openTab, o
         </div>
       )}
       {tab === 'ordenes' && (
-        <div style={{ padding: '24px 32px 40px', maxWidth: 920, width: '100%', boxSizing: 'border-box' }}>
+        <div style={{ padding: '24px clamp(12px, 3vw, 32px) 40px', width: '100%', boxSizing: 'border-box' }}>
           <ProyectoOrdenesSection state={proyectoState} oppId={oportunidadId} />
         </div>
       )}

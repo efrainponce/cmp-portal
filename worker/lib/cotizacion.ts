@@ -315,7 +315,7 @@ export async function generarCotizacionNativeD1(
   // La imagen del producto sigue saliendo de Airtable, igual que el flujo real
   // (degradación silenciosa: sin API key o sin record, la línea va sin imagen).
   const products: ProductLine[] = await Promise.all(
-    rawLines.map(async r => ({ ...r.line, Url: await fetchAirtableImageUrl(env, r.airtableId) })),
+    rawLines.map(async r => ({ ...r.line, Url: (await fetchAirtableImageUrl(env, r.airtableId)) ?? '' })),
   );
   const { subtotal, iva, total } = computeTotals(products);
   if (subtotal <= 0) {
@@ -425,7 +425,7 @@ export async function generarCotizacionNative(env: Env, itemId: number, viewer: 
   }
 
   const products: ProductLine[] = await Promise.all(
-    rawLines.map(async r => ({ ...r.line, Url: await fetchAirtableImageUrl(env, r.airtableId) })),
+    rawLines.map(async r => ({ ...r.line, Url: (await fetchAirtableImageUrl(env, r.airtableId)) ?? '' })),
   );
   const { subtotal, iva, total } = computeTotals(products);
 

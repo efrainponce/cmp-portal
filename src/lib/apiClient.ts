@@ -13,9 +13,10 @@ import type {
   ProductoResumenDTO, ProductoResumenResponse, ProductoGeneroResponse,
   UpdateAttachmentDTO, UpdateDTO, VendedorDTO, WriteResponse, ZonaDTO,
   OportunidadLigadaDTO, ProyectoOportunidadResponse, WaPreferenciasDTO,
-  OcListaRow, OcListaResponse,
+  OcListaRow, OcListaResponse, ProyectoFiltrosDTO, ProyectoFiltrosResponse,
 } from '../../shared/dto';
 import type { AddProposedProductResponse, ProposedProductDTO, ProposedProductsResponse } from '../../shared/productosPropuestos';
+import type { InventarioCotizacionProductoDTO, InventarioCotizacionResponse } from '../../shared/inventarioCotizacion';
 import { mockBoardMeta, mockItemDetail, mockPatch } from './mockFallback';
 import { getImpersonateTarget } from './impersonation';
 import { tomarPrecarga } from './apiPreload';
@@ -30,6 +31,7 @@ export type {
   MondayUserDTO, ProposedProductDTO, QuoteLineSnapshot, QuoteVersionDTO, TallaBoxInput, CapturarTallasResponse,
   CambiarProductoLineasRequest, CambiarProductoLineasResponse, CambioProductoDTO, ProyectoImagenDTO,
   EstadoHistorialEntryDTO, ProductoResumenDTO,
+  InventarioCotizacionProductoDTO,
   UpdateAttachmentDTO, UpdateDTO, VendedorDTO, ZonaDTO,
 };
 
@@ -670,7 +672,7 @@ export interface OcImagenDTO {
  * guardado (jalar del catálogo es explícito, `restablecerOcImagen`). */
 export async function listOcImagenes(skus: string[], sync = false): Promise<OcImagenDTO[]> {
   if (skus.length === 0) return [];
-  const res = await apiFetch(`/oc-imagenes?skus=${encodeURIComponent(skus.join(','))}${sync ? '&sync=1' : ''}`);
+  const res = await apiFetch(`/oc-imagenes?skus=${encodeURIComponent(JSON.stringify(skus))}${sync ? '&sync=1' : ''}`);
   if (!res.ok) return [];
   const body: { imagenes: OcImagenDTO[] } = await res.json();
   return body.imagenes ?? [];
@@ -893,6 +895,8 @@ export interface ProyectoLineaInput {
   talla?: string;
   color?: string;
   sku?: string;
+  /** Unidad de medida tal como sale en la OC (PIEZA, SERVICIO, PAR…). */
+  unidad?: string;
   costo?: number;
   descuento?: number;
   moneda?: string;
@@ -900,6 +904,28 @@ export interface ProyectoLineaInput {
 
 /** Línea manual del Proyecto (producto faltante / compra independiente) —
  * Compras/admin. Con Proveedor puesto, "Generar OC por proveedor" ya la toma. */
+/** Producto/concepto capturado a mano en una OC antes (caché D1 oc_concepto,
+ * worker/lib/ocConceptos.ts) — sugerencias del modal "Crear orden de compra". */
+export interface OcConcepto {
+  producto: string;
+  sku: string | null;
+  color: string | null;
+  talla: string | null;
+  unidad: string | null;
+  costo: number | null;
+  moneda: string | null;
+  proveedorId: string | null;
+  proveedorName: string | null;
+  usos: number;
+}
+
+export async function getOcConceptos(): Promise<OcConcepto[]> {
+  const res = await apiFetch('/oc-conceptos');
+  if (!res.ok) return [];
+  const body = await res.json() as { items?: OcConcepto[] };
+  return body.items ?? [];
+}
+
 export async function addProyectoLinea(
   proyectoId: string, input: ProyectoLineaInput,
 ): Promise<{ ok: boolean; id?: string; error?: string }> {
@@ -1265,6 +1291,20 @@ export async function listOcLista(desdeCero = false): Promise<OcListaRow[] | nul
   return body.ordenes ?? [];
 }
 
+let proyectoFiltrosEtag: string | undefined;
+
+/** Proveedores y folios de OC por proyecto (filtros y buscador del Reporte de
+ * Proyectos). `null` = 304. A quien no lee esas columnas le llega `{}`. */
+export async function getProyectoFiltros(desdeCero = false): Promise<Record<string, ProyectoFiltrosDTO> | null> {
+  if (desdeCero) proyectoFiltrosEtag = undefined;
+  const res = await apiFetch('/proyectos-filtros', proyectoFiltrosEtag ? { headers: { 'If-None-Match': proyectoFiltrosEtag } } : undefined);
+  if (res.status === 304) return null;
+  if (!res.ok) throw new Error(`No se pudieron cargar los filtros de proyectos (${res.status}).`);
+  proyectoFiltrosEtag = res.headers.get('ETag') ?? undefined;
+  const body: ProyectoFiltrosResponse = await res.json();
+  return body.filtros ?? {};
+}
+
 export async function setOcPagada(folio: string, pagada: boolean): Promise<void> {
   const res = await apiFetch(`/oc-lista/${encodeURIComponent(folio)}/pagada`, {
     method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pagada }),
@@ -1281,4 +1321,29 @@ export async function setOcPdfDatos(folio: string, d: {
     method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(d),
   });
   if (!res.ok) throw new Error(`No se pudo guardar lo leído del PDF (${res.status}).`);
+}
+
+export async function getInventarioCotizacion(oppId: string): Promise<InventarioCotizacionProductoDTO[]> {
+  const res = await apiFetch(`/oportunidades/${oppId}/inventario-cotizacion`);
+  if (!res.ok) throw new Error(`No se pudo cargar el inventario (${res.status}).`);
+  const body: InventarioCotizacionResponse = await res.json();
+  return body.productos;
+}
+
+export async function saveInventarioCotizacion(
+  oppId: string,
+  producto: { productoId: string; productoNombre: string; comentarios: string; agregadoManualmente: boolean },
+  files?: { mexico?: File; usa?: File },
+): Promise<{ ok: boolean; producto?: InventarioCotizacionProductoDTO; error?: string }> {
+  const form = new FormData();
+  form.append('productoId', producto.productoId);
+  form.append('productoNombre', producto.productoNombre);
+  form.append('comentarios', producto.comentarios);
+  form.append('agregadoManualmente', String(producto.agregadoManualmente));
+  if (files?.mexico) form.append('mexico', files.mexico);
+  if (files?.usa) form.append('usa', files.usa);
+  const res = await apiFetch(`/oportunidades/${oppId}/inventario-cotizacion`, { method: 'POST', body: form });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) return { ok: false, error: body.error ?? 'No se pudo guardar el inventario.' };
+  return body;
 }

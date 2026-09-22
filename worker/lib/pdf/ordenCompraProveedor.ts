@@ -119,7 +119,10 @@ export function buildOcProveedorBlocks(input: OcProveedorPdfInput): Block[] {
     // franja vacía a la derecha que se lea como "aquí falta algo".
     {
       kind: 'wrapTable',
-      wrapCols: [0, 1],
+      // TODAS las columnas de texto envuelven (2026-09-21): en una orden manual
+      // el Modelo es texto libre ("CODIGO DE BARRAS…") y salía "CODI…". Un
+      // renglón más alto siempre; un dato recortado nunca.
+      wrapCols: [0, 1, 2, 3, 4],
       columns: sinCostos
         ? [
             { header: 'Producto', width: 0.38 },
@@ -131,15 +134,15 @@ export function buildOcProveedorBlocks(input: OcProveedorPdfInput): Block[] {
           ]
         : [
             { header: 'Producto', width: 0.20 },
-            { header: 'Zona/Tipo', width: 0.11 },
-            { header: 'Modelo', width: 0.08 },
-            { header: 'Talla', width: 0.06 },
-            { header: 'Unidad', width: 0.07 },
-            { header: 'Moneda', width: 0.06 },
-            { header: 'Cant.', width: 0.08, align: 'right' },
+            { header: 'Zona/Tipo', width: 0.09 },
+            { header: 'Modelo', width: 0.13 },
+            { header: 'Talla', width: 0.08 },
+            { header: 'Unidad', width: 0.08 },
+            { header: 'Mon.', width: 0.05 },
+            { header: 'Cant.', width: 0.07, align: 'right' },
             { header: 'Precio', width: 0.10, align: 'right' },
             { header: 'Desc.', width: 0.06, align: 'right' },
-            { header: 'Subtotal', width: 0.18, align: 'right' },
+            { header: 'Subtotal', width: 0.14, align: 'right' },
           ],
       rows: input.lineas.map(l => {
         const identidad = [
@@ -160,6 +163,12 @@ export function buildOcProveedorBlocks(input: OcProveedorPdfInput): Block[] {
               fmtMoney(l.cantidad * l.precio * (1 - l.descuento), l.moneda),
             ];
       }),
+      // Renglón TOTAL al pie de la tabla, igual que la tarjeta del proveedor en
+      // el portal (piezas + importe antes de IVA) — Efraín, 2026-09-21. El
+      // Total con IVA sigue abajo, en el desglose.
+      footer: sinCostos
+        ? ['TOTAL', '', '', '', '', fmtNumMx(totalUnidades)]
+        : ['TOTAL', '', '', '', '', '', fmtNumMx(totalUnidades), '', '', fmtMoney(monto, moneda)],
       headerFill: CMP_ORANGE,
       headerTextColor: '#ffffff',
     },

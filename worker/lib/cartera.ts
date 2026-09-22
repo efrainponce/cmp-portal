@@ -264,14 +264,14 @@ function esDelViewer(r: MirrorItem, viewer: Identity): boolean {
 }
 
 /** Oportunidades abiertas que le tocan al viewer: el vendedor las suyas
- * (scope 'own', igual que Inicio); compras las que están en costeo o
- * validación (todas); el admin SOLO las que tienen su id de Vendedor — su
+ * (scope 'own', igual que Inicio); compras las SUYAS que están en costeo o
+ * validación; el admin SOLO las que tienen su id de Vendedor — su
  * scope 'own' es toda la empresa (528 abiertas en la prueba local) y un
  * resumen así no le sirve a nadie. El resumen de equipo para dirección es
  * la Fase 5 del plan, pendiente. */
 export async function filasCartera(env: Env, viewer: Identity): Promise<MirrorItem[]> {
   const compras = viewer.role === 'compras';
-  const rows = await listItems(env, 'oportunidades', viewer, undefined, compras ? 'read' : 'own');
+  const rows = await listItems(env, 'oportunidades', viewer, undefined, 'own');
   return rows.filter(r => {
     const key = statusIndex(r.columns, OPP.etapa);
     if (key && CLOSED_STAGES.has(key)) return false;

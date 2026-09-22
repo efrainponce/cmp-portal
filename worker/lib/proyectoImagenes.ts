@@ -19,7 +19,7 @@
 // criterio que ocImagenes.ts y que las notas de la OC).
 import type { Env } from '../env';
 import type { ProyectoImagenDTO } from '../../shared/dto';
-import { sniffTipo, skuKey, isSkuUsable, OC_IMAGEN_MAX_BYTES } from './ocImagenes';
+import { sniffTipo, skuKey, isSkuUsable, segmentoR2, OC_IMAGEN_MAX_BYTES } from './ocImagenes';
 import { pngToPdfImage, type PdfImageData } from './pdf/png';
 import { jpegImage } from './pdf/writer';
 
@@ -124,7 +124,7 @@ export async function agregarImagen(
   // objeto, y al quitar una la otra se quedaba sin bytes — miniatura rota en
   // la tira y hueco gris en el PDF, sin ningún error de por medio. Visto en la
   // prueba local del 2026-08-25.
-  const r2Key = `oc-imagenes/proyecto/${proyectoId}/${key}/${sha}-${crypto.randomUUID()}.${ext}`;
+  const r2Key = `oc-imagenes/proyecto/${proyectoId}/${await segmentoR2(key)}/${sha}-${crypto.randomUUID()}.${ext}`;
   await env.FILES.put(r2Key, bytes as BufferSource, { httpMetadata: { contentType: tipo } });
 
   const ahora = new Date().toISOString();

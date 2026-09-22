@@ -23,6 +23,7 @@
 // vez de repetir la foto 10 veces. Los embellecimientos no llevan ficha (no son
 // un artículo del catálogo, son un trabajo sobre uno): salen en la tabla de la
 // OC de arriba, como siempre.
+import { llaveFotoOc } from '../../../shared/ocFotoLlave';
 import type { Block } from './layout';
 import { renderDocument, PRODUCT_CARD_TALLAS_MAX } from './layout';
 import type { PdfImageData } from './png';
@@ -131,7 +132,7 @@ export function construirFichas(
     }
     if (partes.length === 0) partes.push([]);
     const nombre = g.producto || g.sku || '—';
-    const imagen = imagenes.get((g.sku || '').trim().toUpperCase()) ?? null;
+    const imagen = imagenes.get(llaveFotoOc(g.sku, g.producto).toUpperCase()) ?? null;
 
     const fichasDeTallas = partes.map((tallas, i) => ({
       kind: 'productCard' as const,
@@ -166,7 +167,7 @@ export function construirFichas(
     // que estén suficientemente grandes". La ficha de arriba no cambia: sigue
     // llevando el pedido, y las fotos son la referencia visual de ese mismo
     // producto, en la misma hoja.
-    const extrasDelSku = extras.get((g.sku || '').trim().toUpperCase()) ?? [];
+    const extrasDelSku = extras.get(llaveFotoOc(g.sku, g.producto).toUpperCase()) ?? [];
     // Van con la PRIMERA ficha del producto: es la que trae las tallas y la que
     // el proveedor mira. Si el desglose se partió en varias, las demás quedan
     // como estaban.

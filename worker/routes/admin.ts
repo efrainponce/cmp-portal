@@ -349,8 +349,8 @@ export function adminRoutes(app: Hono<{ Bindings: Env }>) {
       const lote = filas.slice(i, i + 50).map(f => {
         const t = totalesDeLinea(JSON.parse(f.columns) as RawColumn[]);
         return c.env.DB
-          .prepare('UPDATE items SET t_costo=?, t_subtotal=?, t_total=?, t_utilidad=?, t_margen_gob=? WHERE board_id=? AND item_id=?')
-          .bind(t.costo, t.subtotal, t.total, t.utilidad, t.margenGob, BOARDS.oportunidades_sub.id, f.item_id);
+          .prepare('UPDATE items SET t_costo=?, t_subtotal=?, t_total=?, t_utilidad=?, t_margen_gob=?, t_cantidad=? WHERE board_id=? AND item_id=?')
+          .bind(t.costo, t.subtotal, t.total, t.utilidad, t.margenGob, t.cantidad, BOARDS.oportunidades_sub.id, f.item_id);
       });
       await c.env.DB.batch(lote);
       escritas += lote.length;

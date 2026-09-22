@@ -23,7 +23,9 @@ import { PersonPair } from '../../components/core/PersonAvatar';
 import { DEAL_STAGE_LABELS, DEAL_STAGE_ORDER, type StageBoardConfig } from '../../lib/dealStages';
 import { useSavedView } from '../../lib/useSavedView';
 import { useIsMobile } from '../../lib/useIsMobile';
-import { TotalesCells, TotalesChips, TotalesHeader, metricasVisibles } from './TotalesCells';
+import { TotalesCells, TotalesChips, TotalesHeader, metricasVisibles, FECHAS_ADMIN, METRICAS_EXTENDIDAS } from './TotalesCells';
+import { ColumnPicker } from '../../components/board/ColumnPicker';
+import { useColumnasVisibles, type ColumnaDef } from '../../lib/useColumnasVisibles';
 import type { TotalesDTO } from '../../../shared/dto';
 
 /** Mirror columns fan in one value per subitem, so `text` can be a long
@@ -55,6 +57,12 @@ const LIST_COLS = [
   FOLIO_COL, INSTITUCION_COL, ETAPA_COSTEO_COL, VENDEDOR_COL,
   COMPRAS_COL, VENDEDOR_SECUNDARIO_COL, CONTACTO_COL, ETAPA_COL,
 ] as const;
+
+/** Casillas del botón "Columnas" de la lista extendida (admin): todas las
+ * métricas se pueden ocultar, las seis de siempre incluidas. */
+const COLUMNAS_EXTENDIDAS: ColumnaDef[] = METRICAS_EXTENDIDAS.map(m => ({ key: m.key, label: m.titulo.split(' — ')[0].replace(/ \(ya .*\)$/, '') }));
+/** Las fechas solo se piden (`?cols=`) cuando la vista extendida las pinta. */
+const FECHA_COLS = FECHAS_ADMIN.map(m => m.fechaCol!);
 
 /** El viewer ve este item por estar como "Vendedor secundario" ahí, no por ser
  * el dueño (deal_owner) ni por su zona — worker/lib/zonas.ts amplía lectura por
@@ -132,7 +140,8 @@ interface Props {
 
 export function StageBoardList({ config, groupColId = 'deal_stage', q, onSearch, onOpen, onReady, headerAction }: Props) {
   const isMobile = useIsMobile();
-  const viewerNombre = useMe()?.nombre;
+  const me = useMe();
+  const viewerNombre = me?.nombre;
   const { boards } = useBoards();
   const cols = colForBoard(boards, 'oportunidades');
   const groupCol = cols.find((c) => c.id === groupColId);
@@ -140,10 +149,14 @@ export function StageBoardList({ config, groupColId = 'deal_stage', q, onSearch,
   // groupColId es configurable por board (StageBoardConfig): si agrupa por una
   // columna fuera de LIST_COLS hay que pedirla también, o el group card se
   // quedaría sin etiqueta.
-  const pollCols = useMemo(
-    () => (LIST_COLS.includes(groupColId as typeof LIST_COLS[number]) ? LIST_COLS : [...LIST_COLS, groupColId]),
-    [groupColId],
-  );
+  // Lista extendida: más totales + fechas, solo admin y solo en los boards que
+  // la declaran (config.columnasAdmin). En cel no — ahí van los chips.
+  const extendida = !isMobile && me?.role === 'admin' && !!config.columnasAdmin;
+  const columnasVis = useColumnasVisibles(`${config.key}_lista`, COLUMNAS_EXTENDIDAS);
+  const pollCols = useMemo(() => {
+    const base: string[] = LIST_COLS.includes(groupColId as typeof LIST_COLS[number]) ? [...LIST_COLS] : [...LIST_COLS, groupColId];
+    return extendida ? [...base, ...FECHA_COLS] : base;
+  }, [groupColId, extendida]);
   // `true` = pide también las métricas de la cotización por oportunidad
   // (?totales=1). Van en TODOS los boards de etapa (Efraín, 2026-08-20): el
   // worker recorta por rol, así que un vendedor solo recibe Subtotal y Total.
@@ -178,7 +191,15 @@ export function StageBoardList({ config, groupColId = 'deal_stage', q, onSearch,
   // three selects only narrow what's already loaded, they never touch the
   // server request. Persisted per viewer (useSavedView) so it's still there
   // next time they open this board.
-  const { filters, setFilters, collapsedGroups, toggleGroup, clearFilters: clearSavedFilters } = useSavedView(config.key);
+  // Compras ahora puede consultar todo el equipo. La primera vista (también la
+  // que estaba guardada antes de abrir ese acceso) empieza en sus propias
+  // responsabilidades; puede escoger "Todos" para explorar el equipo.
+  const comprasDefault = me?.role === 'compras' && viewerNombre ? viewerNombre : ALL_VALUE;
+  const { filters, setFilters, collapsedGroups, toggleGroup, clearFilters: clearSavedFilters } = useSavedView(
+    config.key,
+    { vendedor: ALL_VALUE, compras: comprasDefault, etapa: ALL_VALUE },
+    me?.role === 'compras' ? 1 : undefined,
+  );
   const vendedorFilter = filters.vendedor;
   const comprasFilter = filters.compras;
   const etapaFilter = filters.etapa;
@@ -214,7 +235,11 @@ export function StageBoardList({ config, groupColId = 'deal_stage', q, onSearch,
   const clearFilters = clearSavedFilters;
 
   const totales = data?.totales;
-  const metricas = useMemo(() => metricasVisibles(totales, isMobile), [totales, isMobile]);
+  const colVisible = columnasVis.visible;
+  const metricas = useMemo(
+    () => metricasVisibles(totales, isMobile, extendida).filter(m => !extendida || colVisible(m.key)),
+    [totales, isMobile, extendida, colVisible],
+  );
 
   const hayHeader = !isMobile && metricas.length > 0;
 
@@ -227,7 +252,12 @@ export function StageBoardList({ config, groupColId = 'deal_stage', q, onSearch,
     const visibles = orden.map((id) => cols.find((c) => c.id === id)).filter((c): c is NonNullable<typeof c> => !!c);
     return [
       ...columnasDeItems(visibles, 'Oportunidad'),
-      ...columnasDeCifras(metricasVisibles(totales, false), (it: ItemDTO, key) => totales?.[it.id]?.[key]),
+      // Desde main (2026-09-22) `Metrica.key` también puede ser `fecha:<colId>`
+      // (columnas extendidas de admin): al Excel van solo las cifras de `totales`.
+      ...columnasDeCifras(
+        metricasVisibles(totales, false).filter((m) => !m.key.startsWith('fecha:')),
+        (it: ItemDTO, key) => (totales?.[it.id] as Record<string, number | undefined> | undefined)?.[key],
+      ),
       { titulo: 'Actualizado', valor: (it) => it.mondayUpdatedAt?.slice(0, 10) },
     ];
   }, [cols, totales]);
@@ -285,6 +315,14 @@ export function StageBoardList({ config, groupColId = 'deal_stage', q, onSearch,
             active={hasActiveFilters}
             onClear={clearFilters}
           />
+          {extendida && (
+            <div style={{ marginLeft: 'auto' }}>
+              <ColumnPicker
+                columnas={COLUMNAS_EXTENDIDAS} visible={columnasVis.visible} onToggle={columnasVis.toggle}
+                onRestablecer={columnasVis.restablecer} personalizado={columnasVis.personalizado}
+              />
+            </div>
+          )}
           <ExportExcelButton titulo={config.title} columnas={columnasExport} filas={items} />
         </div>
       </div>
@@ -293,11 +331,18 @@ export function StageBoardList({ config, groupColId = 'deal_stage', q, onSearch,
           tiene que llegar hasta el borde, o el contenido se le asoma encima). */}
       <div
         style={{
-          overflowY: 'auto', flex: 1,
+          // La extendida no cabe a lo ancho: scroll horizontal en vez de
+          // aplastar el nombre de la oportunidad.
+          overflowY: 'auto', overflowX: extendida ? 'auto' : undefined, flex: 1,
           padding: isMobile ? '12px 0 16px' : `${hayHeader ? 0 : 16}px 0 24px`,
         }}
       >
         <BoardStatus status={status}>
+          {/* Con la extendida, encabezado y grupos van en un mismo contenedor
+              del ancho del renglón más ancho: si no, el encabezado se queda del
+              ancho de la pantalla y deja de caer sobre sus columnas al hacer
+              scroll horizontal. */}
+          <div style={extendida ? { width: 'max-content', minWidth: '100%' } : undefined}>
           <TotalesHeader metricas={metricas} isMobile={isMobile} />
           {groups.length === 0 && (
             <div style={{ padding: 24, font: 'var(--text-label)', color: 'var(--ink-quiet)' }}>Sin oportunidades.</div>
@@ -312,11 +357,12 @@ export function StageBoardList({ config, groupColId = 'deal_stage', q, onSearch,
                 // una closure distinta en cada render le rompería la memo.
                 <Row
                   key={item.id} item={item} etapaCosteoCol={etapaCosteoCol} viewerNombre={viewerNombre}
-                  onOpen={onOpen} totales={totales?.[item.id]} metricas={metricas}
+                  onOpen={onOpen} totales={totales?.[item.id]} metricas={metricas} extendida={extendida}
                 />
               ))}
             </GroupCard>
           ))}
+          </div>
         </BoardStatus>
       </div>
     </div>
@@ -329,11 +375,14 @@ export function StageBoardList({ config, groupColId = 'deal_stage', q, onSearch,
  * las máquinas lentas. Con `items` memoizado arriba, los objetos `item`
  * conservan identidad entre polls y esta comparación por props corta el
  * re-render de raíz. */
-const Row = memo(function Row({ item, etapaCosteoCol, viewerNombre, onOpen, totales, metricas }: {
+const Row = memo(function Row({ item, etapaCosteoCol, viewerNombre, onOpen, totales, metricas, extendida = false }: {
   item: ItemDTO; etapaCosteoCol?: ReturnType<typeof colForBoard>[number]; viewerNombre: string | undefined; onOpen: (id: string) => void;
   /** Ausente = la oportunidad no tiene líneas todavía (o el rol no ve ninguna
    * de las métricas): las celdas se pintan en "—" para no romper la columna. */
   totales?: TotalesDTO; metricas: ReturnType<typeof metricasVisibles>;
+  /** Lista extendida: el nombre conserva un ancho mínimo (la fila hace scroll
+   * horizontal en vez de aplastarlo) y las fechas se leen de `item.cols`. */
+  extendida?: boolean;
 }) {
   const isMobile = useIsMobile();
   const onClick = () => onOpen(item.id);
@@ -385,7 +434,11 @@ const Row = memo(function Row({ item, etapaCosteoCol, viewerNombre, onOpen, tota
         padding: '3px 18px', background: '#fff', borderTop: '1px solid var(--border-subtle)', cursor: 'pointer',
       }}
     >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
+      <div style={extendida
+        // width fijo = su aporte al ancho max-content del contenedor; flex-grow
+        // lo estira cuando sobra pantalla.
+        ? { display: 'flex', flexDirection: 'column', gap: 1, width: 260, minWidth: 260, flex: '1 0 260px' }
+        : { display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
         <div style={{ font: 'var(--text-body-strong)', color: 'var(--ink)' }}>{item.name}</div>
         <div style={{ font: 'var(--text-label)', color: 'var(--ink-tertiary)' }}>{institucion}</div>
       </div>
@@ -396,7 +449,7 @@ const Row = memo(function Row({ item, etapaCosteoCol, viewerNombre, onOpen, tota
           return <StatusBadge label={dedupeMirrorText(etapaCosteoVal.text)} color={color} tint={tint} />;
         })()}
         <MonoTag>{folio}</MonoTag>
-        <TotalesCells totales={totales} metricas={metricas} />
+        <TotalesCells totales={totales} metricas={metricas} cols={extendida ? item.cols : undefined} />
         <div style={{ font: 'var(--text-caption)', color: 'var(--ink-faint)', width: 70, textAlign: 'right' }}>
           {item.mondayUpdatedAt ? fmtSyncAgo(item.mondayUpdatedAt) : '—'}
         </div>

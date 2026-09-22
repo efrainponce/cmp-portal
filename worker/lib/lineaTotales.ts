@@ -44,6 +44,9 @@ export interface LineaTotales {
   total: number;
   utilidad: number;
   margenGob: number;
+  /** Piezas de la línea (input capturado, no fórmula) — para la Cantidad Total
+   * de la lista de Oportunidades (2026-09-21). */
+  cantidad: number;
 }
 
 /** El número que trae una columna, ya sea en `text` ("14070") o en `value`
@@ -74,6 +77,7 @@ export function totalesDeLinea(columns: RawColumn[]): LineaTotales {
       total: num(cols, F.total),
       utilidad: num(cols, F.utilidad),
       margenGob: num(cols, F.margenGob),
+      cantidad: num(cols, N.cantidad),
     };
   }
 
@@ -99,5 +103,6 @@ export function totalesDeLinea(columns: RawColumn[]): LineaTotales {
     total: price.totalConIva,
     utilidad: price.utilidadTotal,
     margenGob: price.margenGobTotal,
+    cantidad,
   };
 }

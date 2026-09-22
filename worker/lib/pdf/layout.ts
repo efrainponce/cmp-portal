@@ -43,6 +43,17 @@ export type Block =
        * costeo de Validación (2026-08-14) trae ~20 columnas en horizontal y
        * necesita texto más chico para que quepan sin desbordar. */
       cellSize?: number; headerSize?: number;
+      /** Fondo por renglón (uno por fila de `rows`; null/ausente ⇒ zebra de
+       * siempre). Lo usa el Estatus de proyecto (2026-09-21) para pintar el
+       * renglón según el avance del producto: verde entregado, azul en
+       * proceso, rojo incidencia — como la hoja que Compras armaba a mano. */
+      rowFills?: (string | null | undefined)[];
+      /** Columna de FOTO: `imageCol` es el índice de la columna y `rowImages`
+       * trae una imagen por fila (null ⇒ recuadro gris "Sin foto"). El renglón
+       * crece a `imageHeight` (default 40 pt) para que quepa. Lo pide el
+       * Estatus de proyecto (Efraín, 2026-09-21: "tiene que salir la imagen
+       * del producto"); la foto es la misma por SKU que usa la OC con imágenes. */
+      imageCol?: number; rowImages?: (PdfImageData | null | undefined)[]; imageHeight?: number;
     }
   | { kind: 'divider' }
   | { kind: 'spacer'; height: number }
@@ -165,6 +176,16 @@ function ellipsize(text: string, maxWidth: number, size: number, font: FontName 
   return out + '…';
 }
 
+/** Tamaño de letra con el que `text` cabe ENTERO en `maxWidth`, bajando desde
+ * `size` hasta `min`. Un PDF que se manda a un proveedor no puede decir "TAL…"
+ * ni "CODI…" (Efraín, 2026-09-21): antes de recortar, se achica. `ellipsize`
+ * queda solo como último recurso para lo que ni a `min` cabe. */
+function fitSize(text: string, maxWidth: number, size: number, font: FontName = 'H', min = 5.5): number {
+  let s = size;
+  while (s > min && widthOf(text, s, font) > maxWidth) s -= 0.25;
+  return s;
+}
+
 function columnBoxes(columns: TableColumn[], m: Metrics): { left: number; right: number }[] {
   const total = columns.reduce((s, c) => s + c.width, 0) || 1;
   const boxes: { left: number; right: number }[] = [];
@@ -226,16 +247,23 @@ function drawText(pdf: PdfWriter, cur: Cursor, m: Metrics, block: Extract<Block,
 function drawKv(pdf: PdfWriter, cur: Cursor, m: Metrics, block: Extract<Block, { kind: 'kv' }>): void {
   const cols = block.columns ?? 2;
   const colWidth = m.contentWidth / cols;
-  const rowHeight = 26;
+  const maxW = colWidth - 12;
   for (let i = 0; i < block.rows.length; i += cols) {
+    // Un valor largo (una razón social completa) ENVUELVE y el renglón crece:
+    // nunca se recorta con "…" (Efraín, 2026-09-21).
+    const valores = Array.from({ length: cols }, (_, c) => {
+      const pair = block.rows[i + c];
+      return pair ? wrapText(pair[1] || '—', maxW, 10) : [];
+    });
+    const rowHeight = 26 + (Math.max(1, ...valores.map(v => v.length)) - 1) * 12;
     cur.ensure(rowHeight);
     for (let c = 0; c < cols; c++) {
       const pair = block.rows[i + c];
       if (!pair) continue;
       const x = m.contentLeft + c * colWidth;
-      const maxW = colWidth - 12;
-      pdf.text(cur.page, x, cur.y, ellipsize(pair[0].toUpperCase(), maxW, 7.5, 'HB'), { size: 7.5, font: 'HB', color: INK_FAINT });
-      pdf.text(cur.page, x, cur.y + 12, ellipsize(pair[1] || '—', maxW, 10), { size: 10, color: INK });
+      const label = pair[0].toUpperCase();
+      pdf.text(cur.page, x, cur.y, label, { size: fitSize(label, maxW, 7.5, 'HB'), font: 'HB', color: INK_FAINT });
+      valores[c].forEach((line, n) => pdf.text(cur.page, x, cur.y + 12 + n * 12, line, { size: 10, color: INK }));
     }
     cur.y += rowHeight;
   }
@@ -249,7 +277,10 @@ function drawTableHeader(
   const boxes = columnBoxes(columns, m);
   pdf.rect(cur.page, m.contentLeft, cur.y - 10, m.contentWidth, 18, { fill });
   columns.forEach((col, i) => {
-    pdf.textAligned(cur.page, ellipsize(col.header.toUpperCase(), boxes[i].right - boxes[i].left, headerSize, 'HB'), cur.y + 2, boxes[i], col.align ?? 'left', { size: headerSize, font: 'HB', color: textColor });
+    const w = boxes[i].right - boxes[i].left;
+    const header = col.header.toUpperCase();
+    const size = fitSize(header, w, headerSize, 'HB');
+    pdf.textAligned(cur.page, ellipsize(header, w, size, 'HB'), cur.y + 2, boxes[i], col.align ?? 'left', { size, font: 'HB', color: textColor });
   });
   cur.y += 18;
 }
@@ -296,21 +327,44 @@ function drawWrapTable(pdf: PdfWriter, cur: Cursor, m: Metrics, block: Extract<B
   block.rows.forEach((row, r) => {
     const wrappedByCol = new Map<number, string[]>();
     let maxLines = 1;
+    const sizeByCol = new Map<number, number>();
     for (const i of wrapSet) {
       const w = boxes[i].right - boxes[i].left;
-      const lines = wrapText(row[i] ?? '', w, cellSize);
+      // Si una PALABRA no cabe en la columna ("UNITALLA", "INVESTIGACION"), la
+      // celda baja de letra hasta que quepa — partirla a media palabra es el
+      // último recurso de wrapText, no el primero.
+      const palabraLarga = String(row[i] ?? '').split(/\s+/)
+        .reduce((a, b) => (widthOf(b, cellSize) > widthOf(a, cellSize) ? b : a), '');
+      const size = fitSize(palabraLarga, w, cellSize, 'H', 6);
+      const lines = wrapText(row[i] ?? '', w, size);
       wrappedByCol.set(i, lines);
+      sizeByCol.set(i, size);
       maxLines = Math.max(maxLines, lines.length);
     }
-    const rowHeight = Math.max(baseRowHeight, maxLines * lineHeight + 6);
+    const conFoto = block.imageCol !== undefined;
+    const imageHeight = block.imageHeight ?? 40;
+    const rowHeight = Math.max(baseRowHeight, maxLines * lineHeight + 6, conFoto ? imageHeight + 6 : 0);
     if (cur.ensure(rowHeight)) drawTableHeader(pdf, cur, m, block.columns, block.headerFill, block.headerTextColor, headerSize);
-    if (r % 2 === 1) pdf.rect(cur.page, m.contentLeft, cur.y - 9, m.contentWidth, rowHeight, { fill: ZEBRA });
+    const fill = block.rowFills?.[r];
+    if (fill) pdf.rect(cur.page, m.contentLeft, cur.y - 9, m.contentWidth, rowHeight, { fill });
+    else if (r % 2 === 1) pdf.rect(cur.page, m.contentLeft, cur.y - 9, m.contentWidth, rowHeight, { fill: ZEBRA });
     block.columns.forEach((col, i) => {
+      if (i === block.imageCol) {
+        // Foto encajada sin deformar dentro de la celda; sin foto, recuadro gris.
+        const box = { x: boxes[i].left, y: cur.y - 6, w: boxes[i].right - boxes[i].left, h: imageHeight };
+        const img = block.rowImages?.[r];
+        const drawn = img ? (() => { const f = fitBox(img, box); return pdf.image(cur.page, img, f.x, f.y, f.w, f.h); })() : false;
+        if (!drawn) {
+          pdf.rect(cur.page, box.x, box.y, box.w, box.h, { fill: '#f1f3f6', stroke: RULE });
+          pdf.textAligned(cur.page, 'Sin foto', box.y + box.h / 2 + 2, { left: box.x, right: box.x + box.w }, 'center', { size: 6.5, color: INK_FAINT });
+        }
+        return;
+      }
       const lines = wrappedByCol.get(i);
       if (lines) {
         let ly = cur.y + 2;
         for (const line of lines) {
-          pdf.textAligned(cur.page, line, ly, boxes[i], col.align ?? 'left', { size: cellSize, color: INK });
+          pdf.textAligned(cur.page, line, ly, boxes[i], col.align ?? 'left', { size: sizeByCol.get(i) ?? cellSize, color: INK });
           ly += lineHeight;
         }
         return;
@@ -318,7 +372,9 @@ function drawWrapTable(pdf: PdfWriter, cur: Cursor, m: Metrics, block: Extract<B
       // Todo lo que no envuelve va anclado al TOPE del renglón — así nunca se
       // desaloja aunque las columnas de wrapCols crezcan a varias líneas.
       const cell = row[i] ?? '';
-      pdf.textAligned(cur.page, ellipsize(cell, boxes[i].right - boxes[i].left, cellSize), cur.y + 2, boxes[i], col.align ?? 'left', { size: cellSize, color: INK });
+      const w = boxes[i].right - boxes[i].left;
+      const size = fitSize(cell, w, cellSize);
+      pdf.textAligned(cur.page, ellipsize(cell, w, size), cur.y + 2, boxes[i], col.align ?? 'left', { size, color: INK });
     });
     cur.y += rowHeight;
     pdf.line(cur.page, m.contentLeft, cur.y - 8, m.contentRight, cur.y - 8, { color: RULE, width: 0.4 });

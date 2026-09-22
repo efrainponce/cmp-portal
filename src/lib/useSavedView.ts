@@ -15,6 +15,9 @@ export interface SavedViewFilters {
 interface SavedViewState {
   filters: SavedViewFilters;
   collapsedGroups: Record<string, boolean>;
+  /** Permite evolucionar el filtro inicial sin interpretar una preferencia
+   * guardada como una elección explícita de "Todos". */
+  defaultsVersion?: number;
   /** Criterio de agrupación elegido por la persona (p.ej. 'estado' | 'zona' en
    * las listas de Proyectos). `undefined` = el default del board. */
   groupBy?: string;
@@ -27,22 +30,30 @@ function storageKey(email: string, boardKey: string): string {
   return `cmp:view:${email}:${boardKey}`;
 }
 
-function load(email: string, boardKey: string): SavedViewState {
+function load(email: string, boardKey: string, initialFilters: SavedViewFilters, defaultsVersion?: number): SavedViewState {
   try {
     const raw = localStorage.getItem(storageKey(email, boardKey));
-    if (!raw) return DEFAULT_STATE;
+    if (!raw) return { ...DEFAULT_STATE, filters: initialFilters, defaultsVersion };
     const parsed = JSON.parse(raw);
+    // Una vista guardada antes de una nueva versión de defaults no expresa una
+    // decisión del usuario sobre ese filtro; estrénala con el nuevo default.
+    if (defaultsVersion !== undefined && parsed.defaultsVersion !== defaultsVersion) {
+      return { ...DEFAULT_STATE, filters: initialFilters, defaultsVersion };
+    }
     return {
       filters: { ...DEFAULT_FILTERS, ...parsed.filters },
       collapsedGroups: parsed.collapsedGroups ?? {},
       groupBy: typeof parsed.groupBy === 'string' ? parsed.groupBy : undefined,
+      defaultsVersion: parsed.defaultsVersion,
     };
   } catch {
-    return DEFAULT_STATE;
+    return { ...DEFAULT_STATE, filters: initialFilters, defaultsVersion };
   }
 }
 
-export function useSavedView(boardKey: string) {
+/** `initialFilters` solo aplica al estrenar (o migrar) una vista. "Limpiar"
+ * sigue significando ver Todo, para que no esconda la nueva vista de equipo. */
+export function useSavedView(boardKey: string, initialFilters: SavedViewFilters = DEFAULT_FILTERS, defaultsVersion?: number) {
   const me = useMe();
   // null hasta que useMe() resuelve — evita pisar lo guardado con defaults
   // antes de saber quién es el viewer.
@@ -50,8 +61,8 @@ export function useSavedView(boardKey: string) {
 
   useEffect(() => {
     if (!me) return;
-    setState(load(me.email, boardKey));
-  }, [me, boardKey]);
+    setState(load(me.email, boardKey, initialFilters, defaultsVersion));
+  }, [me, boardKey, initialFilters.vendedor, initialFilters.compras, initialFilters.etapa, defaultsVersion]);
 
   useEffect(() => {
     if (!me || !state) return;

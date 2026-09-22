@@ -9,9 +9,10 @@
 // outbox), la línea se puede mover de proveedor o borrar, y el alta manual
 // levanta una línea que nunca estuvo en la cotización. Ese alta tiene DOS
 // entradas (Efraín, 2026-08-25): "+ Agregar línea a este proveedor" al pie de
-// cada tarjeta, que llega con el proveedor puesto, y "+ Agregar producto (otro
-// proveedor)" arriba del tab, que sirve para levantar una tarjeta (= una OC)
-// de un proveedor que todavía no tiene ninguna línea.
+// cada tarjeta, que llega con el proveedor puesto, y "+ Crear orden de compra"
+// arriba del tab (CrearOcModal, 2026-09-21; antes "+ Agregar producto (otro
+// proveedor)", que pedía una vuelta completa por línea): proveedor + N
+// renglones de texto libre, y se levanta la tarjeta (= una OC) de un jalón.
 //
 // Cada cambio queda en el log de actividad CON EL USUARIO REAL del portal
 // (worker/lib/activityLog.ts, PORTAL_WRITE_COLUMNS — el activity log de
@@ -31,9 +32,11 @@ import { Button } from '../../../components/core/Button';
 import { StatusBadge } from '../../../components/core/Badges';
 import { Modal } from '../../../components/core/Modal';
 import { AgregarLineaModal } from '../../proyectos/AgregarLineaModal';
+import { CrearOcModal } from '../../proyectos/CrearOcModal';
 import { SeleccionarProveedorModal } from '../../proyectos/SeleccionarProveedorModal';
 import { pctToFraccion, fraccionToPct, fraccionNum } from '../../../../shared/descuento';
 import { CambiarProductoModal } from './CambiarProductoModal';
+import { llaveFotoOc } from '../../../../shared/ocFotoLlave';
 import { fmtMoney } from '../../../lib/format';
 import { PdfIcon } from '../tabs/cotizacion/CotizacionPdfRow';
 import {
@@ -171,11 +174,13 @@ export function findLatestOcFile(
   return { conCostos, sinCostos };
 }
 
-// 12 columnas en el ancho del drawer (~856px útiles con maxWidth 920): las de
-// acciones van al final y TIENEN que caber sin scroll horizontal, o el reloj y
-// el borrar quedan invisibles. Producto se lleva el sobrante y parte el texto.
+// 12 columnas. Desde 2026-09-21 el tab usa TODO el ancho del drawer (antes
+// maxWidth 920: en una pantalla grande el Producto se partía en 12 renglones
+// con media pantalla vacía al lado). Las de acciones van al final y TIENEN que
+// caber sin scroll horizontal, o el reloj y el borrar quedan invisibles.
+// Producto se lleva el sobrante; abajo de 860px la tabla hace scroll.
 // La primera es el asa de arrastre (fija en px: es un icono, no crece).
-const PROVEEDOR_GRID_TEMPLATE = '18px 1.25fr 0.7fr 0.6fr 0.5fr 0.4fr 0.75fr 0.45fr 0.45fr 1fr 0.8fr 0.5fr';
+const PROVEEDOR_GRID_TEMPLATE = '18px minmax(150px, 2.4fr) 0.9fr 0.6fr 0.5fr 0.45fr 0.75fr 0.45fr 0.45fr minmax(90px, 0.9fr) 0.8fr minmax(64px, 0.4fr)';
 const PROVEEDOR_GRID_COLS: { label: string; align: 'left' | 'right' }[] = [
   { label: '', align: 'left' },
   { label: 'Producto', align: 'left' }, { label: 'SKU', align: 'left' },
@@ -539,7 +544,11 @@ function ProveedorLineaRow({ l, proyectoId, canEdit, historial, cambio, lineasEn
             </div>
           )}
         </div>
-        <div style={CELL_STYLE}>{l.cols[S_SKU]?.text || '—'}</div>
+        {/* El SKU es lo que la OC imprime como "Modelo": en una línea manual es
+            texto libre y hay que poder corregirlo aquí (Efraín, 2026-09-21). */}
+        {canEdit
+          ? <EditableCell value={val(S_SKU)} onSave={save(S_SKU)} wrap placeholder="—" title="Modelo / SKU tal como saldrá impreso en la OC" />
+          : <div style={CELL_STYLE}>{l.cols[S_SKU]?.text || '—'}</div>}
         {canEdit
           ? <EditableCell value={val(S_COLOR)} onSave={save(S_COLOR)} wrap placeholder="Sin color" title="Color tal como saldrá impreso en la OC" />
           : <div style={CELL_STYLE}>{l.cols[S_COLOR]?.text || '—'}</div>}
@@ -894,7 +903,8 @@ function FotoProducto({ producto, proyectoId, meta, extras, cargando, onCambio, 
         {producto.nombre}
       </div>
       <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)' }}>
-        {producto.sku}{meta?.estado === 'ok' ? ` · ${meta.origen === 'subida' ? 'subida' : 'catálogo'}` : ''}
+        {/* Sin SKU la llave ES el nombre: no se repite. */}
+        {producto.sku === producto.nombre ? 'Sin SKU' : producto.sku}{meta?.estado === 'ok' ? ` · ${meta.origen === 'subida' ? 'subida' : 'catálogo'}` : ''}
       </div>
       <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
         <button
@@ -1028,10 +1038,14 @@ function ProveedorCard({ group, proyecto, oppId, reload, canEdit, activity, nota
   const productos = useMemo(() => {
     const vistos = new Map<string, { sku: string; nombre: string }>();
     for (const l of group.lineas) {
-      const sku = (l.cols[S_SKU]?.text ?? '').trim();
+      // Los embellecimientos (✨) no llevan ficha en la OC con imágenes.
+      if (l.name?.startsWith('✨')) continue;
+      const nombre = l.cols[S_PRODUCTO]?.text || l.name || '';
+      // Sin SKU (línea manual) la foto se guarda por el nombre del producto.
+      const sku = llaveFotoOc(l.cols[S_SKU]?.text, nombre);
       if (!sku) continue;
       const key = sku.toUpperCase();
-      if (!vistos.has(key)) vistos.set(key, { sku, nombre: l.cols[S_PRODUCTO]?.text || l.name || sku });
+      if (!vistos.has(key)) vistos.set(key, { sku, nombre: nombre || sku });
     }
     return [...vistos.values()];
   }, [group.lineas]);
@@ -1232,7 +1246,7 @@ function ProveedorGrid({ lineas, proyecto, oppId, reload, canEdit, activity, not
 export function ProyectoOrdenesSection({ state, oppId }: { state: ProyectoState; oppId: string | null }) {
   const me = useMe();
   const canCompras = me?.role === 'compras' || me?.role === 'admin';
-  const [agregar, setAgregar] = useState(false);
+  const [crearOc, setCrearOc] = useState(false);
   // Actividad del Proyecto + TODAS sus líneas en una sola llamada (el endpoint
   // ya agrega los hijos, worker/routes/boards.ts): cada línea filtra la suya
   // para el reloj, en vez de una llamada por renglón.
@@ -1271,17 +1285,17 @@ export function ProyectoOrdenesSection({ state, oppId }: { state: ProyectoState;
     <div style={{ marginTop: 16 }}>
       <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)', marginBottom: 10 }}>
         Proyecto {p.name} — una OC por proveedor, con firmas Elaborado → Revisado → Autorizado (DocuSeal).
-        {canCompras && ' Producto, color, cantidad, costo, moneda, descuento y entrega se editan aquí mismo (clic en la celda) y se guardan en Monday. Lo que no venía en la cotización (aplicación, maquila, flete) se agrega con el "+ Agregar línea" de la tarjeta del proveedor.'}
+        {canCompras && ' Producto, SKU/modelo, color, cantidad, costo, moneda, descuento y entrega se editan aquí mismo (clic en la celda) y se guardan en Monday. Lo que no venía en la cotización (aplicación, maquila, flete) se agrega con el "+ Agregar línea" de la tarjeta del proveedor.'}
       </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <ProyectoActionBar proyecto={p} reload={state.reload} actions={['generar-oc']} />
         {canCompras && (
           <Button
-            variant="secondary"
-            onClick={() => setAgregar(true)}
-            title="Para un proveedor que todavía no tiene líneas — se le abre su propia tarjeta. Si el proveedor ya está abajo, usa el '+ Agregar línea' de su tarjeta."
+            variant="primary"
+            onClick={() => setCrearOc(true)}
+            title="Una orden a mano: eliges el proveedor y capturas todos sus productos de una vez, en texto libre"
           >
-            + Agregar producto (otro proveedor)
+            + Crear orden de compra
           </Button>
         )}
       </div>
@@ -1290,19 +1304,13 @@ export function ProyectoOrdenesSection({ state, oppId }: { state: ProyectoState;
           ? <ProveedorGrid lineas={lineas} proyecto={p} oppId={oppId} reload={onChanged} canEdit activity={activity} notas={notas} ordenes={ordenes} cambios={cambios} />
           : (
             <div style={{ marginTop: 14, font: 'var(--text-label)', color: 'var(--ink-quiet)' }}>
-              Aún no hay líneas en el proyecto — importa las tallas primero, o agrega un producto a mano con el botón de arriba.
+              Aún no hay líneas en el proyecto — importa las tallas primero, o levanta una orden a mano con “+ Crear orden de compra”.
             </div>
           )
       ) : (
         <div style={{ marginTop: 14, font: 'var(--text-label)', color: 'var(--ink-quiet)' }}>El desglose por proveedor lo gestiona Compras.</div>
       )}
-      {agregar && (
-        <AgregarLineaModal
-          proyectoId={p.id}
-          onClose={() => setAgregar(false)}
-          onCreated={onChanged}
-        />
-      )}
+      {crearOc && <CrearOcModal proyectoId={p.id} onClose={() => setCrearOc(false)} onCreated={onChanged} />}
     </div>
   );
 }

@@ -24,6 +24,12 @@
     endpoint nuevo, así que no puede sacar una columna que el rol no ve.
     `src/lib/exportXlsx.ts` + `ExportExcelButton`; xlsxWrite en chunk lazy.
 
+- **Merge de origin/main** (resumen PDF por producto/color, columnas extendidas
+  de admin en Oportunidades, filtros del Reporte de Proyectos, caché de fotos).
+  Conflictos solo por vecindad (los dos lados agregaban en el mismo lugar):
+  dto.ts, StageBoardList, ProyectoBoardList y log.md — se quedan ambos. El
+  export a Excel ignora las métricas `fecha:<colId>` nuevas de main.
+
 - **Tallas sin Sheet: el corte queda en un switch** (Efraín: "el cliente nunca
   toca un sheet, son solo los vendedores; no lo podíamos hacer nativo en
   Monday"). Como todo el que captura tiene cuenta, no hace falta plantilla ni
@@ -56,6 +62,144 @@
   - `scripts/adopcion.mjs`: quién sigue editando en Monday, por persona/board/
     columna (solo lectura, misma atribución que `uxMetrics.ts`). Es el semáforo
     de cada ola.
+- **Estatus de proyecto en PDF — un renglón por producto y color** (Efraín, con
+  la hoja de Excel de Teotihuacán "Tránsito" que Compras armaba a mano: "un
+  resumen en PDF POR producto y color NO TALLA por cada proyecto, y también por
+  zona o vendedor… SUPER FÁCIL, que puedan imprimir, con los datos que ya
+  tenemos").
+  - No se captura nada nuevo. Sale de lo que ya vive en el tab Ejecución: Estado
+    del producto y su comentario por talla, el resumen por producto+color
+    (`producto_resumen`) y la Fecha estimada de entrega del proveedor; arriba,
+    del Proyecto: institución, vendedor, zona, etapa, Fecha de entrega,
+    Documentación y avance en piezas.
+  - Las tallas se SUMAN. Si van en pasos distintos el estatus lo dice con piezas
+    ("Entregado 15 · En tránsito 5") y luego el resumen del producto; la fecha es
+    la más tardía de lo que FALTA (todo entregado = vacía, como en la hoja).
+    Renglón verde = entregado, azul = en proceso, rojo = incidencia, sin color =
+    por surtir (`rowFills` nuevo en el wrapTable; mismos buckets que la batería,
+    por eso `estadoProductoBuckets` se movió a `shared/`).
+  - Dos botones: "Estatus en PDF" en el tab Ejecución (un proyecto) y "Estatus
+    PDF (n)" en las listas de Proyectos = lo que está en pantalla. Para eso las
+    listas ganan filtros de **Zona** y **Vendedor** (no se guardan entre
+    sesiones, a propósito: un filtro guardado deja la lista corta sin avisar).
+  - La lista manda los ids y el worker los re-filtra con el scope del viewer
+    (`listItems`); tope de 150. Líneas y resúmenes se leen EN LOTE
+    (`childrenOfMany`, `listProductoResumenMany`): una consulta por proyecto se
+    comía los subrequests.
+  - Whitelist sin reglas propias: todo pasa por `toItemDTO` con rol+correo, así
+    que a un vendedor no le llega el Proveedor y la columna no sale en su PDF.
+  - **Con la foto del producto** (Efraín, mismo día: "tiene que salir la
+    imagen del producto"): columna Foto con la misma foto por SKU de la OC con
+    imágenes (`oc_imagen`, R2 + Airtable como default); sin foto sale el
+    recuadro "Sin foto". Cada foto es una lectura de R2 dentro del presupuesto
+    de subrequests de una invocación, así que se buscan como máximo 24 SKUs por
+    PDF (`ESTATUS_MAX_FOTOS`); los que sobran salen sin foto y la nota de arriba
+    lo dice. Si la carga de fotos falla, el PDF sale sin ellas, nunca 500.
+    `wrapTable` gana `imageCol`/`rowImages` (foto encajada sin deformar).
+  - **Caché de fotos: un fallo ya no se confunde con "el catálogo no tiene
+    foto"** (Efraín: "que se vuelva a buscar automático"). `fetchAirtableImageUrl`
+    ahora devuelve `null` cuando NO pudo consultar (sin llave, timeout, HTTP
+    error) y `''` solo cuando Airtable respondió que no hay imagen; `jalarDeAirtable`
+    no marca en el primer caso. Además la marca "sin-foto" caduca a los 7 días
+    (`SIN_FOTO_REINTENTO_DIAS`, `hayQueBuscar`): si suben la foto al catálogo
+    después, aparece sola. La foto sigue siendo la "mediana" de Airtable
+    (`large`, ~500 px; Airtable solo tiene small/large/full) — lo que pesa son
+    las fotos en PNG, que el motor embebe sin recomprimir.
+
+- **Oportunidades: lista extendida para admin + botón "Columnas"** (Efraín: "solo
+  para los admins… muchas columnas de totales incluyendo fechas… un botón para
+  elegir las columnas, se guarda para la siguiente visita").
+  - Admin (solo desktop, boards Oportunidades y Costeo vía `config.columnasAdmin`;
+    cada board guarda sus columnas por separado)
+    ve, además de Costo/Subtotal/Total/Util. %/M. Gob/Utilidad: **Piezas**
+    (Cantidad Total), **Líneas** y 7 fechas (Creada, F. límite, Sol. costeo,
+    Sol. valid., Validada, Cotización, Proyecto). La lista hace scroll
+    horizontal; encabezado y renglones van en un contenedor `max-content` para
+    seguir cuadrando.
+  - Botón "Columnas" = el mismo `ColumnPicker`/`useColumnasVisibles` de Lista de
+    OC (localStorage por correo+board, key `oportunidades_lista`).
+  - Cantidad Total: el espejo de Monday llega vacío, así que se materializa por
+    línea en `items.t_cantidad` (mismo patrón que los t_* del 2026-08-20) y
+    `totales.ts` la suma. **Migración `worker/migrations/2026-09-21-linea-cantidad.sql`
+    ANTES del deploy** (sin la columna el upsert de líneas falla).
+  - `shared/visibility.ts`: Creación (`pulse_log_mkzm4v99`) y Fecha Creación
+    Proyecto (`date_mm09wqah`) pasan a legibles SOLO para admin (ningún rol las
+    leía). Las fechas solo se piden en `?cols=` cuando la vista extendida las pinta.
+
+- **Crear orden de compra: alto fijo, producto con búsqueda, caché en D1 y TOTAL en el PDF**
+  (Efraín: "está raro que cambie el alto… el Producto o concepto debe ser libre
+  pero poder buscar en el catálogo… un cache en D1 de lo que se pone aquí… tiene
+  que salir el TOTAL de todos los productos en el PDF… no puedes cerrar esto tan
+  fácil").
+  - La lista de proveedores ya no va en línea (empujaba los renglones y el modal
+    cambiaba de alto con cada tecla): flota sobre el formulario y solo se abre
+    con el buscador enfocado.
+  - "Producto o concepto" sigue siendo texto libre, pero al teclear sugiere del
+    catálogo (misma búsqueda flexible que la cotización) y de lo capturado antes
+    en otras OC. Elegir una sugerencia pone Producto + SKU y llena solo lo vacío
+    (color/talla/unidad/costo; el proveedor si aún no hay).
+  - Caché nuevo `oc_concepto` en D1 (`worker/lib/ocConceptos.ts`): cada alta de
+    línea manual (`POST /api/proyectos/:id/lineas`, también "+ Agregar línea")
+    deja su renglón por producto+SKU con `usos`; se lee con `GET /api/oc-conceptos`
+    (compras/admin). Tolera la tabla sin crear. Migración
+    `worker/migrations/2026-09-21-oc-concepto.sql`.
+  - Cerrar el modal con algo capturado (clic fuera, Escape, ✕, Cancelar) pide
+    confirmación.
+  - PDF de la OC: renglón TOTAL al pie de la tabla (piezas + importe antes de
+    IVA), también en la versión sin costos (solo piezas).
+
+- **Inventario 5.11: la cotización salía vacía** (Efraín: "esta oportunidad tiene
+  productos 5.11 y no me sale para agregar un producto").
+  - La pestaña leía la relación a Productos como `linkedPulseIds` (API vieja de
+    Monday). En el mirror la relación es `{linked_item_ids:[...]}`, así que
+    NINGUNA línea resolvía a su producto de catálogo y la pestaña mostraba
+    "todavía no tiene productos 5.11" aunque la cotización fuera toda 5.11.
+  - El fallback por nombre tampoco casaba: el mirror trae el nombre corto
+    ("Fast-Tac TDU Pant") y el catálogo lo guarda con SKU al frente
+    ("74462 - Fast-Tac TDU Pant"). Ahora resuelve por el mismo camino que la
+    grid (`linkedProductoId` + `catalogIndex` de gridMeta) y el fallback usa
+    primero el texto de la relación.
+  - Anclado en `src/boards/oportunidades/tabs/inventarioCotizacion.test.ts`
+    (el typecheck no cubre nada de esto: todo es JSON en strings).
+
+- **Órdenes de compra: imágenes, PDF sin "…", OC manual fácil y ancho completo**
+  (Efraín: "nadie puede agregar imágenes… el PDF no puede estar con ...",
+  "la orden de compra manual es SUPER difícil… necesitamos MÁS flexibilidad YA",
+  "solo: CREAR orden de compra", "usar siempre la totalidad de la pantalla").
+  - **Imágenes**: causa real en `accion_log` de prod — 16 de los 18
+    intentos del 21-sep salieron `400 SKU inválido`. La llave de la foto exigía SKU de
+    catálogo (alfanumérico con guiones) y las líneas MANUALES traen "LOGO AIC",
+    `Bota Táctica 8" 4863`… `isSkuUsable` ahora acepta texto libre (≤300, sin
+    caracteres de control); la regla vieja sigue como `esSkuDeCatalogo` solo
+    para el LIKE que busca en Productos/Airtable. El key de R2 del texto libre
+    va hasheado (`segmentoR2`), los keys existentes no cambian. Una línea SIN
+    SKU usa el nombre del producto como llave (`shared/ocFotoLlave.ts`, misma
+    función en el tab y en el PDF) — antes ni aparecía en la tira de fotos.
+    `GET /api/oc-imagenes?skus=` acepta arreglo JSON (los nombres traen comas).
+  - **PDF de la OC**: ya no recorta. Todas las columnas de texto envuelven
+    (Modelo salía "CODI…"), los encabezados y celdas que no envuelven se
+    ACHICAN hasta caber antes de recortar (`fitSize` en layout.ts; salía
+    "TAL…", "UNID…", "MON…"), una palabra larga baja de letra antes de partirse
+    a media palabra, y la Razón social envuelve en vez de cortarse. Anchos
+    rebalanceados (Modelo 0.08→0.13, "Moneda"→"Mon."). Aplica a todo
+    `wrapTable`/`kv` (solicitud de costeo y vista previa de cotización también).
+  - **"+ Crear orden de compra"** (`CrearOcModal`) reemplaza a "+ Agregar
+    producto (otro proveedor)": un proveedor + N renglones de texto libre
+    (producto, modelo/SKU, color, talla, unidad, cantidad, costo, desc.) y se
+    guarda todo de una vez, en orden; un fallo a medias no duplica al
+    reintentar. Sin endpoint nuevo — es el mismo alta de línea manual, que
+    ahora también acepta `unidad` (`text_mm56dbkm`).
+  - **SKU/Modelo editable inline** en la tabla de la OC para compras/admin
+    (whitelist `text_mm0hyrfs` → `w: AC`, anclado en visibility.test.ts). La
+    Talla sigue de solo lectura (cuadra contra el desglose de tallas).
+  - "Cambiar producto": el buscador abría con una pantalla de "-" (renglones
+    basura del catálogo, primeros en orden alfabético) — sin búsqueda ya no se
+    listan.
+  - El tab Órdenes de compra usa todo el ancho del drawer (antes maxWidth 920)
+    en Oportunidades y en Proyectos; Producto se lleva el sobrante.
+  - Probado en local con proyecto nativo: subida con SKU libre y por nombre,
+    OC con imágenes (la foto por nombre sale en su ficha), alta de 2 líneas por
+    el modal nuevo.
 
 ## 2026-09-19
 

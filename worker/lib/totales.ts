@@ -27,10 +27,12 @@ const SUBTOTAL_COL = 'formula_mkznmjh6';
 const TOTAL_COL = 'formula_mm00xy0n';
 const UTILIDAD_COL = 'formula_mkznry25';
 const MARGEN_GOB_COL = 'formula_mkznsb7m';
+// Cantidad de la línea — la ve todo rol que ve la línea (vendedor incluido).
+const CANTIDAD_COL = 'numeric_mkzm6399';
 
 interface Fila {
   pid: number | null;
-  costo: number; subtotal: number; total: number; utilidad: number; margen: number; lineas: number;
+  costo: number; subtotal: number; total: number; utilidad: number; margen: number; cantidad: number; lineas: number;
 }
 
 /**
@@ -74,6 +76,7 @@ export async function totalesPorOportunidad(
             SUM(COALESCE(t_total, 0))      AS total,
             SUM(COALESCE(t_utilidad, 0))   AS utilidad,
             SUM(COALESCE(t_margen_gob, 0)) AS margen,
+            SUM(COALESCE(t_cantidad, 0))   AS cantidad,
             COUNT(*)                       AS lineas
        FROM items
       WHERE board_id = ? AND parent_item_id IS NOT NULL
@@ -94,6 +97,7 @@ export async function totalesPorOportunidad(
       if (f.subtotal > 0) dto.utilidadPct = (f.utilidad / f.subtotal) * 100;
     }
     if (puede(MARGEN_GOB_COL)) dto.margenGob = f.margen;
+    if (puede(CANTIDAD_COL)) dto.cantidad = f.cantidad;
     out[String(f.pid)] = dto;
   }
   return out;

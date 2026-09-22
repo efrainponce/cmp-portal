@@ -47,6 +47,21 @@ export const OC_IMAGEN_TIPOS = ['image/jpeg', 'image/png'] as const;
  * presupuesto de subrequests y una OC de 30 productos nuevos lo agotaría. */
 const MAX_AIRTABLE_POR_CORRIDA = 10;
 
+/** Cada cuánto se vuelve a preguntar a Airtable por un SKU marcado "sin-foto"
+ * (Efraín, 2026-09-21: "que se vuelva a buscar automático"). Antes la marca era
+ * para siempre y solo "Del catálogo" la quitaba; si suben la foto al catálogo
+ * después, con esto aparece sola en una semana. */
+export const SIN_FOTO_REINTENTO_DIAS = 7;
+
+/** ¿Hay que salir a Airtable por este SKU? Sin fila, sí; con foto, no; marcado
+ * "sin-foto", solo cuando la marca ya caducó. Pura — anclada en test. */
+export function hayQueBuscar(reg: { estado: string; updated_at: string } | undefined, ahora = Date.now()): boolean {
+  if (!reg) return true;
+  if (reg.estado !== 'sin-foto') return false;
+  const t = Date.parse(reg.updated_at);
+  return !Number.isFinite(t) || ahora - t >= SIN_FOTO_REINTENTO_DIAS * 86_400_000;
+}
+
 export class OcImagenError extends Error {
   status: number;
   constructor(status: number, message: string) {
@@ -96,16 +111,36 @@ export function skuKey(sku: string): string {
   return sku.trim().toUpperCase();
 }
 
-/** Un SKU utilizable como llave: sin espacios raros ni caracteres que después
- * habría que escapar en un LIKE de SQLite o en un key de R2. Los SKUs reales
- * del catálogo son alfanuméricos con guiones. Pura. */
-export function isSkuUsable(sku: string): boolean {
+/** Un SKU DEL CATÁLOGO: alfanumérico con guiones. Solo estos se buscan en
+ * Productos/Airtable (el LIKE de SQLite no escapa nada más). Pura. */
+export function esSkuDeCatalogo(sku: string): boolean {
   return /^[A-Za-z0-9][A-Za-z0-9._\-]{0,59}$/.test(sku.trim());
 }
 
-function r2KeyFor(sku: string, sha: string, contentType: string): string {
+/** Una llave de foto utilizable. Desde 2026-09-21 acepta texto libre: las
+ * líneas MANUALES de la OC traen SKUs como "LOGO AIC" o `Bota Táctica 8" 4863`
+ * (o ninguno, y la llave es el nombre del producto) y con la regla del catálogo
+ * TODA subida salía "SKU inválido" — nadie podía ponerle foto a una orden
+ * manual. La llave nunca se interpola: D1 va con binds y el key de R2 la pasa
+ * por `segmentoR2`. Pura. */
+export function isSkuUsable(sku: string): boolean {
+  const t = sku.trim();
+  // eslint-disable-next-line no-control-regex
+  return t.length > 0 && t.length <= 300 && !/[\u0000-\u001f\u007f]/.test(t);
+}
+
+/** Segmento del key de R2 para una llave: la del catálogo va tal cual (los keys
+ * viejos no cambian); el texto libre va como hash — nada de "/", ".." ni
+ * acentos dentro de un key. */
+export async function segmentoR2(sku: string): Promise<string> {
+  const key = skuKey(sku);
+  if (esSkuDeCatalogo(key)) return key;
+  return `libre-${(await sha256Hex(new TextEncoder().encode(key))).slice(0, 32)}`;
+}
+
+async function r2KeyFor(sku: string, sha: string, contentType: string): Promise<string> {
   const ext = contentType === 'image/png' ? 'png' : 'jpg';
-  return `oc-imagenes/${skuKey(sku)}/${sha}.${ext}`;
+  return `oc-imagenes/${await segmentoR2(sku)}/${sha}.${ext}`;
 }
 
 async function sha256Hex(bytes: Uint8Array): Promise<string> {
@@ -139,7 +174,7 @@ async function upsert(
 ): Promise<OcImagenMeta> {
   await ensureTable(env);
   const sha = await sha256Hex(bytes);
-  const key = r2KeyFor(sku, sha, contentType);
+  const key = await r2KeyFor(sku, sha, contentType);
   await env.FILES.put(key, bytes as BufferSource, { httpMetadata: { contentType } });
   const at = new Date().toISOString();
   await env.DB.prepare(
@@ -177,7 +212,7 @@ async function registrosDe(env: Env, skus: string[]): Promise<Map<string, Regist
  * verificación real se hace parseando: LIKE por sí solo daría falsos positivos
  * con SKUs que son prefijo de otros. */
 async function airtableIdDeSku(env: Env, sku: string): Promise<string> {
-  if (!isSkuUsable(sku)) return '';
+  if (!esSkuDeCatalogo(sku)) return '';
   const { results } = await env.DB.prepare(
     `SELECT columns FROM items WHERE board_id = ? AND columns LIKE ? LIMIT 25`,
   ).bind(BOARDS.productos.id, `%"${sku.trim()}"%`).all<{ columns: string }>();
@@ -213,6 +248,9 @@ export async function jalarDeAirtable(
   // 3.7 pulgadas de ancho imprime de sobra, y el `full` puede traer 3000px que
   // solo inflan el PDF y el CPU de descompresión.
   const url = await fetchAirtableImageUrl(env, airtableId, 'large');
+  // null = no se pudo consultar (sin llave, timeout, HTTP error): NO se marca,
+  // la próxima corrida lo vuelve a intentar. '' = Airtable dijo que no hay foto.
+  if (url === null) return null;
   if (!url) return sinFoto();
 
   try {
@@ -296,13 +334,13 @@ const MAX_AIRTABLE_AL_ABRIR = 8;
  * 2026-08-25: "esto tiene que ser POR DEFECTO del catálogo") en vez de algo que
  * alguien tenga que pedir con un botón.
  *
- * Solo sale a Airtable por los que NUNCA se han buscado: un producto ya
- * cacheado, o ya marcado como "el catálogo no tiene foto", no se vuelve a
+ * Solo sale a Airtable por los que nunca se han buscado o cuya marca "sin-foto"
+ * ya caducó (`hayQueBuscar`): un producto con foto cacheada no se vuelve a
  * consultar. Por eso el costo es de una vez por producto, no por apertura. */
 export async function sincronizarImagenes(env: Env, skus: string[]): Promise<OcImagenMeta[]> {
   const unicos = [...new Set(skus.map(skuKey).filter(Boolean))];
   const registros = await registrosDe(env, unicos);
-  const faltantes = unicos.filter(s => !registros.has(s)).slice(0, MAX_AIRTABLE_AL_ABRIR);
+  const faltantes = unicos.filter(s => hayQueBuscar(registros.get(s))).slice(0, MAX_AIRTABLE_AL_ABRIR);
   if (faltantes.length > 0) {
     await Promise.all(faltantes.map(sku => jalarDeAirtable(env, sku, true).catch(() => null)));
   }
@@ -319,7 +357,7 @@ export async function cargarImagenesParaPdf(
   const unicos = [...new Set(skus.map(skuKey).filter(Boolean))];
   const registros = await registrosDe(env, unicos);
 
-  const faltantes = unicos.filter(s => !registros.has(s)).slice(0, MAX_AIRTABLE_POR_CORRIDA);
+  const faltantes = unicos.filter(s => hayQueBuscar(registros.get(s))).slice(0, MAX_AIRTABLE_POR_CORRIDA);
   for (const sku of faltantes) {
     const meta = await jalarDeAirtable(env, sku, true);
     if (meta) {

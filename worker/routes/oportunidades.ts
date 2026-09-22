@@ -58,12 +58,14 @@ import { toNativeColumns, insertNativeSubitem, stampNativeFileMarker } from '../
 import { insertSeguimiento } from '../lib/home';
 import { listZoneImages, uploadZoneImage, EmbellImageError } from '../lib/embellecimientoImagenes';
 import { listProposedProducts, addProposedProduct, ProposedProductError } from '../lib/productosPropuestos';
+import { listInventarioCotizacion, saveInventarioCotizacion, InventarioCotizacionError } from '../lib/inventarioCotizacion';
 import { resolveMondayAsset, keyLegado, PROYECTO_DOCUMENTO_COL, PROYECTO_ACTA_COL } from '../lib/portalFiles';
 import { putFile, oportunidadFileKey, proyectoFileKey } from '../lib/r2';
 import { resolveCotizacionPdfUrl, nativeCotizacionPdf, CotizacionPdfError, ETIQUETA_BY_KIND, type PdfKind } from '../lib/cotizacionPdfs';
 import { refetchItem, refetchItemTree, upsertItem } from '../sync';
 import { jsonStatus, contentDisposition, rejectUnknownQuery } from '../lib/http';
 import { errorInterno } from '../lib/errores';
+import { recordOcConcepto, listOcConceptos } from '../lib/ocConceptos';
 import { contentTypeFor, isGenericType } from '../lib/mime';
 import { canWrite } from '../../shared/visibility';
 import { reserveNativeId } from '../lib/nativeSeq';
@@ -72,6 +74,7 @@ import { emitNotification } from '../lib/notify';
 import { createDocument, documentPdf } from '../lib/documents';
 import { generarOcProveedorPdf, OcProveedorPdfError } from '../lib/ocProveedorPdf';
 import { generarCotizacionPreviewPdf, CotizacionPreviewPdfError } from '../lib/cotizacionPreviewPdf';
+import { generarEstatusProyectoPdf, generarEstatusProyectosPdf, EstatusProyectoPdfError } from '../lib/estatusProyectoPdf';
 import { md5 } from '../lib/canon';
 import { nombreDescarga, extensionDe } from '../../shared/nombreArchivo';
 
@@ -990,6 +993,41 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     }
   });
 
+  // Inventario 5.11 por producto de la cotización. Las dos imágenes y los
+  // comentarios pertenecen a la oportunidad, no al catálogo global.
+  app.get('/api/oportunidades/:id/inventario-cotizacion', async c => {
+    const itemId = Number(c.req.param('id'));
+    if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
+    try {
+      return c.json({ productos: await listInventarioCotizacion(c.env, itemId, c.get('viewer')) });
+    } catch (err) {
+      if (err instanceof InventarioCotizacionError) return jsonStatus({ error: err.message }, err.status);
+      return errorInterno(c, err);
+    }
+  });
+
+  app.post('/api/oportunidades/:id/inventario-cotizacion', async c => {
+    const itemId = Number(c.req.param('id'));
+    if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
+    const form = await c.req.formData();
+    const mexico = form.get('mexico');
+    const usa = form.get('usa');
+    try {
+      const producto = await saveInventarioCotizacion(c.env, itemId, c.get('viewer'), {
+        productoId: String(form.get('productoId') ?? ''),
+        productoNombre: String(form.get('productoNombre') ?? ''),
+        comentarios: String(form.get('comentarios') ?? ''),
+        agregadoManualmente: form.get('agregadoManualmente') === 'true',
+        mexico: mexico instanceof File ? mexico : undefined,
+        usa: usa instanceof File ? usa : undefined,
+      });
+      return c.json({ ok: true, producto });
+    } catch (err) {
+      if (err instanceof InventarioCotizacionError) return jsonStatus({ error: err.message }, err.status);
+      return errorInterno(c, err);
+    }
+  });
+
   // Sube "Inventario Actual (Imagen)" (file_mm0hpefr) — se muestra en Documentación
   // junto a la cotización firmada, mismo template de sección (Efraín, 2026-08-10:
   // "Compras puede agregar el archivo Inventario"). Dual-write a R2 igual que
@@ -1156,7 +1194,13 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     if (!gateCompras(c)) return jsonStatus({ error: 'forbidden' }, 403);
     const bad = rejectUnknownQuery(c.req.url, ['skus', 'sync']);
     if (bad) return bad;
-    const skus = (c.req.query('skus') ?? '').split(',').map(s => s.trim()).filter(Boolean).slice(0, 200);
+    // Arreglo JSON: la llave de una línea manual es texto libre y puede traer
+    // comas. La lista separada por comas se sigue aceptando (pestañas viejas).
+    const crudo = c.req.query('skus') ?? '';
+    let lista: unknown = null;
+    if (crudo.startsWith('[')) { try { lista = JSON.parse(crudo); } catch { /* cae a comas */ } }
+    const skus = (Array.isArray(lista) ? lista.map(String) : crudo.split(','))
+      .map(s => s.trim()).filter(isSkuUsable).slice(0, 200);
     if (skus.length === 0) return c.json({ imagenes: [] });
     // `sync=1`: además de leer lo guardado, jala del catálogo lo que nunca se
     // ha buscado. Es lo que hace que la foto de Airtable sea el default al abrir
@@ -1468,6 +1512,53 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     return c.json(response);
   });
 
+  // Estatus de proyecto en PDF (Efraín, 2026-09-21): un renglón por producto+color
+  // con proveedor, cantidad, estatus y fecha estimada — la hoja que Compras armaba
+  // a mano. Solo lectura, al vuelo desde el mirror (worker/lib/estatusProyectoPdf.ts);
+  // la whitelist de columnas aplica sola (un vendedor no recibe el Proveedor).
+  const pdfEstatus = (bytes: Uint8Array, item: string | null, etiqueta: string) => new Response(bytes, {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Length': String(bytes.length),
+      'Content-Disposition': contentDisposition(nombreDescarga({ item, etiqueta })),
+      'Cache-Control': 'private, no-store',
+    },
+  });
+
+  app.get('/api/proyectos/:id/estatus/pdf', async c => {
+    const bad = rejectUnknownQuery(c.req.url, []);
+    if (bad) return bad;
+    const itemId = Number(c.req.param('id'));
+    if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
+    try {
+      const { bytes, nombre } = await generarEstatusProyectoPdf(c.env, itemId, c.get('viewer'));
+      return pdfEstatus(bytes, nombre, 'Estatus');
+    } catch (err) {
+      if (err instanceof EstatusProyectoPdfError) return jsonStatus({ error: err.message }, err.status);
+      return errorInterno(c, err, { error: 'internal error' });
+    }
+  });
+
+  // Varios proyectos en un solo PDF: la lista manda los ids que tiene en pantalla
+  // (ya filtrados por zona/vendedor/búsqueda) y aquí se re-filtran con el scope
+  // del viewer. `alcance` es solo el texto del encabezado ("Zona Sureste").
+  app.get('/api/proyectos-estatus/pdf', async c => {
+    const bad = rejectUnknownQuery(c.req.url, ['ids', 'alcance']);
+    if (bad) return bad;
+    const crudos = (c.req.query('ids') ?? '').split(',').map(s => s.trim()).filter(Boolean);
+    const ids = crudos.map(Number);
+    if (ids.some(n => !Number.isSafeInteger(n) || n <= 0)) return jsonStatus({ error: 'ids inválidos' }, 400);
+    const alcance = (c.req.query('alcance') ?? '').trim().slice(0, 80) || undefined;
+    try {
+      const bytes = await generarEstatusProyectosPdf(c.env, [...new Set(ids)], c.get('viewer'), alcance);
+      return pdfEstatus(bytes, alcance ?? null, 'Estatus de proyectos');
+    } catch (err) {
+      if (err instanceof EstatusProyectoPdfError) return jsonStatus({ error: err.message }, err.status);
+      return errorInterno(c, err, { error: 'internal error' });
+    }
+  });
+
   // Resumen libre por producto+color (tab Ejecución) — nativo en D1, worker/lib/
   // productoResumen.ts. Mismo scoping de lectura que estado-historial (propio + zona
   // liderada); escritura solo compras/admin, mismo gate que S_COMENTARIO por talla.
@@ -1548,7 +1639,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
   // (worker/lib/nativeItems.ts).
   const LINEA_MANUAL_COL_TYPES: Record<string, string> = {
     text_mm0hs17x: 'text', board_relation_mm1cfgv5: 'board_relation', numeric_mm0hj2q4: 'numeric',
-    text_mm1antcb: 'text', text_mm0h4a1c: 'text', text_mm0hyrfs: 'text',
+    text_mm1antcb: 'text', text_mm0h4a1c: 'text', text_mm0hyrfs: 'text', text_mm56dbkm: 'text',
     numeric_mm1dj4fp: 'numbers', numeric_mm1dmsaz: 'numbers', text_mm1gdsvg: 'text',
   };
   // Cambiar el PRODUCTO (y su proveedor) de una línea de la OC conservando las
@@ -1670,6 +1761,16 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     }
   });
 
+  // Caché de lo capturado a mano en OC (worker/lib/ocConceptos.ts) — lo usa
+  // el autocompletar de "Crear orden de compra". Mismo gate que el alta.
+  app.get('/api/oc-conceptos', async c => {
+    const bad = rejectUnknownQuery(c.req.url, []);
+    if (bad) return bad;
+    const viewer = c.get('viewer');
+    if (viewer.role !== 'compras' && viewer.role !== 'admin') return c.json({ error: 'forbidden' }, 403);
+    return c.json({ items: await listOcConceptos(c.env) });
+  });
+
   app.post('/api/proyectos/:id/lineas', async c => {
     const itemId = Number(c.req.param('id'));
     if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
@@ -1678,6 +1779,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
 
     const body = await c.req.json<{
       producto?: string; proveedorId?: string; cantidad?: number; talla?: string; color?: string; sku?: string;
+      unidad?: string;
       costo?: number; descuento?: number; moneda?: string; zona?: string;
     }>();
     const producto = body.producto?.trim();
@@ -1703,6 +1805,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     if (body.talla?.trim()) subitemCols.text_mm1antcb = body.talla.trim();
     if (body.color?.trim()) subitemCols.text_mm0h4a1c = body.color.trim();
     if (body.sku?.trim()) subitemCols.text_mm0hyrfs = body.sku.trim();
+    if (body.unidad?.trim()) subitemCols.text_mm56dbkm = body.unidad.trim();
     // Costo/descuento/moneda desde el alta (Efraín, 2026-08-18): una OC "de la
     // nada" nace completa, sin tener que editar la línea inmediatamente después
     // — son las mismas columnas que el PDF de la OC lee (worker/lib/ocProveedorPdf.ts).
@@ -1713,6 +1816,13 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     // PATCH genérico de /api/boards y escribe el valor de columna tal cual.
     if (body.descuento !== undefined && Number.isFinite(body.descuento)) subitemCols.numeric_mm1dmsaz = body.descuento;
     if (body.moneda?.trim()) subitemCols.text_mm1gdsvg = body.moneda.trim();
+
+    // Una línea de embellecimiento lleva en Producto la posición, no un
+    // producto: no se cachea. Nunca tumba el alta (recordOcConcepto traga).
+    const recordConcepto = () => zona ? Promise.resolve() : recordOcConcepto(c.env, {
+      producto, sku: body.sku, color: body.color, talla: body.talla, unidad: body.unidad,
+      costo: body.costo, moneda: body.moneda, proveedorId: body.proveedorId, email: viewer.email,
+    });
 
     try {
       // Proyecto nativo (Zona Efrain): la línea es una fila más de `items` con
@@ -1743,10 +1853,12 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
           previousText: null, newText: nombre,
           userId: viewer.monday_user_id, userEmail: viewer.email,
         }]);
+        await recordConcepto();
         return c.json({ ok: true, id: String(id) });
       }
       const subitem = await createSubitem(c.env, itemId, nombre, subitemCols);
       await upsertItem(c.env, 'proyectos_sub', subitem);
+      await recordConcepto();
       return c.json({ ok: true, id: subitem.id });
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);

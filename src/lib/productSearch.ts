@@ -139,7 +139,11 @@ export function searchProductos(catalog: ItemDTO[], query: string, limit = 60): 
   const entries = productSearchIndex(catalog);
   const q = norm(query);
   if (!q) {
-    return [...entries]
+    // Sin búsqueda la lista sale alfabética, y el catálogo trae renglones
+    // basura llamados "-" que se quedaban con toda la primera pantalla
+    // (2026-09-21: "Cambiar producto" abría con puros guiones).
+    return entries
+      .filter((e) => alnum(e.item.name) !== '')
       .sort((a, b) => a.name.localeCompare(b.name))
       .slice(0, limit)
       .map((e) => e.item);
