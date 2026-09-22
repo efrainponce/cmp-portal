@@ -2,6 +2,12 @@
 
 ## 2026-09-22
 
+- **Muestras: el aviso ya no cae a todo Compras cuando el responsable es quien
+  envía** (MUE-1 de prueba de Efraín, Responsable compras de su propia
+  oportunidad: se excluyó como actor, la lista quedó vacía y el respaldo le
+  mandó el WhatsApp a los 5 de Compras). Ahora el respaldo "todo Compras" solo
+  aplica si el item no tiene Responsable compras con usuario en el portal.
+
 - **Muestras: escribe todo el que ve el item, Compras incluido** (Efraín:
   "todos pueden escribir incluyendo compras"). Crear, editar, enviar, sacar
   versión y borrar borradores pasan de scope 'own' a 'read' del item ligado

@@ -409,11 +409,16 @@ export async function enviarMuestra(env: Env, id: number, padre: MuestraPadre, p
   const comprasCol = BOARDS[padre].comprasCol;
   let vendedorIds: number[] = [];
   try { vendedorIds = JSON.parse(padreRow.vendedor_ids || '[]'); } catch { /* sin vendedor */ }
-  const ctx = { actorEmail: viewer.email, vendedorIds, itemId: padreRow.item_id };
-  let destinatarios = comprasCol
+  const ctx = { vendedorIds, itemId: padreRow.item_id };
+  // El respaldo "todo Compras" es SOLO para cuando el item no tiene un
+  // Responsable compras con usuario en el portal. Si el responsable es quien
+  // envía, no se le avisa a él (nunca auto-notificar) y tampoco a los demás:
+  // antes caía al respaldo y le llegaba a todo el equipo (MUE-1, 2026-09-22).
+  const asignados = comprasCol
     ? await resolveRecipients(env, ['comprador'], { ...ctx, compradorIds: personIdsFromColumns(padreRow.columns, comprasCol) })
     : [];
-  if (destinatarios.length === 0) destinatarios = await resolveRecipients(env, ['role:compras'], ctx);
+  const destinatarios = (asignados.length > 0 ? asignados : await resolveRecipients(env, ['role:compras'], ctx))
+    .filter(e => e.toLowerCase() !== viewer.email.toLowerCase());
   const piezas = lineas.reduce((n, l) => n + l.cantidad, 0);
   for (const email of destinatarios) {
     await emitNotification(env, {
