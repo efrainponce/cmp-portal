@@ -1,5 +1,14 @@
 # Log de commits
 
+## 2026-09-22 (6)
+
+- **Tab Inventario 5.11 más compacto** (Efraín: "se ve demasiado grande
+  todo"). Las fotos de MEX y USA regresan lado a lado (una sobre otra en
+  celular) en una caja de 150 px, pero COMPLETAS (`contain`, no el `cover`
+  que las recortaba); para leerlas, clic = visor a pantalla completa. Tarjeta,
+  márgenes y comentarios más apretados. El PDF no cambia: ahí cada foto sigue
+  a todo el ancho de la hoja ("en el PDF toda la info se debe ver").
+
 ## 2026-09-22 (5)
 
 - **Inventario 5.11 se exporta en PDF** (Efraín: "puedes agregar que se pueda

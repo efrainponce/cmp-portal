@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 import type { ItemDTO } from '../../../lib/apiClient';
 import { getCatalogoProductos, getInventarioCotizacion, inventarioCotizacionPdf, saveInventarioCotizacion, type InventarioCotizacionProductoDTO } from '../../../lib/apiClient';
 import { downloadBlob } from '../../../lib/estadoCuentaApi';
+import { useIsMobile } from '../../../lib/useIsMobile';
 import { Button } from '../../../components/core/Button';
 import { catalogIndex, displayProducto, linkedProductoId, PRODUCTO_REL_COL } from './cotizacion/gridMeta';
 
@@ -139,18 +140,20 @@ export function InventarioCotizacionTab({ oppId, quoteLines, readOnly = false }:
       {error && <div style={{ color: 'var(--status-perdida)', font: 'var(--text-label)', marginBottom: 12 }}>{error}</div>}
       {loading ? <div style={{ color: 'var(--ink-tertiary)', font: 'var(--text-label)' }}>Cargando inventario…</div> : rows.length === 0 ? (
         <div style={{ padding: 24, border: '1px dashed var(--border)', borderRadius: 'var(--radius-xl)', color: 'var(--ink-tertiary)', font: 'var(--text-label)' }}>Esta cotización todavía no tiene productos 5.11. Puedes agregar uno del catálogo.</div>
-      ) : <div style={{ display: 'grid', gap: 14 }}>{rows.map((row) => (
+      ) : <div style={{ display: 'grid', gap: 10 }}>{rows.map((row) => (
         <ProductCard key={row.productoId} row={row} disabled={readOnly || !!saving[row.productoId]} onFile={onFile} onComments={(comentarios) => void persist({ ...row, comentarios })} />
       ))}</div>}
     </div>
   );
 }
 
-// Las fotos son capturas anchas de tablas de tallas: van una debajo de otra a
-// todo el ancho y a altura natural (antes se recortaban a 122 px con `cover`).
-// Clic en la foto = verla en grande; cambiarla va por su botón aparte.
+// Las fotos son capturas anchas de tablas de tallas: MEX y USA lado a lado,
+// COMPLETAS (`contain`, nunca `cover` — así se recortaban) en una caja baja
+// para que la tab no se vuelva un muro de imágenes. Para leerlas: clic = visor
+// a pantalla completa. Cambiarla va por su botón aparte.
 function ProductCard({ row, disabled, onFile, onComments }: { row: ProductRow; disabled: boolean; onFile: (row: ProductRow, place: 'mexico' | 'usa', event: ChangeEvent<HTMLInputElement>) => void; onComments: (comments: string) => void }) {
   const [zoom, setZoom] = useState<{ url: string; title: string }>();
+  const isMobile = useIsMobile();
   const photo = (title: string, url: string | undefined, place: 'mexico' | 'usa') => {
     const input = <input aria-label={title} type="file" accept="image/*" disabled={disabled} onChange={(e) => onFile(row, place, e)} style={{ display: 'none' }} />;
     return (
@@ -160,11 +163,11 @@ function ProductCard({ row, disabled, onFile, onComments }: { row: ProductRow; d
           {url && !disabled && <label style={{ font: 'var(--text-label)', color: 'var(--accent)', cursor: 'pointer', marginBottom: 6 }}>Cambiar imagen{input}</label>}
         </div>
         {url ? (
-          <button type="button" onClick={() => setZoom({ url, title })} title="Ver en grande" style={{ display: 'block', width: '100%', padding: 0, border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden', background: 'var(--bg)', cursor: 'zoom-in' }}>
-            <img src={url} alt={title} style={{ display: 'block', width: '100%', height: 'auto' }} />
+          <button type="button" onClick={() => setZoom({ url, title })} title="Ver en grande" style={{ display: 'flex', width: '100%', height: PHOTO_H, padding: 4, boxSizing: 'border-box', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden', background: 'var(--bg)', cursor: 'zoom-in' }}>
+            <img src={url} alt={title} style={{ display: 'block', width: '100%', height: '100%', objectFit: 'contain' }} />
           </button>
         ) : (
-          <label style={{ display: 'flex', minHeight: 122, border: '1px dashed var(--border)', borderRadius: 'var(--radius-lg)', cursor: disabled ? 'default' : 'pointer', background: 'var(--bg)' }}>
+          <label style={{ display: 'flex', height: PHOTO_H, boxSizing: 'border-box', border: '1px dashed var(--border)', borderRadius: 'var(--radius-lg)', cursor: disabled ? 'default' : 'pointer', background: 'var(--bg)' }}>
             <span style={{ margin: 'auto', color: 'var(--ink-tertiary)', font: 'var(--text-label)' }}>{disabled ? 'Sin imagen' : 'Subir imagen'}</span>
             {input}
           </label>
@@ -172,10 +175,10 @@ function ProductCard({ row, disabled, onFile, onComments }: { row: ProductRow; d
       </div>
     );
   };
-  return <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-xl)', padding: 16, background: 'var(--bg-raised)' }}>
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}><div style={{ font: 'var(--text-body-strong)', color: 'var(--ink)' }}>{row.productoNombre}</div>{row.fromQuote && <span style={{ font: 'var(--text-eyebrow)', color: 'var(--accent)', background: 'var(--status-ganada-tint)', borderRadius: 999, padding: '3px 7px' }}>En cotización</span>}</div>
-    <div style={{ display: 'grid', gap: 16 }}>{photo('Inventario MEX', row.imagenMexicoUrl, 'mexico')}{photo('Inventario USA', row.imagenUsaUrl, 'usa')}</div>
-    <label style={{ display: 'block', marginTop: 14 }}><span style={labelStyle}>Comentarios</span><textarea defaultValue={row.comentarios} disabled={disabled} onBlur={(e) => { if (e.target.value !== row.comentarios) onComments(e.target.value); }} rows={3} style={{ ...inputStyle, resize: 'vertical' }} placeholder="Agrega comentarios de disponibilidad, tallas o tiempos…" /></label>
+  return <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-xl)', padding: 12, background: 'var(--bg-raised)' }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}><div style={{ font: 'var(--text-body-strong)', color: 'var(--ink)' }}>{row.productoNombre}</div>{row.fromQuote && <span style={{ font: 'var(--text-eyebrow)', color: 'var(--accent)', background: 'var(--status-ganada-tint)', borderRadius: 999, padding: '3px 7px' }}>En cotización</span>}</div>
+    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, minmax(0, 1fr))', gap: 12 }}>{photo('Inventario MEX', row.imagenMexicoUrl, 'mexico')}{photo('Inventario USA', row.imagenUsaUrl, 'usa')}</div>
+    <label style={{ display: 'block', marginTop: 10 }}><span style={labelStyle}>Comentarios</span><textarea defaultValue={row.comentarios} disabled={disabled} onBlur={(e) => { if (e.target.value !== row.comentarios) onComments(e.target.value); }} rows={2} style={{ ...inputStyle, resize: 'vertical' }} placeholder="Agrega comentarios de disponibilidad, tallas o tiempos…" /></label>
     {zoom && <ImageZoom url={zoom.url} title={zoom.title} onClose={() => setZoom(undefined)} />}
   </div>;
 }
@@ -203,5 +206,6 @@ function ImageZoom({ url, title, onClose }: { url: string; title: string; onClos
   );
 }
 
+const PHOTO_H = 150;
 const labelStyle: React.CSSProperties = { display: 'block', font: 'var(--text-eyebrow)', color: 'var(--ink-tertiary)', textTransform: 'uppercase', letterSpacing: '.45px', marginBottom: 6 };
 const inputStyle: React.CSSProperties = { width: '100%', boxSizing: 'border-box', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', background: 'var(--bg)', color: 'var(--ink)', padding: '8px 10px', font: 'var(--text-label)' };
