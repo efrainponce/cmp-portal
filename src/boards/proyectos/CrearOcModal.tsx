@@ -30,6 +30,9 @@ interface Renglon {
   key: number;
   producto: string; sku: string; color: string; talla: string; unidad: string;
   cantidad: string; costo: string; descuento: string;
+  /** Proveedor del producto elegido de una sugerencia (catálogo o caché) —
+   * para marcar en naranja el renglón que no es del proveedor de la orden. */
+  proveedorOrigen?: ProveedorRef | null;
 }
 
 let siguienteKey = 1;
@@ -38,10 +41,16 @@ const renglonVacio = (): Renglon => ({
   cantidad: '', costo: '', descuento: '',
 });
 
+// Naranja CMP (el mismo del encabezado de la OC en PDF, worker/lib/pdf/logo.ts).
+const NARANJA = '#f49e09';
+const NARANJA_TINT = '#fef3e0';
+
 const tieneAlgo = (r: Renglon) =>
   [r.producto, r.sku, r.color, r.talla, r.unidad, r.cantidad, r.costo, r.descuento].some(v => v.trim() !== '');
 
-const CAMPOS: { campo: keyof Omit<Renglon, 'key'>; label: string; flex: string; type?: 'number'; placeholder?: string }[] = [
+type Campo = Exclude<keyof Renglon, 'key' | 'proveedorOrigen'>;
+
+const CAMPOS: { campo: Campo; label: string; flex: string; type?: 'number'; placeholder?: string }[] = [
   { campo: 'producto', label: 'Producto o concepto *', flex: '3 1 220px', placeholder: 'Ej. Aplicación planchado camisas' },
   { campo: 'sku', label: 'Modelo / SKU', flex: '1.5 1 120px' },
   { campo: 'color', label: 'Color', flex: '1 1 90px' },
@@ -81,8 +90,12 @@ export function CrearOcModal({ proyectoId, onClose, onCreated }: Props) {
   const [progreso, setProgreso] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  const set = (key: number, campo: keyof Omit<Renglon, 'key'>, v: string) =>
-    setRenglones(rs => rs.map(r => (r.key === key ? { ...r, [campo]: v } : r)));
+  // Teclear otro producto a mano descarta el proveedor de la sugerencia: ya
+  // no se sabe de quién es.
+  const set = (key: number, campo: Campo, v: string) =>
+    setRenglones(rs => rs.map(r => (r.key === key
+      ? { ...r, [campo]: v, ...(campo === 'producto' ? { proveedorOrigen: null } : {}) }
+      : r)));
 
   // Producto y SKU se toman de la sugerencia; el resto solo llena lo vacío
   // (lo que Compras ya tecleó en el renglón manda).
@@ -98,6 +111,7 @@ export function CrearOcModal({ proyectoId, onClose, onCreated }: Props) {
         talla: llena(r.talla, s.talla),
         unidad: llena(r.unidad, s.unidad),
         costo: llena(r.costo, s.costo != null && s.costo > 0 ? String(s.costo) : null),
+        proveedorOrigen: s.proveedorId ? { id: s.proveedorId, name: s.proveedorName || `Proveedor ${s.proveedorId}` } : null,
       };
     }));
     if (!proveedor && s.proveedorId && s.proveedorName) setProveedor({ id: s.proveedorId, name: s.proveedorName });
@@ -232,13 +246,15 @@ export function CrearOcModal({ proyectoId, onClose, onCreated }: Props) {
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {renglones.map((r, n) => (
+          {renglones.map((r, n) => {
+            const ajeno = !!(proveedor && r.proveedorOrigen && r.proveedorOrigen.id !== proveedor.id);
+            return (
             <div
               key={r.key}
               style={{
                 display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end',
-                border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-lg)', padding: 8,
-                background: 'var(--bg-sunken)',
+                border: `1px solid ${ajeno ? NARANJA : 'var(--border-subtle)'}`, borderRadius: 'var(--radius-lg)', padding: 8,
+                background: ajeno ? NARANJA_TINT : 'var(--bg-sunken)',
               }}
             >
               {CAMPOS.map(c => (
@@ -271,8 +287,14 @@ export function CrearOcModal({ proyectoId, onClose, onCreated }: Props) {
               >
                 ✕
               </span>
+              {ajeno && (
+                <div style={{ flexBasis: '100%', font: 'var(--text-caption)', color: '#b86e00' }}>
+                  En el catálogo este producto es de <b>{r.proveedorOrigen!.name}</b>, no de {proveedor!.name}.
+                </div>
+              )}
             </div>
-          ))}
+            );
+          })}
           <div>
             <Button variant="secondary" onClick={saving ? undefined : () => setRenglones(rs => [...rs, renglonVacio()])}>
               + Otro producto
@@ -307,6 +329,16 @@ const MAX_CATALOGO = 20;
 // Columna Costo Distribuidor del board Productos (viaja en CATALOGO_COLS; el
 // server la filtra por rol, a compras/admin sí les llega).
 const PRODUCTO_COSTO_COL = 'numeric_mkzpx7eb';
+const PRODUCTO_PROVEEDOR_COL = 'board_relation_mm1cwqky';
+
+/** Proveedor asignado al producto en el catálogo (mismo criterio que
+ * CambiarProductoModal). */
+function proveedorDelCatalogo(p: ItemDTO): ProveedorRef | null {
+  const val = p.cols[PRODUCTO_PROVEEDOR_COL]?.value as { linked_item_ids?: unknown[] } | undefined;
+  const id = (val?.linked_item_ids ?? []).map(String).find(x => x && x !== 'undefined');
+  if (!id) return null;
+  return { id, name: p.cols[PRODUCTO_PROVEEDOR_COL]?.text?.trim() || `Proveedor ${id}` };
+}
 
 /** Cada palabra de la búsqueda debe aparecer (en cualquier orden) en producto,
  * SKU o proveedor — mismo criterio flexible que searchProductos. */
@@ -381,10 +413,13 @@ function ConceptoInput({ value, onChange, onPick, catalogo, conceptos, placehold
       return;
     }
     const costo = Number((o.item.cols[PRODUCTO_COSTO_COL]?.text ?? '').replace(/,/g, ''));
+    const prov = proveedorDelCatalogo(o.item);
     onPick({
       producto: productoNombreCorto(o.item),
       sku: productoSku(o.item) || null,
       costo: Number.isFinite(costo) && costo > 0 ? costo : null,
+      proveedorId: prov?.id ?? null,
+      proveedorName: prov?.name ?? null,
     });
   };
 
