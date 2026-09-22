@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import type { ChangeEvent } from 'react';
 import { createPortal } from 'react-dom';
 import type { ItemDTO } from '../../../lib/apiClient';
-import { getCatalogoProductos, getInventarioCotizacion, saveInventarioCotizacion, type InventarioCotizacionProductoDTO } from '../../../lib/apiClient';
+import { getCatalogoProductos, getInventarioCotizacion, inventarioCotizacionPdf, saveInventarioCotizacion, type InventarioCotizacionProductoDTO } from '../../../lib/apiClient';
+import { downloadBlob } from '../../../lib/estadoCuentaApi';
 import { Button } from '../../../components/core/Button';
 import { catalogIndex, displayProducto, linkedProductoId, PRODUCTO_REL_COL } from './cotizacion/gridMeta';
 
@@ -46,6 +47,7 @@ export function InventarioCotizacionTab({ oppId, quoteLines, readOnly = false }:
   const [adding, setAdding] = useState('');
   const [saving, setSaving] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string>();
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -100,11 +102,27 @@ export function InventarioCotizacionTab({ oppId, quoteLines, readOnly = false }:
     setAdding('');
   };
 
+  const exportPdf = async () => {
+    setExporting(true);
+    setError(undefined);
+    try {
+      const { blob, filename } = await inventarioCotizacionPdf(oppId, rows.map((r) => ({ productoId: r.productoId, productoNombre: r.productoNombre })));
+      downloadBlob(blob, filename);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudo generar el PDF del inventario.');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div style={{ padding: '24px 32px 40px', width: '100%', boxSizing: 'border-box' }}>
-      <div style={{ marginBottom: 20 }}>
-        <div style={{ font: 'var(--text-body-strong)', color: 'var(--ink)', marginBottom: 4 }}>Inventario 5.11</div>
-        <div style={{ font: 'var(--text-label)', color: 'var(--ink-secondary)' }}>Los productos 5.11 de la cotización aparecen aquí automáticamente. Agrega fotos de inventario en México y USA, más comentarios por producto.</div>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, marginBottom: 20 }}>
+        <div>
+          <div style={{ font: 'var(--text-body-strong)', color: 'var(--ink)', marginBottom: 4 }}>Inventario 5.11</div>
+          <div style={{ font: 'var(--text-label)', color: 'var(--ink-secondary)' }}>Los productos 5.11 de la cotización aparecen aquí automáticamente. Agrega fotos de inventario en México y USA, más comentarios por producto.</div>
+        </div>
+        <Button variant={loading || exporting || rows.length === 0 ? 'disabled' : 'secondary'} onClick={() => void exportPdf()}>{exporting ? 'Generando…' : 'Exportar PDF'}</Button>
       </div>
       {!readOnly && (
         <div style={{ display: 'flex', gap: 10, alignItems: 'end', padding: 14, border: '1px solid var(--border)', borderRadius: 'var(--radius-xl)', background: 'var(--bg-raised)', marginBottom: 18 }}>

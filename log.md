@@ -1,5 +1,20 @@
 # Log de commits
 
+## 2026-09-22 (5)
+
+- **Inventario 5.11 se exporta en PDF** (Efraín: "puedes agregar que se pueda
+  exportar en PDF"). Botón "Exportar PDF" arriba del tab: un producto por hoja
+  con su foto de México y de USA a todo el ancho de la hoja (a su proporción,
+  sin recortar) y los comentarios. Salen los mismos productos que el tab tiene
+  en pantalla — los que vienen solos de la cotización no tienen renglón en D1
+  hasta que alguien les captura algo, así que la lista la manda el tab
+  (`POST /api/oportunidades/:id/inventario-cotizacion/pdf`); fotos y
+  comentarios sí se leen de D1. Foto que no es JPEG/PNG legible sale como
+  "Sin imagen" en vez de tronar. Tope 40 productos por PDF.
+- Motor de PDF: bloque nuevo `image` (una imagen sola a todo el ancho). El
+  `imageRow` de la OC las mete en cajas de 270 pt de alto y una captura ancha
+  de tabla de tallas salía diminuta.
+
 ## 2026-09-22 (4)
 
 - **Fotos del Inventario 5.11 completas y con zoom** (Efraín: "las imágenes

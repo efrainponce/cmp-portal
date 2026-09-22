@@ -88,7 +88,11 @@ export type Block =
     }
   /** Fila suelta de hasta 3 imágenes grandes, para las que no cupieron bajo la
    * ficha de su producto (un producto puede traer hasta 6). */
-  | { kind: 'imageRow'; titulo: string; imagenes: { nombre: string; imagen: PdfImageData }[] };
+  | { kind: 'imageRow'; titulo: string; imagenes: { nombre: string; imagen: PdfImageData }[] }
+  /** Una imagen sola a TODO el ancho, a su proporción (sin recortar), con su
+   * etiqueta arriba. Para capturas anchas de tablas (Inventario 5.11): en una
+   * caja fija salían diminutas. Null ⇒ caja baja "Sin imagen". */
+  | { kind: 'image'; titulo: string; imagen: PdfImageData | null };
 
 export interface DocumentMeta {
   /** Título que va en el encabezado de todas las páginas. */
@@ -505,6 +509,28 @@ function drawImageRowBlock(
   cur.y += drawImageRow(pdf, cur.page, m, cur.y, block.titulo, block.imagenes) + CARD_GAP;
 }
 
+const IMAGE_LABEL_H = 14;
+const IMAGE_EMPTY_H = 36;
+
+function drawImageBlock(
+  pdf: PdfWriter, cur: Cursor, m: Metrics, block: Extract<Block, { kind: 'image' }>,
+): void {
+  const maxH = m.footerTop - m.headerBottom - IMAGE_LABEL_H - 4;
+  const img = block.imagen;
+  const h = img ? Math.min(maxH, m.contentWidth * (img.height / img.width)) : IMAGE_EMPTY_H;
+  cur.ensure(IMAGE_LABEL_H + h + 4);
+  pdf.text(cur.page, m.contentLeft, cur.y + 6, block.titulo.toUpperCase(), { size: 7.5, font: 'HB', color: INK_FAINT });
+  const box = { x: m.contentLeft, y: cur.y + IMAGE_LABEL_H, w: m.contentWidth, h };
+  if (img) {
+    const f = fitBox(img, box);
+    pdf.image(cur.page, img, f.x, f.y, f.w, f.h);
+  } else {
+    pdf.rect(cur.page, box.x, box.y, box.w, box.h, { fill: '#f1f3f6', stroke: RULE });
+    pdf.textAligned(cur.page, 'Sin imagen', box.y + h / 2 + 3, { left: box.x, right: box.x + box.w }, 'center', { size: 8.5, color: INK_SOFT });
+  }
+  cur.y = box.y + h + CARD_GAP + 4;
+}
+
 function drawProductCard(
   pdf: PdfWriter, cur: Cursor, m: Metrics, block: Extract<Block, { kind: 'productCard' }>,
 ): void {
@@ -665,6 +691,7 @@ export function renderDocument(meta: DocumentMeta, blocks: Block[]): Uint8Array 
       case 'signature': drawSignature(pdf, cur, m, block); break;
       case 'productCard': drawProductCard(pdf, cur, m, block); break;
       case 'imageRow': drawImageRowBlock(pdf, cur, m, block); break;
+      case 'image': drawImageBlock(pdf, cur, m, block); break;
     }
   }
 

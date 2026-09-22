@@ -1361,6 +1361,27 @@ export async function getInventarioCotizacion(oppId: string): Promise<Inventario
   return body.productos;
 }
 
+/** PDF del tab Inventario 5.11 con los productos que el tab tiene en pantalla.
+ * El nombre del archivo viene del Content-Disposition del worker. */
+export async function inventarioCotizacionPdf(
+  oppId: string,
+  productos: { productoId: string; productoNombre: string }[],
+): Promise<{ blob: Blob; filename: string }> {
+  const res = await apiFetch(`/oportunidades/${oppId}/inventario-cotizacion/pdf`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ productos }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error ?? 'No se pudo generar el PDF del inventario.');
+  }
+  const cd = res.headers.get('Content-Disposition') ?? '';
+  const utf8 = cd.match(/filename\*=UTF-8''([^;]+)/);
+  const filename = utf8 ? decodeURIComponent(utf8[1]) : 'Inventario 5.11.pdf';
+  return { blob: await res.blob(), filename };
+}
+
 export async function saveInventarioCotizacion(
   oppId: string,
   producto: { productoId: string; productoNombre: string; comentarios: string; agregadoManualmente: boolean },

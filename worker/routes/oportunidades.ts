@@ -61,7 +61,7 @@ import { toNativeColumns, insertNativeSubitem, stampNativeFileMarker } from '../
 import { insertSeguimiento } from '../lib/home';
 import { listZoneImages, uploadZoneImage, EmbellImageError } from '../lib/embellecimientoImagenes';
 import { listProposedProducts, addProposedProduct, ProposedProductError } from '../lib/productosPropuestos';
-import { listInventarioCotizacion, saveInventarioCotizacion, InventarioCotizacionError } from '../lib/inventarioCotizacion';
+import { listInventarioCotizacion, saveInventarioCotizacion, inventarioCotizacionPdf, InventarioCotizacionError } from '../lib/inventarioCotizacion';
 import { resolveMondayAsset, keyLegado, PROYECTO_DOCUMENTO_COL, PROYECTO_ACTA_COL } from '../lib/portalFiles';
 import { putFile, oportunidadFileKey, proyectoFileKey } from '../lib/r2';
 import { resolveCotizacionPdfUrl, nativeCotizacionPdf, CotizacionPdfError, ETIQUETA_BY_KIND, type PdfKind } from '../lib/cotizacionPdfs';
@@ -1025,6 +1025,34 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
         usa: usa instanceof File ? usa : undefined,
       });
       return c.json({ ok: true, producto });
+    } catch (err) {
+      if (err instanceof InventarioCotizacionError) return jsonStatus({ error: err.message }, err.status);
+      return errorInterno(c, err);
+    }
+  });
+
+  // PDF del tab Inventario 5.11. POST porque la lista de productos la manda el
+  // tab (los de la cotización no viven en D1 hasta que se les captura algo).
+  app.post('/api/oportunidades/:id/inventario-cotizacion/pdf', async c => {
+    const itemId = Number(c.req.param('id'));
+    if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
+    const body = await c.req.json<{ productos?: unknown }>().catch(() => ({ productos: undefined }));
+    if (!Array.isArray(body.productos)) return jsonStatus({ error: 'productos requerido' }, 400);
+    const productos = body.productos
+      .filter((p): p is { productoId: unknown; productoNombre: unknown } => !!p && typeof p === 'object')
+      .map(p => ({ productoId: String(p.productoId ?? '').trim(), productoNombre: String(p.productoNombre ?? '').trim().slice(0, 200) }))
+      .filter(p => p.productoId);
+    try {
+      const { bytes, oppName } = await inventarioCotizacionPdf(c.env, itemId, c.get('viewer'), productos);
+      return new Response(bytes, {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/pdf',
+          'Content-Length': String(bytes.length),
+          'Content-Disposition': contentDisposition(nombreDescarga({ item: oppName, etiqueta: 'Inventario 5.11' })),
+          'Cache-Control': 'private, no-store',
+        },
+      });
     } catch (err) {
       if (err instanceof InventarioCotizacionError) return jsonStatus({ error: err.message }, err.status);
       return errorInterno(c, err);
