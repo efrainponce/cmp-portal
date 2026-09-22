@@ -163,6 +163,12 @@ export function buildOcProveedorBlocks(input: OcProveedorPdfInput): Block[] {
               fmtMoney(l.cantidad * l.precio * (1 - l.descuento), l.moneda),
             ];
       }),
+      // Renglón TOTAL al pie de la tabla, igual que la tarjeta del proveedor en
+      // el portal (piezas + importe antes de IVA) — Efraín, 2026-09-21. El
+      // Total con IVA sigue abajo, en el desglose.
+      footer: sinCostos
+        ? ['TOTAL', '', '', '', '', fmtNumMx(totalUnidades)]
+        : ['TOTAL', '', '', '', '', '', fmtNumMx(totalUnidades), '', '', fmtMoney(monto, moneda)],
       headerFill: CMP_ORANGE,
       headerTextColor: '#ffffff',
     },

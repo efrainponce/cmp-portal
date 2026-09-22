@@ -64,6 +64,7 @@ import { resolveCotizacionPdfUrl, nativeCotizacionPdf, CotizacionPdfError, ETIQU
 import { refetchItem, refetchItemTree, upsertItem } from '../sync';
 import { jsonStatus, contentDisposition, rejectUnknownQuery } from '../lib/http';
 import { errorInterno } from '../lib/errores';
+import { recordOcConcepto, listOcConceptos } from '../lib/ocConceptos';
 import { contentTypeFor, isGenericType } from '../lib/mime';
 import { canWrite } from '../../shared/visibility';
 import { reserveNativeId } from '../lib/nativeSeq';
@@ -1711,6 +1712,16 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     }
   });
 
+  // Caché de lo capturado a mano en OC (worker/lib/ocConceptos.ts) — lo usa
+  // el autocompletar de "Crear orden de compra". Mismo gate que el alta.
+  app.get('/api/oc-conceptos', async c => {
+    const bad = rejectUnknownQuery(c.req.url, []);
+    if (bad) return bad;
+    const viewer = c.get('viewer');
+    if (viewer.role !== 'compras' && viewer.role !== 'admin') return c.json({ error: 'forbidden' }, 403);
+    return c.json({ items: await listOcConceptos(c.env) });
+  });
+
   app.post('/api/proyectos/:id/lineas', async c => {
     const itemId = Number(c.req.param('id'));
     if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
@@ -1757,6 +1768,13 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     if (body.descuento !== undefined && Number.isFinite(body.descuento)) subitemCols.numeric_mm1dmsaz = body.descuento;
     if (body.moneda?.trim()) subitemCols.text_mm1gdsvg = body.moneda.trim();
 
+    // Una línea de embellecimiento lleva en Producto la posición, no un
+    // producto: no se cachea. Nunca tumba el alta (recordOcConcepto traga).
+    const recordConcepto = () => zona ? Promise.resolve() : recordOcConcepto(c.env, {
+      producto, sku: body.sku, color: body.color, talla: body.talla, unidad: body.unidad,
+      costo: body.costo, moneda: body.moneda, proveedorId: body.proveedorId, email: viewer.email,
+    });
+
     try {
       // Proyecto nativo (Zona Efrain): la línea es una fila más de `items` con
       // id sintético — no hay subitem que crear del lado de Monday. Mismo
@@ -1786,10 +1804,12 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
           previousText: null, newText: nombre,
           userId: viewer.monday_user_id, userEmail: viewer.email,
         }]);
+        await recordConcepto();
         return c.json({ ok: true, id: String(id) });
       }
       const subitem = await createSubitem(c.env, itemId, nombre, subitemCols);
       await upsertItem(c.env, 'proyectos_sub', subitem);
+      await recordConcepto();
       return c.json({ ok: true, id: subitem.id });
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
