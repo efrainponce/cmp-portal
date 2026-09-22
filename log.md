@@ -1,5 +1,16 @@
 # Log de commits
 
+## 2026-09-22 (4)
+
+- **Fotos del Inventario 5.11 completas y con zoom** (Efraín: "las imágenes
+  del inventario salen cortadas… que se adapten al ancho y usar toda la
+  pantalla… y que puedan hacer click en ellas"). Se recortaban a 122 px de
+  alto con `object-fit: cover`, lado a lado en una tab con tope de 1060 px.
+  Ahora MEX y USA van una debajo de otra, a todo el ancho de la tab y a altura
+  natural; clic = visor a pantalla completa (Esc/clic afuera cierra, liga a la
+  original). Subir sigue igual con la caja vacía; cambiar una foto existente
+  va por "Cambiar imagen" junto al título.
+
 ## 2026-09-22 (3)
 
 - **El folio de OC del portal sale del Sheet de cmp-tallas — un solo contador
