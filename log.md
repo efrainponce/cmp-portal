@@ -2,6 +2,15 @@
 
 ## 2026-09-22
 
+- **Muestras: escribe todo el que ve el item, Compras incluido** (Efraín:
+  "todos pueden escribir incluyendo compras"). Crear, editar, enviar, sacar
+  versión y borrar borradores pasan de scope 'own' a 'read' del item ligado
+  (vendedor, líder/auxiliar de zona, Compras, admin) — excepción consciente a
+  la regla de 'own' en endpoints que mutan: las muestras son nativas y no
+  escriben columnas de Monday, igual que los comentarios. Mover el estado
+  sigue siendo de Compras/admin. En el board, un borrador solo lo ve quien lo
+  armó; en el tab del item se ven todas las versiones.
+
 - **Muestras: versiones como la cotización** (Efraín: "si crea una y la
   validan y necesita crear una segunda que se pueda hacer, así como las
   versiones de cotización").

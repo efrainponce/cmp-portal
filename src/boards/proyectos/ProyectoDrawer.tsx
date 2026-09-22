@@ -322,7 +322,7 @@ export function ProyectoDrawer({ id, boardKey, backLabel, defaultTab, openTab, o
             : <EstadoCuentaTab proyectoId={id} editable={item.ownedByViewer !== false} />
       )}
       {tab === 'actualizaciones' && <ActualizacionesTab slug="proyectos" itemId={id} />}
-      {tab === 'muestras' && <MuestrasTab padre="proyectos" itemId={id} readOnly={item.ownedByViewer === false} />}
+      {tab === 'muestras' && <MuestrasTab padre="proyectos" itemId={id} />}
       {tab === 'actividad' && <ActividadTab slug="proyectos" itemId={id} />}
       {tab === 'cotizacion' && (
         !oppResuelta ? <Cargando />

@@ -1031,7 +1031,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, openTab, onTabCha
         />
       )}
       {activeTab === 'nuevosproductos' && <NuevosProductosTab oppId={id} readOnly={noLineEdits} />}
-      {activeTab === 'muestras' && <MuestrasTab padre="oportunidades" itemId={id} readOnly={ajena} />}
+      {activeTab === 'muestras' && <MuestrasTab padre="oportunidades" itemId={id} />}
       {activeTab === 'actividad' && <ActividadTab slug="oportunidades" itemId={id} />}
       {activeTab === 'documentacion' && <DocumentacionTab item={item} proyecto={showPostventa ? proyecto : undefined} />}
       {activeTab === 'tallas' && <TallasTab subCols={subCols} products={products} proyecto={showPostventa ? proyecto : undefined} />}

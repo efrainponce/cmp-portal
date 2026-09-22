@@ -115,12 +115,13 @@ export interface MuestraSolicitudDTO {
   enviadaAt: string | null;
   enviadaPor: string | null;
   lineas: MuestraLineaDTO[];
-  /** Puede editar/borrar/enviar: el item es suyo y sigue en borrador. */
+  /** Puede editar/borrar/enviar: sigue en borrador (escribe todo el que ve el
+   * item, Compras incluido — Efraín, 2026-09-22). */
   editable: boolean;
   /** Puede mover el estado desde el board (Compras/admin; solo la versión
    * enviada más nueva del grupo). */
   gestionable: boolean;
-  /** Puede sacar "+ Nueva versión": es suya, ya se envió y es la última. */
+  /** Puede sacar "+ Nueva versión": ya se envió y es la última. */
   puedeNuevaVersion: boolean;
 }
 
@@ -131,13 +132,15 @@ export function muestraEtiqueta(s: Pick<MuestraSolicitudDTO, 'folio' | 'version'
   return s.versiones > 1 || s.version > 1 ? `${s.folio} V${s.version}` : s.folio;
 }
 
-/** De cada grupo, la versión que le toca ver a quien consulta: la más nueva
- * que puede ver (un borrador solo lo ve quien lo puede enviar; Compras sigue
- * viendo la enviada anterior mientras el vendedor arma la nueva). Pura. */
-export function versionVisiblePorGrupo<T extends { grupoId: string; version: number; estado: MuestraEstado; editable: boolean }>(filas: T[]): T[] {
+/** De cada grupo, la versión que le toca ver en el BOARD a quien consulta: la
+ * más nueva, salvo un borrador ajeno — ese solo lo ve en el board quien lo
+ * armó; los demás siguen viendo la enviada anterior (en el tab del item sí se
+ * ven todas). Pura. */
+export function versionVisiblePorGrupo<T extends { grupoId: string; version: number; estado: MuestraEstado; solicitanteEmail: string }>(filas: T[], viewerEmail: string): T[] {
   const porGrupo = new Map<string, T>();
+  const yo = viewerEmail.trim().toLowerCase();
   for (const f of filas) {
-    if (f.estado === 'borrador' && !f.editable) continue;
+    if (f.estado === 'borrador' && f.solicitanteEmail.trim().toLowerCase() !== yo) continue;
     const actual = porGrupo.get(f.grupoId);
     if (!actual || f.version > actual.version) porGrupo.set(f.grupoId, f);
   }

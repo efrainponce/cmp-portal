@@ -43,18 +43,19 @@ describe('validarSolicitud', () => {
 });
 
 describe('versiones', () => {
-  const v = (grupoId: string, version: number, estado: 'borrador' | 'enviada' | 'validada', editable = false) => ({ grupoId, version, estado, editable });
+  const VENDEDOR = 'ventas@x.com';
+  const v = (grupoId: string, version: number, estado: 'borrador' | 'enviada' | 'validada', solicitanteEmail = VENDEDOR) => ({ grupoId, version, estado, solicitanteEmail });
 
   it('Compras sigue viendo la enviada mientras el vendedor arma la nueva', () => {
-    const filas = [v('3', 1, 'validada'), v('3', 2, 'borrador', false)];
-    expect(versionVisiblePorGrupo(filas)).toEqual([filas[0]]);
+    const filas = [v('3', 1, 'validada'), v('3', 2, 'borrador')];
+    expect(versionVisiblePorGrupo(filas, 'compras@x.com')).toEqual([filas[0]]);
   });
-  it('el vendedor ve su borrador nuevo; enviada la V2, todos ven la V2', () => {
-    expect(versionVisiblePorGrupo([v('3', 1, 'validada', false), v('3', 2, 'borrador', true)])[0].version).toBe(2);
-    expect(versionVisiblePorGrupo([v('3', 1, 'validada'), v('3', 2, 'enviada')])[0].version).toBe(2);
+  it('quien armó el borrador lo ve; enviada la V2, todos ven la V2', () => {
+    expect(versionVisiblePorGrupo([v('3', 1, 'validada'), v('3', 2, 'borrador')], 'Ventas@X.com')[0].version).toBe(2);
+    expect(versionVisiblePorGrupo([v('3', 1, 'validada'), v('3', 2, 'enviada')], 'compras@x.com')[0].version).toBe(2);
   });
   it('un renglón por grupo', () => {
-    expect(versionVisiblePorGrupo([v('3', 1, 'enviada'), v('4', 1, 'enviada'), v('3', 2, 'enviada')])).toHaveLength(2);
+    expect(versionVisiblePorGrupo([v('3', 1, 'enviada'), v('4', 1, 'enviada'), v('3', 2, 'enviada')], VENDEDOR)).toHaveLength(2);
   });
   it('la etiqueta lleva la versión solo si hay más de una', () => {
     expect(muestraEtiqueta({ folio: 'MUE-3', version: 1, versiones: 1 })).toBe('MUE-3');

@@ -5,11 +5,13 @@
 // Oportunidad o de UN Proyecto (CHECK en la tabla: exactamente uno), por su
 // item id del espejo — igual que las OC, una muestra suelta no existe.
 //
-// Permisos = los del item ligado (dal.ts): leer = scope 'read' del padre,
-// escribir = scope 'own'. Lo revisan las RUTAS (worker/routes/muestras.ts) con
-// getItem antes de llamar aquí; la lista general (`listarMuestras`) hace el
-// mismo recorte con JOIN a `items` + scopeFor, así que nadie ve muestras de
-// una oportunidad que no puede abrir.
+// Permisos: quien puede VER el item ligado (dal.ts, scope 'read') crea, edita,
+// envía y versiona sus muestras — vendedor, líder/auxiliar de zona y Compras
+// por igual (Efraín, 2026-09-22: "todos pueden escribir incluyendo compras").
+// Como los comentarios del item, que también van con scope de lectura: nada de
+// esto escribe columnas de Monday. Mover el estado sigue siendo de Compras/admin.
+// Lo revisan las RUTAS (worker/routes/muestras.ts) con getItem; la lista
+// general (`listarMuestras`) recorta igual con JOIN a `items` + scopeFor.
 //
 // El borrado es un DELETE de D1 con respaldo del renglón completo (con sus
 // líneas) en `muestra_borrado` ANTES de borrar — mismo espíritu que
@@ -147,8 +149,8 @@ function lineaDTO(r: LineaRow): MuestraLineaDTO {
   };
 }
 
-/** `escribe` = el viewer tiene scope 'own' sobre el item ligado. Editar,
- * borrar y enviar solo mientras es borrador; ya enviada, la mueve Compras. */
+/** `escribe` = el viewer puede ver el item ligado. Editar, borrar y enviar
+ * solo mientras es borrador; ya enviada, la mueve Compras. */
 function solicitudDTO(r: SolicitudRow, padreRow: Padre, lineas: LineaRow[], escribe: boolean, viewer: Identity, grupo: InfoGrupo): MuestraSolicitudDTO {
   const padre: MuestraPadre = r.oportunidad_id != null ? 'oportunidades' : 'proyectos';
   const estado: MuestraEstado = esMuestraEstado(r.estado) ? r.estado : 'borrador';
@@ -214,28 +216,20 @@ export async function listarMuestras(env: Env, viewer: Identity): Promise<Muestr
     if (!canReadBoard(padre, viewer.role)) continue;
     const col = padreCol(padre);
     const read = scopeFor(padre, viewer, 'read');
-    const own = scopeFor(padre, viewer, 'own');
     // Sin alias en `items`: el WHERE de scopeFor la nombra así.
-    const [filas, propias] = await Promise.all([
-      env.DB.prepare(
-        `SELECT m.*, items.item_id AS p_item_id, items.name AS p_name, items.columns AS p_columns
-         FROM muestra_solicitud m JOIN items ON items.board_id = ? AND items.item_id = m.${col}
-         WHERE (${read.where})`,
-      ).bind(BOARDS[padre].id, ...read.binds).all<SolicitudRow & { p_item_id: number; p_name: string; p_columns: string }>(),
-      env.DB.prepare(
-        `SELECT m.id FROM muestra_solicitud m JOIN items ON items.board_id = ? AND items.item_id = m.${col}
-         WHERE (${own.where})`,
-      ).bind(BOARDS[padre].id, ...own.binds).all<{ id: number }>(),
-    ]);
-    const editables = new Set((propias.results ?? []).map(r => r.id));
+    const filas = await env.DB.prepare(
+      `SELECT m.*, items.item_id AS p_item_id, items.name AS p_name, items.columns AS p_columns
+       FROM muestra_solicitud m JOIN items ON items.board_id = ? AND items.item_id = m.${col}
+       WHERE (${read.where})`,
+    ).bind(BOARDS[padre].id, ...read.binds).all<SolicitudRow & { p_item_id: number; p_name: string; p_columns: string }>();
     const rows = filas.results ?? [];
     const grupos = infoGrupos(rows);
     const lineas = await lineasDe(env, rows.map(r => r.id));
-    const dtos = rows.map(r => solicitudDTO(r, { item_id: r.p_item_id, name: r.p_name, columns: r.p_columns }, lineas.get(r.id) ?? [], editables.has(r.id), viewer, grupos.get(grupoDe(r))!));
-    // Un renglón por grupo: la versión más nueva que le toca ver. Los
-    // borradores solo los ve quien los puede enviar — a Compras no le sirve ver
-    // lo que el vendedor todavía no le manda, y sigue viendo la anterior.
-    out.push(...versionVisiblePorGrupo(dtos));
+    const dtos = rows.map(r => solicitudDTO(r, { item_id: r.p_item_id, name: r.p_name, columns: r.p_columns }, lineas.get(r.id) ?? [], true, viewer, grupos.get(grupoDe(r))!));
+    // Un renglón por grupo: la versión más nueva que le toca ver. Un borrador
+    // solo aparece en el board de quien lo armó — Compras sigue viendo la
+    // enviada anterior hasta que la nueva se envíe.
+    out.push(...versionVisiblePorGrupo(dtos, viewer.email));
   }
   return out.sort((a, b) => Number(b.grupoId) - Number(a.grupoId));
 }

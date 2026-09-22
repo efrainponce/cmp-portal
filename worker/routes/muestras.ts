@@ -2,9 +2,11 @@
 // Lógica en worker/lib/muestras.ts; aquí autorización y forma de la respuesta.
 //
 // Todo bajo /api/muestras (no /api/proyectos/:id/...) para no chocar con los
-// comodines de oportunidadRoutes. La puerta es SIEMPRE el item ligado:
-// leer = dal.getItem(…, 'read'), mutar = dal.getItem(…, 'own') — 404 si no le
-// toca, nunca 403, igual que el resto de los writes. El board "Solicitudes de
+// comodines de oportunidadRoutes. La puerta es SIEMPRE el item ligado vía
+// dal.getItem(…, 'read') — 404 si no le toca, nunca 403. Excepción consciente a
+// "todo endpoint que muta pide 'own'" (CLAUDE.md): las muestras son nativas y
+// no escriben columnas de Monday, y Efraín pidió que escriba todo el que ve el
+// item, Compras incluido (2026-09-22) — mismo criterio que los comentarios. El board "Solicitudes de
 // muestra" del sidebar es solo declutter (shared/boardAccess.ts): la lista ya
 // sale recortada por renglón.
 import type { Context, Hono } from 'hono';
@@ -29,7 +31,7 @@ function fail(c: Ctx, err: unknown): Response {
 }
 
 /** La solicitud `:id` y su item ligado, con el scope pedido. */
-async function autorizarMuestra(c: Ctx, mode: 'read' | 'own'): Promise<{ id: number; padre: MuestraPadre; row: MirrorItem } | Response> {
+async function autorizarMuestra(c: Ctx, mode: 'read'): Promise<{ id: number; padre: MuestraPadre; row: MirrorItem } | Response> {
   const id = Number(c.req.param('id'));
   if (!Number.isInteger(id)) return c.json({ ok: false, error: 'not found' }, 404);
   const ref = await padreDeMuestra(c.env, id);
@@ -62,8 +64,7 @@ export function muestrasRoutes(app: Hono<{ Bindings: Env }>) {
     try {
       const row = await getItem(c.env, padre, itemId, viewer, 'read');
       if (!row) return c.json({ error: 'not found' }, 404);
-      const editable = !!(await getItem(c.env, padre, itemId, viewer, 'own'));
-      return c.json({ solicitudes: await muestrasDeItem(c.env, padre, row, editable, viewer), editable });
+      return c.json({ solicitudes: await muestrasDeItem(c.env, padre, row, true, viewer), editable: true });
     } catch (err) {
       return fail(c, err);
     }
@@ -78,7 +79,7 @@ export function muestrasRoutes(app: Hono<{ Bindings: Env }>) {
     const v = validarSolicitud(body);
     if (!v.ok) return jsonStatus({ ok: false, error: v.error }, 400);
     try {
-      if (!canReadBoard(padre, viewer.role) || !(await getItem(c.env, padre, itemId, viewer, 'own'))) return c.json({ ok: false, error: 'not found' }, 404);
+      if (!canReadBoard(padre, viewer.role) || !(await getItem(c.env, padre, itemId, viewer, 'read'))) return c.json({ ok: false, error: 'not found' }, 404);
       const id = await crearMuestra(c.env, padre, itemId, v.valor, viewer);
       return c.json({ ok: true, id: String(id) });
     } catch (err) {
@@ -91,7 +92,7 @@ export function muestrasRoutes(app: Hono<{ Bindings: Env }>) {
     const v = validarSolicitud(body);
     if (!v.ok) return jsonStatus({ ok: false, error: v.error }, 400);
     try {
-      const auth = await autorizarMuestra(c, 'own');
+      const auth = await autorizarMuestra(c, 'read');
       if (auth instanceof Response) return auth;
       await editarMuestra(c.env, auth.id, v.valor, c.get('viewer'));
       return c.json({ ok: true });
@@ -100,10 +101,10 @@ export function muestrasRoutes(app: Hono<{ Bindings: Env }>) {
     }
   });
 
-  // El botón "Enviar a Compras" del tab: lo manda quien puede escribir el item.
+  // El botón "Enviar a Compras" del tab.
   app.post('/api/muestras/:id/enviar', async c => {
     try {
-      const auth = await autorizarMuestra(c, 'own');
+      const auth = await autorizarMuestra(c, 'read');
       if (auth instanceof Response) return auth;
       await enviarMuestra(c.env, auth.id, auth.padre, auth.row, c.get('viewer'));
       return c.json({ ok: true });
@@ -115,7 +116,7 @@ export function muestrasRoutes(app: Hono<{ Bindings: Env }>) {
   // "+ Nueva versión": duplica una ya enviada como borrador V{n+1}.
   app.post('/api/muestras/:id/version', async c => {
     try {
-      const auth = await autorizarMuestra(c, 'own');
+      const auth = await autorizarMuestra(c, 'read');
       if (auth instanceof Response) return auth;
       const id = await nuevaVersionMuestra(c.env, auth.id, c.get('viewer'));
       return c.json({ ok: true, id: String(id) });
@@ -143,7 +144,7 @@ export function muestrasRoutes(app: Hono<{ Bindings: Env }>) {
 
   app.delete('/api/muestras/:id', async c => {
     try {
-      const auth = await autorizarMuestra(c, 'own');
+      const auth = await autorizarMuestra(c, 'read');
       if (auth instanceof Response) return auth;
       await borrarMuestra(c.env, auth.id, c.get('viewer'));
       return c.json({ ok: true });
