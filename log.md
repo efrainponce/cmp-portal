@@ -36,6 +36,19 @@
     PDF (`ESTATUS_MAX_FOTOS`); los que sobran salen sin foto y la nota de arriba
     lo dice. Si la carga de fotos falla, el PDF sale sin ellas, nunca 500.
     `wrapTable` gana `imageCol`/`rowImages` (foto encajada sin deformar).
+  - **Tab "Resumen" en el Proyecto** (Efraín: "eso del resumen es también una
+    TAB de un proyecto"): la misma hoja en pantalla — encabezado, batería y
+    tabla por producto+color pintada por avance — con el botón "Estatus en
+    PDF" (que se muda ahí desde Ejecución). La lógica de agrupado se movió a
+    `shared/estatusProyecto.ts` para que tab y PDF calculen exactamente lo
+    mismo. Está en el drawer de Proyectos (todos los accesos) y en el de la
+    Oportunidad (desde Esperando OC).
+  - **Tabs reordenadas** (Efraín): "Actualizaciones, Resumen | Cotización,
+    Costeo, Embellecimientos | Documentación, Tallas, Órdenes de compra,
+    Ejecución, Logística". Actividad (que no mencionó) cierra el grupo de en
+    medio, con su mismo permiso. En el drawer de la Oportunidad las píldoras
+    Postventa/Proyectos se juntan en un solo grupo "Proyecto" con las mismas
+    reglas por etapa.
   - **Caché de fotos: un fallo ya no se confunde con "el catálogo no tiene
     foto"** (Efraín: "que se vuelva a buscar automático"). `fetchAirtableImageUrl`
     ahora devuelve `null` cuando NO pudo consultar (sin llave, timeout, HTTP

@@ -8,7 +8,7 @@
 // worker/lib/proyectoCotizacionVirtual.ts); "Editar/Dividir" en Cotización SÍ
 // escribe a Monday desde 2026-08-13. Capturar zonas/imágenes de embellecimiento
 // sigue siendo exclusivo de la Oportunidad (link cruzado abajo).
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { useLiveRefresh } from '../../lib/useLiveRefresh';
 import { readIsCurrent, readRevision } from '../../lib/readConsistency';
 import { Button } from '../../components/core/Button';
@@ -21,7 +21,7 @@ import { useMe } from '../../lib/useMe';
 import { ActualizacionesTab } from '../oportunidades/tabs/ActualizacionesTab';
 import { ActividadTab } from '../oportunidades/tabs/ActividadTab';
 import { FechaEntregaField, OcContratoSection, ActaEntregaSection } from '../oportunidades/tabs/DocumentacionTab';
-import { ProyectoTallasSection, ProyectoOrdenesSection, EjecucionSection, LogisticaSection, type ProyectoState } from '../oportunidades/ProyectoSection';
+import { ProyectoTallasSection, ProyectoOrdenesSection, EjecucionSection, LogisticaSection, ResumenSection, type ProyectoState } from '../oportunidades/ProyectoSection';
 import { CotizacionVirtualTab } from './CotizacionVirtualTab';
 import { CosteoProyectoTab } from './CosteoProyectoTab';
 import { EmbellecimientosVirtualTab } from './EmbellecimientosVirtualTab';
@@ -30,38 +30,44 @@ import type { ProjectBoardKey } from '../../lib/projectStages';
 import type { OportunidadLigadaDTO } from '../../../shared/dto';
 import { canReadActivity } from '../../../shared/visibility';
 
-type ProyectoTabKey = 'estadocuenta' | 'actualizaciones' | 'actividad' | 'cotizacion' | 'costeo' | 'embellecimientos' | 'documentacion' | 'tallas' | 'ordenes' | 'ejecucion' | 'logistica';
+type ProyectoTabKey = 'estadocuenta' | 'actualizaciones' | 'resumen' | 'actividad' | 'cotizacion' | 'costeo' | 'embellecimientos' | 'documentacion' | 'tallas' | 'ordenes' | 'ejecucion' | 'logistica';
 
 const FOLIO_COL = 'pulse_id_mm1a12gy';
 const INSTITUCION_COL = 'lookup_mm1dwn6';
 const FECHA_ENTREGA_COL = 'date_mm0m1vfv';
 const VENDEDOR_COL = 'multiple_person_mm0hrnqq';
 
-const TABS: { key: ProyectoTabKey; label: string }[] = [
+// Orden y grupos de Efraín (2026-09-21): "Actualizaciones, Resumen | Cotización,
+// Costeo, Embellecimientos | Documentación, Tallas, Órdenes de Compra,
+// Ejecución, Logística". `grupo` pinta un divisor entre grupos distintos.
+const TABS: { key: ProyectoTabKey; label: string; grupo: 1 | 2 | 3 }[] = [
   // Cobros y pagos del proyecto (Efraín, 2026-09-08). Va primero porque SOLO
   // se lista en el board "Estado de Cuenta" (TABS_BY_BOARD) y ahí es la
   // pestaña principal; en los demás accesos ni aparece. Por-usuario: la
   // whitelist de shared/visibility.ts puedeVerEstadoCuenta.
-  { key: 'estadocuenta', label: 'Estado de cuenta' },
-  { key: 'actualizaciones', label: 'Actualizaciones' },
-  // Log de cambios del Proyecto y de sus líneas — el costeo de la OC se edita
-  // desde el portal y Monday lo atribuiría todo al usuario del token, así que
-  // el actor real solo se ve aquí (Efraín, 2026-08-18: "guardar la actividad
-  // por si cometemos error"). El reloj de cada línea en Órdenes de compra es
-  // la vista corta de lo mismo.
-  { key: 'actividad', label: 'Actividad' },
-  { key: 'cotizacion', label: 'Cotización' },
+  { key: 'estadocuenta', label: 'Estado de cuenta', grupo: 1 },
+  { key: 'actualizaciones', label: 'Actualizaciones', grupo: 1 },
+  // La hoja de estatus en pantalla: un renglón por producto+color, la misma
+  // que el PDF (Efraín, 2026-09-21). Solo lectura; se captura en Ejecución.
+  { key: 'resumen', label: 'Resumen', grupo: 1 },
+  { key: 'cotizacion', label: 'Cotización', grupo: 2 },
   // Costeo completo de la Oportunidad ligada, solo lectura (Efraín,
   // 2026-08-27). Va SOLO en el Reporte de Proyectos y solo para admin — ver el
   // filtro de la barra de tabs más abajo; el tab "Cotización" de arriba es la
   // vista corta y sí escribe, este no escribe nada.
-  { key: 'costeo', label: 'Costeo' },
-  { key: 'embellecimientos', label: 'Embellecimientos' },
-  { key: 'documentacion', label: 'Documentación' },
-  { key: 'tallas', label: 'Tallas' },
-  { key: 'ordenes', label: 'Órdenes de compra' },
-  { key: 'ejecucion', label: 'Ejecución' },
-  { key: 'logistica', label: 'Logística' },
+  { key: 'costeo', label: 'Costeo', grupo: 2 },
+  { key: 'embellecimientos', label: 'Embellecimientos', grupo: 2 },
+  // Log de cambios del Proyecto y de sus líneas — el costeo de la OC se edita
+  // desde el portal y Monday lo atribuiría todo al usuario del token, así que
+  // el actor real solo se ve aquí (Efraín, 2026-08-18: "guardar la actividad
+  // por si cometemos error"). El reloj de cada línea en Órdenes de compra es
+  // la vista corta de lo mismo. Cierra el grupo de la venta.
+  { key: 'actividad', label: 'Actividad', grupo: 2 },
+  { key: 'documentacion', label: 'Documentación', grupo: 3 },
+  { key: 'tallas', label: 'Tallas', grupo: 3 },
+  { key: 'ordenes', label: 'Órdenes de compra', grupo: 3 },
+  { key: 'ejecucion', label: 'Ejecución', grupo: 3 },
+  { key: 'logistica', label: 'Logística', grupo: 3 },
 ];
 
 // Cada acceso del sidebar solo necesita ver sus propios tabs, no los 8
@@ -78,8 +84,8 @@ function esTab(v: string | null | undefined): v is ProyectoTabKey {
 }
 
 const TABS_BY_BOARD: Partial<Record<ProjectBoardKey, ProyectoTabKey[]>> = {
-  doctallas: ['actualizaciones', 'actividad', 'cotizacion', 'embellecimientos', 'documentacion', 'tallas'],
-  ordenescompra: ['actualizaciones', 'actividad', 'cotizacion', 'embellecimientos', 'documentacion', 'tallas', 'ordenes'],
+  doctallas: ['actualizaciones', 'resumen', 'actividad', 'cotizacion', 'embellecimientos', 'documentacion', 'tallas'],
+  ordenescompra: ['actualizaciones', 'resumen', 'actividad', 'cotizacion', 'embellecimientos', 'documentacion', 'tallas', 'ordenes'],
   // Estado de Cuenta: lo suyo más la cotización (qué se vendió) y las
   // actualizaciones. Sin OC/tallas/logística: aquí se cobra, no se produce.
   estadocuenta: ['estadocuenta', 'cotizacion', 'actualizaciones'],
@@ -281,18 +287,22 @@ export function ProyectoDrawer({ id, boardKey, backLabel, defaultTab, openTab, o
           // pero el tab no tiene por qué asomarse en los demás accesos.
           .filter((t) => t.key !== 'costeo' || puedeVerCosteo)
           .filter((t) => t.key !== 'estadocuenta' || puedeVerEstadoCuenta)
-          .map((t) => (
-          <div
-            key={t.key}
-            onClick={() => cambiarTab(t.key)}
-            style={{
-              padding: '9px 4px', marginRight: 14, font: '500 11.5px var(--font-ui)', cursor: 'pointer', whiteSpace: 'nowrap',
-              color: tab === t.key ? 'var(--ink)' : 'var(--ink-quiet)',
-              borderBottom: '2px solid ' + (tab === t.key ? 'var(--accent)' : 'transparent'),
-            }}
-          >
-            {t.label}
-          </div>
+          .map((t, i, visibles) => (
+          <Fragment key={t.key}>
+            {i > 0 && visibles[i - 1].grupo !== t.grupo && (
+              <div style={{ width: 1, height: 20, background: 'var(--border)', marginRight: 14, flex: 'none' }} />
+            )}
+            <div
+              onClick={() => cambiarTab(t.key)}
+              style={{
+                padding: '9px 4px', marginRight: 14, font: '500 11.5px var(--font-ui)', cursor: 'pointer', whiteSpace: 'nowrap', flex: 'none',
+                color: tab === t.key ? 'var(--ink)' : 'var(--ink-quiet)',
+                borderBottom: '2px solid ' + (tab === t.key ? 'var(--accent)' : 'transparent'),
+              }}
+            >
+              {t.label}
+            </div>
+          </Fragment>
         ))}
       </div>
 
@@ -345,6 +355,11 @@ export function ProyectoDrawer({ id, boardKey, backLabel, defaultTab, openTab, o
       {tab === 'ordenes' && (
         <div style={{ padding: '24px clamp(12px, 3vw, 32px) 40px', width: '100%', boxSizing: 'border-box' }}>
           <ProyectoOrdenesSection state={proyectoState} oppId={oportunidadId} />
+        </div>
+      )}
+      {tab === 'resumen' && (
+        <div style={{ padding: '24px 32px 40px', maxWidth: 1100, width: '100%', boxSizing: 'border-box' }}>
+          <ResumenSection state={proyectoState} />
         </div>
       )}
       {tab === 'ejecucion' && (

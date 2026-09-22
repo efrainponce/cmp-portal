@@ -9,4 +9,5 @@ export { P_SHEET_LINK, P_OC_CLIENTE, P_OC_CLIENTE_LEGADO, P_ACTA_ENTREGA, ESTADO
 export { ProyectoTallasSection } from './proyecto/TallasSection';
 export { ProyectoOrdenesSection } from './proyecto/OrdenesSection';
 export { EjecucionSection } from './proyecto/EjecucionSection';
+export { ResumenSection } from './proyecto/ResumenSection';
 export { LogisticaSection } from './proyecto/LogisticaSection';

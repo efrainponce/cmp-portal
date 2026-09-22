@@ -37,7 +37,7 @@ import { NuevosProductosTab } from './tabs/NuevosProductosTab';
 import { InventarioCotizacionTab } from './tabs/InventarioCotizacionTab';
 import { DocumentacionTab } from './tabs/DocumentacionTab';
 import { TallasTab } from './tabs/TallasTab';
-import { useProyecto, ProyectoOrdenesSection, EjecucionSection, LogisticaSection } from './ProyectoSection';
+import { useProyecto, ProyectoOrdenesSection, EjecucionSection, LogisticaSection, ResumenSection } from './ProyectoSection';
 import { PaymentRequestButton } from '../../components/board/PaymentRequestButton';
 import { EditableItemName } from '../../components/board/EditableItemName';
 import { EditClienteModal } from './EditClienteModal';
@@ -643,7 +643,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, openTab, onTabCha
 
   const showProyectos = stageAtOrAfter(stage, '8');
   const activeTab = (tab === 'documentacion' || tab === 'tallas') && !showPostventa ? 'cotizacion'
-    : (tab === 'ordenes' || tab === 'ejecucion' || tab === 'logistica') && !showProyectos ? 'cotizacion'
+    : (tab === 'resumen' || tab === 'ordenes' || tab === 'ejecucion' || tab === 'logistica') && !showProyectos ? 'cotizacion'
     : tab;
   const cotizacionVariant = boardKey && COSTEO_VARIANT_BOARDS.includes(boardKey) ? 'costeo' : 'venta';
   // Board Costeo = solo lectura para producto/color/cantidad/embellecimiento y
@@ -979,6 +979,11 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, openTab, onTabCha
         proyecto.proyecto
           ? <ActualizacionesTab slug="proyectos" itemId={proyecto.proyecto.id} />
           : <ActualizacionesTab slug="oportunidades" itemId={id} />
+      )}
+      {activeTab === 'resumen' && (
+        <div style={{ padding: '24px 32px 40px', maxWidth: 1100, width: '100%', boxSizing: 'border-box' }}>
+          <ResumenSection state={proyecto} />
+        </div>
       )}
       {activeTab === 'cotizacion' && (
         <CotizacionTab

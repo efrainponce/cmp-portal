@@ -1,18 +1,20 @@
-// Matches the design's "Board Tabs" component: underlined Ventas-side tabs
-// (Actualizaciones/Cotizaciones/Embellecimientos/Nuevos productos) + two
-// pill-style grouped sections (Postventa: Documentación/Tallas · Proyectos:
-// Órdenes de compra/Logística), separated by hairline dividers.
+// Tabs del drawer, en el orden que pidió Efraín (2026-09-21):
+//   Actualizaciones, Resumen | Cotizaciones, Inventario, Embellecimientos,
+//   Nuevos productos, Actividad | Documentación, Tallas, Órdenes de compra,
+//   Ejecución, Logística.
+// El último grupo va en píldoras y se abre por etapa (Documentación/Tallas desde
+// Costeo Confirmado; el resto desde Esperando OC — ver dealStages.stageAtOrAfter).
 import { useIsMobile } from '../../lib/useIsMobile';
 import { useCanVerActividad } from '../../lib/useMe';
 
 export type DrawerTabKey =
-  | 'actualizaciones' | 'cotizacion' | 'inventario' | 'embellecimientos' | 'nuevosproductos' | 'actividad'
+  | 'actualizaciones' | 'resumen' | 'cotizacion' | 'inventario' | 'embellecimientos' | 'nuevosproductos' | 'actividad'
   | 'documentacion' | 'tallas' | 'ordenes' | 'ejecucion' | 'logistica';
 
 // Mismas llaves, en runtime: el tercer segmento de la URL (/board/item/tab) se
 // valida contra esto antes de abrir el drawer en esa pestaña.
 export const DRAWER_TAB_KEYS: DrawerTabKey[] = [
-  'actualizaciones', 'cotizacion', 'inventario', 'embellecimientos', 'nuevosproductos', 'actividad',
+  'actualizaciones', 'resumen', 'cotizacion', 'inventario', 'embellecimientos', 'nuevosproductos', 'actividad',
   'documentacion', 'tallas', 'ordenes', 'ejecucion', 'logistica',
 ];
 
@@ -37,15 +39,14 @@ const UNDERLINE_TABS: { key: DrawerTabKey; label: string }[] = [
   { key: 'actividad', label: 'Actividad' },
 ];
 
-const POSTVENTA_TABS: { key: DrawerTabKey; label: string }[] = [
-  { key: 'documentacion', label: 'Documentación' },
-  { key: 'tallas', label: 'Tallas' },
-];
-
-const PROYECTOS_TABS: { key: DrawerTabKey; label: string }[] = [
-  { key: 'ordenes', label: 'Órdenes de compra' },
-  { key: 'ejecucion', label: 'Ejecución' },
-  { key: 'logistica', label: 'Logística' },
+/** Píldoras del Proyecto. `desde` = etapa mínima; el drawer decide con
+ * showPostventa (Documentación/Tallas) y showProyectos (el resto). */
+const PROYECTO_TABS: { key: DrawerTabKey; label: string; grupo: 'postventa' | 'proyectos' }[] = [
+  { key: 'documentacion', label: 'Documentación', grupo: 'postventa' },
+  { key: 'tallas', label: 'Tallas', grupo: 'postventa' },
+  { key: 'ordenes', label: 'Órdenes de compra', grupo: 'proyectos' },
+  { key: 'ejecucion', label: 'Ejecución', grupo: 'proyectos' },
+  { key: 'logistica', label: 'Logística', grupo: 'proyectos' },
 ];
 
 export function BoardTabsBar({ active, onChange, updatesCount = 0, showPostventa = true, showProyectos = true }: Props) {
@@ -64,24 +65,18 @@ export function BoardTabsBar({ active, onChange, updatesCount = 0, showPostventa
           </span>
         )}
       </UnderlineTab>
+      {showProyectos && (
+        <UnderlineTab active={active === 'resumen'} onClick={() => onChange('resumen')}>Resumen</UnderlineTab>
+      )}
       <VDivider />
       {UNDERLINE_TABS.filter((t) => t.key !== 'actividad' || verActividad).map((t) => (
         <UnderlineTab key={t.key} active={active === t.key} onClick={() => onChange(t.key)}>{t.label}</UnderlineTab>
       ))}
-      {showPostventa && (
+      {(showPostventa || showProyectos) && (
         <>
           <VDivider />
-          <SectionLabel color="#8a9f7e">Postventa</SectionLabel>
-          {POSTVENTA_TABS.map((t) => (
-            <PillTab key={t.key} active={active === t.key} onClick={() => onChange(t.key)}>{t.label}</PillTab>
-          ))}
-        </>
-      )}
-      {showProyectos && (
-        <>
-          <VDivider />
-          <SectionLabel color="#7f8f78">Proyectos</SectionLabel>
-          {PROYECTOS_TABS.map((t) => (
+          <SectionLabel color="#7f8f78">Proyecto</SectionLabel>
+          {PROYECTO_TABS.filter((t) => (t.grupo === 'postventa' ? showPostventa : showProyectos)).map((t) => (
             <PillTab key={t.key} active={active === t.key} onClick={() => onChange(t.key)}>{t.label}</PillTab>
           ))}
         </>
