@@ -2,6 +2,17 @@
 
 ## 2026-09-21
 
+- **Rótulos y pastillas "gigantes" en Logística, Tallas y Ejecución** (Efraín,
+  con captura del tab Logística: "los dropdown se ven gigantes en celular y en
+  desktop").
+  - Causa: 12 estilos usaban `font: var(--text-caption-strong)`, un token que
+    nunca existió en `src/tokens/typography.css`. El `font` quedaba inválido y
+    el texto heredaba el tamaño del contenedor (~16px) en lugar de 10px.
+  - Fix: se define el token (`500 10px`, mismo tamaño que `--text-caption` con
+    el peso de énfasis). Arregla de un jalón Logística (Encargado, # de
+    recolección, guías, pastilla de estado), Tallas, Ejecución, TallaCapture,
+    Documentación, LineDetailPanel y la batería de avance.
+
 - **Estatus de proyecto en PDF — un renglón por producto y color** (Efraín, con
   la hoja de Excel de Teotihuacán "Tránsito" que Compras armaba a mano: "un
   resumen en PDF POR producto y color NO TALLA por cada proyecto, y también por
