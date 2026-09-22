@@ -19,8 +19,11 @@ import type { Identity, MirrorItem } from '../../shared/types';
 import { BOARDS } from '../../shared/boards';
 import { canReadBoard } from '../../shared/visibility';
 import { scopeFor } from './dal';
+import { postUpdate } from './nativeUpdates';
+import { emitNotification, personIdsFromColumns, resolveRecipients } from './notify';
+import { PORTAL_SIGNATURE } from './updateNotify';
 import {
-  fechaRetorno, muestraFolio, esMuestraEstado,
+  fechaRetorno, muestraFolio, esMuestraEstado, puedeGestionarMuestras, MUESTRA_ESTADO_LABEL,
   type MuestraEstado, type MuestraLineaDTO, type MuestraPadre, type MuestraSolicitudDTO, type validarSolicitud,
 } from '../../shared/muestras';
 
@@ -43,7 +46,7 @@ export async function ensureMuestraTables(env: Env): Promise<void> {
       id                 INTEGER PRIMARY KEY AUTOINCREMENT,
       oportunidad_id     INTEGER,
       proyecto_id        INTEGER,
-      estado             TEXT NOT NULL DEFAULT 'solicitada',
+      estado             TEXT NOT NULL DEFAULT 'borrador',
       fecha_entrega      TEXT,
       dias_retorno       INTEGER,
       notas              TEXT,
@@ -52,6 +55,8 @@ export async function ensureMuestraTables(env: Env): Promise<void> {
       created_at         TEXT NOT NULL,
       updated_at         TEXT NOT NULL,
       updated_by         TEXT,
+      enviada_at         TEXT,
+      enviada_por        TEXT,
       CHECK ((oportunidad_id IS NULL) <> (proyecto_id IS NULL))
     )`),
     env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_muestra_oportunidad ON muestra_solicitud(oportunidad_id)'),
@@ -86,6 +91,7 @@ interface SolicitudRow {
   fecha_entrega: string | null; dias_retorno: number | null; notas: string | null;
   solicitante_email: string; solicitante_nombre: string | null;
   created_at: string; updated_at: string; updated_by: string | null;
+  enviada_at: string | null; enviada_por: string | null;
 }
 interface LineaRow {
   id: number; solicitud_id: number; orden: number; producto: string; producto_id: number | null;
@@ -119,16 +125,21 @@ function lineaDTO(r: LineaRow): MuestraLineaDTO {
   };
 }
 
-function solicitudDTO(r: SolicitudRow, padreRow: Padre, lineas: LineaRow[], editable: boolean): MuestraSolicitudDTO {
+/** `escribe` = el viewer tiene scope 'own' sobre el item ligado. Editar,
+ * borrar y enviar solo mientras es borrador; ya enviada, la mueve Compras. */
+function solicitudDTO(r: SolicitudRow, padreRow: Padre, lineas: LineaRow[], escribe: boolean, viewer: Identity): MuestraSolicitudDTO {
   const padre: MuestraPadre = r.oportunidad_id != null ? 'oportunidades' : 'proyectos';
+  const estado: MuestraEstado = esMuestraEstado(r.estado) ? r.estado : 'borrador';
   return {
     id: String(r.id), folio: muestraFolio(r.id), padre, itemId: String(r.oportunidad_id ?? r.proyecto_id),
     ...datosDelPadre(padre, padreRow),
-    estado: esMuestraEstado(r.estado) ? r.estado : 'solicitada',
+    estado,
     fechaEntrega: r.fecha_entrega, diasRetorno: r.dias_retorno, fechaRetorno: fechaRetorno(r.fecha_entrega, r.dias_retorno),
     notas: r.notas, solicitante: r.solicitante_nombre || r.solicitante_email, solicitanteEmail: r.solicitante_email,
-    createdAt: r.created_at, updatedAt: r.updated_at,
-    lineas: lineas.sort((a, b) => a.orden - b.orden).map(lineaDTO), editable,
+    createdAt: r.created_at, updatedAt: r.updated_at, enviadaAt: r.enviada_at, enviadaPor: r.enviada_por,
+    lineas: lineas.sort((a, b) => a.orden - b.orden).map(lineaDTO),
+    editable: escribe && estado === 'borrador',
+    gestionable: puedeGestionarMuestras(viewer.role) && estado !== 'borrador',
   };
 }
 
@@ -160,13 +171,13 @@ function insertLineas(env: Env, solicitudId: number, lineas: MuestraLineaDTO[]) 
 
 /** Solicitudes de UN item (el tab del drawer). El llamador ya revisó que el
  * viewer puede leer el item y le dice si puede escribirlo. */
-export async function muestrasDeItem(env: Env, padre: MuestraPadre, padreRow: Padre, editable: boolean): Promise<MuestraSolicitudDTO[]> {
+export async function muestrasDeItem(env: Env, padre: MuestraPadre, padreRow: Padre, escribe: boolean, viewer: Identity): Promise<MuestraSolicitudDTO[]> {
   await ensureMuestraTables(env);
   const res = await env.DB.prepare(`SELECT * FROM muestra_solicitud WHERE ${padreCol(padre)} = ? ORDER BY id DESC`)
     .bind(padreRow.item_id).all<SolicitudRow>();
   const filas = res.results ?? [];
   const lineas = await lineasDe(env, filas.map(f => f.id));
-  return filas.map(f => solicitudDTO(f, padreRow, lineas.get(f.id) ?? [], editable));
+  return filas.map(f => solicitudDTO(f, padreRow, lineas.get(f.id) ?? [], escribe, viewer));
 }
 
 /** Todas las solicitudes que el viewer puede ver (board "Solicitudes de
@@ -192,10 +203,12 @@ export async function listarMuestras(env: Env, viewer: Identity): Promise<Muestr
       ).bind(BOARDS[padre].id, ...own.binds).all<{ id: number }>(),
     ]);
     const editables = new Set((propias.results ?? []).map(r => r.id));
-    const rows = filas.results ?? [];
+    // Los borradores solo los ve quien los puede enviar: a Compras no le
+    // sirve ver lo que el vendedor todavía no le manda.
+    const rows = (filas.results ?? []).filter(r => r.estado !== 'borrador' || editables.has(r.id));
     const lineas = await lineasDe(env, rows.map(r => r.id));
     for (const r of rows) {
-      out.push(solicitudDTO(r, { item_id: r.p_item_id, name: r.p_name, columns: r.p_columns }, lineas.get(r.id) ?? [], editables.has(r.id)));
+      out.push(solicitudDTO(r, { item_id: r.p_item_id, name: r.p_name, columns: r.p_columns }, lineas.get(r.id) ?? [], editables.has(r.id), viewer));
     }
   }
   return out.sort((a, b) => Number(b.id) - Number(a.id));
@@ -207,7 +220,7 @@ export async function crearMuestra(env: Env, padre: MuestraPadre, itemId: number
   const row = await env.DB.prepare(
     `INSERT INTO muestra_solicitud (${padreCol(padre)}, estado, fecha_entrega, dias_retorno, notas,
        solicitante_email, solicitante_nombre, created_at, updated_at, updated_by)
-     VALUES (?, 'solicitada', ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+     VALUES (?, 'borrador', ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
   ).bind(itemId, input.fechaEntrega, input.diasRetorno, input.notas,
     viewer.email, viewer.nombre ?? null, now, now, viewer.email).first<{ id: number }>();
   if (!row) throw new MuestraError('no se pudo crear la solicitud', 500);
@@ -233,7 +246,18 @@ export async function padreDeMuestra(env: Env, id: number): Promise<{ padre: Mue
 
 /** Reemplaza encabezado y renglones completos (el modal manda todo). Los
  * renglones viejos se respaldan antes, por si alguien borra de más. */
+async function estadoDe(env: Env, id: number): Promise<MuestraEstado> {
+  const r = await env.DB.prepare('SELECT estado FROM muestra_solicitud WHERE id = ?').bind(id).first<{ estado: string }>();
+  if (!r) throw new MuestraError('solicitud no encontrada', 404);
+  return esMuestraEstado(r.estado) ? r.estado : 'borrador';
+}
+
+async function soloBorrador(env: Env, id: number, que: string): Promise<void> {
+  if ((await estadoDe(env, id)) !== 'borrador') throw new MuestraError(`ya se envió a Compras: no se puede ${que}`, 409);
+}
+
 export async function editarMuestra(env: Env, id: number, input: SolicitudValida, viewer: Identity): Promise<void> {
+  await soloBorrador(env, id, 'editar');
   await respaldar(env, id, viewer, 'edicion');
   const now = new Date().toISOString();
   await env.DB.batch([
@@ -244,9 +268,94 @@ export async function editarMuestra(env: Env, id: number, input: SolicitudValida
   ]);
 }
 
+const nombreDe = (v: Identity) => v.nombre || v.email;
+
+/** Compras la mueve entre enviada/validada/entregada desde el board. Al
+ * solicitante le llega un aviso en Actualizaciones (sin WhatsApp). */
 export async function cambiarEstadoMuestra(env: Env, id: number, estado: MuestraEstado, viewer: Identity): Promise<void> {
+  const previo = await estadoDe(env, id);
+  if (previo === 'borrador') throw new MuestraError('todavía no se envía a Compras', 409);
+  if (previo === estado) return;
   await env.DB.prepare('UPDATE muestra_solicitud SET estado = ?, updated_at = ?, updated_by = ? WHERE id = ?')
     .bind(estado, new Date().toISOString(), viewer.email, id).run();
+  const s = await env.DB.prepare('SELECT solicitante_email FROM muestra_solicitud WHERE id = ?').bind(id).first<{ solicitante_email: string }>();
+  if (s && s.solicitante_email !== viewer.email) {
+    await emitNotification(env, {
+      recipientEmail: s.solicitante_email, severity: 'actualizacion', kind: 'muestra_estado',
+      title: `${muestraFolio(id)}: ${MUESTRA_ESTADO_LABEL[estado]}`,
+      body: `${nombreDe(viewer)} cambió tu solicitud de muestras a «${MUESTRA_ESTADO_LABEL[estado]}».`,
+      boardKey: 'muestras', itemId: id, actor: viewer.email,
+      dedupeKey: `muestra_estado:${id}:${estado}:${s.solicitante_email}`,
+    });
+  }
+}
+
+/** Texto de la actualización que se publica en el item al enviar. Pura. */
+export function textoEnvio(folio: string, quien: string, s: Pick<MuestraSolicitudDTO, 'fechaEntrega' | 'diasRetorno' | 'notas'>, lineas: MuestraLineaDTO[]): string {
+  const renglones = lineas.map(l => {
+    const detalle = [l.sku, l.marca, l.color, l.talla && `talla ${l.talla}`].filter(Boolean).join(' · ');
+    return `• ${l.cantidad} × ${l.producto}${detalle ? ` (${detalle})` : ''}${l.comentarios ? ` — ${l.comentarios}` : ''}`;
+  });
+  const fechas = [s.fechaEntrega && `entrega ${s.fechaEntrega}`, s.diasRetorno != null && `retorno ${s.diasRetorno} días`].filter(Boolean).join(' · ');
+  return [
+    `📦 Solicitud de muestras ${folio} enviada a Compras por ${quien}:`,
+    ...renglones,
+    ...(fechas ? [`Fechas: ${fechas}`] : []),
+    ...(s.notas ? [`Notas: ${s.notas}`] : []),
+    PORTAL_SIGNATURE,
+  ].join('\n');
+}
+
+/** El botón "Enviar a Compras" del tab: borrador → enviada, publica la
+ * actualización en el item y avisa a Compras (notificación IMPORTANTE, que
+ * también sale por WhatsApp — worker/wa/notify.ts). A quién: el Responsable
+ * compras del item; si no tiene, a todo Compras. */
+export async function enviarMuestra(env: Env, id: number, padre: MuestraPadre, padreRow: Padre & { vendedor_ids?: string }, viewer: Identity): Promise<void> {
+  await soloBorrador(env, id, 'enviar otra vez');
+  const now = new Date().toISOString();
+  // Condicionado a 'borrador': dos clics seguidos no mandan dos avisos.
+  const res = await env.DB.prepare(
+    `UPDATE muestra_solicitud SET estado = 'enviada', enviada_at = ?, enviada_por = ?, updated_at = ?, updated_by = ?
+     WHERE id = ? AND estado = 'borrador'`,
+  ).bind(now, viewer.email, now, viewer.email, id).run();
+  if (!res.meta.changes) throw new MuestraError('ya se envió a Compras', 409);
+
+  const folio = muestraFolio(id);
+  const [fila, lineasRes] = await Promise.all([
+    env.DB.prepare('SELECT * FROM muestra_solicitud WHERE id = ?').bind(id).first<SolicitudRow>(),
+    env.DB.prepare('SELECT * FROM muestra_linea WHERE solicitud_id = ? ORDER BY orden').bind(id).all<LineaRow>(),
+  ]);
+  const lineas = (lineasRes.results ?? []).map(lineaDTO);
+  const quien = nombreDe(viewer);
+
+  // Best-effort las dos: la solicitud ya quedó enviada; un fallo de Monday o
+  // de WhatsApp no la regresa a borrador.
+  try {
+    await postUpdate(env, BOARDS[padre].id, padreRow.item_id,
+      textoEnvio(folio, quien, { fechaEntrega: fila?.fecha_entrega ?? null, diasRetorno: fila?.dias_retorno ?? null, notas: fila?.notas ?? null }, lineas),
+      [], { email: viewer.email, nombre: viewer.nombre });
+  } catch (err) {
+    console.log('[muestras] actualización no publicada: ' + String(err));
+  }
+
+  const comprasCol = BOARDS[padre].comprasCol;
+  let vendedorIds: number[] = [];
+  try { vendedorIds = JSON.parse(padreRow.vendedor_ids || '[]'); } catch { /* sin vendedor */ }
+  const ctx = { actorEmail: viewer.email, vendedorIds, itemId: padreRow.item_id };
+  let destinatarios = comprasCol
+    ? await resolveRecipients(env, ['comprador'], { ...ctx, compradorIds: personIdsFromColumns(padreRow.columns, comprasCol) })
+    : [];
+  if (destinatarios.length === 0) destinatarios = await resolveRecipients(env, ['role:compras'], ctx);
+  const piezas = lineas.reduce((n, l) => n + l.cantidad, 0);
+  for (const email of destinatarios) {
+    await emitNotification(env, {
+      recipientEmail: email, severity: 'importante', kind: 'muestra_enviada',
+      title: `Solicitud de muestras ${folio} — ${padreRow.name}`,
+      body: `${quien} pide ${lineas.length} ${lineas.length === 1 ? 'producto' : 'productos'} (${piezas} ${piezas === 1 ? 'pieza' : 'piezas'}).`,
+      boardKey: 'muestras', itemId: id, actor: viewer.email,
+      dedupeKey: `muestra_enviada:${id}:${email}`,
+    });
+  }
 }
 
 async function respaldar(env: Env, id: number, viewer: Identity, motivo: 'edicion' | 'borrado'): Promise<void> {
@@ -258,6 +367,7 @@ async function respaldar(env: Env, id: number, viewer: Identity, motivo: 'edicio
 }
 
 export async function borrarMuestra(env: Env, id: number, viewer: Identity): Promise<void> {
+  await soloBorrador(env, id, 'borrar');
   await respaldar(env, id, viewer, 'borrado');
   await env.DB.batch([
     env.DB.prepare('DELETE FROM muestra_linea WHERE solicitud_id = ?').bind(id),

@@ -2,6 +2,22 @@
 
 ## 2026-09-22
 
+- **Muestras: flujo de envío y estados** (Efraín: "simple: enviada, validada,
+  muestra entregada… las solicitudes se mandan donde se crea la solicitud y es
+  un botón, eso lanza una actualización y le manda a compras una notificación
+  importante que les llega a WhatsApp").
+  - Estados Borrador → Enviada → Validada → Muestra entregada (ya no
+    Solicitada/Devuelta/Cancelada). Nace en borrador; editar y borrar solo
+    mientras es borrador.
+  - Botón «Enviar a Compras» en la tarjeta del tab: publica la actualización
+    en el item (con la firma del portal, para que el webhook no la re-notifique
+    como comentario) y manda aviso IMPORTANTE (bandeja + WhatsApp) al
+    Responsable compras del item, o a todo Compras si no tiene. El link del
+    aviso abre `/muestras/<id>` con la solicitud desplegada.
+  - El estado se mueve desde el board, solo Compras/admin (scope de lectura);
+    al solicitante le llega un aviso en Actualizaciones, sin WhatsApp. Los
+    borradores solo los ve quien los puede enviar.
+
 - **Muestras: tab en Cotización y Proyectos + board "Solicitudes de muestra"**
   (Efraín: "un nuevo tab que se llama Muestras… tiene que estar ligado a algo,
   así como las órdenes de compra"; reemplaza el Excel "SOLICITUD DE MUESTRAS").

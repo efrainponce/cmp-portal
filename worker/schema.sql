@@ -988,8 +988,9 @@ CREATE INDEX IF NOT EXISTS oc_concepto_updated ON oc_concepto (updated_at);
 -- Nativo: cuelga de UNA Oportunidad o UN Proyecto. El código las crea lazy.
 CREATE TABLE IF NOT EXISTS muestra_solicitud (
   id INTEGER PRIMARY KEY AUTOINCREMENT, oportunidad_id INTEGER, proyecto_id INTEGER,
-  estado TEXT NOT NULL DEFAULT 'solicitada', fecha_entrega TEXT, dias_retorno INTEGER, notas TEXT,
+  estado TEXT NOT NULL DEFAULT 'borrador', fecha_entrega TEXT, dias_retorno INTEGER, notas TEXT,
   solicitante_email TEXT NOT NULL, solicitante_nombre TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, updated_by TEXT,
+  enviada_at TEXT, enviada_por TEXT,
   CHECK ((oportunidad_id IS NULL) <> (proyecto_id IS NULL))
 );
 CREATE INDEX IF NOT EXISTS idx_muestra_oportunidad ON muestra_solicitud(oportunidad_id);

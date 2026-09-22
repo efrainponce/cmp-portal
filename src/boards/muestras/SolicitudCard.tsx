@@ -4,19 +4,20 @@
 import { useState } from 'react';
 import { StatusBadge, MonoTag } from '../../components/core/Badges';
 import { ActionMenu } from '../../components/core/ActionMenu';
+import { Button } from '../../components/core/Button';
 import { useIsMobile } from '../../lib/useIsMobile';
-import { borrarMuestra, cambiarEstadoMuestra } from '../../lib/muestrasApi';
+import { borrarMuestra, cambiarEstadoMuestra, enviarMuestra } from '../../lib/muestrasApi';
 import { MuestraModal } from './MuestraModal';
 import {
-  MUESTRA_ESTADOS, MUESTRA_ESTADO_LABEL, retornoVencido,
+  MUESTRA_ESTADOS_GESTION, MUESTRA_ESTADO_LABEL, retornoVencido,
   type MuestraEstado, type MuestraSolicitudDTO,
 } from '../../../shared/muestras';
 
 export const ESTADO_COLOR: Record<MuestraEstado, { color: string; tint: string }> = {
-  solicitada: { color: 'var(--status-esperando)', tint: 'var(--status-esperando-tint)' },
-  entregada: { color: 'var(--status-en-coste)', tint: 'var(--status-en-coste-tint)' },
-  devuelta: { color: 'var(--status-ganada)', tint: 'var(--status-ganada-tint)' },
-  cancelada: { color: 'var(--status-cancelada)', tint: 'var(--status-cancelada-tint)' },
+  borrador: { color: 'var(--status-cancelada)', tint: 'var(--status-cancelada-tint)' },
+  enviada: { color: 'var(--status-esperando)', tint: 'var(--status-esperando-tint)' },
+  validada: { color: 'var(--status-confirmado)', tint: 'var(--status-confirmado-tint)' },
+  entregada: { color: 'var(--status-ganada)', tint: 'var(--status-ganada-tint)' },
 };
 
 const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
@@ -32,12 +33,13 @@ export const hoyISO = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
-/** Estado: select para quien puede escribir, chip para el resto. */
-export function EstadoMuestra({ s, onChanged }: { s: MuestraSolicitudDTO; onChanged: () => void }) {
+/** Estado: select para Compras/admin (solo en el board, `gestionar`), chip
+ * para el resto y en el tab del drawer. */
+export function EstadoMuestra({ s, onChanged, gestionar = false }: { s: MuestraSolicitudDTO; onChanged: () => void; gestionar?: boolean }) {
   const [valor, setValor] = useState<MuestraEstado>(s.estado);
   const [guardando, setGuardando] = useState(false);
   const c = ESTADO_COLOR[valor];
-  if (!s.editable) return <StatusBadge label={MUESTRA_ESTADO_LABEL[valor]} color={c.color} tint={c.tint} />;
+  if (!gestionar || !s.gestionable) return <StatusBadge label={MUESTRA_ESTADO_LABEL[valor]} color={c.color} tint={c.tint} />;
   return (
     <select
       aria-label="Estado de la solicitud"
@@ -59,7 +61,7 @@ export function EstadoMuestra({ s, onChanged }: { s: MuestraSolicitudDTO; onChan
         padding: '4px 8px', borderRadius: 'var(--radius-pill)', opacity: guardando ? .6 : 1, maxWidth: '100%',
       }}
     >
-      {MUESTRA_ESTADOS.map(e => <option key={e} value={e}>{MUESTRA_ESTADO_LABEL[e]}</option>)}
+      {MUESTRA_ESTADOS_GESTION.map(e => <option key={e} value={e}>{MUESTRA_ESTADO_LABEL[e]}</option>)}
     </select>
   );
 }
@@ -123,7 +125,17 @@ export function FechasMuestra({ s }: { s: MuestraSolicitudDTO }) {
 
 export function SolicitudCard({ s, onChanged }: { s: MuestraSolicitudDTO; onChanged: () => void }) {
   const [editando, setEditando] = useState(false);
+  const [enviando, setEnviando] = useState(false);
   const piezas = s.lineas.reduce((n, l) => n + l.cantidad, 0);
+
+  const enviar = async () => {
+    if (!window.confirm(`¿Enviar ${s.folio} a Compras?\n\nSe publica en Actualizaciones y a Compras le llega un aviso por WhatsApp. Ya enviada no se puede editar.`)) return;
+    setEnviando(true);
+    const res = await enviarMuestra(s.id);
+    setEnviando(false);
+    if (!res.ok) { window.alert(res.error ?? 'No se pudo enviar.'); return; }
+    onChanged();
+  };
 
   const borrar = async () => {
     const res = await borrarMuestra(s.id);
@@ -141,8 +153,13 @@ export function SolicitudCard({ s, onChanged }: { s: MuestraSolicitudDTO; onChan
         </span>
         <span style={{ font: 'var(--text-label)', color: 'var(--ink-secondary)' }}><FechasMuestra s={s} /></span>
         <span style={{ marginLeft: 'auto', font: 'var(--text-caption)', color: 'var(--ink-tertiary)' }}>
-          Pidió {s.solicitante} · {fmtFecha(s.createdAt)}
+          {s.enviadaAt ? `Enviada por ${s.solicitante} · ${fmtFecha(s.enviadaAt)}` : `Borrador de ${s.solicitante} · ${fmtFecha(s.createdAt)}`}
         </span>
+        {s.editable && (
+          <Button variant="primary" onClick={enviando ? undefined : enviar} style={enviando ? { opacity: .6 } : undefined}>
+            {enviando ? 'Enviando…' : 'Enviar a Compras'}
+          </Button>
+        )}
         {s.editable && (
           <ActionMenu
             items={[

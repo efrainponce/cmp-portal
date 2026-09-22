@@ -39,5 +39,8 @@ export const editarMuestra = (id: string, input: MuestraSolicitudInput) =>
   mutate<Ok>(`/muestras/${id}`, json(input, 'PUT'), 'guardar la solicitud');
 export const cambiarEstadoMuestra = (id: string, estado: MuestraEstado) =>
   mutate<Ok>(`/muestras/${id}/estado`, json({ estado }, 'PUT'), 'cambiar el estado');
+/** Borrador → enviada: publica la actualización en el item y avisa a Compras. */
+export const enviarMuestra = (id: string) =>
+  mutate<Ok>(`/muestras/${id}/enviar`, { method: 'POST' }, 'enviar la solicitud');
 export const borrarMuestra = (id: string) =>
   mutate<Ok>(`/muestras/${id}`, { method: 'DELETE' }, 'borrar la solicitud');

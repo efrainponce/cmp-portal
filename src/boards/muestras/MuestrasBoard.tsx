@@ -6,7 +6,7 @@
 //
 // Los filtros NO se guardan entre sesiones, igual que en la Lista de OC: un
 // filtro recordado deja la lista en 0 sin avisar.
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { listMuestras } from '../../lib/muestrasApi';
 import { SearchInput } from '../../components/forms/SearchInput';
 import { MonoTag } from '../../components/core/Badges';
@@ -35,16 +35,19 @@ const linkStyle: React.CSSProperties = {
 
 interface Props {
   onOpenItem: (s: MuestraSolicitudDTO) => void;
+  /** /muestras/<id> — el link del aviso a Compras: despliega esa solicitud. */
+  openId?: string | null;
 }
 
-export default function MuestrasBoard({ onOpenItem }: Props) {
+export default function MuestrasBoard({ onOpenItem, openId }: Props) {
   const isMobile = useIsMobile();
   const [solicitudes, setSolicitudes] = useState<MuestraSolicitudDTO[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState('');
   const [estado, setEstado] = useState(TODAS);
   const [vendedor, setVendedor] = useState(TODAS);
-  const [abiertas, setAbiertas] = useState<Set<string>>(new Set());
+  const [abiertas, setAbiertas] = useState<Set<string>>(() => new Set(openId ? [openId] : []));
+  const desplazado = useRef(false);
   const toggle = (id: string) => setAbiertas(prev => {
     const next = new Set(prev);
     if (!next.delete(id)) next.add(id);
@@ -65,6 +68,14 @@ export default function MuestrasBoard({ onOpenItem }: Props) {
     return () => window.clearInterval(t);
   }, [cargar]);
 
+  // Llegando desde el aviso, la solicitud se abre y se trae a la vista una vez.
+  useEffect(() => {
+    if (!openId || desplazado.current || !solicitudes?.some(s => s.id === openId)) return;
+    desplazado.current = true;
+    setAbiertas(prev => new Set(prev).add(openId));
+    requestAnimationFrame(() => document.getElementById(`muestra-${openId}`)?.scrollIntoView({ block: 'center' }));
+  }, [openId, solicitudes]);
+
   const hoy = hoyISO();
   const vendedores = useMemo(() => [...new Set((solicitudes ?? []).map(s => s.vendedor ?? SIN_VENDEDOR))].sort(), [solicitudes]);
   const visibles = useMemo(() => (solicitudes ?? []).filter(s =>
@@ -75,8 +86,7 @@ export default function MuestrasBoard({ onOpenItem }: Props) {
   ), [solicitudes, estado, vendedor, q, hoy]);
 
   const hayFiltro = estado !== TODAS || vendedor !== TODAS || !!q.trim();
-  const pendientes = (solicitudes ?? []).filter(s => s.estado === 'solicitada').length;
-  const conCliente = (solicitudes ?? []).filter(s => s.estado === 'entregada').length;
+  const cuenta = (e: string) => (solicitudes ?? []).filter(s => s.estado === e).length;
   const vencidas = (solicitudes ?? []).filter(s => retornoVencido(s, hoy)).length;
 
   return (
@@ -85,11 +95,11 @@ export default function MuestrasBoard({ onOpenItem }: Props) {
         <div style={{ font: 'var(--text-title)', color: 'var(--ink)' }}>Solicitudes de muestra</div>
         <div style={{ font: 'var(--text-label)', color: 'var(--ink-tertiary)', marginTop: 2 }}>
           {solicitudes == null ? 'Cargando…'
-            : `${hayFiltro ? `${visibles.length} de ${solicitudes.length}` : solicitudes.length} solicitudes · ${pendientes} por entregar · ${conCliente} con el cliente`}
+            : `${hayFiltro ? `${visibles.length} de ${solicitudes.length}` : solicitudes.length} solicitudes · ${cuenta('enviada')} por validar · ${cuenta('validada')} validadas · ${cuenta('entregada')} entregadas`}
           {vencidas > 0 && <span style={{ color: 'var(--status-perdida)' }}> · {vencidas} con retorno vencido</span>}
         </div>
         <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)', marginTop: 4 }}>
-          Se crean desde el tab «Muestras» de cada oportunidad o proyecto.
+          Se crean y se envían desde el tab «Muestras» de cada oportunidad o proyecto; aquí Compras las valida y marca entregadas.
         </div>
         <div style={{ marginTop: isMobile ? 10 : 14, display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 10, flexWrap: 'wrap' }}>
           <SearchInput
@@ -179,10 +189,10 @@ function Fila({ s, isMobile, abierta, onAbrir, onOpenItem, onChanged }: {
 
   if (isMobile) {
     return (
-      <div style={{ padding: '12px 0', borderBottom: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div id={`muestra-${s.id}`} style={{ padding: '12px 0', borderBottom: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 6 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>{chevron}<MonoTag style={{ padding: 0 }}>{s.folio}</MonoTag>{productos}</div>
-          <EstadoMuestra key={s.estado} s={s} onChanged={onChanged} />
+          <EstadoMuestra key={s.estado} s={s} onChanged={onChanged} gestionar />
         </div>
         {item}
         <div style={{ font: 'var(--text-label)', color: 'var(--ink-tertiary)' }}>
@@ -194,17 +204,17 @@ function Fila({ s, isMobile, abierta, onAbrir, onOpenItem, onChanged }: {
     );
   }
   return (
-    <div style={{ borderBottom: '1px solid var(--border)' }}>
+    <div id={`muestra-${s.id}`} style={{ borderBottom: '1px solid var(--border)' }}>
       <div style={{ display: 'grid', gridTemplateColumns: GRID, gap: 12, alignItems: 'center', padding: '10px 0' }}>
         {chevron}
         <MonoTag style={{ padding: 0 }}>{s.folio}</MonoTag>
-        <div style={{ minWidth: 0 }}><EstadoMuestra key={s.estado} s={s} onChanged={onChanged} /></div>
+        <div style={{ minWidth: 0 }}><EstadoMuestra key={s.estado} s={s} onChanged={onChanged} gestionar /></div>
         {item}
         {texto(s.institucion)}
         {texto(s.vendedor)}
         <div style={{ minWidth: 0 }}>
           {texto(s.solicitante)}
-          <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)' }}>{fmtFecha(s.createdAt)}</div>
+          <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)' }}>{s.enviadaAt ? `enviada ${fmtFecha(s.enviadaAt)}` : 'borrador'}</div>
         </div>
         {productos}
         <div style={{ font: 'var(--text-label)', color: 'var(--ink-secondary)' }}><FechasMuestra s={s} /></div>

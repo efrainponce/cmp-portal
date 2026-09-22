@@ -91,7 +91,7 @@ function App() {
       {activeBoard === 'muestras' && (
         // Directo al tab Muestras del item ligado. El proyecto se abre en el
         // primer board de Proyectos al que la persona tenga acceso.
-        <MuestrasBoard onOpenItem={(s) => navigate(
+        <MuestrasBoard openId={itemId} onOpenItem={(s) => navigate(
           s.padre === 'oportunidades' ? 'oportunidades'
             : (['ejecucion', 'ordenescompra', 'doctallas'] as const).find((k) => me?.boardAccess.includes(k)) ?? 'doctallas',
           s.itemId, 'muestras',

@@ -11,18 +11,35 @@
 
 export type MuestraPadre = 'oportunidades' | 'proyectos';
 
-export const MUESTRA_ESTADOS = ['solicitada', 'entregada', 'devuelta', 'cancelada'] as const;
+// Flujo (Efraín, 2026-09-22: "simple: enviada, validada, muestra entregada").
+// Nace en BORRADOR en el tab donde se crea; el vendedor la ENVÍA con un botón
+// (actualización en el item + aviso importante a Compras, con WhatsApp) y de
+// ahí Compras la gestiona desde el board "Solicitudes de muestra".
+export const MUESTRA_ESTADOS = ['borrador', 'enviada', 'validada', 'entregada'] as const;
 export type MuestraEstado = typeof MUESTRA_ESTADOS[number];
 
+/** Los que se mueven desde el board, ya enviada la solicitud. */
+export const MUESTRA_ESTADOS_GESTION = ['enviada', 'validada', 'entregada'] as const satisfies readonly MuestraEstado[];
+
 export const MUESTRA_ESTADO_LABEL: Record<MuestraEstado, string> = {
-  solicitada: 'Solicitada',
-  entregada: 'Entregada al cliente',
-  devuelta: 'Devuelta',
-  cancelada: 'Cancelada',
+  borrador: 'Borrador',
+  enviada: 'Enviada',
+  validada: 'Validada',
+  entregada: 'Muestra entregada',
 };
 
 export function esMuestraEstado(v: unknown): v is MuestraEstado {
   return typeof v === 'string' && (MUESTRA_ESTADOS as readonly string[]).includes(v);
+}
+
+export function esEstadoGestion(v: unknown): v is typeof MUESTRA_ESTADOS_GESTION[number] {
+  return typeof v === 'string' && (MUESTRA_ESTADOS_GESTION as readonly string[]).includes(v);
+}
+
+/** Quién mueve el estado desde el board: Compras (y admin). El vendedor solo
+ * crea, edita mientras es borrador y envía. */
+export function puedeGestionarMuestras(role: string): boolean {
+  return role === 'compras' || role === 'admin';
 }
 
 export interface MuestraLineaInput {
@@ -85,9 +102,14 @@ export interface MuestraSolicitudDTO {
   solicitanteEmail: string;
   createdAt: string;
   updatedAt: string;
+  /** Cuándo y quién la mandó a Compras (null = sigue en borrador). */
+  enviadaAt: string | null;
+  enviadaPor: string | null;
   lineas: MuestraLineaDTO[];
-  /** false = solo lectura para quien la ve (la ve por su zona, no es suya). */
+  /** Puede editar/borrar/enviar: el item es suyo y sigue en borrador. */
   editable: boolean;
+  /** Puede mover el estado desde el board (Compras/admin y ya enviada). */
+  gestionable: boolean;
 }
 
 export const muestraFolio = (id: number | string) => `MUE-${id}`;

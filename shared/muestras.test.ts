@@ -15,8 +15,8 @@ describe('fechas de retorno', () => {
   it('vencida solo si sigue con el cliente y ya pasó la fecha', () => {
     expect(retornoVencido({ estado: 'entregada', fechaRetorno: '2026-09-20' }, '2026-09-21')).toBe(true);
     expect(retornoVencido({ estado: 'entregada', fechaRetorno: '2026-09-21' }, '2026-09-21')).toBe(false);
-    expect(retornoVencido({ estado: 'devuelta', fechaRetorno: '2026-09-01' }, '2026-09-21')).toBe(false);
-    expect(retornoVencido({ estado: 'solicitada', fechaRetorno: '2026-09-01' }, '2026-09-21')).toBe(false);
+    expect(retornoVencido({ estado: 'validada', fechaRetorno: '2026-09-01' }, '2026-09-21')).toBe(false);
+    expect(retornoVencido({ estado: 'enviada', fechaRetorno: '2026-09-01' }, '2026-09-21')).toBe(false);
   });
 });
 

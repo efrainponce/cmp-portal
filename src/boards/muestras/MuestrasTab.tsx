@@ -39,7 +39,7 @@ export function MuestrasTab({ padre, itemId, readOnly = false }: Props) {
         <div>
           <div style={{ font: 'var(--text-small-strong)', color: 'var(--ink)', marginBottom: 4 }}>Solicitudes de muestra</div>
           <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)' }}>
-            Qué muestras se piden para {padre === 'oportunidades' ? 'esta oportunidad' : 'este proyecto'}: producto, color, talla y cantidad.
+            Arma la solicitud (producto, color, talla y cantidad) y usa «Enviar a Compras»: se publica en Actualizaciones y a Compras le llega el aviso por WhatsApp.
           </div>
         </div>
         {editable && <Button variant="primary" onClick={() => setNueva(true)}>+ Nueva solicitud</Button>}
