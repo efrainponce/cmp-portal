@@ -14,8 +14,10 @@ import { assistantRoutes } from './assistant/routes';
 import { boardRoutes } from './routes/boards';
 import { adminRoutes } from './routes/admin';
 import { oportunidadRoutes } from './routes/oportunidades';
+import { driveRoutes } from './routes/drive';
 import { estadoCuentaRoutes } from './routes/estadoCuenta';
 import { inventarioRoutes } from './routes/inventario';
+import { proveedorRoutes } from './routes/proveedores';
 import { ocListaRoutes } from './routes/ocLista';
 import { notificationRoutes } from './routes/notifications';
 import { documentRoutes } from './routes/documents';
@@ -91,8 +93,10 @@ adminRoutes(app);
 // y Hono resuelve por orden de registro — si no, se comería el POST de
 // /api/proyectos/:id/estado-cuenta.
 estadoCuentaRoutes(app);
+driveRoutes(app);            // antes de oportunidadRoutes: su wildcard /api/proyectos/:id/:action matchearía /drive
 oportunidadRoutes(app);
 inventarioRoutes(app);
+proveedorRoutes(app);
 ocListaRoutes(app);
 notificationRoutes(app);
 documentRoutes(app);

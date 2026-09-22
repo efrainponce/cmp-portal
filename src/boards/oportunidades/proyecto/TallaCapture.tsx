@@ -9,12 +9,13 @@
 // "captúralas en la pestaña Tallas de la Oportunidad" y nadie encontraba el
 // camino (Efraín: "necesito dónde capturar las tallas, no me aparece"). Ahora
 // el mismo componente se usa en los dos lugares.
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ItemDTO } from '../../../lib/api';
 import { capturarTallas, type TallaBoxInput } from '../../../lib/api';
 import { enTandas, MAX_TALLAS_POR_REQUEST } from '../../../../shared/dto';
 import { Button } from '../../../components/core/Button';
 import { numberCellKeyDown } from '../../../components/forms/NumberCellInput';
+import { parsePegadoTallas } from '../../../lib/pegadoTallas';
 
 // Oportunidades subitems (oportunidades_sub, 18395657607) — líneas de la
 // cotización ganada, mismos ids que worker/lib/quoteVersions.ts.
@@ -49,11 +50,12 @@ const boxInputStyle = {
   border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '6px 4px',
 };
 
-function ProductoTallaCard({ group, boxes, onChange, onAddTalla }: {
+function ProductoTallaCard({ group, boxes, onChange, onAddTalla, onPegar }: {
   group: ProductoGroup;
   boxes: Record<string, string>;
   onChange: (talla: string, value: string) => void;
   onAddTalla: (talla: string) => void;
+  onPegar: (valores: Record<string, string>) => void;
 }) {
   const [nuevaTalla, setNuevaTalla] = useState('');
   const extra = Object.keys(boxes).filter(t => !DEFAULT_TALLAS.includes(t));
@@ -79,7 +81,7 @@ function ProductoTallaCard({ group, boxes, onChange, onAddTalla }: {
         </div>
       </div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-        {tallas.map(talla => (
+        {tallas.map((talla, i) => (
           <label key={talla} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
             <span style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)' }}>{talla}</span>
             <input
@@ -89,6 +91,14 @@ function ProductoTallaCard({ group, boxes, onChange, onAddTalla }: {
               onChange={(e) => onChange(talla, e.target.value)}
               // ↑/↓ no le suman/restan 1 a la talla (ver NumberCellInput).
               onKeyDown={(e) => numberCellKeyDown(e, { noNegative: true })}
+              // Un bloque copiado de Excel llena la tarjeta (lib/pegadoTallas.ts);
+              // una sola celda se pega normal.
+              onPaste={(e) => {
+                const valores = parsePegadoTallas(e.clipboardData.getData('text'), tallas, i);
+                if (!valores) return;
+                e.preventDefault();
+                onPegar(valores);
+              }}
               style={boxInputStyle}
             />
           </label>
@@ -115,7 +125,18 @@ export function TallaBoxesCapture({ proyectoId, products, onSaved, titulo, hint 
   titulo?: string; hint?: string;
 }) {
   const groups = groupsFromProducts(products);
-  const [state, setState] = useState<BoxState>({});
+  // Borrador por proyecto en este navegador: una captura de 24 tarjetas se
+  // perdía entera al cerrar el drawer sin guardar. Se limpia al guardar bien.
+  const borradorKey = `cmp:tallas-borrador:${proyectoId}`;
+  const [state, setState] = useState<BoxState>(() => {
+    try { return JSON.parse(localStorage.getItem(borradorKey) ?? '{}') as BoxState; } catch { return {}; }
+  });
+  useEffect(() => {
+    try {
+      if (Object.keys(state).length === 0) localStorage.removeItem(borradorKey);
+      else localStorage.setItem(borradorKey, JSON.stringify(state));
+    } catch { /* modo privado / cuota llena: la captura sigue, solo sin borrador */ }
+  }, [state, borradorKey]);
   const [saving, setSaving] = useState(false);
   const [progreso, setProgreso] = useState<{ hechas: number; total: number } | null>(null);
   const [result, setResult] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
@@ -124,6 +145,8 @@ export function TallaBoxesCapture({ proyectoId, products, onSaved, titulo, hint 
 
   const setBox = (subitemId: string, talla: string, value: string) =>
     setState(prev => ({ ...prev, [subitemId]: { ...prev[subitemId], [talla]: value } }));
+  const pegar = (subitemId: string, valores: Record<string, string>) =>
+    setState(prev => ({ ...prev, [subitemId]: { ...prev[subitemId], ...valores } }));
   const addTalla = (subitemId: string, talla: string) =>
     setState(prev => ({ ...prev, [subitemId]: { ...prev[subitemId], [talla]: prev[subitemId]?.[talla] ?? '' } }));
 
@@ -193,6 +216,7 @@ export function TallaBoxesCapture({ proyectoId, products, onSaved, titulo, hint 
       </div>
       <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)', marginBottom: 10 }}>
         {hint ?? 'Cuántas piezas de cada talla por producto — se guardan directo como líneas del proyecto.'}
+        {' '}Puedes pegar desde Excel: una fila de cantidades, o tallas y cantidades.
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         {groups.map(g => (
@@ -202,6 +226,7 @@ export function TallaBoxesCapture({ proyectoId, products, onSaved, titulo, hint 
             boxes={state[g.subitemId] ?? {}}
             onChange={(talla, value) => setBox(g.subitemId, talla, value)}
             onAddTalla={(talla) => addTalla(g.subitemId, talla)}
+            onPegar={(valores) => pegar(g.subitemId, valores)}
           />
         ))}
       </div>

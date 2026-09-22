@@ -37,6 +37,12 @@ describe('encodeColumnValue', () => {
     expect(encodeColumnValue('date', '2026-07-24')).toEqual({ date: '2026-07-24' });
   });
 
+  it('link manda {url,text} con la URL como etiqueta', () => {
+    expect(encodeColumnValue('link', ' https://proveedor.mx '))
+      .toEqual({ url: 'https://proveedor.mx', text: 'https://proveedor.mx' });
+    expect(encodeColumnValue('link', '')).toBe('');
+  });
+
   it('phone parte "CC:numero" y cae a MX sin prefijo', () => {
     expect(encodeColumnValue('phone', 'US:5551234567'))
       .toEqual({ phone: '5551234567', countryShortName: 'US' });

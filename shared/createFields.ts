@@ -6,7 +6,7 @@
 
 export interface CreateField { id: string; required?: boolean }
 
-export const CREATE_FIELDS: Record<'instituciones' | 'contactos' | 'oportunidades' | 'proyectos', CreateField[]> = {
+export const CREATE_FIELDS: Record<'instituciones' | 'contactos' | 'oportunidades' | 'proyectos' | 'proveedores', CreateField[]> = {
   // Requested by Efraín 2026-07-15: exactly these fields, "super fácil". Product
   // lines are NOT captured at creation — the enviar-costeo validation blocks the
   // costeo hand-off until lines with cantidad y color válido exist.
@@ -72,6 +72,27 @@ export const CREATE_FIELDS: Record<'instituciones' | 'contactos' | 'oportunidade
     { id: 'multiple_person_mm03vqwx', required: true }, // Vendedor
     { id: 'long_text4' },          // Comentarios
   ],
+  // Alta de proveedor (2026-09-21, salida de Monday): hasta hoy solo se podía
+  // en Monday. Solo el nombre es obligatorio — Compras da de alta al proveedor
+  // cuando lo necesita para una línea y completa lo fiscal después. Los
+  // archivos (Constancia, Cuenta de Banco, Actas) se suben ya creado.
+  proveedores: [
+    { id: 'name', required: true },
+    { id: 'text_mm1d43t4' },       // Razon Social
+    { id: 'text_mm00x00' },        // RFC
+    { id: 'text_mm3kwjde' },       // Contacto
+    { id: 'phone_mm21sp93' },      // teléfono
+    { id: 'email_mm21c4ng' },      // correo
+    { id: 'long_text_mm00jhfd' },  // Direccion
+    { id: 'link_mm21rg0s' },       // Link
+  ],
+};
+
+/** Quién puede dar de alta en un board cuando NO es "cualquiera que crea"
+ * (vendedor/compras/admin, worker/lib/createRecord.ts). Proveedores es de
+ * Compras: el vendedor ni siquiera lo lee ("ventas cero proveedores"). */
+export const CREATE_ROLES: Partial<Record<keyof typeof CREATE_FIELDS, string[]>> = {
+  proveedores: ['compras', 'admin'],
 };
 
 // Server-side values stamped on every new record of a board — never client-sent

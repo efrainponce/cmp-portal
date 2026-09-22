@@ -5,11 +5,12 @@ import type { Env } from '../env';
 import type { Identity } from '../../shared/types';
 import type { CreateResponse } from '../../shared/dto';
 import { BOARDS, type BoardSlug } from '../../shared/boards';
-import { CREATE_DEFAULTS, CREATE_FIELDS, isCreatable } from '../../shared/createFields';
+import { CREATE_DEFAULTS, CREATE_FIELDS, CREATE_ROLES, isCreatable } from '../../shared/createFields';
 import { COLUMN_META } from '../../shared/column-meta.gen';
 import { encodeColumnValue } from './columnEncode';
 import { createItem, fetchItem, firstPersonId, updateItemColumns } from './monday';
-import { upsertItem } from '../sync';
+import { upsertItem, refetchItem } from '../sync';
+import { crearCarpetaProyectoAuto } from './drive';
 import { reserveNativeId } from './nativeSeq';
 import { assertNoNativeLink, NativeLinkError } from './nativeItems';
 import { rawHash, type RawColumn } from './canon';
@@ -78,6 +79,7 @@ export async function submitCreate(
     return submitCreateNative(env, slug, name, cols, viewer);
   }
   if (!CREATOR_ROLES.includes(viewer.role)) throw new CreateError(403, 'cannot create');
+  if (CREATE_ROLES[slug] && !CREATE_ROLES[slug].includes(viewer.role)) throw new CreateError(403, 'cannot create');
   // Usuario dado de alta desde el portal (sin persona real en Monday, ver
   // dal.createNativeIdentity): el auto-estampado de Vendedor en Contactos
   // (abajo) mandaría un id inventado a la columna de personas de Monday.
@@ -154,6 +156,15 @@ export async function submitCreate(
   // El Vendedor puede ser un id PRESTADO: los avisos de dueño van por correo
   // (worker/lib/itemCreador.ts).
   await registrarCreador(env, Number(item.id), viewer.email);
+
+  // Un Proyecto hecho desde cero también estrena carpeta de Drive
+  // (worker/lib/drive.ts, 2026-09-15) — con ctx en segundo plano, sin él (bot)
+  // en línea; best-effort y gateada por DRIVE_PROYECTOS.
+  if (slug === 'proyectos') {
+    const carpeta = refetchItem(env, board.id, Number(item.id)).then(() => crearCarpetaProyectoAuto(env, Number(item.id)));
+    if (ctx) ctx.waitUntil(carpeta);
+    else await carpeta;
+  }
 
   // El board Contactos tiene una automatización de Monday ("When an item is
   // created → assign creator as Vendedor", id 530044968, de 2026-02-03, pensada

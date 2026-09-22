@@ -50,6 +50,7 @@ import { duplicateOportunidad, DuplicateOportunidadError } from '../lib/duplicat
 import { ganarOportunidad, GanarOportunidadError } from '../lib/ganarOportunidad';
 import { createSubitem, addFileToColumn, fetchAssetPublicUrls, gql } from '../lib/monday';
 import { borrarItem, BorradoError } from '../lib/itemBorrado';
+import { depositarSubidaProyecto } from '../lib/drive';
 import { buscarArchivo, borrarArchivoDeColumna, puedeBorrarArchivo, registrarSubida, subidoPor, ArchivoBorradoError } from '../lib/archivoBorrado';
 import { postUpdate } from '../lib/nativeUpdates';
 import { stampInstitucionEnOpsDeContacto } from '../lib/nativeMirrors';
@@ -2050,6 +2051,11 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
         ? oportunidadFileKey(oppId, categoria, file.name, asset.id)
         : proyectoFileKey(itemId, categoria, file.name, asset.id);
       await putFile(c.env, key, file);
+      // Copia a la carpeta de Drive del Proyecto, si ya la tiene (worker/lib/
+      // drive.ts, 2026-09-15): OC/contrato → "05. CONTRATO FIRMADO", acta →
+      // "06. ACTA DE ENTREGA". En segundo plano y best-effort.
+      const bytesDrive = new Uint8Array(await file.arrayBuffer());
+      c.executionCtx.waitUntil(depositarSubidaProyecto(c.env, itemId, categoria, asset.name || file.name, bytesDrive, file.type || 'application/octet-stream'));
       return c.json({ ok: true, id: asset.id, name: asset.name, url: `/api/files/${key}` });
     });
 
@@ -2106,6 +2112,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
   const LOGISTICA_FILE_COLS: Record<string, string> = {
     'guia-empresa': 'file_mm4pz90b',
     'evidencia-recoleccion': 'file_mm4pc4tj',
+    'flete-extra-final': 'file_mm6bsjm5',
   };
   app.post('/api/proyectos_sub/:id/logistica/:field', async c => {
     const itemId = Number(c.req.param('id'));

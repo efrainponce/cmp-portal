@@ -112,6 +112,13 @@ export interface MeDTO {
   // igual que zonaEfrainAccess. Declutter del nav: el worker vuelve a checar
   // el correo en cada ruta de /estado-cuenta.
   estadoCuentaAccess: boolean;
+  // ¿El ambiente tiene `TALLAS_NATIVE=1`? Con eso "Validar tallas" confirma
+  // contra D1 (worker/lib/proyectoTallas.ts confirmTallasNative) y ya no exige
+  // el Google Sheet: el tab Tallas esconde los botones del archivo y deja la
+  // captura del portal como único camino (salida de Monday, 2026-09-21 —
+  // Efraín: el Sheet solo lo llenaban los vendedores, existía porque en Monday
+  // no se podía capturar nativo). Solo presentación: el gate es del server.
+  tallasSinSheet: boolean;
 }
 
 export interface WriteRequest { cols: Record<string, string> }  // colId -> new raw value
@@ -763,6 +770,30 @@ export interface OcListaRow {
   pagada: boolean;
 }
 export interface OcListaResponse { ordenes: OcListaRow[] }
+
+// Carpeta de Google Drive de una Oportunidad o un Proyecto (worker/routes/
+// drive.ts, tab Documentación, 2026-09-15). `disponible=false` = el ambiente no
+// tiene credenciales de Google; `carpeta=null` = el item no tiene carpeta
+// propia (el Proyecto puede crearla si `puedeCrear`).
+export interface DriveArchivoDTO {
+  id: string; nombre: string; url: string; mimeType: string;
+  modificado: string | null; tamano: number | null;
+}
+export interface DriveSubcarpetaDTO { id: string; nombre: string; url: string; archivos: DriveArchivoDTO[] }
+export interface DriveCarpetaResponse {
+  disponible: boolean;
+  carpeta: { id: string; url: string; nombre: string } | null;
+  subcarpetas: DriveSubcarpetaDTO[];
+  /** Archivos sueltos en la raíz (p.ej. el Google Sheet de tallas). */
+  archivos: DriveArchivoDTO[];
+  puedeCrear?: boolean;
+}
+export interface DriveSincronizarResponse {
+  ok: true;
+  subidos: string[];
+  existentes: number;
+  errores: string[];
+}
 /** Datos de un Proyecto que no viajan en su renglón y que el Reporte de
  * Proyectos usa para filtrar/buscar (worker/lib/ocLista.ts filtrosPorProyecto). */
 export interface ProyectoFiltrosDTO { proveedores: string[]; ocs: string[] }
