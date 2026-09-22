@@ -9,6 +9,7 @@ import type {
   QuoteLineSnapshot, QuoteVersionDTO, QuoteVersionsResponse, SetInstitucionRequest, SetInstitucionResponse,
   TallaBoxInput, CapturarTallasResponse, CambiarProductoLineasRequest, CambiarProductoLineasResponse,
   CambioProductoDTO, CambiosProductoResponse, ProyectoImagenDTO, ProyectoImagenesResponse,
+  OcAdjuntoDTO, OcAdjuntosResponse,
   EstadoHistorialEntryDTO, EstadoHistorialResponse,
   ProductoResumenDTO, ProductoResumenResponse, ProductoGeneroResponse,
   UpdateAttachmentDTO, UpdateDTO, VendedorDTO, WriteResponse, ZonaDTO,
@@ -30,6 +31,7 @@ export type {
   AjusteDTO, BoardAccessDTO, BoardSlug, ColMeta, ColVal, CostoDivergenciaDTO, CotizacionVirtualDTO, IdentityDTO, ItemDTO, ItemDetailDTO, ListResponse, MeDTO, MentionUserDTO,
   MondayUserDTO, ProposedProductDTO, QuoteLineSnapshot, QuoteVersionDTO, TallaBoxInput, CapturarTallasResponse,
   CambiarProductoLineasRequest, CambiarProductoLineasResponse, CambioProductoDTO, ProyectoImagenDTO,
+  OcAdjuntoDTO,
   EstadoHistorialEntryDTO, ProductoResumenDTO,
   InventarioCotizacionProductoDTO,
   UpdateAttachmentDTO, UpdateDTO, VendedorDTO, ZonaDTO,
@@ -723,6 +725,35 @@ export async function deleteProyectoImagen(proyectoId: string, imagenId: string)
   if (!res.ok) {
     const body: { error?: string } = await res.json().catch(() => ({}));
     throw new Error(body.error ?? 'no se pudo quitar la imagen');
+  }
+}
+
+/** Adjuntos PDF de las OC del proyecto (worker/lib/ocAdjuntos.ts) — todos
+ * los proveedores en una llamada; cada tarjeta filtra por `proveedorId`. */
+export async function listOcAdjuntos(proyectoId: string): Promise<OcAdjuntoDTO[]> {
+  const res = await apiFetch(`/proyectos/${proyectoId}/oc-adjuntos`);
+  if (!res.ok) return [];
+  const body: OcAdjuntosResponse = await res.json();
+  return body.adjuntos ?? [];
+}
+
+export function ocAdjuntoUrl(proyectoId: string, adjuntoId: string, download = false): string {
+  return `/api/proyectos/${proyectoId}/oc-adjuntos/${adjuntoId}${download ? '?download=1' : ''}`;
+}
+
+export async function uploadOcAdjunto(proyectoId: string, proveedorId: string, file: File): Promise<OcAdjuntoDTO> {
+  const q = `?proveedor=${encodeURIComponent(proveedorId)}&nombre=${encodeURIComponent(file.name)}`;
+  const res = await apiFetch(`/proyectos/${proyectoId}/oc-adjuntos${q}`, { method: 'POST', body: file });
+  const body: { adjunto?: OcAdjuntoDTO; error?: string } = await res.json();
+  if (!res.ok || !body.adjunto) throw new Error(body.error ?? 'no se pudo subir el archivo');
+  return body.adjunto;
+}
+
+export async function deleteOcAdjunto(proyectoId: string, adjuntoId: string): Promise<void> {
+  const res = await apiFetch(`/proyectos/${proyectoId}/oc-adjuntos/${adjuntoId}`, { method: 'DELETE' });
+  if (!res.ok) {
+    const body: { error?: string } = await res.json().catch(() => ({}));
+    throw new Error(body.error ?? 'no se pudo quitar el archivo');
   }
 }
 

@@ -23,8 +23,9 @@ import {
   proyectoAction, patchItem, deleteProyectoLinea, getActivity, getOcNotas, saveOcNota,
   listOcImagenes, ocImagenUrl, uploadOcImagen, restablecerOcImagen, listOcDeProyecto, reordenarLineasOc,
   getCambiosProducto, listProyectoImagenes, proyectoImagenUrl, uploadProyectoImagen, deleteProyectoImagen,
+  listOcAdjuntos, ocAdjuntoUrl, uploadOcAdjunto, deleteOcAdjunto,
   type ActivityEntryDTO, type CambioProductoDTO, type ItemDetailDTO, type ItemDTO, type OcImagenDTO,
-  type OcEmitidaDTO, type ProyectoImagenDTO,
+  type OcEmitidaDTO, type ProyectoImagenDTO, type OcAdjuntoDTO,
 } from '../../../lib/api';
 import { useMe } from '../../../lib/useMe';
 import { ActionMenu } from '../../../components/core/ActionMenu';
@@ -1000,10 +1001,110 @@ function FotoProducto({ producto, proyectoId, meta, extras, cargando, onCambio, 
  * Método/Condiciones de pago son overrides SOLO de esta OC (WhatsApp 2026-08-04:
  * antes el default del Proyecto se aplicaba igual a todos los proveedores) —
  * prellenados con el default, no se guardan de vuelta a Monday. */
-function ProveedorCard({ group, proyecto, oppId, reload, canEdit, activity, nota, ordenes, cambios, tamGrupo }: {
+/** Adjuntos PDF de la OC de este proveedor (worker/lib/ocAdjuntos.ts,
+ * Efraín 2026-09-22): ficha técnica, plano, cotización del proveedor. Van AL
+ * LADO de la OC, no dentro del PDF — el escritor del portal no pega PDFs
+ * ajenos. Se ven en el visor del portal (igual que la OC) y se descargan con
+ * su nombre; quita quien lo subió o un admin. */
+function AdjuntosOc({ proyectoId, proveedorId, adjuntos, canEdit, onChanged }: {
+  proyectoId: string; proveedorId: string; adjuntos: OcAdjuntoDTO[]; canEdit: boolean;
+  onChanged: (todos: OcAdjuntoDTO[]) => void;
+}) {
+  const me = useMe();
+  const [ocupado, setOcupado] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [ver, setVer] = useState<OcAdjuntoDTO | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const esAdmin = me?.role === 'admin';
+  const correr = async (fn: () => Promise<unknown>) => {
+    setOcupado(true); setError(null);
+    try {
+      await fn();
+      onChanged(await listOcAdjuntos(proyectoId));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo actualizar el adjunto.');
+    } finally {
+      setOcupado(false);
+    }
+  };
+  const fmtKb = (b: number) => b >= 1024 * 1024 ? `${(b / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`;
+  return (
+    <div style={{ flex: '1 1 100%', display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)' }}>
+        Adjuntos de la OC — PDFs que acompañan a la orden (ficha técnica, plano, cotización del proveedor). No se pegan al PDF de la OC.
+      </div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        {adjuntos.map(a => (
+          <div
+            key={a.id}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6, padding: '4px 8px',
+              border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', background: 'var(--bg-sunken)',
+              maxWidth: 320,
+            }}
+          >
+            <span
+              onClick={() => setVer(a)}
+              title={`Ver ${a.nombre} · ${fmtKb(a.bytes)} · subió ${a.subidoPor}`}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', minWidth: 0 }}
+            >
+              <PdfIcon color="var(--accent)" size={18} />
+              <span style={{ font: 'var(--text-label)', color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {a.nombre}
+              </span>
+            </span>
+            {canEdit && (esAdmin || a.subidoPor === me?.email) && (
+              <span
+                onClick={ocupado ? undefined : () => { if (window.confirm(`¿Quitar "${a.nombre}" de la OC?`)) void correr(() => deleteOcAdjunto(proyectoId, a.id)); }}
+                title="Quitar este adjunto de la OC"
+                style={{ cursor: ocupado ? 'default' : 'pointer', color: 'var(--ink-quiet)', font: 'var(--text-label)', lineHeight: 1 }}
+              >
+                ✕
+              </span>
+            )}
+          </div>
+        ))}
+        {canEdit && (
+          <Button
+            variant={ocupado ? 'disabled' : 'secondary'}
+            onClick={() => { if (!ocupado) inputRef.current?.click(); }}
+            title="Sube un PDF que acompañe a esta OC (máx. 10 MB, hasta 10 por orden)"
+          >
+            {ocupado ? 'Subiendo…' : '+ PDF'}
+          </Button>
+        )}
+        <input
+          ref={inputRef}
+          type="file"
+          accept="application/pdf,.pdf"
+          style={{ display: 'none' }}
+          onChange={e => {
+            const file = e.target.files?.[0];
+            e.target.value = '';
+            if (file) void correr(() => uploadOcAdjunto(proyectoId, proveedorId, file));
+          }}
+        />
+      </div>
+      {error && <div style={{ font: 'var(--text-caption)', color: 'var(--status-perdida)' }}>{error}</div>}
+      {ver && (
+        <Modal title={ver.nombre} onClose={() => setVer(null)} width={760}>
+          <Suspense fallback={<div style={{ font: 'var(--text-label)', color: 'var(--ink-quiet)' }}>Cargando…</div>}>
+            <PdfCanvasPreview url={ocAdjuntoUrl(proyectoId, ver.id)} maxWidth={712} />
+          </Suspense>
+          <a href={ocAdjuntoUrl(proyectoId, ver.id, true)} download style={{ display: 'inline-block', marginTop: 12, font: 'var(--text-label)', color: 'var(--accent)' }}>
+            Descargar
+          </a>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function ProveedorCard({ group, proyecto, oppId, reload, canEdit, activity, nota, ordenes, cambios, tamGrupo, adjuntos, onAdjuntos }: {
   group: ProveedorGroup; proyecto: ItemDetailDTO; oppId: string | null; reload: () => void;
   canEdit: boolean; activity: ActivityEntryDTO[]; nota: string; ordenes: OcEmitidaDTO[];
   cambios: Map<string, CambioProductoDTO>; tamGrupo: Map<string, number>;
+  adjuntos: OcAdjuntoDTO[]; onAdjuntos: (todos: OcAdjuntoDTO[]) => void;
 }) {
   const [outcome, setOutcome] = useState<ActionOutcome | null>(null);
   // Alta manual DESDE la tarjeta, con este proveedor ya puesto (Efraín,
@@ -1155,6 +1256,9 @@ function ProveedorCard({ group, proyecto, oppId, reload, canEdit, activity, nota
             <NotaProveedor proyectoId={proyecto.id} proveedorId={group.proveedorId} inicial={nota} />
           )}
           <FotosProducto productos={productos} proyectoId={proyecto.id} />
+          {group.proveedorId && (
+            <AdjuntosOc proyectoId={proyecto.id} proveedorId={group.proveedorId} adjuntos={adjuntos} canEdit={canEdit} onChanged={onAdjuntos} />
+          )}
         </div>
       )}
       <div style={{ overflowX: 'auto' }}>
@@ -1219,10 +1323,11 @@ function ProveedorCard({ group, proyecto, oppId, reload, canEdit, activity, nota
 
 /** Grid de líneas del proyecto agrupadas por proveedor — el equivalente por-proveedor
  * de la tab Cotización, para la tab Órdenes de compra. */
-function ProveedorGrid({ lineas, proyecto, oppId, reload, canEdit, activity, notas, ordenes, cambios }: {
+function ProveedorGrid({ lineas, proyecto, oppId, reload, canEdit, activity, notas, ordenes, cambios, adjuntos, onAdjuntos }: {
   lineas: ItemDTO[]; proyecto: ItemDetailDTO; oppId: string | null; reload: () => void;
   canEdit: boolean; activity: ActivityEntryDTO[]; notas: Record<string, string>;
   ordenes: OcEmitidaDTO[]; cambios: CambioProductoDTO[];
+  adjuntos: OcAdjuntoDTO[]; onAdjuntos: (todos: OcAdjuntoDTO[]) => void;
 }) {
   const grupos = groupByProveedor(lineas);
   // Sobre TODAS las líneas del proyecto, no las de la tarjeta: el grupo
@@ -1237,6 +1342,8 @@ function ProveedorGrid({ lineas, proyecto, oppId, reload, canEdit, activity, not
           canEdit={canEdit} activity={activity} cambios={porLinea} tamGrupo={tamGrupo}
           nota={g.proveedorId ? (notas[g.proveedorId] ?? '') : ''}
           ordenes={ordenes.filter(o => o.proveedor_id && o.proveedor_id === g.proveedorId)}
+          adjuntos={adjuntos.filter(a => a.proveedorId === g.proveedorId)}
+          onAdjuntos={onAdjuntos}
         />
       ))}
     </div>
@@ -1259,6 +1366,9 @@ export function ProyectoOrdenesSection({ state, oppId }: { state: ProyectoState;
   const [ordenes, setOrdenes] = useState<OcEmitidaDTO[]>([]);
   // Qué líneas se surtieron con otro producto — la marca visible de la tabla.
   const [cambios, setCambios] = useState<CambioProductoDTO[]>([]);
+  // Adjuntos PDF de todas las OC del proyecto, en una llamada — cada tarjeta
+  // filtra los de su proveedor (worker/lib/ocAdjuntos.ts).
+  const [adjuntos, setAdjuntos] = useState<OcAdjuntoDTO[]>([]);
   // `nonce` y no el largo de children: editar un costo no cambia el número de
   // líneas, y sin esto el reloj seguía mostrando "sin cambios" justo después
   // de guardar (visto en la prueba local 2026-08-18).
@@ -1272,6 +1382,7 @@ export function ProyectoOrdenesSection({ state, oppId }: { state: ProyectoState;
     getOcNotas(proyectoId).then(setNotas).catch(() => setNotas({}));
     listOcDeProyecto(proyectoId).then(setOrdenes).catch(() => setOrdenes([]));
     getCambiosProducto(proyectoId).then(setCambios).catch(() => setCambios([]));
+    listOcAdjuntos(proyectoId).then(setAdjuntos).catch(() => setAdjuntos([]));
   }, [proyectoId, canCompras, nonce]);
   const onChanged = () => { state.reload(); setNonce(n => n + 1); };
 
@@ -1301,7 +1412,7 @@ export function ProyectoOrdenesSection({ state, oppId }: { state: ProyectoState;
       </div>
       {canCompras ? (
         lineas.length > 0
-          ? <ProveedorGrid lineas={lineas} proyecto={p} oppId={oppId} reload={onChanged} canEdit activity={activity} notas={notas} ordenes={ordenes} cambios={cambios} />
+          ? <ProveedorGrid lineas={lineas} proyecto={p} oppId={oppId} reload={onChanged} canEdit activity={activity} notas={notas} ordenes={ordenes} cambios={cambios} adjuntos={adjuntos} onAdjuntos={setAdjuntos} />
           : (
             <div style={{ marginTop: 14, font: 'var(--text-label)', color: 'var(--ink-quiet)' }}>
               Aún no hay líneas en el proyecto — importa las tallas primero, o levanta una orden a mano con “+ Crear orden de compra”.

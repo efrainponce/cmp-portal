@@ -1,5 +1,32 @@
 # Log de commits
 
+## 2026-09-22 (2)
+
+- **Adjuntos PDF en las órdenes de compra** (Efraín: "poder agregar archivos
+  adjuntos tipo PDF a las órdenes de compra"). En la tarjeta de cada proveedor
+  del tab Órdenes de compra, debajo de las fotos, estrena **"Adjuntos de la
+  OC"** con **"+ PDF"**: ficha técnica, plano del bordado, cotización del
+  proveedor. Cada uno se abre en el visor del portal (igual que la OC) y se
+  descarga con su nombre; ✕ lo quita (quien lo subió o un admin).
+- **Viven por proyecto + proveedor** (`worker/lib/ocAdjuntos.ts`, tabla
+  `oc_adjunto` + R2 bajo `oc-adjuntos/…`), la misma llave que la nota al
+  proveedor: la OC ES la tarjeta del proveedor y un anexo del proveedor A no
+  sale en la orden del B. Nada toca Monday.
+- **No se pegan al PDF de la OC** — el escritor del portal solo escribe, no
+  parsea PDFs ajenos; anexarlos dentro sería un parser nuevo. Van al lado de
+  la orden, y la UI lo dice en el pie de la sección.
+- Solo PDF por la FIRMA de los bytes (`%PDF-`), tope de 10 MB y 10 por OC;
+  key de R2 único por fila (lección de las imágenes del 2026-08-25). Gate
+  Compras/Admin como el resto del tab; subir/quitar con scope `'own'`.
+  Rutas: `GET/POST /api/proyectos/:id/oc-adjuntos`,
+  `GET/DELETE …/oc-adjuntos/:adjuntoId` (`?download=1` = attachment).
+- Probado en local contra una copia del espejo con worker privado en :8799:
+  vendedor 403, query desconocida 400, "solo PDF" 400, proveedor inválido 400,
+  11 MB → 413, el 11º adjunto → 400 con mensaje, nombre con acentos y comillas
+  limpio en Content-Disposition, bytes idénticos al bajar, borrado por admin de
+  lo que subió otro, R2 sin huérfanos al final. UI a 1380 px y a 390 px.
+  Anclado en `worker/lib/ocAdjuntos.test.ts` (firma, nombre, id de proveedor).
+
 ## 2026-09-22
 
 - **Crear orden de compra: renglón en naranja si el producto es de otro proveedor**

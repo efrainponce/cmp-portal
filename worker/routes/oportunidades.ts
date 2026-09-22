@@ -8,7 +8,7 @@ import type { Identity } from '../../shared/types';
 import { BOARDS, type BoardSlug } from '../../shared/boards';
 import { isNativeId } from '../../shared/nativeId';
 import { stageAtOrAfter, stageKeyForLabel } from '../../shared/dealStages';
-import type { AjustarLineaRequest, AjustarLineaResponse, CotizacionVirtualDTO, DuplicarOportunidadRequest, DuplicarOportunidadResponse, DuplicarVersionResponse, ItemDetailDTO, QuoteVersionsResponse, TallaBoxInput, CapturarTallasResponse, CambiarProductoLineasRequest, CambiarProductoLineasResponse, CambiosProductoResponse, ProyectoImagenesResponse, EstadoHistorialResponse, ProductoResumenResponse, ProductoGeneroResponse, ProyectoOportunidadResponse } from '../../shared/dto';
+import type { AjustarLineaRequest, AjustarLineaResponse, CotizacionVirtualDTO, DuplicarOportunidadRequest, DuplicarOportunidadResponse, DuplicarVersionResponse, ItemDetailDTO, QuoteVersionsResponse, TallaBoxInput, CapturarTallasResponse, CambiarProductoLineasRequest, CambiarProductoLineasResponse, CambiosProductoResponse, ProyectoImagenesResponse, OcAdjuntosResponse, EstadoHistorialResponse, ProductoResumenResponse, ProductoGeneroResponse, ProyectoOportunidadResponse } from '../../shared/dto';
 import { MAX_TALLAS_POR_REQUEST } from '../../shared/dto';
 import type { ProposedProductsResponse, AddProposedProductResponse } from '../../shared/productosPropuestos';
 import { getItem, childrenOf, pendingItemIds, proyectoForOportunidad, linkedItemId, PROYECTO_OPP_REL } from '../lib/dal';
@@ -42,6 +42,9 @@ import {
   isSkuUsable, skuKey, OC_IMAGEN_MAX_BYTES, OcImagenError,
 } from '../lib/ocImagenes';
 import { listEstadoHistorial } from '../lib/estadoProducto';
+import {
+  listarAdjuntosProyecto, agregarAdjunto, leerAdjunto, borrarAdjunto, OcAdjuntoError, ADJUNTO_MAX_BYTES,
+} from '../lib/ocAdjuntos';
 import { recordDirectChanges } from '../lib/activityLog';
 import { listProductoResumen, upsertProductoResumen } from '../lib/productoResumen';
 import { listGeneroMF, setGeneroMF } from '../lib/productoGenero';
@@ -1726,6 +1729,86 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       return c.json({ ok: true });
     } catch (err) {
       if (err instanceof ProyectoImagenError) return jsonStatus({ ok: false, error: err.message }, err.status);
+      return errorInterno(c, err, { ok: false, error: 'internal error' });
+    }
+  });
+
+  // ── Adjuntos PDF de la OC de un proveedor (worker/lib/ocAdjuntos.ts) ──────
+  // Mismo gate que la nota al proveedor y las imágenes extra: el tab de OC es
+  // de Compras/Admin; leer = scope normal, subir/quitar = scope 'own'.
+  app.get('/api/proyectos/:id/oc-adjuntos', async c => {
+    const itemId = Number(c.req.param('id'));
+    if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
+    const bad = rejectUnknownQuery(c.req.url, []);
+    if (bad) return bad;
+    const viewer = c.get('viewer');
+    if (viewer.role !== 'compras' && viewer.role !== 'admin') return c.json({ error: 'forbidden' }, 403);
+    const row = await getItem(c.env, 'proyectos', itemId, viewer);
+    if (!row) return c.json({ error: 'not found' }, 404);
+    const response: OcAdjuntosResponse = { adjuntos: await listarAdjuntosProyecto(c.env, itemId) };
+    return c.json(response);
+  });
+
+  /** Cuerpo = los bytes crudos del PDF (mismo patrón que las imágenes); el
+   * tipo se decide por la firma de los bytes, no por el Content-Type. */
+  app.post('/api/proyectos/:id/oc-adjuntos', async c => {
+    const itemId = Number(c.req.param('id'));
+    if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
+    const bad = rejectUnknownQuery(c.req.url, ['proveedor', 'nombre']);
+    if (bad) return bad;
+    const viewer = c.get('viewer');
+    if (viewer.role !== 'compras' && viewer.role !== 'admin') return c.json({ error: 'forbidden' }, 403);
+    const row = await getItem(c.env, 'proyectos', itemId, viewer, 'own');
+    if (!row) return c.json({ error: 'not found' }, 404);
+    const buf = await c.req.arrayBuffer();
+    if (buf.byteLength > ADJUNTO_MAX_BYTES) return jsonStatus({ error: 'el archivo pasa de 10 MB' }, 413);
+    try {
+      const adjunto = await agregarAdjunto(
+        c.env, itemId, c.req.query('proveedor') ?? '', new Uint8Array(buf), c.req.query('nombre') ?? '', viewer.email);
+      return c.json({ adjunto });
+    } catch (err) {
+      if (err instanceof OcAdjuntoError) return jsonStatus({ error: err.message }, err.status);
+      return errorInterno(c, err, { error: 'internal error' });
+    }
+  });
+
+  app.get('/api/proyectos/:id/oc-adjuntos/:adjuntoId', async c => {
+    const itemId = Number(c.req.param('id'));
+    const adjuntoId = Number(c.req.param('adjuntoId'));
+    if (!Number.isFinite(itemId) || !Number.isFinite(adjuntoId)) return c.json({ error: 'not found' }, 404);
+    const bad = rejectUnknownQuery(c.req.url, ['download']);
+    if (bad) return bad;
+    const viewer = c.get('viewer');
+    if (viewer.role !== 'compras' && viewer.role !== 'admin') return c.json({ error: 'forbidden' }, 403);
+    const row = await getItem(c.env, 'proyectos', itemId, viewer);
+    if (!row) return c.json({ error: 'not found' }, 404);
+    const adj = await leerAdjunto(c.env, itemId, adjuntoId);
+    if (!adj) return jsonStatus({ error: 'sin archivo' }, 404);
+    const download = c.req.query('download') === '1';
+    return new Response(adj.bytes as BodyInit, {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Length': String(adj.bytes.length),
+        'Content-Disposition': contentDisposition(adj.nombre, download ? 'attachment' : 'inline'),
+        'Cache-Control': 'private, max-age=60',
+      },
+    });
+  });
+
+  app.delete('/api/proyectos/:id/oc-adjuntos/:adjuntoId', async c => {
+    const itemId = Number(c.req.param('id'));
+    const adjuntoId = Number(c.req.param('adjuntoId'));
+    if (!Number.isFinite(itemId) || !Number.isFinite(adjuntoId)) return c.json({ error: 'not found' }, 404);
+    const viewer = c.get('viewer');
+    if (viewer.role !== 'compras' && viewer.role !== 'admin') return c.json({ error: 'forbidden' }, 403);
+    const row = await getItem(c.env, 'proyectos', itemId, viewer, 'own');
+    if (!row) return c.json({ error: 'not found' }, 404);
+    try {
+      await borrarAdjunto(c.env, itemId, adjuntoId, viewer.email, viewer.role === 'admin');
+      return c.json({ ok: true });
+    } catch (err) {
+      if (err instanceof OcAdjuntoError) return jsonStatus({ ok: false, error: err.message }, err.status);
       return errorInterno(c, err, { ok: false, error: 'internal error' });
     }
   });

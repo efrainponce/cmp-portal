@@ -457,6 +457,24 @@ export interface ProyectoImagenesResponse {
   imagenes: ProyectoImagenDTO[];
 }
 
+// Archivos PDF adjuntos a la OC de UN proveedor dentro de UN proyecto
+// (worker/lib/ocAdjuntos.ts, Efraín 2026-09-22: "poder agregar archivos
+// adjuntos tipo PDF a las órdenes de compra"). Viven al lado de la OC, no
+// dentro del PDF: el escritor del portal no parsea PDFs ajenos.
+export interface OcAdjuntoDTO {
+  id: string;
+  /** Id del item del board Proveedores — misma llave que la nota al proveedor. */
+  proveedorId: string;
+  nombre: string;
+  bytes: number;
+  subidoPor: string;
+  subidoEn: string;
+}
+
+export interface OcAdjuntosResponse {
+  adjuntos: OcAdjuntoDTO[];
+}
+
 // GET /api/proyectos/:id/estado-historial — timeline de "Estado del producto" por
 // línea (tab Ejecución), worker/lib/estadoProducto.ts. changedBy null = cambio hecho
 // directo en Monday (webhook/reconcile), sin autor conocido del lado del portal.
