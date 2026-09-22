@@ -83,8 +83,17 @@ export interface CrearMuestraRequest extends MuestraSolicitudInput {
 
 export interface MuestraSolicitudDTO {
   id: string;
-  /** "MUE-12" — folio propio, del id de D1. */
+  /** "MUE-12" — folio del GRUPO (todas sus versiones lo comparten). */
   folio: string;
+  /** Versiones como en la cotización (Efraín, 2026-09-22): "+ Nueva versión"
+   * duplica una ya enviada como V{n+1} en borrador; la anterior queda
+   * archivada. `grupoId` = id de la V1. */
+  grupoId: string;
+  version: number;
+  /** Es la versión más nueva de su grupo. */
+  ultima: boolean;
+  /** Cuántas versiones tiene el grupo en total. */
+  versiones: number;
   padre: MuestraPadre;
   itemId: string;
   /** Nombre, folio, institución y vendedor del item ligado (del espejo). */
@@ -108,11 +117,32 @@ export interface MuestraSolicitudDTO {
   lineas: MuestraLineaDTO[];
   /** Puede editar/borrar/enviar: el item es suyo y sigue en borrador. */
   editable: boolean;
-  /** Puede mover el estado desde el board (Compras/admin y ya enviada). */
+  /** Puede mover el estado desde el board (Compras/admin; solo la versión
+   * enviada más nueva del grupo). */
   gestionable: boolean;
+  /** Puede sacar "+ Nueva versión": es suya, ya se envió y es la última. */
+  puedeNuevaVersion: boolean;
 }
 
-export const muestraFolio = (id: number | string) => `MUE-${id}`;
+export const muestraFolio = (grupoId: number | string) => `MUE-${grupoId}`;
+
+/** "MUE-3" o "MUE-3 V2" — la V1 de un grupo sin más versiones va sin sufijo. */
+export function muestraEtiqueta(s: Pick<MuestraSolicitudDTO, 'folio' | 'version' | 'versiones'>): string {
+  return s.versiones > 1 || s.version > 1 ? `${s.folio} V${s.version}` : s.folio;
+}
+
+/** De cada grupo, la versión que le toca ver a quien consulta: la más nueva
+ * que puede ver (un borrador solo lo ve quien lo puede enviar; Compras sigue
+ * viendo la enviada anterior mientras el vendedor arma la nueva). Pura. */
+export function versionVisiblePorGrupo<T extends { grupoId: string; version: number; estado: MuestraEstado; editable: boolean }>(filas: T[]): T[] {
+  const porGrupo = new Map<string, T>();
+  for (const f of filas) {
+    if (f.estado === 'borrador' && !f.editable) continue;
+    const actual = porGrupo.get(f.grupoId);
+    if (!actual || f.version > actual.version) porGrupo.set(f.grupoId, f);
+  }
+  return [...porGrupo.values()];
+}
 
 /** Topes: una solicitud es un puñado de piezas, no una cotización. */
 export const MUESTRA_MAX_LINEAS = 60;

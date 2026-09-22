@@ -990,11 +990,12 @@ CREATE TABLE IF NOT EXISTS muestra_solicitud (
   id INTEGER PRIMARY KEY AUTOINCREMENT, oportunidad_id INTEGER, proyecto_id INTEGER,
   estado TEXT NOT NULL DEFAULT 'borrador', fecha_entrega TEXT, dias_retorno INTEGER, notas TEXT,
   solicitante_email TEXT NOT NULL, solicitante_nombre TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, updated_by TEXT,
-  enviada_at TEXT, enviada_por TEXT,
+  enviada_at TEXT, enviada_por TEXT, grupo_id INTEGER, version INTEGER NOT NULL DEFAULT 1,
   CHECK ((oportunidad_id IS NULL) <> (proyecto_id IS NULL))
 );
 CREATE INDEX IF NOT EXISTS idx_muestra_oportunidad ON muestra_solicitud(oportunidad_id);
 CREATE INDEX IF NOT EXISTS idx_muestra_proyecto ON muestra_solicitud(proyecto_id);
+CREATE INDEX IF NOT EXISTS idx_muestra_grupo ON muestra_solicitud(grupo_id);
 CREATE TABLE IF NOT EXISTS muestra_linea (
   id INTEGER PRIMARY KEY AUTOINCREMENT, solicitud_id INTEGER NOT NULL, orden INTEGER NOT NULL,
   producto TEXT NOT NULL, producto_id INTEGER, sku TEXT, marca TEXT, color TEXT, talla TEXT,

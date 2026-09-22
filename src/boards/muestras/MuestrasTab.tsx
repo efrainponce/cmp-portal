@@ -2,11 +2,11 @@
 // 2026-09-21). Cada solicitud cuelga de UN item — el de este drawer — igual
 // que las órdenes de compra. Nativo en D1 (worker/lib/muestras.ts): nada de
 // esto va a Monday.
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getMuestrasDe } from '../../lib/muestrasApi';
 import { Button } from '../../components/core/Button';
 import { MuestraModal } from './MuestraModal';
-import { SolicitudCard } from './SolicitudCard';
+import { SolicitudGrupo } from './SolicitudCard';
 import type { MuestraPadre, MuestraSolicitudDTO } from '../../../shared/muestras';
 
 interface Props {
@@ -32,6 +32,12 @@ export function MuestrasTab({ padre, itemId, readOnly = false }: Props) {
   useEffect(() => { void cargar(); }, [cargar]);
 
   const editable = !readOnly && !!data?.editable;
+  // Una tarjeta por solicitud, con sus versiones adentro; la más reciente arriba.
+  const grupos = useMemo(() => {
+    const m = new Map<string, MuestraSolicitudDTO[]>();
+    for (const s of data?.solicitudes ?? []) m.set(s.grupoId, [...(m.get(s.grupoId) ?? []), s]);
+    return [...m.values()].sort((a, b) => Number(b[0].grupoId) - Number(a[0].grupoId));
+  }, [data]);
 
   return (
     <div style={{ padding: '24px clamp(12px, 3vw, 32px) 40px', width: '100%', maxWidth: 1100, boxSizing: 'border-box' }}>
@@ -56,8 +62,8 @@ export function MuestrasTab({ padre, itemId, readOnly = false }: Props) {
         </div>
       )}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {data?.solicitudes.map(s => (
-          <SolicitudCard key={s.id} s={{ ...s, editable: editable && s.editable }} onChanged={cargar} />
+        {grupos.map(vs => (
+          <SolicitudGrupo key={vs[0].grupoId} versiones={vs} readOnly={!editable} onChanged={cargar} />
         ))}
       </div>
 

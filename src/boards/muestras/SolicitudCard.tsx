@@ -6,10 +6,10 @@ import { StatusBadge, MonoTag } from '../../components/core/Badges';
 import { ActionMenu } from '../../components/core/ActionMenu';
 import { Button } from '../../components/core/Button';
 import { useIsMobile } from '../../lib/useIsMobile';
-import { borrarMuestra, cambiarEstadoMuestra, enviarMuestra } from '../../lib/muestrasApi';
+import { borrarMuestra, cambiarEstadoMuestra, enviarMuestra, nuevaVersionMuestra } from '../../lib/muestrasApi';
 import { MuestraModal } from './MuestraModal';
 import {
-  MUESTRA_ESTADOS_GESTION, MUESTRA_ESTADO_LABEL, retornoVencido,
+  MUESTRA_ESTADOS_GESTION, MUESTRA_ESTADO_LABEL, muestraEtiqueta, retornoVencido,
   type MuestraEstado, type MuestraSolicitudDTO,
 } from '../../../shared/muestras';
 
@@ -129,7 +129,7 @@ export function SolicitudCard({ s, onChanged }: { s: MuestraSolicitudDTO; onChan
   const piezas = s.lineas.reduce((n, l) => n + l.cantidad, 0);
 
   const enviar = async () => {
-    if (!window.confirm(`¿Enviar ${s.folio} a Compras?\n\nSe publica en Actualizaciones y a Compras le llega un aviso por WhatsApp. Ya enviada no se puede editar.`)) return;
+    if (!window.confirm(`¿Enviar ${muestraEtiqueta(s)} a Compras?\n\nSe publica en Actualizaciones y a Compras le llega un aviso por WhatsApp. Ya enviada no se puede editar.`)) return;
     setEnviando(true);
     const res = await enviarMuestra(s.id);
     setEnviando(false);
@@ -146,7 +146,7 @@ export function SolicitudCard({ s, onChanged }: { s: MuestraSolicitudDTO; onChan
   return (
     <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', background: 'var(--bg-raised)', overflow: 'hidden' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '10px 14px', background: 'var(--bg-sunken)', borderBottom: '1px solid var(--border)' }}>
-        <MonoTag style={{ padding: 0 }}>{s.folio}</MonoTag>
+        <MonoTag style={{ padding: 0 }}>{muestraEtiqueta(s)}</MonoTag>
         <EstadoMuestra key={s.estado} s={s} onChanged={onChanged} />
         <span style={{ font: 'var(--text-label)', color: 'var(--ink-secondary)' }}>
           {s.lineas.length} {s.lineas.length === 1 ? 'producto' : 'productos'} · {piezas} {piezas === 1 ? 'pieza' : 'piezas'}
@@ -164,7 +164,7 @@ export function SolicitudCard({ s, onChanged }: { s: MuestraSolicitudDTO; onChan
           <ActionMenu
             items={[
               { key: 'editar', label: 'Editar', onSelect: () => setEditando(true) },
-              { key: 'borrar', label: 'Borrar solicitud', danger: true, confirmLabel: `Sí, borrar ${s.folio}`, onSelect: borrar },
+              { key: 'borrar', label: 'Borrar solicitud', danger: true, confirmLabel: `Sí, borrar ${muestraEtiqueta(s)}`, onSelect: borrar },
             ]}
           />
         )}
@@ -174,6 +174,75 @@ export function SolicitudCard({ s, onChanged }: { s: MuestraSolicitudDTO; onChan
         <LineasMuestra s={s} />
       </div>
       {editando && <MuestraModal padre={s.padre} itemId={s.itemId} solicitud={s} onClose={() => setEditando(false)} onSaved={onChanged} />}
+    </div>
+  );
+}
+
+/** Una solicitud con todas sus versiones, como la cotización: chips V1/V2…
+ * (la más nueva resaltada), las anteriores en solo lectura, y "+ Nueva
+ * versión" junto a la última cuando ya se envió — duplica TAL CUAL en borrador
+ * para editarla y volverla a enviar (Efraín, 2026-09-22). */
+export function SolicitudGrupo({ versiones, readOnly, onChanged }: {
+  versiones: MuestraSolicitudDTO[]; readOnly: boolean; onChanged: () => void;
+}) {
+  const orden = [...versiones].sort((a, b) => a.version - b.version);
+  const ultima = orden[orden.length - 1];
+  const [elegida, setElegida] = useState<string | null>(null); // null = la última
+  const [creando, setCreando] = useState(false);
+  const vista = orden.find(v => v.id === elegida) ?? ultima;
+  const bloquear = (v: MuestraSolicitudDTO): MuestraSolicitudDTO =>
+    (readOnly ? { ...v, editable: false, puedeNuevaVersion: false } : v);
+  const puedeNueva = !readOnly && ultima.puedeNuevaVersion;
+
+  const nuevaVersion = async () => {
+    if (!window.confirm(`¿Crear V${ultima.version + 1} de ${ultima.folio}?\n\nSe copia tal cual ${muestraEtiqueta(ultima)} como borrador para que la edites y la vuelvas a enviar. La anterior queda archivada.`)) return;
+    setCreando(true);
+    const res = await nuevaVersionMuestra(ultima.id);
+    setCreando(false);
+    if (!res.ok) { window.alert(res.error ?? 'No se pudo crear la versión.'); return; }
+    setElegida(null);
+    onChanged();
+  };
+
+  const chip = (activa: boolean): React.CSSProperties => ({
+    cursor: 'pointer', font: 'var(--text-label-strong)', padding: '4px 12px', borderRadius: 'var(--radius-pill)',
+    background: activa ? 'var(--ink)' : 'var(--bg-sunken)', color: activa ? '#fff' : 'var(--ink-secondary)',
+  });
+
+  return (
+    <div>
+      {(orden.length > 1 || puedeNueva) && (
+        <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          {orden.map(v => (
+            <div
+              key={v.id}
+              onClick={() => setElegida(v.id === ultima.id ? null : v.id)}
+              title={v.id === ultima.id ? 'La más nueva' : `Archivada — ${MUESTRA_ESTADO_LABEL[v.estado]}`}
+              style={chip(v.id === vista.id)}
+            >
+              V{v.version}{v.id === ultima.id ? ' · vigente' : ''}
+            </div>
+          ))}
+          {puedeNueva && (
+            <div
+              onClick={creando ? undefined : nuevaVersion}
+              title="Duplica la solicitud como una nueva versión editable — la anterior queda archivada"
+              style={{
+                cursor: 'pointer', font: 'var(--text-label-strong)', padding: '4px 12px', borderRadius: 'var(--radius-pill)',
+                border: '1px dashed var(--border)', color: 'var(--accent)', background: 'transparent', opacity: creando ? .6 : 1,
+              }}
+            >
+              {creando ? 'Creando…' : '+ Nueva versión'}
+            </div>
+          )}
+        </div>
+      )}
+      {vista.id !== ultima.id && (
+        <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)', marginBottom: 6 }}>
+          Versión archivada — la vigente es V{ultima.version}.
+        </div>
+      )}
+      <SolicitudCard key={vista.id} s={bloquear(vista)} onChanged={onChanged} />
     </div>
   );
 }

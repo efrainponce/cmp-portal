@@ -42,5 +42,8 @@ export const cambiarEstadoMuestra = (id: string, estado: MuestraEstado) =>
 /** Borrador → enviada: publica la actualización en el item y avisa a Compras. */
 export const enviarMuestra = (id: string) =>
   mutate<Ok>(`/muestras/${id}/enviar`, { method: 'POST' }, 'enviar la solicitud');
+/** "+ Nueva versión": copia literal de una ya enviada, en borrador. */
+export const nuevaVersionMuestra = (id: string) =>
+  mutate<Ok & { id?: string }>(`/muestras/${id}/version`, { method: 'POST' }, 'crear la nueva versión');
 export const borrarMuestra = (id: string) =>
   mutate<Ok>(`/muestras/${id}`, { method: 'DELETE' }, 'borrar la solicitud');

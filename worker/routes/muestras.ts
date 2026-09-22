@@ -16,7 +16,7 @@ import { errorInterno } from '../lib/errores';
 import { esEstadoGestion, puedeGestionarMuestras, validarSolicitud, type MuestraPadre } from '../../shared/muestras';
 import type { MirrorItem } from '../../shared/types';
 import {
-  MuestraError, borrarMuestra, cambiarEstadoMuestra, crearMuestra, editarMuestra, enviarMuestra, listarMuestras, muestrasDeItem, padreDeMuestra,
+  MuestraError, borrarMuestra, cambiarEstadoMuestra, crearMuestra, editarMuestra, enviarMuestra, listarMuestras, muestrasDeItem, nuevaVersionMuestra, padreDeMuestra,
 } from '../lib/muestras';
 
 type Ctx = Context<{ Bindings: Env }>;
@@ -107,6 +107,18 @@ export function muestrasRoutes(app: Hono<{ Bindings: Env }>) {
       if (auth instanceof Response) return auth;
       await enviarMuestra(c.env, auth.id, auth.padre, auth.row, c.get('viewer'));
       return c.json({ ok: true });
+    } catch (err) {
+      return fail(c, err);
+    }
+  });
+
+  // "+ Nueva versión": duplica una ya enviada como borrador V{n+1}.
+  app.post('/api/muestras/:id/version', async c => {
+    try {
+      const auth = await autorizarMuestra(c, 'own');
+      if (auth instanceof Response) return auth;
+      const id = await nuevaVersionMuestra(c.env, auth.id, c.get('viewer'));
+      return c.json({ ok: true, id: String(id) });
     } catch (err) {
       return fail(c, err);
     }

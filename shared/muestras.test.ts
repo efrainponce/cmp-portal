@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fechaRetorno, retornoVencido, sumarDias, validarSolicitud } from './muestras';
+import { fechaRetorno, muestraEtiqueta, retornoVencido, sumarDias, validarSolicitud, versionVisiblePorGrupo } from './muestras';
 
 describe('fechas de retorno', () => {
   it('suma días sin recorrerse por zona horaria, cruzando mes y año', () => {
@@ -39,5 +39,26 @@ describe('validarSolicitud', () => {
     expect(validarSolicitud({ fechaEntrega: '14/09/2026', lineas: [linea] }).ok).toBe(false);
     expect(validarSolicitud({ diasRetorno: 2.5, lineas: [linea] }).ok).toBe(false);
     expect(validarSolicitud({ lineas: [{ ...linea, productoId: 'abc' }] }).ok).toBe(false);
+  });
+});
+
+describe('versiones', () => {
+  const v = (grupoId: string, version: number, estado: 'borrador' | 'enviada' | 'validada', editable = false) => ({ grupoId, version, estado, editable });
+
+  it('Compras sigue viendo la enviada mientras el vendedor arma la nueva', () => {
+    const filas = [v('3', 1, 'validada'), v('3', 2, 'borrador', false)];
+    expect(versionVisiblePorGrupo(filas)).toEqual([filas[0]]);
+  });
+  it('el vendedor ve su borrador nuevo; enviada la V2, todos ven la V2', () => {
+    expect(versionVisiblePorGrupo([v('3', 1, 'validada', false), v('3', 2, 'borrador', true)])[0].version).toBe(2);
+    expect(versionVisiblePorGrupo([v('3', 1, 'validada'), v('3', 2, 'enviada')])[0].version).toBe(2);
+  });
+  it('un renglón por grupo', () => {
+    expect(versionVisiblePorGrupo([v('3', 1, 'enviada'), v('4', 1, 'enviada'), v('3', 2, 'enviada')])).toHaveLength(2);
+  });
+  it('la etiqueta lleva la versión solo si hay más de una', () => {
+    expect(muestraEtiqueta({ folio: 'MUE-3', version: 1, versiones: 1 })).toBe('MUE-3');
+    expect(muestraEtiqueta({ folio: 'MUE-3', version: 1, versiones: 2 })).toBe('MUE-3 V1');
+    expect(muestraEtiqueta({ folio: 'MUE-3', version: 2, versiones: 2 })).toBe('MUE-3 V2');
   });
 });

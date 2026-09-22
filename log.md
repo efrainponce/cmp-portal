@@ -2,6 +2,19 @@
 
 ## 2026-09-22
 
+- **Muestras: versiones como la cotización** (Efraín: "si crea una y la
+  validan y necesita crear una segunda que se pueda hacer, así como las
+  versiones de cotización").
+  - Chips V1/V2… en la tarjeta del tab; "+ Nueva versión" junto a la vigente
+    (ya enviada) duplica TAL CUAL como V{n+1} en borrador para editarla y
+    volverla a enviar. Las anteriores quedan archivadas, en solo lectura, con
+    su estado.
+  - Folio compartido por el grupo (`MUE-3`, `MUE-3 V2`). Board: un renglón por
+    solicitud con la versión más nueva que le toca ver — Compras sigue viendo
+    la enviada mientras el vendedor arma la nueva (`versionVisiblePorGrupo`).
+    El estado solo se mueve en la versión enviada más nueva.
+  - El aviso a Compras y la actualización del item dicen la versión.
+
 - **Muestras: flujo de envío y estados** (Efraín: "simple: enviada, validada,
   muestra entregada… las solicitudes se mandan donde se crea la solicitud y es
   un botón, eso lanza una actualización y le manda a compras una notificación

@@ -14,7 +14,7 @@ import { useIsMobile } from '../../lib/useIsMobile';
 import { textIncludes } from '../../lib/textMatch';
 import { EstadoMuestra, FechasMuestra, LineasMuestra, fmtFecha, hoyISO } from './SolicitudCard';
 import {
-  MUESTRA_ESTADOS, MUESTRA_ESTADO_LABEL, retornoVencido, type MuestraSolicitudDTO,
+  MUESTRA_ESTADOS, MUESTRA_ESTADO_LABEL, muestraEtiqueta, retornoVencido, type MuestraSolicitudDTO,
 } from '../../../shared/muestras';
 
 const TODAS = '__todas__';
@@ -191,7 +191,7 @@ function Fila({ s, isMobile, abierta, onAbrir, onOpenItem, onChanged }: {
     return (
       <div id={`muestra-${s.id}`} style={{ padding: '12px 0', borderBottom: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 6 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>{chevron}<MonoTag style={{ padding: 0 }}>{s.folio}</MonoTag>{productos}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>{chevron}<MonoTag style={{ padding: 0 }}>{muestraEtiqueta(s)}</MonoTag>{productos}</div>
           <EstadoMuestra key={s.estado} s={s} onChanged={onChanged} gestionar />
         </div>
         {item}
@@ -207,7 +207,7 @@ function Fila({ s, isMobile, abierta, onAbrir, onOpenItem, onChanged }: {
     <div id={`muestra-${s.id}`} style={{ borderBottom: '1px solid var(--border)' }}>
       <div style={{ display: 'grid', gridTemplateColumns: GRID, gap: 12, alignItems: 'center', padding: '10px 0' }}>
         {chevron}
-        <MonoTag style={{ padding: 0 }}>{s.folio}</MonoTag>
+        <MonoTag style={{ padding: 0 }}>{muestraEtiqueta(s)}</MonoTag>
         <div style={{ minWidth: 0 }}><EstadoMuestra key={s.estado} s={s} onChanged={onChanged} gestionar /></div>
         {item}
         {texto(s.institucion)}
