@@ -59,6 +59,19 @@
 
 ## 2026-09-22
 
+- **Compras mueve la etapa de sus oportunidades** (Efraín: "deja a los de
+  compras MOVER de estatus sus oportunidades"). El chip de etapa del drawer
+  (`EtapaAdminSelect`) ahora es control para admin y Compras, solo sobre lo
+  propio (`!ajena`); el server ya lo aceptaba (`deal_stage` `w: V`, scope 'own').
+
+- **Nueva versión / Restaurar versión se mandan a costeo solas** (Lili creó V2
+  desde el board Costeo, ahí no aparecía "Mandar a costeo" y la versión se quedó
+  sin ir a costeo). Tras duplicar/restaurar, el drawer llama el mismo
+  `enviar-costeo` del botón (PDF de solicitud + etapa "En costeo"). Si la etapa
+  lo bloquea (en costeo, validación, cerrada) solo se crea la versión; si falta
+  algo, el aviso lo lista. "Mandar a costeo" ahora también aparece en el board
+  Costeo cuando hay líneas pendientes, para reintentar.
+
 - **Muestras: el aviso ya no cae a todo Compras cuando el responsable es quien
   envía** (MUE-1 de prueba de Efraín, Responsable compras de su propia
   oportunidad: se excluyó como actor, la lista quedó vacía y el respaldo le
