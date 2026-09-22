@@ -1365,7 +1365,7 @@ export async function getInventarioCotizacion(oppId: string): Promise<Inventario
  * El nombre del archivo viene del Content-Disposition del worker. */
 export async function inventarioCotizacionPdf(
   oppId: string,
-  productos: { productoId: string; productoNombre: string }[],
+  productos: { productoId: string; productoNombre: string; color: string; colorGuardado?: string }[],
 ): Promise<{ blob: Blob; filename: string }> {
   const res = await apiFetch(`/oportunidades/${oppId}/inventario-cotizacion/pdf`, {
     method: 'POST',
@@ -1384,12 +1384,14 @@ export async function inventarioCotizacionPdf(
 
 export async function saveInventarioCotizacion(
   oppId: string,
-  producto: { productoId: string; productoNombre: string; comentarios: string; agregadoManualmente: boolean },
+  producto: { productoId: string; productoNombre: string; color: string; colorGuardado?: string; comentarios: string; agregadoManualmente: boolean },
   files?: { mexico?: File; usa?: File },
 ): Promise<{ ok: boolean; producto?: InventarioCotizacionProductoDTO; error?: string }> {
   const form = new FormData();
   form.append('productoId', producto.productoId);
   form.append('productoNombre', producto.productoNombre);
+  form.append('color', producto.color);
+  if (producto.colorGuardado !== undefined) form.append('colorGuardado', producto.colorGuardado);
   form.append('comentarios', producto.comentarios);
   form.append('agregadoManualmente', String(producto.agregadoManualmente));
   if (files?.mexico) form.append('mexico', files.mexico);

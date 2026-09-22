@@ -1019,6 +1019,8 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       const producto = await saveInventarioCotizacion(c.env, itemId, c.get('viewer'), {
         productoId: String(form.get('productoId') ?? ''),
         productoNombre: String(form.get('productoNombre') ?? ''),
+        color: String(form.get('color') ?? ''),
+        colorGuardado: form.has('colorGuardado') ? String(form.get('colorGuardado')) : undefined,
         comentarios: String(form.get('comentarios') ?? ''),
         agregadoManualmente: form.get('agregadoManualmente') === 'true',
         mexico: mexico instanceof File ? mexico : undefined,
@@ -1039,8 +1041,13 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     const body = await c.req.json<{ productos?: unknown }>().catch(() => ({ productos: undefined }));
     if (!Array.isArray(body.productos)) return jsonStatus({ error: 'productos requerido' }, 400);
     const productos = body.productos
-      .filter((p): p is { productoId: unknown; productoNombre: unknown } => !!p && typeof p === 'object')
-      .map(p => ({ productoId: String(p.productoId ?? '').trim(), productoNombre: String(p.productoNombre ?? '').trim().slice(0, 200) }))
+      .filter((p): p is { productoId: unknown; productoNombre: unknown; color: unknown; colorGuardado: unknown } => !!p && typeof p === 'object')
+      .map(p => ({
+        productoId: String(p.productoId ?? '').trim(),
+        productoNombre: String(p.productoNombre ?? '').trim().slice(0, 200),
+        color: String(p.color ?? ''),
+        colorGuardado: typeof p.colorGuardado === 'string' ? p.colorGuardado : undefined,
+      }))
       .filter(p => p.productoId);
     try {
       const { bytes, oppName } = await inventarioCotizacionPdf(c.env, itemId, c.get('viewer'), productos);

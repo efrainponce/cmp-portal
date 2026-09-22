@@ -1,5 +1,25 @@
 # Log de commits
 
+## 2026-09-22 (7)
+
+- **Inventario 5.11: una tarjeta por producto Y color** (Lili, OPP 1075: el
+  72175 en BLACK y en STORM salía como una sola tarjeta con una sola foto, y
+  son dos inventarios). La captura vive ahora en `inventario_511` con llave
+  (oportunidad, producto, color); la tabla vieja se copia una sola vez como
+  "sin color" y se queda de respaldo. Lo capturado antes del color lo muestra
+  el primer color del producto y se le asigna al guardar esa tarjeta. El PDF
+  titula cada hoja con su color.
+- **Pegar la captura** (Lili: "¿se puede copy/paste la imagen?"): clic en el
+  recuadro de MEX o USA y ⌘V/Ctrl+V — la captura de pantalla va directo del
+  portapapeles, sin guardar archivo. También se puede arrastrar. Con foto, el
+  clic sigue abriendo el visor; "Cambiar imagen" arma el recuadro para pegar
+  la nueva. En celular sigue siendo "Subir imagen".
+- **Buscador en "Agregar producto 5.11"** (Lili: "sería más fácil escribir el
+  código… no tiene orden"): el `<select>` sin orden se cambió por el
+  `ProductPicker` de la cotización (código o nombre, en cualquier orden) sobre
+  TODO el catálogo 5.11 — antes escondía los que ya estaban en la cotización,
+  justo cuando se quería agregar otro color — más un campo de color opcional.
+
 ## 2026-09-22 (6)
 
 - **Tab Inventario 5.11 más compacto** (Efraín: "se ve demasiado grande
