@@ -286,10 +286,30 @@ describe('nombre del item — renombrable desde el drawer (Efraín, 2026-08-13)'
 
   it('el resto de los boards siguen con el nombre de solo lectura', () => {
     for (const slug of ['oportunidades_sub', 'proyectos_sub', 'productos',
-      'instituciones', 'contactos', 'proveedores'] as BoardSlug[]) {
+      'instituciones', 'contactos'] as BoardSlug[]) {
       for (const role of ROLES) {
         expect(canWrite(slug, 'name', role), `${slug}/${role}`).toBe(false);
       }
+    }
+  });
+
+  // Salida de Monday (2026-09-21): Compras y admin mantienen el catálogo de
+  // Proveedores completo desde el portal. El vendedor sigue sin tocarlo — ni
+  // leerlo ("ventas cero proveedores").
+  it('proveedores: compras y admin escriben todo, ventas y almacén nada', () => {
+    for (const col of Object.keys(VISIBILITY.proveedores)) {
+      expect(canWrite('proveedores', col, 'compras'), col).toBe(true);
+      expect(canWrite('proveedores', col, 'admin'), col).toBe(true);
+      expect(canWrite('proveedores', col, 'vendedor'), col).toBe(false);
+      expect(canWrite('proveedores', col, 'almacen'), col).toBe(false);
+      expect(canRead('proveedores', col, 'vendedor'), col).toBe(false);
+    }
+  });
+
+  it('llegada y entrega de la línea del Proyecto: solo compras y admin', () => {
+    for (const col of ['color_mm6b7zad', 'date_mm6b3gxe', 'date_mm6br6j2', 'file_mm6bsjm5']) {
+      expect(canWrite('proyectos_sub', col, 'compras'), col).toBe(true);
+      expect(canRead('proyectos_sub', col, 'vendedor'), col).toBe(false);
     }
   });
 });

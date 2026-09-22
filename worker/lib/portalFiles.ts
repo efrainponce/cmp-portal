@@ -55,6 +55,7 @@ export const PROYECTO_FILE_COLS: Record<string, string> = {
 export const LOGISTICA_FILE_COLS: Record<string, string> = {
   'guia-empresa': 'file_mm4pz90b',
   'evidencia-recoleccion': 'file_mm4pc4tj',
+  'flete-extra-final': 'file_mm6bsjm5',   // 2026-09-21, salida de Monday
 };
 
 /** Categorías válidas de un key `oportunidades/{oppId}/{categoria}/…`. */

@@ -39,6 +39,13 @@ const S_GUIA_CLIENTE_FILE = 'file_mm4pz90b';  // "Guia EMB o Cliente Final"
 const S_EVIDENCIA = 'file_mm4pc4tj';        // "Evidencia recolección"
 const S_CONFIRMAR = 'boolean_mm4p7eqb';
 const S_FECHA_RECOLECCION = 'date_mm4p59q2';  // "Fecha Recolección" (era "Fecha confirmacion")
+// Llegada y entrega (2026-09-21, salida de Monday): las cuatro columnas que
+// Compras seguía capturando en Monday porque este tab no las tenía.
+const S_ALMACEN = 'color_mm6b7zad';           // "ALMACEN 5.11" (status)
+const S_FECHA_LLEGADA = 'date_mm6b3gxe';      // "Fecha de Llegada"
+const S_FECHA_ENTREGA_CLIENTE = 'date_mm6br6j2'; // "Fecha Entrega Cliente"
+const S_FLETE_EXTRA = 'file_mm6bsjm5';        // "Flete Extra Final"
+const ALMACEN_OPCIONES = ['MEXICO', 'USA', 'USA Y MX', 'OTROS'];
 
 const fieldBtnStyle = { padding: '6px 14px', font: 'var(--text-label)' } as const;
 
@@ -196,13 +203,13 @@ function CheckboxField({ label, checked, rowId, onSaved }: { label: string; chec
   );
 }
 
-function DateField({ label, value, rowId, onSaved }: { label: string; value: string; rowId: string; onSaved: () => void }) {
+function DateField({ label, value, rowId, colId = S_FECHA_RECOLECCION, onSaved }: { label: string; value: string; rowId: string; colId?: string; onSaved: () => void }) {
   const [saving, setSaving] = useState(false);
   const save = async (raw: string) => {
     if (raw === value) return;
     setSaving(true);
     try {
-      await patchItem('proyectos_sub', rowId, { [S_FECHA_RECOLECCION]: raw });
+      await patchItem('proyectos_sub', rowId, { [colId]: raw });
       onSaved();
     } finally {
       setSaving(false);
@@ -223,11 +230,35 @@ function DateField({ label, value, rowId, onSaved }: { label: string; value: str
   );
 }
 
+/** Status de una sola elección que se guarda al cambiar (mismo criterio que
+ * DateField: un control atómico no necesita confirmar/cancelar). */
+function StatusField({ label, value, colId, rowId, opciones, onSaved }: {
+  label: string; value: string; colId: string; rowId: string; opciones: string[]; onSaved: () => void;
+}) {
+  const [saving, setSaving] = useState(false);
+  const save = async (raw: string) => {
+    if (raw === value) return;
+    setSaving(true);
+    try {
+      await patchItem('proyectos_sub', rowId, { [colId]: raw });
+      onSaved();
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <div>
+      <div style={{ font: 'var(--text-caption-strong)', color: 'var(--ink-tertiary)', marginBottom: 2 }}>{label}</div>
+      <Select value={value} onChange={(v) => void save(v)} options={opciones.map((o) => ({ value: o, label: o }))} placeholder={saving ? 'Guardando…' : 'Elegir…'} />
+    </div>
+  );
+}
+
 /** # Guia - empresa / Evidencia recolección — mismo dropzone real que
  * OcContratoSection (DocumentacionTab.tsx), apuntando al endpoint nuevo
  * POST /api/proyectos_sub/:id/logistica/:field (worker/routes/oportunidades.ts). */
 function FileField({ label, field, colId, row, oppId, onSaved }: {
-  label: string; field: 'guia-empresa' | 'evidencia-recoleccion'; colId: string;
+  label: string; field: 'guia-empresa' | 'evidencia-recoleccion' | 'flete-extra-final'; colId: string;
   row: ItemDTO; oppId: string | null; onSaved: () => void;
 }) {
   const [uploading, setUploading] = useState(false);
@@ -332,6 +363,10 @@ function LogisticaLineaRow({ row, canEdit, oppId, expanded, onToggleExpand, open
           </div>
           <FileField label="Guía EMB o Cliente Final" field="guia-empresa" colId={S_GUIA_CLIENTE_FILE} row={row} oppId={oppId} onSaved={onChanged} />
           <FileField label="Evidencia recolección" field="evidencia-recoleccion" colId={S_EVIDENCIA} row={row} oppId={oppId} onSaved={onChanged} />
+          <StatusField label="Almacén 5.11" value={row.cols[S_ALMACEN]?.text || ''} colId={S_ALMACEN} rowId={row.id} opciones={ALMACEN_OPCIONES} onSaved={onChanged} />
+          <DateField label="Fecha de Llegada" value={row.cols[S_FECHA_LLEGADA]?.text || ''} rowId={row.id} colId={S_FECHA_LLEGADA} onSaved={onChanged} />
+          <DateField label="Fecha Entrega Cliente" value={row.cols[S_FECHA_ENTREGA_CLIENTE]?.text || ''} rowId={row.id} colId={S_FECHA_ENTREGA_CLIENTE} onSaved={onChanged} />
+          <FileField label="Flete Extra Final" field="flete-extra-final" colId={S_FLETE_EXTRA} row={row} oppId={oppId} onSaved={onChanged} />
         </div>
       )}
     </div>

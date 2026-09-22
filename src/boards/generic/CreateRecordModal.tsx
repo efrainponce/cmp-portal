@@ -29,7 +29,7 @@ export interface RecordCreado {
 }
 
 interface Props {
-  slug: 'instituciones' | 'contactos';
+  slug: 'instituciones' | 'contactos' | 'proveedores';
   title: string;
   onClose: () => void;
   // El quick-create de Institución (abajo) y el alta desde "Nueva oportunidad"

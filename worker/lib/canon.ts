@@ -104,6 +104,9 @@ export function canonValue(type: string, colVal: ReadColVal | string): string {
     // (canonCols already holds '1'/'' by then) — must accept BOTH 'true' and '1' as
     // checked, or the second pass collapses '1' to '' and content_hash is wrong.
     if (type === 'checkbox') { const t = colVal.trim(); return t === 'true' || t === '1' ? '1' : ''; }
+    // phone viaja como "CC:número" (FormField + columnEncode.ts) y Monday
+    // devuelve solo los dígitos: se compara por dígitos en los dos lados.
+    if (type === 'phone') return colVal.slice(colVal.indexOf(':') + 1).replace(/\D/g, '');
     return numeric ? numStr(colVal) : scalar(colVal).trim();
   }
   if (numeric) {
@@ -116,6 +119,14 @@ export function canonValue(type: string, colVal: ReadColVal | string): string {
     return [...ids].sort().join(',');
   }
   if (type === 'checkbox') return colVal.text ? '1' : '';
+  if (type === 'phone') return (colVal.text ?? '').replace(/\D/g, '');
+  if (type === 'link') {
+    // Al escribir va la URL pelona; Monday devuelve text "etiqueta - url" y la
+    // URL sola en value.url — sin esto todo write a un link quedaba en conflicto.
+    const parsed = colVal.value ? tryParseJSON(colVal.value) : null;
+    const url = (parsed as { url?: unknown } | null)?.url;
+    return typeof url === 'string' ? url.trim() : scalar(colVal.text ?? '').trim();
+  }
   return scalar(colVal.text ?? '').trim();
 }
 

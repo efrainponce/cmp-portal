@@ -36,6 +36,10 @@ export function encodeColumnValue(type: string, raw: string): unknown {
       if (number === '') return '';
       return { phone: number, countryShortName: country || 'MX' };
     }
+    case 'link':
+      // Monday quiere {url, text}; sin `text` la celda se pinta vacía aunque
+      // guarde la URL. El portal no captura etiqueta: se usa la propia URL.
+      return { url: value, text: value };
     case 'people':
       return { personsAndTeams: [{ id: Number(value), kind: 'person' }] };
     case 'status':

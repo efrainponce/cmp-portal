@@ -46,6 +46,19 @@ describe('canonValue — equivalencia write ↔ read (contrato del echo)', () =>
     expect(canonValue('numbers', '99.5')).toBe('99.5');
   });
 
+  it('link: URL al escribir vs {url,text} al leer', () => {
+    const w = canonValue('link', 'https://proveedor.mx');
+    const r = canonValue('link', {
+      text: 'https://proveedor.mx - https://proveedor.mx',
+      value: JSON.stringify({ url: 'https://proveedor.mx', text: 'https://proveedor.mx' }),
+    });
+    expect(w).toBe(r);
+  });
+
+  it('phone: "CC:número" al escribir vs solo dígitos al leer', () => {
+    expect(canonValue('phone', 'MX:999 123 4567')).toBe(canonValue('phone', { text: '9991234567', value: null }));
+  });
+
   it('board_relation: id suelto al escribir vs linked_item_ids al leer', () => {
     const escrito = canonValue('board_relation', '12345');
     const leido = canonValue('board_relation', {
