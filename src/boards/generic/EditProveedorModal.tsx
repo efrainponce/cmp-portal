@@ -6,6 +6,7 @@
 // Guardar — son varios campos de texto, no un picker que guarda al clic.
 import { useEffect, useRef, useState } from 'react';
 import { Modal } from '../../components/core/Modal';
+import { confirmarCierre } from '../../components/core/confirmarCierre';
 import { Button } from '../../components/core/Button';
 import { FormField } from '../../components/forms/FormField';
 import {
@@ -89,13 +90,16 @@ export function EditProveedorModal({ proveedor, onClose, onSaved }: Props) {
 
   const label = { font: 'var(--text-label-strong)', color: 'var(--ink-secondary)', marginBottom: 6 } as const;
 
+  const cerrar = confirmarCierre(onClose, { saving: !!saving, pedir: hayCambios, mensaje: '¿Cerrar sin guardar los cambios del proveedor?' });
+
   return (
     <Modal
       title={proveedor.name}
-      onClose={onClose}
+      onClose={cerrar}
+      closeOnBackdrop={false}
       footer={
         <>
-          <Button variant="secondary" onClick={onClose}>Cerrar</Button>
+          <Button variant="secondary" onClick={cerrar}>Cerrar</Button>
           <Button variant={saving || !hayCambios ? 'disabled' : 'primary'} onClick={saving || !hayCambios ? undefined : guardar}>
             {saving === 'datos' ? 'Guardando…' : 'Guardar'}
           </Button>

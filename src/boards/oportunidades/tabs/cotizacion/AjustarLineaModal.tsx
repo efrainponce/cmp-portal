@@ -8,6 +8,7 @@ import type { CostoDivergenciaDTO, ItemDTO, QuoteVersionDTO } from '../../../../
 import { ajustarLinea } from '../../../../lib/apiClient';
 import { Button } from '../../../../components/core/Button';
 import { Modal } from '../../../../components/core/Modal';
+import { confirmarCierre } from '../../../../components/core/confirmarCierre';
 import { ProductPicker, type ProductoChoice } from '../../../../components/forms/ProductPicker';
 import { displayProducto, COLOR_COL, EMB_STATUS_COL, EMB_LABEL_CON, EMB_LABEL_SIN } from './gridMeta';
 import { COL } from '../../../../lib/costeoCalc';
@@ -123,14 +124,17 @@ export function AjustarLineaModal({
     }
   };
 
+  const cerrar = confirmarCierre(onClose, { saving });
+
   return (
     <Modal
       title="Ajustar línea"
-      onClose={onClose}
+      onClose={cerrar}
+      closeOnBackdrop={false}
       width={440}
       footer={(
         <>
-          <Button variant="secondary" onClick={saving ? undefined : onClose}>Cancelar</Button>
+          <Button variant="secondary" onClick={cerrar}>Cancelar</Button>
           <Button
             variant={saving || !cantidadValida ? 'disabled' : (modo === 'eliminar' ? 'danger' : 'primary')}
             onClick={saving ? undefined : onSubmit}

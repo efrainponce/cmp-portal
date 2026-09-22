@@ -9,6 +9,7 @@ import type { CostoDivergenciaDTO, ItemDTO, QuoteLineSnapshot } from '../../lib/
 import { ajustarLineaVirtual } from '../../lib/apiClient';
 import { Button } from '../../components/core/Button';
 import { Modal } from '../../components/core/Modal';
+import { confirmarCierre } from '../../components/core/confirmarCierre';
 import { ProductPicker, type ProductoChoice } from '../../components/forms/ProductPicker';
 
 const EMB_LABEL_CON = 'Con Embellecimiento';
@@ -108,14 +109,17 @@ export function AjustarLineaVirtualModal({
     }
   };
 
+  const cerrar = confirmarCierre(onClose, { saving });
+
   return (
     <Modal
       title="Ajustar línea"
-      onClose={onClose}
+      onClose={cerrar}
+      closeOnBackdrop={false}
       width={440}
       footer={(
         <>
-          <Button variant="secondary" onClick={saving ? undefined : onClose}>Cancelar</Button>
+          <Button variant="secondary" onClick={cerrar}>Cancelar</Button>
           <Button variant={saving || !cantidadValida ? 'disabled' : 'primary'} onClick={saving ? undefined : onSubmit}>
             {saving ? 'Guardando…' : 'Guardar'}
           </Button>

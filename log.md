@@ -58,6 +58,29 @@
     en remoto hay que correr `worker/migrations/2026-09-21-muestras.sql` para
     que aparezca en el menú (las tablas se crean solas).
 
+- **Formularios largos: tampoco se cierran con un clic fuera** (Efraín: "checa
+  los formularios largos para también hacerlo… estoy pensando en proveedores").
+  Helper `confirmarCierre` (`src/components/core/confirmarCierre.ts`) +
+  `closeOnBackdrop={false}`; Cancelar, la ✕ y Escape preguntan antes de cerrar.
+  Aplica a: alta de proveedor/institución/contacto (`CreateRecordModal`),
+  editar proveedor (solo si hay cambios sin guardar), nueva oportunidad, nuevo
+  proyecto, agregar línea manual, ajustar línea (cotización y Proyecto),
+  nuevo/editar anuncio y agregar usuario. `CrearOcModal` pasa al mismo helper.
+  Los modales de ver/elegir (historial, vista previa, pickers) no cambian.
+
+- **Crear orden de compra: un clic fuera ya no cierra el modal** (Efraín: "no
+  puedes cerrar la modal haciendo click en otro lado… tienes que dar click en
+  cancelar o cerrar y pide confirmación"). `Modal` gana `closeOnBackdrop`
+  (default true, los demás modales igual); `CrearOcModal` lo apaga y Cancelar,
+  la ✕ y Escape siempre preguntan antes de cerrar (antes solo si había captura).
+
+- **Crear orden de compra: renglón en naranja si el producto es de otro proveedor**
+  (Efraín: "pon en naranja cuando un producto no pertenece al mismo proveedor").
+  - Al elegir un producto del catálogo (o del caché `oc_concepto`) el renglón
+    recuerda su proveedor; si no es el de la orden, el renglón se pinta naranja
+    con "En el catálogo este producto es de X, no de Y". Teclear otro producto a
+    mano quita la marca. Elegir del catálogo sin proveedor puesto ya lo pone.
+
 - **Exportar a Excel escondido para todos** (Efraín: "por lo pronto que no lo
   pueda hacer nadie"). `EXPORT_HABILITADO = false` en `ExportExcelButton.tsx`;
   las listas siguen cableadas para prenderlo con un solo cambio.
@@ -175,7 +198,11 @@
     PDF" (que se muda ahí desde Ejecución). La lógica de agrupado se movió a
     `shared/estatusProyecto.ts` para que tab y PDF calculen exactamente lo
     mismo. Está en el drawer de Proyectos (todos los accesos) y en el de la
-    Oportunidad (desde Esperando OC).
+    Oportunidad (desde Esperando OC). Con miniatura de 36 px del producto
+    (Efraín: "un thumbnail chico… la más pequeña"): es la misma foto por SKU
+    de la OC con imágenes servida por `/api/oc-imagenes` y encogida en
+    pantalla — Airtable solo tiene small (36 px, ilegible)/large/full y no
+    vale guardar una variante; el navegador la cachea 60 s.
   - **Tabs reordenadas** (Efraín): "Actualizaciones, Resumen | Cotización,
     Costeo, Embellecimientos | Documentación, Tallas, Órdenes de compra,
     Ejecución, Logística". Actividad (que no mencionó) cierra el grupo de en

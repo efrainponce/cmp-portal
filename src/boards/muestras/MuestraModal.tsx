@@ -117,6 +117,7 @@ export function MuestraModal({ padre, itemId, solicitud, onClose, onSaved }: Pro
       title={solicitud ? `Editar solicitud ${solicitud.folio}` : 'Nueva solicitud de muestras'}
       onClose={cerrar}
       width={1080}
+      closeOnBackdrop={false}
       footer={
         <>
           <span style={{ marginRight: 'auto', font: 'var(--text-label)', color: 'var(--ink-secondary)' }}>

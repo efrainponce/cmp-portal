@@ -10,6 +10,7 @@
 // oportunidad (ver shared/createFields.ts).
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Modal } from '../../components/core/Modal';
+import { confirmarCierre } from '../../components/core/confirmarCierre';
 import { Button } from '../../components/core/Button';
 import { SearchableSelect, type SearchableOption } from '../../components/forms/SearchableSelect';
 import { useMe } from '../../lib/useMe';
@@ -142,13 +143,16 @@ export default function CrearProyectoModal({
     }
   };
 
+  const cerrar = confirmarCierre(onClose, { saving, mensaje: '¿Cerrar sin crear el proyecto? Se pierde lo que capturaste.' });
+
   return (
     <Modal
       title="Nuevo proyecto"
-      onClose={onClose}
+      onClose={cerrar}
+      closeOnBackdrop={false}
       footer={
         <>
-          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button variant="secondary" onClick={cerrar}>Cancelar</Button>
           <Button variant="primary" onClick={saving ? undefined : onSubmit}>{saving ? 'Creando…' : 'Crear proyecto'}</Button>
         </>
       }
