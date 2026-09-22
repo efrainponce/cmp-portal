@@ -14,6 +14,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { Modal } from '../../components/core/Modal';
+import { confirmarCierre } from '../../components/core/confirmarCierre';
 import { Button } from '../../components/core/Button';
 import { MonoTag } from '../../components/core/Badges';
 import { SearchInput } from '../../components/forms/SearchInput';
@@ -126,13 +127,11 @@ export function CrearOcModal({ proyectoId, onClose, onCreated }: Props) {
   // Cerrar pide confirmación (Efraín, 2026-09-21/22): un clic fuera del modal
   // ya no lo cierra (closeOnBackdrop=false) — solo Cancelar, la ✕ o Escape, y
   // los tres preguntan antes de tirar lo capturado.
-  const cerrar = () => {
-    if (saving) return; // a medio guardar no se cierra
-    const hayCaptura = llenos.length > 0 || proveedor !== null;
-    const msg = hayCaptura ? '¿Cerrar sin crear la orden? Se pierde lo que capturaste.' : '¿Cerrar sin crear la orden?';
-    if (!window.confirm(msg)) return;
-    onClose();
-  };
+  const hayCaptura = llenos.length > 0 || proveedor !== null;
+  const cerrar = confirmarCierre(onClose, {
+    saving,
+    mensaje: hayCaptura ? '¿Cerrar sin crear la orden? Se pierde lo que capturaste.' : '¿Cerrar sin crear la orden?',
+  });
 
   const submit = async () => {
     if (!proveedor) { setError('Elige el proveedor de la orden.'); return; }
@@ -185,7 +184,7 @@ export function CrearOcModal({ proyectoId, onClose, onCreated }: Props) {
               ? `${llenos.length} ${llenos.length === 1 ? 'línea' : 'líneas'} · subtotal ${fmtMoney(subtotal)} ${moneda}`
               : '')}
           </span>
-          <Button variant="ghost" onClick={saving ? undefined : cerrar}>Cancelar</Button>
+          <Button variant="ghost" onClick={cerrar}>Cancelar</Button>
           <Button variant="primary" onClick={saving ? undefined : submit} style={saving ? { opacity: .6 } : undefined}>
             {saving ? 'Guardando…' : 'Crear orden'}
           </Button>

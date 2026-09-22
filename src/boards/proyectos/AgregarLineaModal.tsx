@@ -13,6 +13,7 @@
 import { useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import { Modal } from '../../components/core/Modal';
+import { confirmarCierre } from '../../components/core/confirmarCierre';
 import { Button } from '../../components/core/Button';
 import { SearchInput } from '../../components/forms/SearchInput';
 import { usePoll, addProyectoLinea, SOLO_NOMBRE } from '../../lib/api';
@@ -70,14 +71,17 @@ export function AgregarLineaModal({ proyectoId, proveedorInicial, onClose, onCre
     onClose();
   };
 
+  const cerrar = confirmarCierre(onClose, { saving, mensaje: '¿Cerrar sin agregar la línea? Se pierde lo que capturaste.' });
+
   return (
     <Modal
       title={proveedorInicial ? `Agregar línea — ${proveedorInicial.name}` : 'Agregar línea manual'}
-      onClose={onClose}
+      onClose={cerrar}
+      closeOnBackdrop={false}
       width={480}
       footer={
         <>
-          <Button variant="ghost" onClick={saving ? undefined : onClose}>Cancelar</Button>
+          <Button variant="ghost" onClick={cerrar}>Cancelar</Button>
           <Button variant="primary" onClick={saving ? undefined : submit} style={saving ? { opacity: .6 } : undefined}>
             {saving ? 'Guardando…' : 'Agregar línea'}
           </Button>

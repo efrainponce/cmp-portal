@@ -2,6 +2,16 @@
 
 ## 2026-09-22
 
+- **Formularios largos: tampoco se cierran con un clic fuera** (Efraín: "checa
+  los formularios largos para también hacerlo… estoy pensando en proveedores").
+  Helper `confirmarCierre` (`src/components/core/confirmarCierre.ts`) +
+  `closeOnBackdrop={false}`; Cancelar, la ✕ y Escape preguntan antes de cerrar.
+  Aplica a: alta de proveedor/institución/contacto (`CreateRecordModal`),
+  editar proveedor (solo si hay cambios sin guardar), nueva oportunidad, nuevo
+  proyecto, agregar línea manual, ajustar línea (cotización y Proyecto),
+  nuevo/editar anuncio y agregar usuario. `CrearOcModal` pasa al mismo helper.
+  Los modales de ver/elegir (historial, vista previa, pickers) no cambian.
+
 - **Crear orden de compra: un clic fuera ya no cierra el modal** (Efraín: "no
   puedes cerrar la modal haciendo click en otro lado… tienes que dar click en
   cancelar o cerrar y pide confirmación"). `Modal` gana `closeOnBackdrop`

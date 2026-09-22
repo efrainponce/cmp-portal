@@ -7,6 +7,7 @@
 // 2026-09-10): abre encima el form de los catálogos (CreateRecordModal).
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Modal } from '../../components/core/Modal';
+import { confirmarCierre } from '../../components/core/confirmarCierre';
 import { Button } from '../../components/core/Button';
 import { SearchableSelect, type SearchableOption } from '../../components/forms/SearchableSelect';
 import { ChipSelect } from '../../components/forms/ChipSelect';
@@ -246,13 +247,16 @@ export default function CreateOportunidadModal({
     }
   };
 
+  const cerrar = confirmarCierre(onClose, { saving, mensaje: '¿Cerrar sin crear la oportunidad? Se pierde lo que capturaste.' });
+
   return (
     <Modal
       title={native ? 'Nueva oportunidad (Zona Efrain — nativa)' : 'Nueva oportunidad'}
-      onClose={onClose}
+      onClose={cerrar}
+      closeOnBackdrop={false}
       footer={
         <>
-          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button variant="secondary" onClick={cerrar}>Cancelar</Button>
           <Button variant="primary" onClick={saving ? undefined : onSubmit}>{saving ? 'Creando…' : 'Crear oportunidad'}</Button>
         </>
       }
