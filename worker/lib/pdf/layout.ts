@@ -43,6 +43,17 @@ export type Block =
        * costeo de Validación (2026-08-14) trae ~20 columnas en horizontal y
        * necesita texto más chico para que quepan sin desbordar. */
       cellSize?: number; headerSize?: number;
+      /** Fondo por renglón (uno por fila de `rows`; null/ausente ⇒ zebra de
+       * siempre). Lo usa el Estatus de proyecto (2026-09-21) para pintar el
+       * renglón según el avance del producto: verde entregado, azul en
+       * proceso, rojo incidencia — como la hoja que Compras armaba a mano. */
+      rowFills?: (string | null | undefined)[];
+      /** Columna de FOTO: `imageCol` es el índice de la columna y `rowImages`
+       * trae una imagen por fila (null ⇒ recuadro gris "Sin foto"). El renglón
+       * crece a `imageHeight` (default 40 pt) para que quepa. Lo pide el
+       * Estatus de proyecto (Efraín, 2026-09-21: "tiene que salir la imagen
+       * del producto"); la foto es la misma por SKU que usa la OC con imágenes. */
+      imageCol?: number; rowImages?: (PdfImageData | null | undefined)[]; imageHeight?: number;
     }
   | { kind: 'divider' }
   | { kind: 'spacer'; height: number }
@@ -302,10 +313,25 @@ function drawWrapTable(pdf: PdfWriter, cur: Cursor, m: Metrics, block: Extract<B
       wrappedByCol.set(i, lines);
       maxLines = Math.max(maxLines, lines.length);
     }
-    const rowHeight = Math.max(baseRowHeight, maxLines * lineHeight + 6);
+    const conFoto = block.imageCol !== undefined;
+    const imageHeight = block.imageHeight ?? 40;
+    const rowHeight = Math.max(baseRowHeight, maxLines * lineHeight + 6, conFoto ? imageHeight + 6 : 0);
     if (cur.ensure(rowHeight)) drawTableHeader(pdf, cur, m, block.columns, block.headerFill, block.headerTextColor, headerSize);
-    if (r % 2 === 1) pdf.rect(cur.page, m.contentLeft, cur.y - 9, m.contentWidth, rowHeight, { fill: ZEBRA });
+    const fill = block.rowFills?.[r];
+    if (fill) pdf.rect(cur.page, m.contentLeft, cur.y - 9, m.contentWidth, rowHeight, { fill });
+    else if (r % 2 === 1) pdf.rect(cur.page, m.contentLeft, cur.y - 9, m.contentWidth, rowHeight, { fill: ZEBRA });
     block.columns.forEach((col, i) => {
+      if (i === block.imageCol) {
+        // Foto encajada sin deformar dentro de la celda; sin foto, recuadro gris.
+        const box = { x: boxes[i].left, y: cur.y - 6, w: boxes[i].right - boxes[i].left, h: imageHeight };
+        const img = block.rowImages?.[r];
+        const drawn = img ? (() => { const f = fitBox(img, box); return pdf.image(cur.page, img, f.x, f.y, f.w, f.h); })() : false;
+        if (!drawn) {
+          pdf.rect(cur.page, box.x, box.y, box.w, box.h, { fill: '#f1f3f6', stroke: RULE });
+          pdf.textAligned(cur.page, 'Sin foto', box.y + box.h / 2 + 2, { left: box.x, right: box.x + box.w }, 'center', { size: 6.5, color: INK_FAINT });
+        }
+        return;
+      }
       const lines = wrappedByCol.get(i);
       if (lines) {
         let ly = cur.y + 2;

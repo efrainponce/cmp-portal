@@ -241,6 +241,35 @@ export async function childrenOf(env: Env, parentSlug: BoardSlug, itemId: number
   return res.results ?? [];
 }
 
+/** `childrenOf` para VARIOS padres a la vez (PDF de estatus por zona/vendedor:
+ * una consulta por proyecto se comería el presupuesto de subrequests). Mismo
+ * scope y mismo orden que childrenOf; los padres van de 40 en 40 porque D1
+ * aguanta ~100 binds por query y el scope de un líder de zona ya trae varios. */
+export async function childrenOfMany(
+  env: Env, parentSlug: BoardSlug, itemIds: number[], viewer: Identity,
+): Promise<Map<number, MirrorItem[]>> {
+  const out = new Map<number, MirrorItem[]>();
+  const childSlug = childSlugOf(parentSlug);
+  if (!childSlug || itemIds.length === 0) return out;
+  const childBoard = BOARDS[childSlug];
+  const scope = scopeFor(childSlug, viewer);
+  await ensureItemOrderTable(env);
+  for (let i = 0; i < itemIds.length; i += 40) {
+    const lote = itemIds.slice(i, i + 40);
+    const sql = `SELECT items.* FROM items
+      LEFT JOIN item_order io ON io.board_id = items.board_id AND io.item_id = items.item_id
+      WHERE items.board_id = ? AND items.parent_item_id IN (${lote.map(() => '?').join(',')}) AND (${scope.where})
+      ORDER BY COALESCE(io.manual_order, io.monday_order, 999999), items.name`;
+    const res = await env.DB.prepare(sql).bind(childBoard.id, ...lote, ...scope.binds).all<MirrorItem>();
+    for (const row of res.results ?? []) {
+      if (row.parent_item_id == null) continue;
+      if (!out.has(row.parent_item_id)) out.set(row.parent_item_id, []);
+      out.get(row.parent_item_id)!.push(row);
+    }
+  }
+  return out;
+}
+
 // El Proyecto ligado a una Oportunidad (Proyectos board_relation_mm0hf0y3 →
 // Oportunidad). Filtra por LIKE sobre el JSON de columnas y verifica en JS que
 // linked_item_ids realmente contenga el id (el LIKE solo es el índice barato).

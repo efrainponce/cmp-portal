@@ -7,6 +7,7 @@ import { getEstadoHistorial, getProductoResumen, patchProductoResumen, patchItem
 import { useMe } from '../../../lib/useMe';
 import { Button } from '../../../components/core/Button';
 import { MonoTag } from '../../../components/core/Badges';
+import { FilePreviewModal } from '../../../components/core/FilePreviewModal';
 import { ProgressBattery } from '../../../components/board/ProgressBattery';
 import { batteryFromSubitems, ESTADO_PRODUCTO_ORDER } from '../../../lib/estadoProductoBuckets';
 import { type ProyectoState, Shell, ESTADO_PRODUCTO_COLORS, S_ESTADO, S_CANTIDAD, S_TALLA } from './shared';
@@ -309,6 +310,7 @@ export function EjecucionSection({ state, oppId: _oppId }: { state: ProyectoStat
   const [historial, setHistorial] = useState<EstadoHistorialEntryDTO[]>([]);
   const [resumenMap, setResumenMap] = useState<Record<string, string>>({});
   const [openPopover, setOpenPopover] = useState<string | null>(null);
+  const [verPdf, setVerPdf] = useState(false);
 
   const proyectoId = state.proyecto?.id;
   const reloadHistorial = useCallback(() => {
@@ -350,6 +352,18 @@ export function EjecucionSection({ state, oppId: _oppId }: { state: ProyectoStat
   return (
     <div style={{ marginTop: 16 }}>
       <ProgressBattery data={battery} size="full" />
+      {/* Hoja imprimible: un renglón por producto+color con lo que ya está
+          capturado aquí (Efraín, 2026-09-21) — worker/lib/pdf/estatusProyecto.ts. */}
+      {lineas.length > 0 && (
+        <div style={{ marginTop: 10, display: 'flex', justifyContent: 'flex-end' }}>
+          <Button variant="secondary" style={chipBtnStyle} onClick={() => setVerPdf(true)} title="Resumen imprimible por producto y color: proveedor, cantidad, estatus y fecha estimada">
+            Estatus en PDF
+          </Button>
+        </div>
+      )}
+      {verPdf && (
+        <FilePreviewModal url={`/api/proyectos/${p.id}/estatus/pdf`} name={`${p.name} - Estatus.pdf`} onClose={() => setVerPdf(false)} />
+      )}
       {canEdit && lineas.length > 0 && (
         <div style={{ marginTop: 10, font: 'var(--text-caption)', color: 'var(--ink-quiet)' }}>
           Toca la talla (el recuadro con el número) para cambiar su estado — el color y el texto debajo muestran el estado actual.

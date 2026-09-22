@@ -71,6 +71,7 @@ import { emitNotification } from '../lib/notify';
 import { createDocument, documentPdf } from '../lib/documents';
 import { generarOcProveedorPdf, OcProveedorPdfError } from '../lib/ocProveedorPdf';
 import { generarCotizacionPreviewPdf, CotizacionPreviewPdfError } from '../lib/cotizacionPreviewPdf';
+import { generarEstatusProyectoPdf, generarEstatusProyectosPdf, EstatusProyectoPdfError } from '../lib/estatusProyectoPdf';
 import { md5 } from '../lib/canon';
 import { nombreDescarga, extensionDe } from '../../shared/nombreArchivo';
 
@@ -1465,6 +1466,53 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       })),
     };
     return c.json(response);
+  });
+
+  // Estatus de proyecto en PDF (Efraín, 2026-09-21): un renglón por producto+color
+  // con proveedor, cantidad, estatus y fecha estimada — la hoja que Compras armaba
+  // a mano. Solo lectura, al vuelo desde el mirror (worker/lib/estatusProyectoPdf.ts);
+  // la whitelist de columnas aplica sola (un vendedor no recibe el Proveedor).
+  const pdfEstatus = (bytes: Uint8Array, item: string | null, etiqueta: string) => new Response(bytes, {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Length': String(bytes.length),
+      'Content-Disposition': contentDisposition(nombreDescarga({ item, etiqueta })),
+      'Cache-Control': 'private, no-store',
+    },
+  });
+
+  app.get('/api/proyectos/:id/estatus/pdf', async c => {
+    const bad = rejectUnknownQuery(c.req.url, []);
+    if (bad) return bad;
+    const itemId = Number(c.req.param('id'));
+    if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
+    try {
+      const { bytes, nombre } = await generarEstatusProyectoPdf(c.env, itemId, c.get('viewer'));
+      return pdfEstatus(bytes, nombre, 'Estatus');
+    } catch (err) {
+      if (err instanceof EstatusProyectoPdfError) return jsonStatus({ error: err.message }, err.status);
+      return errorInterno(c, err, { error: 'internal error' });
+    }
+  });
+
+  // Varios proyectos en un solo PDF: la lista manda los ids que tiene en pantalla
+  // (ya filtrados por zona/vendedor/búsqueda) y aquí se re-filtran con el scope
+  // del viewer. `alcance` es solo el texto del encabezado ("Zona Sureste").
+  app.get('/api/proyectos-estatus/pdf', async c => {
+    const bad = rejectUnknownQuery(c.req.url, ['ids', 'alcance']);
+    if (bad) return bad;
+    const crudos = (c.req.query('ids') ?? '').split(',').map(s => s.trim()).filter(Boolean);
+    const ids = crudos.map(Number);
+    if (ids.some(n => !Number.isSafeInteger(n) || n <= 0)) return jsonStatus({ error: 'ids inválidos' }, 400);
+    const alcance = (c.req.query('alcance') ?? '').trim().slice(0, 80) || undefined;
+    try {
+      const bytes = await generarEstatusProyectosPdf(c.env, [...new Set(ids)], c.get('viewer'), alcance);
+      return pdfEstatus(bytes, alcance ?? null, 'Estatus de proyectos');
+    } catch (err) {
+      if (err instanceof EstatusProyectoPdfError) return jsonStatus({ error: err.message }, err.status);
+      return errorInterno(c, err, { error: 'internal error' });
+    }
   });
 
   // Resumen libre por producto+color (tab Ejecución) — nativo en D1, worker/lib/

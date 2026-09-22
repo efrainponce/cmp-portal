@@ -1,5 +1,42 @@
 # Log de commits
 
+## 2026-09-21
+
+- **Estatus de proyecto en PDF — un renglón por producto y color** (Efraín, con
+  la hoja de Excel de Teotihuacán "Tránsito" que Compras armaba a mano: "un
+  resumen en PDF POR producto y color NO TALLA por cada proyecto, y también por
+  zona o vendedor… SUPER FÁCIL, que puedan imprimir, con los datos que ya
+  tenemos").
+  - No se captura nada nuevo. Sale de lo que ya vive en el tab Ejecución: Estado
+    del producto y su comentario por talla, el resumen por producto+color
+    (`producto_resumen`) y la Fecha estimada de entrega del proveedor; arriba,
+    del Proyecto: institución, vendedor, zona, etapa, Fecha de entrega,
+    Documentación y avance en piezas.
+  - Las tallas se SUMAN. Si van en pasos distintos el estatus lo dice con piezas
+    ("Entregado 15 · En tránsito 5") y luego el resumen del producto; la fecha es
+    la más tardía de lo que FALTA (todo entregado = vacía, como en la hoja).
+    Renglón verde = entregado, azul = en proceso, rojo = incidencia, sin color =
+    por surtir (`rowFills` nuevo en el wrapTable; mismos buckets que la batería,
+    por eso `estadoProductoBuckets` se movió a `shared/`).
+  - Dos botones: "Estatus en PDF" en el tab Ejecución (un proyecto) y "Estatus
+    PDF (n)" en las listas de Proyectos = lo que está en pantalla. Para eso las
+    listas ganan filtros de **Zona** y **Vendedor** (no se guardan entre
+    sesiones, a propósito: un filtro guardado deja la lista corta sin avisar).
+  - La lista manda los ids y el worker los re-filtra con el scope del viewer
+    (`listItems`); tope de 150. Líneas y resúmenes se leen EN LOTE
+    (`childrenOfMany`, `listProductoResumenMany`): una consulta por proyecto se
+    comía los subrequests.
+  - Whitelist sin reglas propias: todo pasa por `toItemDTO` con rol+correo, así
+    que a un vendedor no le llega el Proveedor y la columna no sale en su PDF.
+  - **Con la foto del producto** (Efraín, mismo día: "tiene que salir la
+    imagen del producto"): columna Foto con la misma foto por SKU de la OC con
+    imágenes (`oc_imagen`, R2 + Airtable como default); sin foto sale el
+    recuadro "Sin foto". Cada foto es una lectura de R2 dentro del presupuesto
+    de subrequests de una invocación, así que se buscan como máximo 24 SKUs por
+    PDF (`ESTATUS_MAX_FOTOS`); los que sobran salen sin foto y la nota de arriba
+    lo dice. Si la carga de fotos falla, el PDF sale sin ellas, nunca 500.
+    `wrapTable` gana `imageCol`/`rowImages` (foto encajada sin deformar).
+
 ## 2026-09-19
 
 - **Menú del sidebar POR PERSONA** (Efraín: "Pam quiere ver el board parecido a

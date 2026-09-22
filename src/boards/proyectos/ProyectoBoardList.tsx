@@ -24,6 +24,8 @@ import { useIsMobile } from '../../lib/useIsMobile';
 import { batteryFromMirrorText } from '../../lib/estadoProductoBuckets';
 import { ProgressBattery } from '../../components/board/ProgressBattery';
 import { useMe } from '../../lib/useMe';
+import { Button } from '../../components/core/Button';
+import { FilePreviewModal } from '../../components/core/FilePreviewModal';
 import type { TotalesDTO } from '../../../shared/dto';
 import {
   TotalesCells, TotalesChips, TotalesGranTotal, TotalesGrupo, TotalesHeader,
@@ -77,6 +79,19 @@ function vendedorNamesMatch(item: ItemDTO, names: string[] | undefined): boolean
 /** Una sola línea con puntos suspensivos — se usa donde el ancho ya está
  * comprometido por las columnas de métricas. */
 const recorte: React.CSSProperties = { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' };
+
+/** Tope del PDF de estatus — el mismo que ESTATUS_MAX_PROYECTOS del worker. */
+const ESTATUS_PDF_MAX = 150;
+
+const filtroSelectStyle: React.CSSProperties = {
+  height: 36, font: 'var(--text-label)', color: 'var(--ink)',
+  border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '0 10px',
+  boxSizing: 'border-box', background: 'var(--bg-raised)', cursor: 'pointer', maxWidth: 200,
+};
+
+function vendedoresDe(item: ItemDTO): string[] {
+  return (item.cols[VENDEDOR_COL]?.text || '').split(',').map((s) => s.trim()).filter(Boolean);
+}
 
 function dedupeMirrorText(text: string): string {
   const parts = Array.from(new Set(text.split(',').map((s) => s.trim()).filter(Boolean)));
@@ -160,7 +175,22 @@ export function ProyectoBoardList({ config, q, onSearch, onOpen, onReady, header
   const { collapsedGroups, toggleGroup, groupBy: groupBySaved, setGroupBy } = useSavedView(config.key);
   const groupBy = parseGroupBy(groupBySaved, config);
 
+  // Filtros de Zona y Vendedor (Efraín, 2026-09-21): existen para sacar el PDF
+  // de estatus "por zona o vendedor". NO se guardan entre sesiones a propósito —
+  // un filtro guardado deja la lista corta sin avisar (mismo criterio que la
+  // Lista de OC).
+  const [zonaFiltro, setZonaFiltro] = useState('');
+  const [vendedorFiltro, setVendedorFiltro] = useState('');
+  const [estatusPdf, setEstatusPdf] = useState<string | null>(null);
+  const zonas = useMemo(
+    () => [...new Set(statusItems.map((it) => it.cols[ZONA_COL]?.text?.trim() || '').filter(Boolean))].sort(),
+    [statusItems],
+  );
+  const vendedores = useMemo(() => [...new Set(statusItems.flatMap(vendedoresDe))].sort(), [statusItems]);
+
   const items = statusItems.filter((it) => {
+    if (zonaFiltro && (it.cols[ZONA_COL]?.text?.trim() || '') !== zonaFiltro) return false;
+    if (vendedorFiltro && !vendedoresDe(it).includes(vendedorFiltro)) return false;
     if (!q.trim()) return true;
     const haystack = [
       it.name,
@@ -230,6 +260,31 @@ export function ProyectoBoardList({ config, q, onSearch, onOpen, onReady, header
               <option key={o.value} value={o.value}>Agrupar: {o.label}</option>
             ))}
           </select>
+          <select aria-label="Zona" value={zonaFiltro} onChange={(e) => setZonaFiltro(e.target.value)} style={filtroSelectStyle}>
+            <option value="">Zona: todas</option>
+            {zonas.map((z) => <option key={z} value={z}>{z}</option>)}
+          </select>
+          <select aria-label="Vendedor" value={vendedorFiltro} onChange={(e) => setVendedorFiltro(e.target.value)} style={filtroSelectStyle}>
+            <option value="">Vendedor: todos</option>
+            {vendedores.map((v) => <option key={v} value={v}>{v}</option>)}
+          </select>
+          {items.length > 0 && (
+            <Button
+              variant={items.length > ESTATUS_PDF_MAX ? 'disabled' : 'secondary'}
+              style={{ height: 36, padding: '0 14px', font: 'var(--text-label)' }}
+              title={items.length > ESTATUS_PDF_MAX
+                ? `Máximo ${ESTATUS_PDF_MAX} proyectos por PDF — filtra por zona o vendedor`
+                : `Resumen imprimible de los ${items.length} proyectos en pantalla: un renglón por producto y color`}
+              onClick={() => {
+                const alcance = [zonaFiltro && `Zona ${zonaFiltro}`, vendedorFiltro, q.trim() && `"${q.trim()}"`]
+                  .filter(Boolean).join(' · ') || config.title;
+                const qs = new URLSearchParams({ ids: items.map((it) => it.id).join(','), alcance });
+                setEstatusPdf(`/api/proyectos-estatus/pdf?${qs.toString()}`);
+              }}
+            >
+              Estatus PDF ({items.length})
+            </Button>
+          )}
         </div>
       </div>
 
@@ -276,6 +331,9 @@ export function ProyectoBoardList({ config, q, onSearch, onOpen, onReady, header
           )}
         </BoardStatus>
       </div>
+      {estatusPdf && (
+        <FilePreviewModal url={estatusPdf} name="Estatus de proyectos.pdf" onClose={() => setEstatusPdf(null)} />
+      )}
     </div>
   );
 }
