@@ -1,5 +1,5 @@
 // src/boards/oportunidades/EtapaAdminSelect.tsx — la etapa como control, no
-// como etiqueta. SOLO admin (Efraín, 2026-08-20).
+// como etiqueta. Admin (Efraín, 2026-08-20) y Compras (2026-09-22).
 //
 // Hasta ahora la etapa solo se movía por los botones del flujo (Mandar a
 // costeo → Validar costeo → Generar cotización → Ganar/Perder/Cancelar), y cada
@@ -43,7 +43,7 @@ export function EtapaAdminSelect({ stage, color, tint, busy, onChange }: Props) 
         value={stage}
         disabled={busy}
         onChange={(e) => { const idx = e.target.value; if (idx !== stage) onChange(idx); }}
-        title="Cambiar la etapa a mano (solo admin). Escribe la etapa en Monday tal cual; NO dispara los PDFs ni los avisos del flujo."
+        title="Cambiar la etapa a mano (admin y Compras). Escribe la etapa en Monday tal cual; NO dispara los PDFs ni los avisos del flujo."
         style={{ ...chip, color, background: tint, cursor: busy ? 'default' : 'pointer' }}
       >
         {DEAL_STAGE_ORDER.map((idx) => (

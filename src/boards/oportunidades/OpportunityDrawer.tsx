@@ -402,13 +402,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, openTab, onTabCha
       if (!res.ok) throw new Error(res.error ?? 'No se pudo crear la nueva versión.');
       const nueva = res.versions?.find((v) => v.status === 'vigente');
       if (res.versions) { cacheSet(versionsCache, id, res.versions); setVersions(res.versions); }
-      setNotice({
-        kind: 'ok', title: 'Nueva versión creada',
-        lines: [
-          `${nueva?.label ?? 'La nueva versión'} es una copia de la anterior — edítala como en Nueva oportunidad.`,
-          'Cuando esté lista, usa "Mandar a costeo" para regresarla a costeo.',
-        ],
-      });
+      await costeoTrasVersion('Nueva versión creada', `${nueva?.label ?? 'La nueva versión'} es una copia de la anterior.`);
       load();
     } catch (e) {
       setNotice({ kind: 'error', title: 'No se pudo crear la nueva versión:', lines: [e instanceof Error ? e.message : 'Verifica tu conexión.'] });
@@ -429,19 +423,38 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, openTab, onTabCha
       if (!res.ok) throw new Error(res.error ?? 'No se pudo restaurar la versión.');
       if (res.versions) { cacheSet(versionsCache, id, res.versions); setVersions(res.versions); }
       const nueva = res.versions?.find((v) => v.status === 'vigente');
-      setNotice({
-        kind: 'ok', title: `${restoreTarget.label} restaurada`,
-        lines: [
-          `${nueva?.label ?? 'La vigente'} ahora es la cotización tal como estaba en ${restoreTarget.label}; la anterior quedó archivada.`,
-          'La oportunidad tiene que pasar por costeo otra vez — usa "Mandar a costeo" cuando esté lista.',
-        ],
-      });
+      await costeoTrasVersion(`${restoreTarget.label} restaurada`,
+        `${nueva?.label ?? 'La vigente'} ahora es la cotización tal como estaba en ${restoreTarget.label}; la anterior quedó archivada.`);
       load();
     } catch (e) {
       setNotice({ kind: 'error', title: 'No se pudo restaurar la versión:', lines: [e instanceof Error ? e.message : 'Verifica tu conexión.'] });
     } finally {
       setRestoringVersion(false);
       setRestoreTarget(null);
+    }
+  };
+
+  // Nueva versión / Restaurar = la oportunidad se va a costeo SOLA (Efraín,
+  // 2026-09-22: Lili creó V2 desde el board Costeo, ahí no hay botón de
+  // "Mandar a costeo" y la versión se quedó sin pasar a costeo). Mismo
+  // endpoint que el botón: valida, genera el PDF de solicitud y pasa a "En
+  // costeo". Si la etapa ya lo bloquea (en costeo, validación, cerrada) o falta
+  // algo, la versión igual queda creada y el aviso dice por qué no se mandó.
+  const costeoTrasVersion = async (title: string, primera: string) => {
+    if (boardKey === 'zona_efrain' || !puedeMandarACosteo(stage, true)) {
+      setNotice({ kind: 'ok', title, lines: [primera] });
+      return;
+    }
+    setNotice({ kind: 'ok', title, lines: [primera, 'Mandando a costeo… puede tardar unos minutos, no cierres esta pantalla.'] });
+    try {
+      const r = await enviarCosteo(id);
+      if (r.ok) {
+        setNotice({ kind: 'ok', title: `${title} y mandada a costeo`, lines: [primera, r.folio ? `Se generó ${r.folio} y la etapa pasó a "En costeo".` : 'La etapa pasó a "En costeo".'] });
+      } else {
+        setNotice({ kind: 'error', title: `${title}, pero no se pudo mandar a costeo:`, lines: [...(r.errors ?? []), 'Corrige lo que falta y usa "Mandar a costeo".'] });
+      }
+    } catch {
+      setNotice({ kind: 'error', title: `${title}, pero no se pudo mandar a costeo:`, lines: ['Verifica tu conexión y usa "Mandar a costeo".'] });
     }
   };
 
@@ -604,7 +617,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, openTab, onTabCha
     }
   });
 
-  // Cambiar la etapa a mano — solo admin (Efraín, 2026-08-20), sobre una
+  // Cambiar la etapa a mano — admin (Efraín, 2026-08-20) y Compras (2026-09-22), sobre una
   // oportunidad propia/visible como cualquier otro write. Es el escape para
   // cuando una oportunidad quedó en la etapa equivocada: los botones del flujo
   // solo aparecen en la etapa exacta que los habilita, así que una que se
@@ -674,9 +687,11 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, openTab, onTabCha
   // worker/lib/zonas.ts): se apaga TODO lo que escribe. No es cosmético — el
   // server responde 404 a cualquier write sobre una oportunidad ajena.
   const ajena = item.ownedByViewer === false;
-  // La etapa a mano es de admin y solo sobre lo propio/visible: escribir sobre
-  // una oportunidad ajena el server lo rechaza igual (getItem(…, 'own')).
-  const puedeCambiarEtapa = me?.role === 'admin' && !ajena;
+  // La etapa a mano es de admin y Compras (Efraín, 2026-09-22: "deja a los de
+  // compras MOVER de estatus sus oportunidades") y solo sobre lo propio/visible:
+  // escribir sobre una oportunidad ajena el server lo rechaza igual
+  // (getItem(…, 'own')). deal_stage ya era `w: V` en shared/visibility.ts.
+  const puedeCambiarEtapa = (me?.role === 'admin' || me?.role === 'compras') && !ajena;
   const noLineEdits = readOnlyCosteo || isValidacion || ajena;
   // "+ Nueva versión"/"Restaurar versión": el server las permite en CUALQUIER
   // etapa, incluidas Ganada/Perdida (worker/lib/quoteVersions.ts, Efraín
@@ -780,7 +795,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, openTab, onTabCha
             {item.cols.deal_stage?.text && (() => {
               const dealStageCol = oppCols.find((c) => c.id === 'deal_stage');
               const { color, tint } = dealStageCol ? chipFor(dealStageCol, item.cols.deal_stage) : { color: 'var(--ink-quiet)', tint: 'var(--bg-sunken)' };
-              // Admin: el chip ES el control (EtapaAdminSelect). Los demás lo
+              // Admin/Compras: el chip ES el control (EtapaAdminSelect). Los demás lo
               // ven igual que siempre — la etapa la mueven los botones del
               // flujo, que sí validan lo que exige cada paso.
               return puedeCambiarEtapa && stage
@@ -825,8 +840,10 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, openTab, onTabCha
           {/* Ver `puedeMandarCosteo`: aparece en Nueva oportunidad y sobre un
               borrador de versión — las cotizaciones cambian mucho y desde
               cualquier etapa se puede duplicar y regresar a costeo, pero el
-              botón ya no se queda de adorno donde el server lo rechazaría. */}
-          {!readOnlyCosteo && !isValidacion && !ajena && puedeMandarCosteo && (
+              botón ya no se queda de adorno donde el server lo rechazaría.
+              También en el board Costeo (2026-09-22): si el envío automático
+              tras "+ Nueva versión" falló, Compras necesita reintentarlo ahí. */}
+          {!isValidacion && !ajena && puedeMandarCosteo && (
             <ConfirmButton
               label="Mandar a costeo"
               confirmLabel="¿Enviar solicitud de costeo?"
@@ -1077,8 +1094,8 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, openTab, onTabCha
               igual que en Nueva oportunidad).
             </div>
             <div style={{ color: 'var(--status-esperando)', font: 'var(--text-label-strong)' }}>
-              ⚠ Al cambiar de versión, la oportunidad tiene que pasar por costeo otra vez:
-              la versión nueva nace sin costear y se manda con «Mandar a costeo».
+              ⚠ Al cambiar de versión, la oportunidad pasa por costeo otra vez:
+              la versión nueva se manda a costeo en automático.
             </div>
           </div>
         </Modal>
@@ -1112,8 +1129,8 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, openTab, onTabCha
               (las que no existían en esa versión se eliminan) y la vigente actual queda archivada.
             </div>
             <div style={{ color: 'var(--status-esperando)', font: 'var(--text-label-strong)' }}>
-              ⚠ Al cambiar de versión, la oportunidad tiene que pasar por costeo otra vez:
-              la versión restaurada queda sin costear y se manda con «Mandar a costeo».
+              ⚠ Al cambiar de versión, la oportunidad pasa por costeo otra vez:
+              la versión restaurada se manda a costeo en automático.
             </div>
           </div>
         </Modal>
