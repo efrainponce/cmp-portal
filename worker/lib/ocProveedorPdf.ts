@@ -5,6 +5,7 @@
 // a Monday, a diferencia de generateOC (worker/lib/automations.ts), que sigue
 // siendo el flujo "oficial" (folio + firmas) mientras este se prueba en
 // paralelo (Efraín, 2026-08-13).
+import { llaveFotoOc } from '../../shared/ocFotoLlave';
 import type { Env } from '../env';
 import type { Identity } from '../../shared/types';
 import { getItem, childrenOf } from './dal';
@@ -160,7 +161,8 @@ export async function prepararOcProveedor(
   // Solo las líneas de producto piden foto: los embellecimientos no tienen
   // ficha (van en la tabla de la orden) y pedir su SKU dispararía búsquedas de
   // catálogo que nunca van a encontrar nada.
-  const skusDeProducto = lineas.filter(l => !l.zona).map(l => l.sku).filter(Boolean);
+  const skusDeProducto = lineas.filter(l => !l.zona)
+    .map(l => llaveFotoOc(l.sku, l.producto === '—' ? '' : l.producto)).filter(Boolean);
   const imagenes = opts.conImagenes
     ? await cargarImagenesParaPdf(env, skusDeProducto)
     : new Map<string, PdfImageData>();

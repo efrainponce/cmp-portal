@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { MirrorItem } from '../../shared/types';
-import { agruparLineas, conEstados, lineaEstadoDe, marcarReemplazadas, ordenesDeProyecto, porFechaDeCreacion, unaFilaPorFolio } from './ocLista';
+import { agruparLineas, conEstados, lineaEstadoDe, marcarReemplazadas, ordenesDeProyecto, porFechaDeCreacion, proveedorDeLinea, unaFilaPorFolio } from './ocLista';
 
 const M = 'https://mexicanaproteccion.monday.com/protected_static/1/resources';
 
@@ -165,5 +165,25 @@ describe('estado de los productos de la OC', () => {
     const oc = ordenes(['OC_OC-317_DIANA LAURA MORALES DEL RAZO.pdf']);
     // Sobrevive a guardarse como JSON, que es como vive en oc_lista_cache.
     expect(conEstados(oc, JSON.parse(JSON.stringify(agrupadas)))).toEqual(conEstados(oc, sueltas));
+  });
+});
+
+describe('proveedorDeLinea (filtro Proveedor del Reporte de Proyectos)', () => {
+  const sub = (parent: number | null, cols: { id: string; text?: string }[]): MirrorItem => ({
+    board_id: 1, item_id: 1, parent_item_id: parent, name: 'Bota', group_id: null, vendedor_ids: '[]',
+    monday_updated_at: null, synced_at: '', content_hash: '', columns: JSON.stringify(cols),
+  });
+
+  it('usa el nombre de la relación; la razón social solo si viene vacía', () => {
+    expect(proveedorDeLinea(sub(555, [
+      { id: 'board_relation_mm1cfgv5', text: 'UNIMX' }, { id: 'lookup_mm1d2y9b', text: 'Diana Laura Morales' },
+    ]))).toEqual({ proyectoId: '555', proveedor: 'UNIMX' });
+    expect(proveedorDeLinea(sub(555, [{ id: 'lookup_mm1d2y9b', text: 'Diana Laura Morales' }])))
+      .toEqual({ proyectoId: '555', proveedor: 'Diana Laura Morales' });
+  });
+
+  it('sin proveedor o sin proyecto padre → null', () => {
+    expect(proveedorDeLinea(sub(555, []))).toBeNull();
+    expect(proveedorDeLinea(sub(null, [{ id: 'board_relation_mm1cfgv5', text: 'UNIMX' }]))).toBeNull();
   });
 });

@@ -16,6 +16,7 @@ import { toItemDTO } from './serialize';
 import { listProductoResumen, listProductoResumenMany, type ProductoResumenRow } from './productoResumen';
 import { buildEstatusProyectoPdf, type EstatusLinea, type EstatusProyecto } from './pdf/estatusProyecto';
 import { cargarImagenesParaPdf, skuKey, isSkuUsable } from './ocImagenes';
+import { llaveFotoOc } from '../../shared/ocFotoLlave';
 import type { PdfImageData } from './pdf/png';
 
 export class EstatusProyectoPdfError extends Error {
@@ -40,7 +41,9 @@ export const ESTATUS_MAX_FOTOS = 24;
  * llave = SKU tal cual viene en la línea. Nunca tira: sin fotos es un PDF
  * válido, sin PDF no hay nada. */
 async function fotosDe(env: Env, proyectos: EstatusProyecto[]): Promise<{ imagenes: Map<string, PdfImageData>; omitidas: number }> {
-  const skus = [...new Set(proyectos.flatMap(p => p.lineas.map(l => l.sku.trim())).filter(isSkuUsable))];
+  // Misma llave que la OC con imágenes (shared/ocFotoLlave.ts): SKU, o el
+  // nombre del producto cuando la línea no trae SKU.
+  const skus = [...new Set(proyectos.flatMap(p => p.lineas.map(l => llaveFotoOc(l.sku, l.producto === '—' ? '' : l.producto))).filter(isSkuUsable))];
   const buscar = skus.slice(0, ESTATUS_MAX_FOTOS);
   const imagenes = new Map<string, PdfImageData>();
   try {

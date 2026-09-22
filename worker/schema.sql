@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS items (
   t_total        REAL,
   t_utilidad     REAL,
   t_margen_gob   REAL,
+  t_cantidad     REAL,
   PRIMARY KEY (board_id, item_id)
 );
 CREATE INDEX IF NOT EXISTS idx_items_parent ON items(parent_item_id);
@@ -418,6 +419,22 @@ CREATE TABLE IF NOT EXISTS producto_propuesto (
   created_at     TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_producto_propuesto_opp ON producto_propuesto(oportunidad_id);
+
+-- Evidencia de inventario 5.11 por producto de una cotización. Se mantiene en
+-- D1 porque una misma línea necesita dos fotos (México/USA) y una nota, campos
+-- que no corresponden al catálogo global ni a una sola columna de Monday.
+CREATE TABLE IF NOT EXISTS inventario_cotizacion_producto (
+  oportunidad_id INTEGER NOT NULL,
+  producto_id TEXT NOT NULL,
+  producto_nombre TEXT NOT NULL,
+  imagen_mexico_key TEXT,
+  imagen_usa_key TEXT,
+  comentarios TEXT NOT NULL DEFAULT '',
+  agregado_manualmente INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (oportunidad_id, producto_id)
+);
+CREATE INDEX IF NOT EXISTS idx_inventario_cotizacion_opp ON inventario_cotizacion_producto(oportunidad_id);
 
 -- Historial de "Estado del producto" (2026-08-05, worker/lib/estadoProducto.ts, tab
 -- "Ejecución" del Proyecto). En vez de seguir agregando una columna de fecha en Monday
@@ -959,3 +976,8 @@ CREATE TABLE IF NOT EXISTS wa_resumen (     -- resumen matutino: una fila por pe
   id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT NOT NULL, fecha TEXT NOT NULL, enviado INTEGER NOT NULL, motivo TEXT,
   item_ids TEXT NOT NULL DEFAULT '[]', candidata_id INTEGER, wamid TEXT, created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS oc_concepto (    -- caché de productos/conceptos capturados a mano en OC (worker/lib/ocConceptos.ts)
+  clave TEXT PRIMARY KEY, producto TEXT NOT NULL, sku TEXT, color TEXT, talla TEXT, unidad TEXT, costo REAL, moneda TEXT,
+  proveedor_id INTEGER, proveedor_name TEXT, usos INTEGER NOT NULL DEFAULT 1, updated_by TEXT, updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS oc_concepto_updated ON oc_concepto (updated_at);

@@ -111,16 +111,36 @@ export function skuKey(sku: string): string {
   return sku.trim().toUpperCase();
 }
 
-/** Un SKU utilizable como llave: sin espacios raros ni caracteres que después
- * habría que escapar en un LIKE de SQLite o en un key de R2. Los SKUs reales
- * del catálogo son alfanuméricos con guiones. Pura. */
-export function isSkuUsable(sku: string): boolean {
+/** Un SKU DEL CATÁLOGO: alfanumérico con guiones. Solo estos se buscan en
+ * Productos/Airtable (el LIKE de SQLite no escapa nada más). Pura. */
+export function esSkuDeCatalogo(sku: string): boolean {
   return /^[A-Za-z0-9][A-Za-z0-9._\-]{0,59}$/.test(sku.trim());
 }
 
-function r2KeyFor(sku: string, sha: string, contentType: string): string {
+/** Una llave de foto utilizable. Desde 2026-09-21 acepta texto libre: las
+ * líneas MANUALES de la OC traen SKUs como "LOGO AIC" o `Bota Táctica 8" 4863`
+ * (o ninguno, y la llave es el nombre del producto) y con la regla del catálogo
+ * TODA subida salía "SKU inválido" — nadie podía ponerle foto a una orden
+ * manual. La llave nunca se interpola: D1 va con binds y el key de R2 la pasa
+ * por `segmentoR2`. Pura. */
+export function isSkuUsable(sku: string): boolean {
+  const t = sku.trim();
+  // eslint-disable-next-line no-control-regex
+  return t.length > 0 && t.length <= 300 && !/[\u0000-\u001f\u007f]/.test(t);
+}
+
+/** Segmento del key de R2 para una llave: la del catálogo va tal cual (los keys
+ * viejos no cambian); el texto libre va como hash — nada de "/", ".." ni
+ * acentos dentro de un key. */
+export async function segmentoR2(sku: string): Promise<string> {
+  const key = skuKey(sku);
+  if (esSkuDeCatalogo(key)) return key;
+  return `libre-${(await sha256Hex(new TextEncoder().encode(key))).slice(0, 32)}`;
+}
+
+async function r2KeyFor(sku: string, sha: string, contentType: string): Promise<string> {
   const ext = contentType === 'image/png' ? 'png' : 'jpg';
-  return `oc-imagenes/${skuKey(sku)}/${sha}.${ext}`;
+  return `oc-imagenes/${await segmentoR2(sku)}/${sha}.${ext}`;
 }
 
 async function sha256Hex(bytes: Uint8Array): Promise<string> {
@@ -154,7 +174,7 @@ async function upsert(
 ): Promise<OcImagenMeta> {
   await ensureTable(env);
   const sha = await sha256Hex(bytes);
-  const key = r2KeyFor(sku, sha, contentType);
+  const key = await r2KeyFor(sku, sha, contentType);
   await env.FILES.put(key, bytes as BufferSource, { httpMetadata: { contentType } });
   const at = new Date().toISOString();
   await env.DB.prepare(
@@ -192,7 +212,7 @@ async function registrosDe(env: Env, skus: string[]): Promise<Map<string, Regist
  * verificación real se hace parseando: LIKE por sí solo daría falsos positivos
  * con SKUs que son prefijo de otros. */
 async function airtableIdDeSku(env: Env, sku: string): Promise<string> {
-  if (!isSkuUsable(sku)) return '';
+  if (!esSkuDeCatalogo(sku)) return '';
   const { results } = await env.DB.prepare(
     `SELECT columns FROM items WHERE board_id = ? AND columns LIKE ? LIMIT 25`,
   ).bind(BOARDS.productos.id, `%"${sku.trim()}"%`).all<{ columns: string }>();

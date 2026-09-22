@@ -14,6 +14,7 @@ import { renderDocument } from './layout';
 import type { PdfImageData } from './png';
 import { LOGO_JPG_BASE64, CMP_ORANGE } from './logo';
 import { LABEL_TO_BUCKET, type EstadoBucketKey } from '../../../shared/estadoProductoBuckets';
+import { llaveFotoOc } from '../../../shared/ocFotoLlave';
 
 /** Una línea del Proyecto (proyectos_sub) = un producto+color+TALLA. */
 export interface EstatusLinea {
@@ -50,8 +51,8 @@ export interface EstatusProyectoInput {
   /** Qué se pidió cuando son varios ("Zona Sureste", "lo filtrado en pantalla"). */
   alcance?: string;
   fecha: string;
-  /** Foto de catálogo por SKU (la misma que la OC con imágenes), llave = SKU tal
-   * cual viene en la línea. Ausente ⇒ la columna Foto no sale. Un SKU sin foto
+  /** Foto de catálogo por producto (la misma que la OC con imágenes), llave =
+   * `llaveFotoOc(sku, producto)`: el SKU, o el nombre si la línea no trae SKU. Ausente ⇒ la columna Foto no sale. Un SKU sin foto
    * en el mapa sale con el recuadro "Sin foto". */
   imagenes?: Map<string, PdfImageData>;
   /** Cuántos SKUs se quedaron sin buscar foto por el tope por corrida (>0 se
@@ -248,7 +249,7 @@ function bloquesDeProyecto(p: EstatusProyecto, imagenes?: Map<string, PdfImageDa
     // Producto, Proveedor y Estatus envuelven; lo demás es corto.
     wrapCols: [iProducto, iProveedor, iEstatus].filter(i => i >= 0),
     rowFills: grupos.map(g => TONO_FILL[g.tono]),
-    ...(conFoto ? { imageCol: 1, rowImages: grupos.map(g => imagenes?.get(g.sku.trim()) ?? null) } : {}),
+    ...(conFoto ? { imageCol: 1, rowImages: grupos.map(g => imagenes?.get(llaveFotoOc(g.sku, g.producto === '—' ? '' : g.producto)) ?? null) } : {}),
     headerFill: CMP_ORANGE,
     headerTextColor: '#ffffff',
     cellSize: 8,

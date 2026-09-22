@@ -209,12 +209,12 @@ export async function zonaPrivadaMemberIds(env: Env): Promise<number[]> {
   }
 }
 
-/** monday_user_ids que ESTE viewer admin no debe ver (worker/lib/dal.ts los
- * excluye de scopeFor/etagFor). [] para todo no-admin y para los admins de la
- * whitelist — la mayoría de los requests, así que no le pega a D1 sin
- * necesidad. */
+/** monday_user_ids que ESTE viewer no debe ver (worker/lib/dal.ts los excluye
+ * de scopeFor/etagFor). Aplica a admin y, desde 2026-09-21, a compras (que ya
+ * lee a todo el equipo). [] para los demás roles y para la whitelist — la
+ * mayoría de los requests, así que no le pega a D1 sin necesidad. */
 export async function hiddenOwnerIdsFor(env: Env, viewer: Identity): Promise<number[]> {
-  if (viewer.role !== 'admin' || isZonaPrivadaAdminPermitido(viewer.email)) return [];
+  if ((viewer.role !== 'admin' && viewer.role !== 'compras') || isZonaPrivadaAdminPermitido(viewer.email)) return [];
   return zonaPrivadaMemberIds(env);
 }
 

@@ -2,7 +2,7 @@
 // es lo único que impide que un .webp renombrado a .jpg se guarde bien y después
 // salga como recuadro gris en la OC, sin que nadie sepa por qué.
 import { describe, it, expect } from 'vitest';
-import { skuKey, isSkuUsable, sniffTipo, hayQueBuscar, SIN_FOTO_REINTENTO_DIAS } from './ocImagenes';
+import { skuKey, isSkuUsable, esSkuDeCatalogo, segmentoR2, sniffTipo, hayQueBuscar, SIN_FOTO_REINTENTO_DIAS } from './ocImagenes';
 
 describe('skuKey', () => {
   it('es la misma foto sin importar cómo escribieron el SKU en la línea', () => {
@@ -11,18 +11,47 @@ describe('skuKey', () => {
   });
 });
 
-describe('isSkuUsable', () => {
+describe('esSkuDeCatalogo', () => {
   it('acepta los SKUs reales del catálogo', () => {
-    expect(isSkuUsable('74434')).toBe(true);
-    expect(isSkuUsable('TDU-511.2')).toBe(true);
+    expect(esSkuDeCatalogo('74434')).toBe(true);
+    expect(esSkuDeCatalogo('TDU-511.2')).toBe(true);
   });
 
-  it('rechaza lo que rompería un key de R2 o un LIKE de SQLite', () => {
-    expect(isSkuUsable('')).toBe(false);
-    expect(isSkuUsable('a b')).toBe(false);
-    expect(isSkuUsable('74%34')).toBe(false);
-    expect(isSkuUsable('../../etc')).toBe(false);
-    expect(isSkuUsable('x'.repeat(80))).toBe(false);
+  it('rechaza lo que rompería un LIKE de SQLite', () => {
+    expect(esSkuDeCatalogo('')).toBe(false);
+    expect(esSkuDeCatalogo('a b')).toBe(false);
+    expect(esSkuDeCatalogo('74%34')).toBe(false);
+    expect(esSkuDeCatalogo('../../etc')).toBe(false);
+    expect(esSkuDeCatalogo('x'.repeat(80))).toBe(false);
+  });
+});
+
+describe('isSkuUsable', () => {
+  // 2026-09-21: con la regla del catálogo, TODA subida a una línea manual salía
+  // "SKU inválido" (accion_log de prod: "LOGO AIC", `Bota Táctica 8" 4863`).
+  it('acepta el texto libre de las líneas manuales', () => {
+    expect(isSkuUsable('74434')).toBe(true);
+    expect(isSkuUsable('LOGO AIC')).toBe(true);
+    expect(isSkuUsable('Bota Táctica 8" 4863')).toBe(true);
+    expect(isSkuUsable('CAMISA M/L')).toBe(true);
+  });
+
+  it('rechaza vacío, control y lo desmedido', () => {
+    expect(isSkuUsable('  ')).toBe(false);
+    expect(isSkuUsable('a\nb')).toBe(false);
+    expect(isSkuUsable('x'.repeat(301))).toBe(false);
+  });
+});
+
+describe('segmentoR2', () => {
+  it('deja igual el SKU del catálogo (los keys viejos no cambian)', async () => {
+    expect(await segmentoR2(' tdu-511.2 ')).toBe('TDU-511.2');
+  });
+
+  it('el texto libre nunca llega crudo al key', async () => {
+    const seg = await segmentoR2('../../etc/LOGO AIC');
+    expect(seg).toMatch(/^libre-[0-9a-f]{32}$/);
+    expect(await segmentoR2('logo aic')).toBe(await segmentoR2(' LOGO AIC '));
   });
 });
 

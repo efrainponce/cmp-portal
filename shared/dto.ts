@@ -53,6 +53,8 @@ export interface TotalesDTO {
   /** Ponderada: utilidad / subtotal. Ausente si no hay subtotal capturado. */
   utilidadPct?: number;
   margenGob?: number;
+  /** Piezas sumadas de las líneas (Cantidad Total de Monday, cuyo espejo llega vacío). */
+  cantidad?: number;
 }
 
 export interface ListResponse {
@@ -761,3 +763,7 @@ export interface OcListaRow {
   pagada: boolean;
 }
 export interface OcListaResponse { ordenes: OcListaRow[] }
+/** Datos de un Proyecto que no viajan en su renglón y que el Reporte de
+ * Proyectos usa para filtrar/buscar (worker/lib/ocLista.ts filtrosPorProyecto). */
+export interface ProyectoFiltrosDTO { proveedores: string[]; ocs: string[] }
+export interface ProyectoFiltrosResponse { filtros: Record<string, ProyectoFiltrosDTO> }

@@ -47,7 +47,9 @@ const byOldestFirst = (a: MirrorItem, b: MirrorItem) =>
  * validación (worker/lib/costeo.ts checkValidacion — el mismo que bloquea el
  * botón "Enviar a validación"), más viejas primero. */
 export async function comprasPendientes(env: Env, viewer: Identity): Promise<HomePendienteDTO[]> {
-  const items = (await listItems(env, 'oportunidades', viewer))
+  // 'own': compras ya LEE lo de todo el equipo (dal.ts, 2026-09-21), pero sus
+  // pendientes siguen siendo solo donde es Responsable compras.
+  const items = (await listItems(env, 'oportunidades', viewer, undefined, 'own'))
     .filter(it => stageIndexOf(it) === '15')
     .sort(byOldestFirst);
 

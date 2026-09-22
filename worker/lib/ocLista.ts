@@ -13,7 +13,8 @@
 // Lo que sí es propio: "pagada". No existe en Monday, vive en `oc_pago`.
 import type { Env } from '../env';
 import type { Identity, MirrorItem } from '../../shared/types';
-import type { OcListaRow } from '../../shared/dto';
+import type { OcListaRow, ProyectoFiltrosDTO } from '../../shared/dto';
+import { canRead } from '../../shared/visibility';
 import { etagFor, listItems } from './dal';
 import { BOARDS } from '../../shared/boards';
 import { ensureOcLedger, numeroDeFolio, type OcEmitidaRow } from './ocLedger';
@@ -262,6 +263,76 @@ async function lineasEstadoCacheadas(env: Env): Promise<LineaEstado[]> {
   return lineas;
 }
 
+/** Proveedor de una línea del Proyecto tal como se LEE (el nombre de la
+ * relación; la razón social solo si la relación viene vacía). Pura. */
+export function proveedorDeLinea(row: MirrorItem): { proyectoId: string; proveedor: string } | null {
+  if (row.parent_item_id == null) return null;
+  let cols: Col[] = [];
+  try { cols = JSON.parse(row.columns || '[]'); } catch { return null; }
+  const texto = (id: string) => cols.find(c => c.id === id)?.text?.trim() ?? '';
+  const proveedor = texto(SUB_PROVEEDOR_REL) || texto(SUB_PROVEEDOR_RZ);
+  return proveedor ? { proyectoId: String(row.parent_item_id), proveedor } : null;
+}
+
+/** proyecto -> sus proveedores (nombres, sin repetir), de TODAS las líneas.
+ * Mismo caché y mismo sello que `lineasEstadoCacheadas`: las líneas completas
+ * pesan 7 MB y esto se pide en cada carga del Reporte de Proyectos. Global,
+ * no por viewer — quien llama lo recorta a los proyectos que sí puede leer. */
+async function proveedoresPorProyectoCacheados(env: Env): Promise<Record<string, string[]>> {
+  const sello = await selloLineas(env);
+  const fila = await env.DB.prepare(`SELECT sello, json FROM oc_lista_cache WHERE clave = 'proveedores-proyecto'`)
+    .first<{ sello: string; json: string }>();
+  if (fila?.sello === sello) {
+    try { return JSON.parse(fila.json) as Record<string, string[]>; } catch { /* caché corrupta: se rehace */ }
+  }
+  const { results } = await env.DB.prepare('SELECT * FROM items WHERE board_id = ? AND parent_item_id IS NOT NULL')
+    .bind(BOARDS.proyectos_sub.id).all<MirrorItem>();
+  const sets = new Map<string, Set<string>>();
+  for (const row of results ?? []) {
+    const l = proveedorDeLinea(row);
+    if (!l) continue;
+    if (!sets.has(l.proyectoId)) sets.set(l.proyectoId, new Set());
+    sets.get(l.proyectoId)!.add(l.proveedor);
+  }
+  const mapa: Record<string, string[]> = {};
+  for (const [id, set] of sets) mapa[id] = [...set].sort((a, b) => a.localeCompare(b));
+  await env.DB.prepare(
+    `INSERT INTO oc_lista_cache (clave, sello, json) VALUES ('proveedores-proyecto', ?, ?)
+     ON CONFLICT(clave) DO UPDATE SET sello = excluded.sello, json = excluded.json`,
+  ).bind(sello, JSON.stringify(mapa)).run();
+  return mapa;
+}
+
+/** Lo que el Reporte de Proyectos necesita para filtrar y buscar y que NO viaja
+ * en la lista de Proyectos: los proveedores (viven en las líneas) y los folios
+ * de sus OC (viven en el nombre de los PDFs). Solo de los proyectos que el
+ * viewer puede leer, y cada dato solo si su rol lee la columna de donde sale —
+ * ventas no ve proveedores (shared/visibility.ts). Proyectos sin nada no salen. */
+export async function filtrosPorProyecto(env: Env, viewer: Identity): Promise<Record<string, ProyectoFiltrosDTO>> {
+  const verProveedor = canRead('proyectos_sub', SUB_PROVEEDOR_REL, viewer.role, viewer.email);
+  const verOc = canRead('proyectos', PROYECTO_OC_PDF, viewer.role, viewer.email);
+  if (!verProveedor && !verOc) return {};
+  await ensureOcListaTables(env);
+  const [proyectos, proveedores] = await Promise.all([
+    listItems(env, 'proyectos', viewer),
+    verProveedor ? proveedoresPorProyectoCacheados(env) : Promise.resolve({} as Record<string, string[]>),
+  ]);
+  const out: Record<string, ProyectoFiltrosDTO> = {};
+  for (const row of proyectos) {
+    const id = String(row.item_id);
+    const provs = proveedores[id] ?? [];
+    const ocs = verOc ? [...new Set(ordenesDeProyecto(row).map(o => o.folio))] : [];
+    if (provs.length || ocs.length) out[id] = { proveedores: provs, ocs };
+  }
+  return out;
+}
+
+/** ETag de los filtros: los proyectos de ESTE viewer + las líneas. */
+export async function etagFiltrosProyecto(env: Env, viewer: Identity): Promise<string> {
+  const [proyectos, lineas] = await Promise.all([etagFor(env, 'proyectos', viewer), selloLineas(env)]);
+  return `"proy-filtros:${proyectos.replace(/"/g, '')}:${lineas}"`;
+}
+
 /** ETag de la lista: cambia si cambia algo de lo que la compone — los
  * proyectos que ve ESTE viewer (etagFor ya trae su scope), las líneas, los
  * pagos o lo leído de los PDFs. Con él, el refresco de cada minuto contesta 304
@@ -284,7 +355,9 @@ export async function etagOcLista(env: Env, viewer: Identity): Promise<string> {
  * de la más reciente a la más vieja (`porFechaDeCreacion`). */
 export async function listarOrdenesCompra(env: Env, viewer: Identity): Promise<OcListaRow[]> {
   await Promise.all([ensureOcLedger(env), ensureOcListaTables(env)]);
-  const proyectos = await listItems(env, 'proyectos', viewer);
+  // compras lee los Proyectos de todo el equipo desde 2026-09-21, pero esta
+  // lista sigue siendo la de SUS proyectos (Efraín solo abrió Costeo y Reporte).
+  const proyectos = await listItems(env, 'proyectos', viewer, undefined, viewer.role === 'compras' ? 'own' : 'read');
   const base = marcarReemplazadas(unaFilaPorFolio(proyectos.flatMap(ordenesDeProyecto)));
   // `conEstados` solo mira los proyectos de `base` (los que el viewer ya puede
   // leer): el scoping de Proyectos se hereda, no se vuelve a decidir aquí.
