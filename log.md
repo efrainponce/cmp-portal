@@ -2,6 +2,13 @@
 
 ## 2026-09-22
 
+- **Crear orden de compra: renglón en naranja si el producto es de otro proveedor**
+  (Efraín: "pon en naranja cuando un producto no pertenece al mismo proveedor").
+  - Al elegir un producto del catálogo (o del caché `oc_concepto`) el renglón
+    recuerda su proveedor; si no es el de la orden, el renglón se pinta naranja
+    con "En el catálogo este producto es de X, no de Y". Teclear otro producto a
+    mano quita la marca. Elegir del catálogo sin proveedor puesto ya lo pone.
+
 - **Exportar a Excel escondido para todos** (Efraín: "por lo pronto que no lo
   pueda hacer nadie"). `EXPORT_HABILITADO = false` en `ExportExcelButton.tsx`;
   las listas siguen cableadas para prenderlo con un solo cambio.
