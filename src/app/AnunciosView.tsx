@@ -15,6 +15,7 @@ import { useIsMobile } from '../lib/useIsMobile';
 import { Button } from '../components/core/Button';
 import { ConfirmButton } from '../components/core/ConfirmButton';
 import { Modal } from '../components/core/Modal';
+import { confirmarCierre } from '../components/core/confirmarCierre';
 
 const ROLE_LABELS: Record<Role, string> = {
   vendedor: 'Ventas', compras: 'Compras', almacen: 'Almacén', admin: 'Admin',
@@ -212,14 +213,17 @@ function Composer({
 
   const listo = draft.titulo.trim().length > 0 && draft.cuerpo.trim().length > 0;
 
+  const cerrar = confirmarCierre(onClose, { saving: guardando, mensaje: '¿Cerrar sin guardar el anuncio? Se pierde lo que escribiste.' });
+
   return (
     <Modal
       title={editando ? 'Editar anuncio' : 'Nuevo anuncio'}
-      onClose={onClose}
+      onClose={cerrar}
+      closeOnBackdrop={false}
       width={560}
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>Cancelar</Button>
+          <Button variant="ghost" onClick={cerrar}>Cancelar</Button>
           <Button variant={listo && !guardando ? 'primary' : 'disabled'} onClick={guardar}>
             {guardando ? 'Guardando…' : editando ? 'Guardar' : 'Publicar'}
           </Button>

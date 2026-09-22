@@ -59,6 +59,102 @@
 
 ## 2026-09-22
 
+- **Muestras: el aviso ya no cae a todo Compras cuando el responsable es quien
+  envía** (MUE-1 de prueba de Efraín, Responsable compras de su propia
+  oportunidad: se excluyó como actor, la lista quedó vacía y el respaldo le
+  mandó el WhatsApp a los 5 de Compras). Ahora el respaldo "todo Compras" solo
+  aplica si el item no tiene Responsable compras con usuario en el portal.
+
+- **Solicitud de muestra: Color como dropdown y se limpia al cambiar de
+  producto** (Efraín: "el color debe ser un dropdown o libre si no tiene. Pero
+  no se actualiza al elegir un nuevo producto"). En `MuestraModal` el color era
+  un input con datalist: al cambiar de producto se quedaba el color del
+  anterior y el datalist, filtrado por ese valor, ya no mostraba los nuevos.
+  Ahora es `<select>` con los colores del catálogo del producto (input libre si
+  no trae ninguno o es texto libre), se vacía al elegir otro producto y queda
+  elegido solo si el catálogo trae un único color. Al editar, un color que ya
+  no está en el catálogo se conserva como opción.
+
+- **Nueva oportunidad: todo obligatorio salvo Vendedor secundario; fecha
+  límite mínimo a 7 días** (Efraín: "TODO es obligatorio, fecha límite no
+  puede ser en los siguientes 7 días"). `CreateOportunidadModal` valida
+  Compras, Contacto, Institución, Zona, Tipo de cotización, ¿Nuevos productos?
+  y Fecha límite antes de crear, con mensaje por campo; el input de fecha lleva
+  `min` = hoy + 7 (fecha local del navegador) y una nota debajo. Solo front:
+  el bot de WhatsApp y el server siguen creando sin estas reglas.
+
+- **Muestras: escribe todo el que ve el item, Compras incluido** (Efraín:
+  "todos pueden escribir incluyendo compras"). Crear, editar, enviar, sacar
+  versión y borrar borradores pasan de scope 'own' a 'read' del item ligado
+  (vendedor, líder/auxiliar de zona, Compras, admin) — excepción consciente a
+  la regla de 'own' en endpoints que mutan: las muestras son nativas y no
+  escriben columnas de Monday, igual que los comentarios. Mover el estado
+  sigue siendo de Compras/admin. En el board, un borrador solo lo ve quien lo
+  armó; en el tab del item se ven todas las versiones.
+
+- **Muestras: versiones como la cotización** (Efraín: "si crea una y la
+  validan y necesita crear una segunda que se pueda hacer, así como las
+  versiones de cotización").
+  - Chips V1/V2… en la tarjeta del tab; "+ Nueva versión" junto a la vigente
+    (ya enviada) duplica TAL CUAL como V{n+1} en borrador para editarla y
+    volverla a enviar. Las anteriores quedan archivadas, en solo lectura, con
+    su estado.
+  - Folio compartido por el grupo (`MUE-3`, `MUE-3 V2`). Board: un renglón por
+    solicitud con la versión más nueva que le toca ver — Compras sigue viendo
+    la enviada mientras el vendedor arma la nueva (`versionVisiblePorGrupo`).
+    El estado solo se mueve en la versión enviada más nueva.
+  - El aviso a Compras y la actualización del item dicen la versión.
+
+- **Muestras: flujo de envío y estados** (Efraín: "simple: enviada, validada,
+  muestra entregada… las solicitudes se mandan donde se crea la solicitud y es
+  un botón, eso lanza una actualización y le manda a compras una notificación
+  importante que les llega a WhatsApp").
+  - Estados Borrador → Enviada → Validada → Muestra entregada (ya no
+    Solicitada/Devuelta/Cancelada). Nace en borrador; editar y borrar solo
+    mientras es borrador.
+  - Botón «Enviar a Compras» en la tarjeta del tab: publica la actualización
+    en el item (con la firma del portal, para que el webhook no la re-notifique
+    como comentario) y manda aviso IMPORTANTE (bandeja + WhatsApp) al
+    Responsable compras del item, o a todo Compras si no tiene. El link del
+    aviso abre `/muestras/<id>` con la solicitud desplegada.
+  - El estado se mueve desde el board, solo Compras/admin (scope de lectura);
+    al solicitante le llega un aviso en Actualizaciones, sin WhatsApp. Los
+    borradores solo los ve quien los puede enviar.
+
+- **Muestras: tab en Cotización y Proyectos + board "Solicitudes de muestra"**
+  (Efraín: "un nuevo tab que se llama Muestras… tiene que estar ligado a algo,
+  así como las órdenes de compra"; reemplaza el Excel "SOLICITUD DE MUESTRAS").
+  - Cada solicitud cuelga de UNA Oportunidad o UN Proyecto (CHECK en D1) y
+    trae renglones de producto (del catálogo con `ProductPicker` o texto
+    libre), color y talla (sugeridos del catálogo, sin obligar), cantidad y
+    comentarios por línea; encabezado con fecha de entrega, días de retorno y
+    notas. Solicitante = quien la crea; proyecto/cliente/folio salen del item.
+  - Estados Solicitada → Entregada al cliente → Devuelta (o Cancelada);
+    "retorno vencido" en rojo cuando sigue con el cliente pasada la fecha.
+  - 100 % nativo (`worker/lib/muestras.ts`, rutas `/api/muestras*`): nada va a
+    Monday. Permisos = los del item ligado (`getItem` 'read'/'own'); la lista
+    general recorta por renglón con `scopeFor`. Editar/borrar respaldan el
+    renglón completo en `muestra_borrado` antes.
+  - Board nuevo en Ventas para vendedor y compras (`shared/boardAccess.ts`);
+    en remoto hay que correr `worker/migrations/2026-09-21-muestras.sql` para
+    que aparezca en el menú (las tablas se crean solas).
+
+- **Formularios largos: tampoco se cierran con un clic fuera** (Efraín: "checa
+  los formularios largos para también hacerlo… estoy pensando en proveedores").
+  Helper `confirmarCierre` (`src/components/core/confirmarCierre.ts`) +
+  `closeOnBackdrop={false}`; Cancelar, la ✕ y Escape preguntan antes de cerrar.
+  Aplica a: alta de proveedor/institución/contacto (`CreateRecordModal`),
+  editar proveedor (solo si hay cambios sin guardar), nueva oportunidad, nuevo
+  proyecto, agregar línea manual, ajustar línea (cotización y Proyecto),
+  nuevo/editar anuncio y agregar usuario. `CrearOcModal` pasa al mismo helper.
+  Los modales de ver/elegir (historial, vista previa, pickers) no cambian.
+
+- **Crear orden de compra: un clic fuera ya no cierra el modal** (Efraín: "no
+  puedes cerrar la modal haciendo click en otro lado… tienes que dar click en
+  cancelar o cerrar y pide confirmación"). `Modal` gana `closeOnBackdrop`
+  (default true, los demás modales igual); `CrearOcModal` lo apaga y Cancelar,
+  la ✕ y Escape siempre preguntan antes de cerrar (antes solo si había captura).
+
 - **Crear orden de compra: renglón en naranja si el producto es de otro proveedor**
   (Efraín: "pon en naranja cuando un producto no pertenece al mismo proveedor").
   - Al elegir un producto del catálogo (o del caché `oc_concepto`) el renglón

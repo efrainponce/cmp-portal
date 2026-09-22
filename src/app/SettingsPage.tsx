@@ -15,6 +15,7 @@ import { Select } from '../components/forms/Select';
 import { StatusBadge } from '../components/core/Badges';
 import { GroupCard } from '../components/layout/GroupCard';
 import { Modal } from '../components/core/Modal';
+import { confirmarCierre } from '../components/core/confirmarCierre';
 import { textIncludes } from '../lib/textMatch';
 import { startImpersonation } from '../lib/impersonation';
 import { useMe, refreshMe } from '../lib/useMe';
@@ -365,13 +366,16 @@ function AddUserModal({ existingEmails, realOptions, onClose, onCreated, onError
   ];
   const proxyOptions = [{ value: '', label: 'Ninguno (solo directorio del portal)' }, ...realOptions];
 
+  const cerrar = confirmarCierre(onClose, { saving, mensaje: '¿Cerrar sin crear el usuario? Se pierde lo que capturaste.' });
+
   return (
     <Modal
       title="Agregar usuario"
-      onClose={onClose}
+      onClose={cerrar}
+      closeOnBackdrop={false}
       footer={(
         <>
-          <Button variant="secondary" onClick={onClose} style={{ padding: '6px 12px' }}>Cancelar</Button>
+          <Button variant="secondary" onClick={cerrar} style={{ padding: '6px 12px' }}>Cancelar</Button>
           <Button variant={valid && !saving ? 'primary' : 'disabled'} onClick={save} style={{ padding: '6px 12px' }}>
             {saving ? 'Creando…' : 'Crear usuario'}
           </Button>

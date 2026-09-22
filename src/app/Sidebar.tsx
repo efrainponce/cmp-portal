@@ -11,12 +11,12 @@ import logo from '../assets/logo-64.webp';
 import {
   IconHome, IconOportunidades, IconGlobe, IconCosteo, IconValidacion, IconDocTallas, IconOrdenesCompra, IconEjecucion, IconLogistica,
   IconProductos, IconCuentas, IconClientes, IconInventario, IconChevronLeft, IconChevronRight, IconSettings, IconLock,
-  IconAnuncios, IconAnalisis,
+  IconAnuncios, IconAnalisis, IconMuestras,
 } from '../components/icons';
 
 export type BoardKey =
   | 'home' | 'anuncios'
-  | 'oportunidades' | 'oportunidades_web' | 'costeo' | 'validacion' | 'doctallas' | 'ordenescompra' | 'oc_lista' | 'ejecucion' | 'logistica'
+  | 'oportunidades' | 'oportunidades_web' | 'costeo' | 'validacion' | 'muestras' | 'doctallas' | 'ordenescompra' | 'oc_lista' | 'ejecucion' | 'logistica'
   | 'productos' | 'instituciones' | 'contactos' | 'proveedores' | 'inventario' | 'settings' | 'analisis'
   | 'zona_efrain' | 'zona_efrain_proy' | 'estadocuenta';
 
@@ -28,6 +28,9 @@ const VENTAS_ITEMS: NavItemConfig[] = [
   { key: 'oportunidades_web', label: 'Oportunidades Web', icon: IconGlobe },
   { key: 'costeo', label: 'Costeo', icon: IconCosteo },
   { key: 'validacion', label: 'Validación Costeo', icon: IconValidacion },
+  // Las solicitudes de muestra de todos, en una lista (Efraín, 2026-09-21) —
+  // se crean desde el tab «Muestras» de cada oportunidad o proyecto.
+  { key: 'muestras', label: 'Solicitudes de muestra', icon: IconMuestras },
 ];
 
 // Zona privada "Efrain" (worker/lib/zonas.ts, Efraín 2026-08-12): NO vive en

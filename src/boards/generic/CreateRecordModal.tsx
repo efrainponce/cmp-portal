@@ -3,6 +3,7 @@
 // metadata philosophy as BoardTable/CellContent use for reading.
 import { useEffect, useState } from 'react';
 import { Modal } from '../../components/core/Modal';
+import { confirmarCierre } from '../../components/core/confirmarCierre';
 import { Button } from '../../components/core/Button';
 import { FormField } from '../../components/forms/FormField';
 import { SearchInput } from '../../components/forms/SearchInput';
@@ -165,13 +166,16 @@ export function CreateRecordModal({ slug, title, onClose, onCreated, native, fij
     }
   };
 
+  const cerrar = confirmarCierre(onClose, { saving, mensaje: '¿Cerrar sin crear? Se pierde lo que capturaste.' });
+
   return (
     <Modal
       title={title}
-      onClose={onClose}
+      onClose={cerrar}
+      closeOnBackdrop={false}
       footer={
         <>
-          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button variant="secondary" onClick={cerrar}>Cancelar</Button>
           <Button variant="primary" onClick={saving ? undefined : onSubmit}>{saving ? 'Creando…' : 'Crear'}</Button>
         </>
       }

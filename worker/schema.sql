@@ -292,7 +292,9 @@ INSERT OR IGNORE INTO role_board_access (role, board_key) VALUES
   ('compras', 'costeo'), ('compras', 'ejecucion'), ('compras', 'oc_lista'),
   ('compras', 'productos'), ('compras', 'instituciones'),
   ('compras', 'contactos'), ('compras', 'proveedores'),
-  ('almacen', 'inventario');
+  ('almacen', 'inventario'),
+  -- Solicitudes de muestra (Efraín, 2026-09-21).
+  ('vendedor', 'muestras'), ('compras', 'muestras');
 
 -- Menú del sidebar POR PERSONA (worker/lib/boardAccess.ts getNavBoards, Efraín
 -- 2026-09-19): PAM y Elisa son admin y veían los 14 boards. Solo declutter — los
@@ -981,3 +983,26 @@ CREATE TABLE IF NOT EXISTS oc_concepto (    -- caché de productos/conceptos cap
   proveedor_id INTEGER, proveedor_name TEXT, usos INTEGER NOT NULL DEFAULT 1, updated_by TEXT, updated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS oc_concepto_updated ON oc_concepto (updated_at);
+
+-- ── Solicitudes de muestra (2026-09-21, worker/lib/muestras.ts) ──
+-- Nativo: cuelga de UNA Oportunidad o UN Proyecto. El código las crea lazy.
+CREATE TABLE IF NOT EXISTS muestra_solicitud (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, oportunidad_id INTEGER, proyecto_id INTEGER,
+  estado TEXT NOT NULL DEFAULT 'borrador', fecha_entrega TEXT, dias_retorno INTEGER, notas TEXT,
+  solicitante_email TEXT NOT NULL, solicitante_nombre TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, updated_by TEXT,
+  enviada_at TEXT, enviada_por TEXT, grupo_id INTEGER, version INTEGER NOT NULL DEFAULT 1,
+  CHECK ((oportunidad_id IS NULL) <> (proyecto_id IS NULL))
+);
+CREATE INDEX IF NOT EXISTS idx_muestra_oportunidad ON muestra_solicitud(oportunidad_id);
+CREATE INDEX IF NOT EXISTS idx_muestra_proyecto ON muestra_solicitud(proyecto_id);
+CREATE INDEX IF NOT EXISTS idx_muestra_grupo ON muestra_solicitud(grupo_id);
+CREATE TABLE IF NOT EXISTS muestra_linea (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, solicitud_id INTEGER NOT NULL, orden INTEGER NOT NULL,
+  producto TEXT NOT NULL, producto_id INTEGER, sku TEXT, marca TEXT, color TEXT, talla TEXT,
+  cantidad REAL NOT NULL, comentarios TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_muestra_linea_solicitud ON muestra_linea(solicitud_id);
+CREATE TABLE IF NOT EXISTS muestra_borrado (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, solicitud_id INTEGER NOT NULL, fila TEXT NOT NULL,
+  borrado_por TEXT NOT NULL, borrado_en TEXT NOT NULL
+);

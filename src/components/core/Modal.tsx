@@ -9,6 +9,9 @@ interface ModalProps {
   children: ReactNode;
   footer?: ReactNode;
   width?: number;
+  /** false = un clic fuera del modal no lo cierra (formularios largos: solo
+   *  Cancelar, la ✕ o Escape). */
+  closeOnBackdrop?: boolean;
 }
 
 // Modales abiertos, del de hasta abajo al de hasta arriba. Escape cierra SOLO
@@ -17,7 +20,7 @@ interface ModalProps {
 // oportunidad a medio capturar (2026-09-10).
 const abiertos: object[] = [];
 
-export function Modal({ title, onClose, children, footer, width = 480 }: ModalProps) {
+export function Modal({ title, onClose, children, footer, width = 480, closeOnBackdrop = true }: ModalProps) {
   // Por ref: `onClose` suele ser una flecha nueva en cada render, y volver a
   // suscribir en cada render movería este modal al tope de la pila.
   const onCloseRef = useRef(onClose);
@@ -38,7 +41,7 @@ export function Modal({ title, onClose, children, footer, width = 480 }: ModalPr
 
   return (
     <div
-      onClick={onClose}
+      onClick={closeOnBackdrop ? onClose : undefined}
       style={{
         position: 'fixed', inset: 0, background: 'var(--overlay-scrim)',
         display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100,
