@@ -1,5 +1,11 @@
 # Log de commits
 
+## 2026-09-22
+
+- **Exportar a Excel escondido para todos** (Efraín: "por lo pronto que no lo
+  pueda hacer nadie"). `EXPORT_HABILITADO = false` en `ExportExcelButton.tsx`;
+  las listas siguen cableadas para prenderlo con un solo cambio.
+
 ## 2026-09-21
 
 - **Rótulos y pastillas "gigantes" en Logística, Tallas y Ejecución** (Efraín,

@@ -15,11 +15,17 @@ interface Props<T> {
   filas: T[];
 }
 
+/** Apagado para TODOS por lo pronto (Efraín, 2026-09-22: "que no lo pueda
+ * hacer nadie, escóndelo"). El componente y sus columnas se quedan cableados en
+ * cada lista: para volver a prenderlo basta poner esto en true. */
+const EXPORT_HABILITADO = false;
+
 export function ExportExcelButton<T>({ titulo, columnas, filas }: Props<T>) {
   const isMobile = useIsMobile();
   const [trabajando, setTrabajando] = useState(false);
   const [error, setError] = useState(false);
   const vacio = filas.length === 0;
+  if (!EXPORT_HABILITADO) return null;
 
   const exportar = () => {
     if (trabajando) return;
