@@ -75,6 +75,9 @@ export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
     // la cotización firmada (tab Documentación); el vendedor la ve (Efraín,
     // 2026-08-10).
     file_mm0hpefr: { vis: V, w: WAC },
+    // Fechas de solo lectura para la lista extendida de Oportunidades (admin,
+    // Efraín 2026-09-21): Creación (creation_log) y Fecha Creación Proyecto.
+    ...vis(['pulse_log_mkzm4v99', 'date_mm09wqah'], WA),
   },
 
   oportunidades_sub: {

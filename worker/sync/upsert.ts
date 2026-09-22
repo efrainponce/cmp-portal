@@ -92,24 +92,25 @@ export function mirrorUpsertStatement(
 
   // Totales de la línea, materializados aquí para que la lista pueda sumarlos
   // por oportunidad con un SUM por índice — ver worker/lib/lineaTotales.ts.
-  // Fuera del board de líneas las cinco columnas se quedan en NULL.
+  // Fuera del board de líneas las seis columnas se quedan en NULL.
   const t = slug === 'oportunidades_sub' ? totalesDeLinea(columns) : null;
 
   const stmt = env.DB.prepare(
     `INSERT INTO items (board_id, item_id, parent_item_id, name, group_id, vendedor_ids, monday_updated_at, synced_at, content_hash, columns,
-                        t_costo, t_subtotal, t_total, t_utilidad, t_margen_gob)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                        t_costo, t_subtotal, t_total, t_utilidad, t_margen_gob, t_cantidad)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
      ON CONFLICT(board_id, item_id) DO UPDATE SET
        parent_item_id = excluded.parent_item_id, name = excluded.name, group_id = excluded.group_id,
        vendedor_ids = excluded.vendedor_ids, monday_updated_at = excluded.monday_updated_at,
        synced_at = excluded.synced_at, content_hash = excluded.content_hash, columns = excluded.columns,
        t_costo = excluded.t_costo, t_subtotal = excluded.t_subtotal, t_total = excluded.t_total,
-       t_utilidad = excluded.t_utilidad, t_margen_gob = excluded.t_margen_gob`,
+       t_utilidad = excluded.t_utilidad, t_margen_gob = excluded.t_margen_gob,
+       t_cantidad = excluded.t_cantidad`,
   ).bind(
     def.id, itemId, parentItemId,
     item.name, item.group?.id ?? null,
     JSON.stringify(vendedorIds), item.updated_at, now, contentHash, columnsJson,
-    t?.costo ?? null, t?.subtotal ?? null, t?.total ?? null, t?.utilidad ?? null, t?.margenGob ?? null,
+    t?.costo ?? null, t?.subtotal ?? null, t?.total ?? null, t?.utilidad ?? null, t?.margenGob ?? null, t?.cantidad ?? null,
   );
 
   return { stmt, itemId, parentItemId, vendedorIds, contentHash, columnsJson };

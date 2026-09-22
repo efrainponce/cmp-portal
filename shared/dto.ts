@@ -53,6 +53,8 @@ export interface TotalesDTO {
   /** Ponderada: utilidad / subtotal. Ausente si no hay subtotal capturado. */
   utilidadPct?: number;
   margenGob?: number;
+  /** Piezas sumadas de las líneas (Cantidad Total de Monday, cuyo espejo llega vacío). */
+  cantidad?: number;
 }
 
 export interface ListResponse {

@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS items (
   t_total        REAL,
   t_utilidad     REAL,
   t_margen_gob   REAL,
+  t_cantidad     REAL,
   PRIMARY KEY (board_id, item_id)
 );
 CREATE INDEX IF NOT EXISTS idx_items_parent ON items(parent_item_id);

@@ -20,7 +20,7 @@ describe('totalesDeLinea', () => {
       col('formula_mkznsb7m', '0'),
       col('numeric_mkzm6399', '42', '"42"'),
     ]);
-    expect(t).toEqual({ costo: 11938.5, subtotal: 14070, total: 16321.2, utilidad: 2131.5, margenGob: 0 });
+    expect(t).toEqual({ costo: 11938.5, subtotal: 14070, total: 16321.2, utilidad: 2131.5, margenGob: 0, cantidad: 42 });
   });
 
   it('aguanta el formato con comas que a veces manda Monday', () => {
@@ -48,10 +48,11 @@ describe('totalesDeLinea', () => {
     expect(t.costo).toBeCloseTo(945, 6);        // 90 * 1.05 * 10
     expect(t.margenGob).toBe(100);              // 5% de 200, por 10
     expect(t.utilidad).toBeCloseTo(955, 6);     // (200 - 10 - 94.5) * 10
+    expect(t.cantidad).toBe(10);
   });
 
   it('una línea vacía da ceros, nunca NaN', () => {
     const t = totalesDeLinea([col('text_mm0bkm1j', 'Solo el nombre')]);
-    expect(t).toEqual({ costo: 0, subtotal: 0, total: 0, utilidad: 0, margenGob: 0 });
+    expect(t).toEqual({ costo: 0, subtotal: 0, total: 0, utilidad: 0, margenGob: 0, cantidad: 0 });
   });
 });

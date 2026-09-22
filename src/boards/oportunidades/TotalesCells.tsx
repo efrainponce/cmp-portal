@@ -7,17 +7,20 @@
 // Efraín (2026-08-20): dinero abreviado ($500K, $1.3M) "para facilitar la
 // lectura" y el porcentaje con el semáforo de siempre. En celular caben cuatro
 // —Subtotal, Utilidad %, Utilidad Total y Margen Gob—, que son las que pidió.
-import type { TotalesDTO } from '../../../shared/dto';
+import type { ItemDTO, TotalesDTO } from '../../../shared/dto';
 import { fmtMoneyShort, marginColor } from '../../lib/format';
 
-export type MetricaKey = 'costo' | 'subtotal' | 'total' | 'utilidadPct' | 'margenGob' | 'utilidad';
+export type MetricaKey = 'costo' | 'subtotal' | 'total' | 'utilidadPct' | 'margenGob' | 'utilidad' | 'cantidad' | 'lineas';
 
-interface Metrica {
-  key: MetricaKey;
+export interface Metrica {
+  /** MetricaKey para las cifras de `totales`; `fecha:<colId>` para una fecha. */
+  key: string;
   label: string;
   /** Título largo para el tooltip — la etiqueta de la columna va apretada. */
   titulo: string;
   width: number;
+  /** Columna de FECHA del item (no de `totales`): se lee de `item.cols`. */
+  fechaCol?: string;
 }
 
 // Orden de Monday, para que quien venga del tablero encuentre lo mismo.
@@ -29,6 +32,28 @@ export const METRICAS: Metrica[] = [
   { key: 'margenGob', label: 'M. Gob', titulo: 'Margen Gob Total', width: 62 },
   { key: 'utilidad', label: 'Utilidad', titulo: 'Utilidad Total (ya descontados costo y margen gob)', width: 72 },
 ];
+
+// Lista EXTENDIDA de Oportunidades, solo admin (Efraín, 2026-09-21: "muchas
+// columnas de totales, incluyendo fechas", como su vista de tablero en Monday).
+// Se prenden/apagan con el botón "Columnas" (useColumnasVisibles). Cantidad y
+// Líneas salen de las líneas igual que las seis de arriba; las fechas son
+// columnas del item y viajan en `cols` solo cuando esta vista las pide.
+const EXTRA_TOTALES: Metrica[] = [
+  { key: 'cantidad', label: 'Piezas', titulo: 'Cantidad Total (piezas)', width: 62 },
+  { key: 'lineas', label: 'Líneas', titulo: 'Líneas de la cotización', width: 48 },
+];
+const fecha = (colId: string, label: string, titulo: string): Metrica =>
+  ({ key: `fecha:${colId}`, label, titulo, width: 70, fechaCol: colId });
+export const FECHAS_ADMIN: Metrica[] = [
+  fecha('pulse_log_mkzm4v99', 'Creada', 'Creación'),
+  fecha('deal_expected_close_date', 'F. límite', 'Fecha Límite'),
+  fecha('date_mm094kzf', 'Sol. costeo', 'Fecha solicitud costeo'),
+  fecha('date_mm09b6nz', 'Sol. valid.', 'Fecha solicitud validación costeo'),
+  fecha('date_mm0mc3dj', 'Validada', 'Fecha Validación Costeo'),
+  fecha('date_mm09mv5b', 'Cotización', 'Fecha Cotización'),
+  fecha('date_mm09wqah', 'Proyecto', 'Fecha Creación Proyecto'),
+];
+export const METRICAS_EXTENDIDAS: Metrica[] = [...METRICAS, ...EXTRA_TOTALES, ...FECHAS_ADMIN];
 
 // En celular caben cuatro y van en ESTE orden, no en el de Monday (Efraín,
 // 2026-08-20): lo primero que se busca en el teléfono es cuánto deja el trato.
@@ -54,7 +79,11 @@ const PADDING_RENGLON = 18;
  * arma con lo que hay en vez de pintar seis columnas de guiones. Se calcula
  * sobre TODO el mapa, no sobre el primer renglón: una oportunidad sin líneas
  * no aparece en `totales` y otra sin precios trae `utilidadPct` ausente. */
-export function metricasVisibles(totales: Record<string, TotalesDTO> | undefined, isMobile: boolean): Metrica[] {
+export function metricasVisibles(
+  totales: Record<string, TotalesDTO> | undefined, isMobile: boolean,
+  /** Lista extendida (admin en Oportunidades) — en celular no aplica. */
+  extendidas = false,
+): Metrica[] {
   if (!totales) return [];
   const presentes = new Set<string>();
   for (const t of Object.values(totales)) {
@@ -65,13 +94,26 @@ export function metricasVisibles(totales: Record<string, TotalesDTO> | undefined
   if (presentes.has('utilidad')) presentes.add('utilidadPct');
   const base = isMobile
     ? MOVIL.map(k => METRICAS.find(m => m.key === k)!)
-    : METRICAS;
-  return base.filter(m => presentes.has(m.key));
+    : extendidas ? METRICAS_EXTENDIDAS : METRICAS;
+  return base.filter(m => m.fechaCol || presentes.has(m.key));
 }
 
-function textoDe(m: Metrica, t: TotalesDTO | undefined): { texto: string; color?: string } {
-  const v = t?.[m.key];
+const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+
+/** "2026-08-15" o "2026-08-15 17:59:23 UTC" (creation_log) -> "15 ago 26". Por
+ * texto y no vía Date: en UTC una fecha pura se corre al día anterior. */
+function fmtFecha(text: string | undefined): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(text ?? '');
+  if (!m) return '—';
+  return `${Number(m[3])} ${MESES[Number(m[2]) - 1]} ${m[1].slice(2)}`;
+}
+
+function textoDe(m: Metrica, t: TotalesDTO | undefined, cols?: ItemDTO['cols']): { texto: string; color?: string } {
+  if (m.fechaCol) return { texto: fmtFecha(cols?.[m.fechaCol]?.text) };
+  if (m.key === 'lineas') return { texto: t ? String(t.lineas) : '—' };
+  const v = (t as Record<string, number | undefined> | undefined)?.[m.key];
   if (v === undefined) return { texto: '—' };
+  if (m.key === 'cantidad') return { texto: v.toLocaleString('es-MX') };
   if (m.key === 'utilidadPct') return { texto: `${v.toFixed(1)}%`, color: marginColor(v) };
   // La Utilidad Total se colorea con su propio porcentaje, igual que la fila de
   // totales del tab Cotización: el número solo no dice si el trato es bueno.
@@ -127,8 +169,10 @@ export function TotalesHeader({ metricas, isMobile }: { metricas: Metrica[]; isM
   );
 }
 
-export function TotalesCells({ totales, metricas, strong = false }: {
+export function TotalesCells({ totales, metricas, strong = false, cols }: {
   totales: TotalesDTO | undefined; metricas: Metrica[];
+  /** Columnas del item, para las métricas de fecha (lista extendida). */
+  cols?: ItemDTO['cols'];
   /** Fila de suma (encabezado de grupo / gran total): mismo ancho y misma
    * posición de columna que un renglón normal, pero en negritas para que se
    * lea como un total y no como un proyecto más. */
@@ -143,7 +187,7 @@ export function TotalesCells({ totales, metricas, strong = false }: {
   return (
     <div style={{ display: 'flex', gap: GAP_METRICAS, flex: 'none' }}>
       {metricas.map(m => {
-        const { texto, color } = textoDe(m, totales);
+        const { texto, color } = textoDe(m, totales, cols);
         return (
           <div
             key={m.key}
@@ -204,6 +248,7 @@ export function sumaTotales(lista: (TotalesDTO | undefined)[]): TotalesDTO {
   for (const t of lista) {
     if (!t) continue;
     out.lineas += t.lineas;
+    if (t.cantidad !== undefined) out.cantidad = (out.cantidad ?? 0) + t.cantidad;
     acumular('costo', t.costo);
     acumular('subtotal', t.subtotal);
     acumular('total', t.total);

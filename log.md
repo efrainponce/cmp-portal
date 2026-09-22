@@ -2,6 +2,26 @@
 
 ## 2026-09-21
 
+- **Oportunidades: lista extendida para admin + botón "Columnas"** (Efraín: "solo
+  para los admins… muchas columnas de totales incluyendo fechas… un botón para
+  elegir las columnas, se guarda para la siguiente visita").
+  - Admin (solo desktop, boards Oportunidades y Costeo vía `config.columnasAdmin`;
+    cada board guarda sus columnas por separado)
+    ve, además de Costo/Subtotal/Total/Util. %/M. Gob/Utilidad: **Piezas**
+    (Cantidad Total), **Líneas** y 7 fechas (Creada, F. límite, Sol. costeo,
+    Sol. valid., Validada, Cotización, Proyecto). La lista hace scroll
+    horizontal; encabezado y renglones van en un contenedor `max-content` para
+    seguir cuadrando.
+  - Botón "Columnas" = el mismo `ColumnPicker`/`useColumnasVisibles` de Lista de
+    OC (localStorage por correo+board, key `oportunidades_lista`).
+  - Cantidad Total: el espejo de Monday llega vacío, así que se materializa por
+    línea en `items.t_cantidad` (mismo patrón que los t_* del 2026-08-20) y
+    `totales.ts` la suma. **Migración `worker/migrations/2026-09-21-linea-cantidad.sql`
+    ANTES del deploy** (sin la columna el upsert de líneas falla).
+  - `shared/visibility.ts`: Creación (`pulse_log_mkzm4v99`) y Fecha Creación
+    Proyecto (`date_mm09wqah`) pasan a legibles SOLO para admin (ningún rol las
+    leía). Las fechas solo se piden en `?cols=` cuando la vista extendida las pinta.
+
 - **Inventario 5.11: la cotización salía vacía** (Efraín: "esta oportunidad tiene
   productos 5.11 y no me sale para agregar un producto").
   - La pestaña leía la relación a Productos como `linkedPulseIds` (API vieja de
