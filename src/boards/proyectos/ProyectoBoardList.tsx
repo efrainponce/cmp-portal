@@ -18,7 +18,7 @@ import { lastMondayUpdateFromItems } from '../../lib/syncStatus';
 import { fmtSyncAgo } from '../../lib/format';
 import { chipFor } from '../../components/board/cellHelpers';
 import { statusIndex } from '../../lib/statusValue';
-import { textIncludes } from '../../lib/textMatch';
+import { searchMatches } from '../../lib/textMatch';
 import { PersonPair } from '../../components/core/PersonAvatar';
 import { PROJECT_STATUS_ORDER, type ProjectBoardConfig } from '../../lib/projectStages';
 import { useSavedView } from '../../lib/useSavedView';
@@ -252,8 +252,8 @@ export function ProyectoBoardList({ config, q, onSearch, onOpen, onReady, header
         ...(extras[it.id]?.proveedores ?? []),
         ...(extras[it.id]?.ocs ?? []),
       ] : []),
-    ].filter(Boolean).join(' ');
-    return palabras.every((p) => textIncludes(haystack, p));
+    ].filter((t): t is string => !!t);
+    return searchMatches(haystack, q);
   });
   const hayFiltro = proveedor !== TODOS || vendedorF !== TODOS || comprasF !== TODOS || zonaFiltro !== TODOS;
 

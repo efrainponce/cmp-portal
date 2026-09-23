@@ -15,12 +15,17 @@ import type { Env } from '../env';
 import type { Identity, MirrorItem } from '../../shared/types';
 import type { OcListaRow, ProyectoFiltrosDTO } from '../../shared/dto';
 import { canRead } from '../../shared/visibility';
-import { etagFor, listItems } from './dal';
+import { etagFor, listItems, scopeFor } from './dal';
 import { BOARDS } from '../../shared/boards';
 import { ensureOcLedger, numeroDeFolio, type OcEmitidaRow } from './ocLedger';
 import { fechaValida, montoCuadra } from '../../shared/ocMontoPdf';
 
 const PROYECTO_OC_PDF = 'file_mm0hj9pn';
+// "OC Prov. Firmada": la copia firmada que Compras sube a mano. Casi siempre
+// repite un folio de la columna de arriba, pero no siempre — medido
+// 2026-09-23: OC-214, 216, 237 y 238 SOLO existen aquí y la lista no las
+// mostraba (ni el buscador por folio ni el filtro de proveedor las encontraban).
+const PROYECTO_OC_FIRMADA = 'file_mm1g7cqz';
 const PROYECTO_ZONA = 'dropdown_mm0hnyv';
 const PROYECTO_FOLIO = 'pulse_id_mm1a12gy';
 // Líneas del Proyecto (proyectos_sub) — mismos ids que worker/lib/oc.ts.
@@ -96,13 +101,15 @@ export function ordenesDeProyecto(row: MirrorItem): OcListaRow[] {
   // Aquí el proyecto dueño del archivo ya se sabe. El costo: no pega al R2 de
   // `oportunidades/…` y siempre se sirve desde Monday, que es de donde sale
   // esta lista de todos modos.
-  const url = (archivo: string) => `/api/files/proyectos/${row.item_id}/oc/${encodeURIComponent(archivo)}`;
+  const url = (archivo: string, categoria = 'oc') => `/api/files/proyectos/${row.item_id}/${categoria}/${encodeURIComponent(archivo)}`;
+
+  const archivos = (colId: string) => texto(colId).split(',').map(s => s.trim()).filter(Boolean).map(entrada => {
+    const archivo = decode(entrada.split('/').pop() ?? '');
+    return { archivo, assetId: /\/resources\/(\d+)\//.exec(entrada)?.[1] ?? null, m: OC_NOMBRE_RE.exec(archivo) };
+  });
 
   const porFolio = new Map<string, OcListaRow>();
-  for (const entrada of texto(PROYECTO_OC_PDF).split(',').map(s => s.trim()).filter(Boolean)) {
-    const archivo = decode(entrada.split('/').pop() ?? '');
-    const assetId = /\/resources\/(\d+)\//.exec(entrada)?.[1] ?? null;
-    const m = OC_NOMBRE_RE.exec(archivo);
+  for (const { archivo, assetId, m } of archivos(PROYECTO_OC_PDF)) {
     if (!m) continue;
     const folio = m[1].toUpperCase();
     let fila = porFolio.get(folio);
@@ -112,12 +119,23 @@ export function ordenesDeProyecto(row: MirrorItem): OcListaRow[] {
         proyectoId: String(row.item_id), proyecto: row.name, proyectoFolio: texto(PROYECTO_FOLIO) || null,
         zona: texto(PROYECTO_ZONA) || null, tambienEn: [], reemplazadaPor: null,
         url: null, urlSinCostos: null, assetId: null,
-        fecha: null, subtotal: null, iva: null, total: null, moneda: null, pdfLeido: false, pagada: false, estados: null,
+        fecha: null, subtotal: null, iva: null, total: null, moneda: null, pdfLeido: false, pagada: false, editable: false, estados: null,
       };
       porFolio.set(folio, fila);
     }
     if (m[3]) fila.urlSinCostos = url(archivo);
     else { fila.url = url(archivo); fila.assetId = assetId; fila.proveedor = m[2].replace(/_/g, ' ').trim(); }
+  }
+  // Folios que solo están firmados: entran con el PDF firmado como su PDF.
+  for (const { archivo, assetId, m } of archivos(PROYECTO_OC_FIRMADA)) {
+    if (!m || m[3] || porFolio.has(m[1].toUpperCase())) continue;
+    porFolio.set(m[1].toUpperCase(), {
+      folio: m[1].toUpperCase(), proveedor: m[2].replace(/_/g, ' ').trim(),
+      proyectoId: String(row.item_id), proyecto: row.name, proyectoFolio: texto(PROYECTO_FOLIO) || null,
+      zona: texto(PROYECTO_ZONA) || null, tambienEn: [], reemplazadaPor: null,
+      url: url(archivo, 'oc-firmada'), urlSinCostos: null, assetId,
+      fecha: null, subtotal: null, iva: null, total: null, moneda: null, pdfLeido: false, pagada: false, editable: false, estados: null,
+    });
   }
   return [...porFolio.values()];
 }
@@ -355,9 +373,15 @@ export async function etagOcLista(env: Env, viewer: Identity): Promise<string> {
  * de la más reciente a la más vieja (`porFechaDeCreacion`). */
 export async function listarOrdenesCompra(env: Env, viewer: Identity): Promise<OcListaRow[]> {
   await Promise.all([ensureOcLedger(env), ensureOcListaTables(env)]);
-  // compras lee los Proyectos de todo el equipo desde 2026-09-21, pero esta
-  // lista sigue siendo la de SUS proyectos (Efraín solo abrió Costeo y Reporte).
-  const proyectos = await listItems(env, 'proyectos', viewer, undefined, viewer.role === 'compras' ? 'own' : 'read');
+  // Todas las OC para todos (Efraín, 2026-09-23): compras lee los Proyectos de
+  // todo el equipo desde 2026-09-21 y aquí seguía viendo solo los SUYOS — cada
+  // comprador veía 41-87 de 272 órdenes, y buscar un folio o filtrar un
+  // proveedor "perdía" las de los proyectos de otro comprador. Marcar pagada
+  // sigue siendo solo sobre lo propio (`editable`, scope 'own').
+  const [proyectos, propios] = await Promise.all([
+    listItems(env, 'proyectos', viewer),
+    idsPropios(env, viewer),
+  ]);
   const base = marcarReemplazadas(unaFilaPorFolio(proyectos.flatMap(ordenesDeProyecto)));
   // `conEstados` solo mira los proyectos de `base` (los que el viewer ya puede
   // leer): el scoping de Proyectos se hereda, no se vuelve a decidir aquí.
@@ -386,6 +410,7 @@ export async function listarOrdenesCompra(env: Env, viewer: Identity): Promise<O
       if (m.subtotal != null) { o.subtotal = m.subtotal; o.iva = m.iva; o.total = m.total; o.moneda = m.moneda ?? o.moneda; }
     }
     o.pagada = pagadas.has(o.folio);
+    o.editable = propios.has(o.proyectoId) || o.tambienEn.some(t => propios.has(t.proyectoId));
   }
   return ordenes.sort(porFechaDeCreacion);
 }
@@ -400,6 +425,14 @@ export function porFechaDeCreacion(a: OcListaRow, b: OcListaRow): number {
   return numeroDeFolio(b.folio) - numeroDeFolio(a.folio);
 }
 
+/** Proyectos que el viewer puede ESCRIBIR (scope 'own'), solo ids. */
+async function idsPropios(env: Env, viewer: Identity): Promise<Set<string>> {
+  const scope = scopeFor('proyectos', viewer, 'own');
+  const { results } = await env.DB.prepare(`SELECT item_id FROM items WHERE board_id = ? AND (${scope.where})`)
+    .bind(BOARDS.proyectos.id, ...scope.binds).all<{ item_id: number }>();
+  return new Set((results ?? []).map(r => String(r.item_id)));
+}
+
 async function ordenVisible(env: Env, viewer: Identity, folio: string): Promise<OcListaRow> {
   const f = folio.trim().toUpperCase();
   if (!numeroDeFolio(f)) throw new OcListaError('folio inválido');
@@ -412,6 +445,8 @@ async function ordenVisible(env: Env, viewer: Identity, folio: string): Promise<
  * el viewer SÍ ve: sin eso, cualquiera con la ruta marcaría folios ajenos. */
 export async function marcarPagada(env: Env, viewer: Identity, folio: string, pagada: boolean): Promise<void> {
   const orden = await ordenVisible(env, viewer, folio);
+  // Ver no es poder marcar: solo sobre proyectos propios (mismo 404 que un extraño).
+  if (!orden.editable) throw new OcListaError('orden no encontrada', 404);
   await env.DB.prepare(
     `INSERT INTO oc_pago (folio, pagada, por_email, updated_at) VALUES (?,?,?,?)
      ON CONFLICT(folio) DO UPDATE SET pagada = excluded.pagada, por_email = excluded.por_email, updated_at = excluded.updated_at`,
