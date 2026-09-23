@@ -41,6 +41,31 @@
 
 ## 2026-09-23
 
+- **Botones lentos, medidos en prod** (ux_event, 14 días): se revisó cada
+  llamada en serie de los más lentos y se quitó lo que el botón no necesita
+  esperar, sin cambiar lo que se escribe en Monday.
+- **Validar costeo** (8.3 s, 63 clics): los avisos (WhatsApp por
+  destinatario, en serie) salen en segundo plano; el cambio de etapa a Monday
+  y la relectura de las líneas corren en paralelo, y ya no se relee la fila
+  de la oportunidad (la trae la respuesta del propio cambio). Además ahora el
+  botón espera a que Monday tenga la etapa antes de decir "ya puedes generar
+  la cotización" (antes iba suelto, en carrera con la relectura).
+- **Generar OC** (15.3 s): cmp-tallas solo toca el Proyecto (PDF + update),
+  así que después se relee solo el Proyecto, no sus 67+ líneas (~3 s menos).
+  **Bug**: la nota de la OC se mandaba a Monday en carrera con cmp-tallas,
+  que lee esa columna al arrancar — la OC podía salir sin la nota o con la
+  del proveedor anterior; ahora se espera a que llegue antes de disparar.
+- **Bug**: releer un Proyecto con más de 99 líneas tronaba (tope de
+  parámetros de D1) — "Generar OC" respondió 500 cinco veces el 2026-09-16
+  aunque la OC sí se generó. Hoy hay 4 Proyectos así. Las líneas se asientan
+  ahora por lote y el borrado va en trozos (test nuevo con 150 líneas).
+- **+ Agregar línea** (5.0 s): la línea en blanco ya no le pide a Monday
+  calcular sus ~23 fórmulas y ~20 espejos al crearla (medido: la mitad o
+  más del tiempo); se rellenan con una relectura en segundo plano.
+- **Proponer producto** y **alta de línea del Proyecto**: el aviso al
+  comprador y el caché del autocompletar salen en segundo plano. Cada
+  llamada a Monday cuenta su uso en paralelo en vez de después.
+
 - **Velocidad con internet lento** (Compras en Mérida, visto en Clarity).
   Medido en prod con red lenta simulada: dos optimizaciones ya existentes
   estaban apagadas en silencio, sin quitar ninguna función.

@@ -13,7 +13,7 @@ import { MAX_TALLAS_POR_REQUEST } from '../../shared/dto';
 import type { ProposedProductsResponse, AddProposedProductResponse } from '../../shared/productosPropuestos';
 import { getItem, childrenOf, pendingItemIds, proyectoForOportunidad, linkedItemId, PROYECTO_OPP_REL } from '../lib/dal';
 import { toItemDTO } from '../lib/serialize';
-import { OutboxError, submitWrite } from '../lib/outbox';
+import { OutboxError, submitWrite, flushOutbox } from '../lib/outbox';
 import {
   generateCotizacion, generateSheet, confirmTallas, importTallas, generateOC,
   AutomationError,
@@ -325,11 +325,24 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     try {
       const result = await confirmarCosteo(c.env, c.executionCtx, itemId, viewer);
       if (result.ok) {
-        // Árbol completo (no solo el padre) y ANTES de generar el documento: el
-        // Precio de Venta se captura seguido en Monday directo, y el documento
-        // congela lo que vea el espejo — con la relectura del padre nada más,
-        // las líneas podían entrar todavía con el precio viejo.
-        await refetchItemTree(c.env, BOARDS.oportunidades.id, itemId);
+        // Las LÍNEAS frescas ANTES de generar el documento: el Precio de Venta
+        // se captura seguido en Monday directo, y el documento congela lo que
+        // vea el espejo — con la relectura del padre nada más, las líneas
+        // podían entrar todavía con el precio viejo.
+        //
+        // En PARALELO con el write de la etapa (confirmarCosteo lo deja en el
+        // outbox con skipFlush): son independientes — la etapa vive en el
+        // padre y el documento lee las líneas. `soloLineas` deja la fila del
+        // padre al eco de ese write (la respuesta de la mutación trae el padre
+        // completo), en vez de releerlo aquí (~1.5-2 s de fórmulas) con el
+        // riesgo de que la lectura le gane a la mutación y regrese la etapa
+        // vieja al espejo. Un fallo del flush no tumba la validación (antes
+        // corría suelto en waitUntil): la fila se queda en el outbox y la
+        // reintenta el siguiente flush/cron, igual que cualquier write.
+        await Promise.all([
+          flushOutbox(c.env).catch(err => console.log('[validar-costeo] flush: ' + String(err))),
+          refetchItemTree(c.env, BOARDS.oportunidades.id, itemId, { soloLineas: true }),
+        ]);
         await generarHojaValidacion(c, itemId, viewer);
       }
       return result.ok ? c.json(result) : jsonStatus(result, 422);
@@ -668,9 +681,23 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       const subitemCols: Record<string, unknown> = {
         numeric_mkzm6399: body.cantidad ?? 0, // cantidad
       };
-      const subitem = await createSubitem(c.env, itemId, subitemName, subitemCols);
+      //
+      // `ligero`: la línea nace EN BLANCO (sin producto, cantidad 0), así que
+      // sus ~20 espejos están vacíos y sus ~23 fórmulas dan 0 — pedirle a
+      // Monday que las calcule en la respuesta de la mutación era la mayor
+      // parte de los ~5 s del botón (ux_event 2026-09; lectura medida: ~2.5-4.6 s
+      // con fórmulas y espejos contra ~1 s sin ellos). La fila del espejo nace
+      // ya (el grid la pinta en el reload) y el refetch en segundo plano le
+      // pone fórmulas y espejos unos segundos después — el grid se refresca
+      // solo cada 5 s. Si el refetch falla, el latido/reconcile la trae.
+      const subitem = await createSubitem(c.env, itemId, subitemName, subitemCols, { ligero: true });
 
       await upsertItem(c.env, 'oportunidades_sub', subitem);
+      const subitemId = Number(subitem.id);
+      c.executionCtx.waitUntil(
+        refetchItem(c.env, BOARDS.oportunidades_sub.id, subitemId)
+          .catch(err => console.log('[productos] refetch de la línea nueva: ' + String(err))),
+      );
       return c.json({ ok: true, id: subitem.id });
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
@@ -988,7 +1015,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     const file = form.get('file');
 
     try {
-      const producto = await addProposedProduct(c.env, itemId, viewer, nombre, descripcion, file instanceof File ? file : undefined);
+      const producto = await addProposedProduct(c.env, c.executionCtx, itemId, viewer, nombre, descripcion, file instanceof File ? file : undefined);
       return c.json({ ok: true, producto } satisfies AddProposedProductResponse);
     } catch (err) {
       if (err instanceof ProposedProductError) return jsonStatus({ error: err.message }, err.status);
@@ -1976,7 +2003,9 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       }
       const subitem = await createSubitem(c.env, itemId, nombre, subitemCols);
       await upsertItem(c.env, 'proyectos_sub', subitem);
-      await recordConcepto();
+      // El caché del autocompletar no es parte de la respuesta (y nunca
+      // relanza): fuera del camino del botón.
+      c.executionCtx.waitUntil(recordConcepto());
       return c.json({ ok: true, id: subitem.id });
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
@@ -2330,7 +2359,13 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       const nota = await getOcNota(c.env, itemId, opts.onlyProveedor);
       if (nota) {
         try {
-          await submitWrite(c.env, c.executionCtx, 'proyectos', itemId, { [PROYECTO_COMENTARIOS_OC]: nota }, viewer);
+          // skipFlush + flush ESPERADO: cmp-tallas lee la columna de Monday en
+          // cuanto recibe la llamada (generate_oc.py fetch_proyecto). Con el
+          // flush suelto en waitUntil la mutación corría en carrera con esa
+          // lectura y la OC podía salir sin la nota — o con la del proveedor
+          // anterior, que es lo que seguía en la columna.
+          await submitWrite(c.env, c.executionCtx, 'proyectos', itemId, { [PROYECTO_COMENTARIOS_OC]: nota }, viewer, { skipFlush: true });
+          await flushOutbox(c.env);
         } catch { /* best-effort: la OC sale sin la nota, no vale abortar el flujo */ }
       }
     }
@@ -2357,7 +2392,15 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
         ? await action.run(c.env, itemId, opts)
         : { ok: false, reason: 'acción sin camino disponible' };
       // cmp-tallas (o el flujo nativo) escribe directo en Monday — refresca el mirror.
-      await refetchItemTree(c.env, BOARDS.proyectos.id, itemId);
+      // generate_oc de cmp-tallas solo toca el PROYECTO (sube el PDF a
+      // file_mm0hj9pn + un update; verificado en cmp-tallas/api/generate_oc.py,
+      // cero mutaciones sobre subitems): releer el padre basta y se ahorra el
+      // árbol completo — ~4.5 s en un Proyecto de 67 líneas contra ~1.5 s el
+      // padre solo (medido 2026-09-23), y era el paso más largo después de
+      // cmp-tallas. Las demás acciones (importar tallas reescribe las líneas,
+      // los motores nativos) siguen releyendo el árbol.
+      if (legacyOc) await refetchItem(c.env, BOARDS.proyectos.id, itemId);
+      else await refetchItemTree(c.env, BOARDS.proyectos.id, itemId);
       return c.json(result);
     } catch (err) {
       if (err instanceof AutomationError) return jsonStatus({ ok: false, reason: err.message }, err.status);

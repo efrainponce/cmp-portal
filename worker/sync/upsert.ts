@@ -122,9 +122,9 @@ export function mirrorUpsertStatement(
 const BATCH_CHUNK = 100;
 // Parámetros ligados por UNA query — D1 rechaza más de ~100 (mismo tope que
 // documenta worker/lib/updateSeen.ts). 99 ids + el board_id = 100.
-const BIND_CHUNK = 99;
+export const BIND_CHUNK = 99;
 
-function chunk<T>(arr: T[], size: number): T[][] {
+export function chunk<T>(arr: T[], size: number): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
   return out;

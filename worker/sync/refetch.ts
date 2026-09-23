@@ -1,10 +1,8 @@
 // Single-item refetch: never trust webhook/UI payloads — always re-pull from Monday.
 import type { Env } from '../env';
-import { fetchItem, fetchItemWithSubitems, fetchItemsByIds, ITEMS_BY_IDS_MAX } from '../lib/monday';
+import { fetchItem, fetchItemWithSubitems, fetchItemsByIds, fetchSubitemsOf, ITEMS_BY_IDS_MAX, type MondayItem } from '../lib/monday';
 import { boardById, BOARDS, type BoardSlug } from '../../shared/boards';
-import { upsertItem, upsertItemsBulk, toRawColumns } from './upsert';
-import { hydrateFichaLineas } from '../lib/ficha';
-import { rawHash } from '../lib/canon';
+import { upsertItem, upsertItemsBulk, chunk, BIND_CHUNK } from './upsert';
 import { isNativeId } from '../../shared/nativeId';
 import { confirmOutboxEcho, confirmOutboxEchoMany } from './echo';
 import { logSync } from './log';
@@ -125,8 +123,17 @@ export async function refetchItem(env: Env, boardId: number, itemId: number): Pr
 /** Item + subitems refetch in one Monday call. Upserts everything and DELETES
  * mirror subitem rows that no longer exist on Monday — needed after cmp-tallas
  * flows that rewrite subitems (import_tallas) or snapshot columns on them
- * (validar_costeo). No-op child cleanup for boards without a subitem board. */
-export async function refetchItemTree(env: Env, boardId: number, itemId: number): Promise<void> {
+ * (validar_costeo). No-op child cleanup for boards without a subitem board.
+ *
+ * `soloLineas`: relee y asienta SOLO las líneas; la fila del padre no se toca.
+ * Para cuando el padre tiene un write propio en vuelo que su eco del outbox
+ * asentará (Validar costeo escribe deal_stage y en paralelo necesita las
+ * líneas frescas): releer al padre aquí costaba ~1.5-2 s de sus fórmulas y
+ * espejos, y si la lectura le ganaba a la mutación podía regresar la etapa
+ * vieja al espejo. */
+export async function refetchItemTree(
+  env: Env, boardId: number, itemId: number, opts: { soloLineas?: boolean } = {},
+): Promise<void> {
   if (isNativeId(itemId)) return; // ver comentario en refetchItem
 
   const def = boardById(boardId);
@@ -135,65 +142,81 @@ export async function refetchItemTree(env: Env, boardId: number, itemId: number)
     return;
   }
 
-  const tree = await fetchItemWithSubitems(env, itemId);
-  if (!tree) {
-    await env.DB.prepare(`DELETE FROM items WHERE board_id = ? AND item_id = ?`)
-      .bind(boardId, itemId).run();
-    await logSync(env, 'manual', boardId, itemId, true, 'not found on Monday — mirror row deleted');
-    return;
+  const childSlug = (Object.keys(BOARDS) as BoardSlug[]).find(k => BOARDS[k].parent === def.slug);
+
+  let subitems: MondayItem[];
+  if (opts.soloLineas && childSlug) {
+    const subs = await fetchSubitemsOf(env, itemId);
+    if (!subs) {
+      await env.DB.prepare(`DELETE FROM items WHERE board_id = ? AND item_id = ?`)
+        .bind(boardId, itemId).run();
+      await logSync(env, 'manual', boardId, itemId, true, 'not found on Monday — mirror row deleted');
+      return;
+    }
+    subitems = subs;
+  } else {
+    const tree = await fetchItemWithSubitems(env, itemId);
+    if (!tree) {
+      await env.DB.prepare(`DELETE FROM items WHERE board_id = ? AND item_id = ?`)
+        .bind(boardId, itemId).run();
+      await logSync(env, 'manual', boardId, itemId, true, 'not found on Monday — mirror row deleted');
+      return;
+    }
+
+    // skipIfUnchanged: sin esto, ABRIR una oportunidad reescribía `synced_at` de
+    // la fila (y de sus 30+ líneas) aunque Monday no hubiera cambiado nada. Como
+    // el ETag de las listas cuelga de MAX(synced_at) del board, eso invalidaba la
+    // lista de TODOS los demás usuarios: cada apertura de cualquiera obligaba al
+    // resto a re-bajar el board completo en su siguiente poll (comprobado, 2026-
+    // 08-13). Ahora `synced_at` solo se mueve cuando el contenido cambió de
+    // verdad, que es lo que ya hacía reconcile. Los cambios de columnas mirror sí
+    // quedan cubiertos: entran en `content_hash`, no en `updated_at` de Monday.
+    await upsertItem(env, def.slug, tree.item, { skipIfUnchanged: true });
+    await confirmOutboxEcho(env, boardId, itemId, tree.item.column_values, tree.item.name);
+    subitems = tree.subitems;
   }
 
-  // skipIfUnchanged: sin esto, ABRIR una oportunidad reescribía `synced_at` de
-  // la fila (y de sus 30+ líneas) aunque Monday no hubiera cambiado nada. Como
-  // el ETag de las listas cuelga de MAX(synced_at) del board, eso invalidaba la
-  // lista de TODOS los demás usuarios: cada apertura de cualquiera obligaba al
-  // resto a re-bajar el board completo en su siguiente poll (comprobado, 2026-
-  // 08-13). Ahora `synced_at` solo se mueve cuando el contenido cambió de
-  // verdad, que es lo que ya hacía reconcile. Los cambios de columnas mirror sí
-  // quedan cubiertos: entran en `content_hash`, no en `updated_at` de Monday.
-  await upsertItem(env, def.slug, tree.item, { skipIfUnchanged: true });
-  await confirmOutboxEcho(env, boardId, itemId, tree.item.column_values, tree.item.name);
-
-  const childSlug = (Object.keys(BOARDS) as BoardSlug[]).find(k => BOARDS[k].parent === def.slug);
   if (childSlug) {
     const childBoardId = BOARDS[childSlug].id;
-    // Los hashes de TODAS las líneas en UNA consulta, no una por línea.
-    // `skipIfUnchanged` por sí solo cambia 31 escrituras por 31 SELECTs
-    // secuenciales, y cada ida a D1 desde el Worker es un round-trip: en una
-    // oportunidad de 31 líneas eso es 31 viajes para, casi siempre, no escribir
-    // nada. Reconcile ya resuelve esto igual (una lectura de hashes + escribir
-    // solo lo que cambió).
-    // La ficha comercial se resuelve para TODAS las líneas de un jalón (una
-    // consulta) y ANTES de comparar hashes: así una línea guardada sin ficha se
-    // repara en esta misma relectura en vez de saltarse por "igual a lo que hay"
-    // (worker/lib/ficha.ts).
-    if (childSlug === 'oportunidades_sub') await hydrateFichaLineas(env, tree.subitems);
-
-    const subIds = tree.subitems.map(s => Number(s.id));
+    const subIds = subitems.map(s => Number(s.id));
     // El orden en sí no entra en content_hash (no es una columna) — se captura
     // siempre, aunque ninguna línea haya cambiado de valor, para que un
     // reacomodo puro en Monday no se quede sin reflejar (worker/lib/itemOrder.ts).
     await upsertMondayOrder(env, childBoardId, itemId, subIds);
-    const hashActual = new Map<number, string>();
-    if (subIds.length) {
-      const placeholders = subIds.map(() => '?').join(',');
-      const rows = await env.DB.prepare(
-        `SELECT item_id, content_hash FROM items WHERE board_id = ? AND item_id IN (${placeholders})`,
-      ).bind(childBoardId, ...subIds).all<{ item_id: number; content_hash: string }>();
-      for (const r of rows.results ?? []) hashActual.set(r.item_id, r.content_hash);
+    // Las líneas por el MISMO camino que el refetch por lote del delta sync
+    // (upsertItemsBulk): hashes en trozos de BIND_CHUNK, ficha comercial
+    // hidratada ANTES del hash (una línea guardada sin ficha se repara aquí en
+    // vez de saltarse por "igual a lo que hay", worker/lib/ficha.ts), mismo
+    // hash = ni se toca (no mover `synced_at` mantiene válido el ETag de la
+    // lista para los demás), writes en `env.DB.batch()` y side effects solo de
+    // lo que cambió. Antes esto iba línea por línea con upsertItem (3-4 idas a
+    // D1 por línea cambiada, en serie) y la consulta de hashes llevaba TODOS
+    // los ids en un solo IN: un Proyecto con más de 99 líneas reventaba el
+    // tope de parámetros de D1 ("too many SQL variables") y la ruta respondía
+    // 500 aunque la acción ya hubiera pasado en Monday — generar-oc, 2026-09-16.
+    await upsertItemsBulk(env, childSlug, subitems);
+    // Líneas que ya no existen en Monday: se quitan del espejo. Se leen las
+    // del padre (2 parámetros) y se borran de a BIND_CHUNK, en vez de un
+    // `NOT IN (...)` con todos los ids vivos — mismo tope de D1 de arriba.
+    const vivos = new Set(subIds);
+    const { results } = await env.DB.prepare(
+      `SELECT item_id FROM items WHERE board_id = ? AND parent_item_id = ?`,
+    ).bind(childBoardId, itemId).all<{ item_id: number }>();
+    const sobrantes = lineasSobrantes((results ?? []).map(r => r.item_id), vivos);
+    if (sobrantes.length) {
+      await env.DB.batch(chunk(sobrantes, BIND_CHUNK).map(ids =>
+        env.DB.prepare(
+          `DELETE FROM items WHERE board_id = ? AND parent_item_id = ? AND item_id IN (${ids.map(() => '?').join(',')})`,
+        ).bind(childBoardId, itemId, ...ids)));
     }
-    for (const sub of tree.subitems) {
-      // Mismo hash = línea idéntica: ni se toca (no mover `synced_at` es lo que
-      // mantiene válido el ETag de la lista para todos los demás).
-      if (hashActual.get(Number(sub.id)) === rawHash(toRawColumns(sub))) continue;
-      await upsertItem(env, childSlug, sub);
-    }
-    const keep = tree.subitems.map(s => Number(s.id));
-    const placeholders = keep.map(() => '?').join(',');
-    await env.DB.prepare(
-      `DELETE FROM items WHERE board_id = ? AND parent_item_id = ?${keep.length ? ` AND item_id NOT IN (${placeholders})` : ''}`,
-    ).bind(childBoardId, itemId, ...keep).run();
   }
 
-  await logSync(env, 'manual', boardId, itemId, true, `refetched tree (${tree.subitems.length} subitems)`);
+  await logSync(env, 'manual', boardId, itemId, true,
+    `refetched tree (${subitems.length} subitems${opts.soloLineas ? ', solo líneas' : ''})`);
+}
+
+/** Ids del espejo que Monday ya no devolvió (se borran). Pura: la ancla
+ * worker/sync/refetch.test.ts. */
+export function lineasSobrantes(enEspejo: number[], vivos: ReadonlySet<number>): number[] {
+  return enEspejo.filter(id => !vivos.has(Number(id)));
 }

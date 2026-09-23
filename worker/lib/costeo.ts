@@ -616,20 +616,29 @@ export async function confirmarCosteo(
   });
   if (errors.length > 0) return { ok: false, errors };
 
-  await submitWrite(env, ctx, 'oportunidades', itemId, { deal_stage: DEAL_STAGE_CONFIRMADO_LABEL }, viewer, { trusted: true });
+  // skipFlush: la RUTA manda el write a Monday (flushOutbox) en paralelo con
+  // la relectura de las líneas y lo espera antes de responder — así "Ya
+  // puedes generar la cotización" nunca llega antes de que Monday tenga la
+  // etapa. Antes el flush iba suelto en waitUntil, en carrera con esa misma
+  // relectura del árbol (worker/routes/oportunidades.ts, validar-costeo).
+  await submitWrite(env, ctx, 'oportunidades', itemId, { deal_stage: DEAL_STAGE_CONFIRMADO_LABEL }, viewer, { trusted: true, skipFlush: true });
   // Aviso a Compras (comprador asignado) + vendedor, severidad 'importante' →
   // también sale WhatsApp de inmediato (Efraín, 2026-08-18: "manda una
   // notificación al de compras, es importante"). A mano y no por el diff de
   // sync: el merge optimista de outbox ya dejó la etapa nueva en el mirror, así
   // que el echo de Monday no ve cambio — ver emitStageNotification.
-  await emitStageNotification(env, {
+  // En `waitUntil`: cada destinatario era un envío a Meta EN SERIE dentro del
+  // botón, y emitStageNotification ya es best-effort (se traga y loguea sus
+  // errores a sync_log). El dedupe_key sigue evitando el doble aviso si el eco
+  // llegara a verlo también.
+  ctx.waitUntil(emitStageNotification(env, {
     itemId,
     itemName: item.name,
     stageIndex: STAGE_COSTEO_CONFIRMADO,
     columnsJson: item.columns,
     vendedorIds: vendedorIdsOf(item),
     actorEmail: viewer.email,
-  });
+  }));
   // Rastro de quién validó, visible también para quien abra el item en Monday
   // (mismo patrón que el rechazo de costeo). Best-effort: no tumba la validación.
   // En `waitUntil` y no en la respuesta: es bitácora, nadie la espera, y el

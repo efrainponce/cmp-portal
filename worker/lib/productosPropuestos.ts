@@ -3,6 +3,7 @@
 // (mismo patrón que documents.ts/inventory.ts): nombre+descripción+imagen no
 // encajan en ninguna columna existente y CLAUDE.md prohíbe inventar ids de
 // columna. Tabla lazy (mismo patrón que ensureDocumentTables).
+import type { ExecutionContext } from 'hono';
 import type { Env } from '../env';
 import { registrarArchivo } from './archivoLog';
 import type { Identity } from '../../shared/types';
@@ -153,7 +154,7 @@ async function notifyComprador(env: Env, itemId: number, oppColumnsJson: string,
 }
 
 export async function addProposedProduct(
-  env: Env, itemId: number, viewer: Identity, nombre: string, descripcion: string, file?: File,
+  env: Env, ctx: ExecutionContext, itemId: number, viewer: Identity, nombre: string, descripcion: string, file?: File,
 ): Promise<ProposedProductDTO> {
   const cleanNombre = nombre.trim();
   if (!cleanNombre) throw new ProposedProductError(400, 'nombre requerido');
@@ -183,6 +184,9 @@ export async function addProposedProduct(
   ).bind(id, itemId, cleanNombre, cleanDescripcion, imageKey, viewer.email, createdAt).run();
 
   const dto = toDTO({ id, nombre: cleanNombre, descripcion: cleanDescripcion, image_key: imageKey, created_by: viewer.email, created_at: createdAt });
-  await notifyComprador(env, itemId, opp.columns, opp.name, viewer, dto);
+  // En `waitUntil`: el aviso es un update a Monday (una ida de 1-3 s) más el
+  // WhatsApp de cada comprador, y el guardado no depende de nada de eso —
+  // notifyComprador ya es best-effort (se traga y loguea a sync_log).
+  ctx.waitUntil(notifyComprador(env, itemId, opp.columns, opp.name, viewer, dto));
   return dto;
 }

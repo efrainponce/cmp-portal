@@ -64,6 +64,16 @@ function normalizeCols(raw: RawCol[]): MondayCol[] {
 
 const COL_FIELDS = `id type text value ... on MirrorValue{display_value} ... on FormulaValue{display_value} ... on BoardRelationValue{display_value linked_item_ids}`;
 const ITEM_FIELDS = `id name updated_at group{id} parent_item{id} column_values{${COL_FIELDS}}`;
+/** Igual que ITEM_FIELDS pero SIN el `display_value` de espejos y fórmulas.
+ * Medido en vivo 2026-09-23 contra un subitem de Oportunidades (23 fórmulas +
+ * 20 espejos): la lectura completa tarda ~2.5-4.6 s y sin esos dos fragmentos
+ * ~1-1.3 s — Monday calcula cada fórmula al responder. Solo para crear una
+ * línea EN BLANCO (sin producto ligado: sus espejos están vacíos y sus
+ * fórmulas dan 0) cuando el llamador rellena el resto con un refetch en
+ * segundo plano. Nunca para un item con datos: el espejo quedaría sin cifras.
+ * Las relaciones sí van completas (text = nombre ligado, value = ids). */
+const COL_FIELDS_LIGERO = `id type text value ... on BoardRelationValue{display_value linked_item_ids}`;
+const ITEM_FIELDS_LIGERO = `id name updated_at group{id} parent_item{id} column_values{${COL_FIELDS_LIGERO}}`;
 
 // Monday enforces a *field-level* per-minute budget on top of the transport-level
 // 429 (surfaces as a 200 response carrying errors[] with extensions.status_code
@@ -108,16 +118,22 @@ export async function gql(
 ): Promise<any> {
   const maxRetries = opts?.maxRetries ?? 4;
   for (let attempt = 0; ; attempt++) {
-    const res = await fetch(MONDAY_URL, {
-      method: 'POST',
-      headers: {
-        Authorization: env.MONDAY_API_KEY,
-        'Content-Type': 'application/json',
-        'API-Version': API_VERSION,
-      },
-      body: JSON.stringify({ query, variables: variables ?? {} }),
-    });
-    await trackApiCall(env);
+    // El contador va EN PARALELO con la call, no después: son 1-2 idas a D1
+    // que antes se sumaban en serie a CADA llamada a Monday (una ruta con 3-4
+    // calls pagaba 3-8 viajes a D1 de puro contador). trackApiCall nunca
+    // rechaza, así que no puede tumbar la call real.
+    const [res] = await Promise.all([
+      fetch(MONDAY_URL, {
+        method: 'POST',
+        headers: {
+          Authorization: env.MONDAY_API_KEY,
+          'Content-Type': 'application/json',
+          'API-Version': API_VERSION,
+        },
+        body: JSON.stringify({ query, variables: variables ?? {} }),
+      }),
+      trackApiCall(env),
+    ]);
     if ((res.status === 429 || res.status >= 500) && attempt < maxRetries) {
       await new Promise(r => setTimeout(r, 400 * 2 ** attempt));
       continue;
@@ -274,8 +290,12 @@ export async function createSubitem(
   parentItemId: number,
   itemName: string,
   columnValues: Record<string, unknown>,
+  opts: { ligero?: boolean } = {},
 ): Promise<MondayItem> {
-  const query = `mutation($p:ID!,$n:String!,$cv:JSON){ create_subitem(parent_item_id:$p,item_name:$n,column_values:$cv,create_labels_if_missing:true){ ${ITEM_FIELDS} } }`;
+  // `ligero`: ver ITEM_FIELDS_LIGERO — el llamador DEBE refetchear la línea
+  // después (en waitUntil) para que el espejo reciba fórmulas y espejos.
+  const fields = opts.ligero ? ITEM_FIELDS_LIGERO : ITEM_FIELDS;
+  const query = `mutation($p:ID!,$n:String!,$cv:JSON){ create_subitem(parent_item_id:$p,item_name:$n,column_values:$cv,create_labels_if_missing:true){ ${fields} } }`;
   const data = await gql(env, query, { p: String(parentItemId), n: itemName, cv: JSON.stringify(columnValues) }, { maxRetries: 1 });
   const raw = data?.create_subitem;
   return { ...raw, column_values: normalizeCols(raw.column_values ?? []) };
@@ -526,6 +546,22 @@ export async function fetchAssetPublicUrls(env: Env, assetIds: string[]): Promis
   const out = new Map<string, string>();
   for (const a of data?.assets ?? []) out.set(String(a.id), a.public_url);
   return out;
+}
+
+/** Solo los subitems de un item (sin los campos del padre) — para
+ * refetchItemTree({ soloLineas }): cuando el padre lo va a asentar otro camino
+ * (el eco del outbox) y releerlo aquí costaría ~1.5-2 s de sus fórmulas y
+ * espejos, además de poder pisar con un valor viejo un write en vuelo.
+ * `null` si el padre no existe o no está activo — mismo criterio que
+ * fetchItemWithSubitems. */
+export async function fetchSubitemsOf(env: Env, itemId: number): Promise<MondayItem[] | null> {
+  const query = `query($id:[ID!]){ items(ids:$id){ id state subitems{ state ${ITEM_FIELDS} } } }`;
+  const data = await gql(env, query, { id: [String(itemId)] });
+  const raw = data?.items?.[0];
+  if (!raw || !esActivo(raw)) return null;
+  return ((raw.subitems ?? []) as any[])
+    .filter(esActivo)
+    .map(it => ({ ...it, column_values: normalizeCols(it.column_values ?? []) }));
 }
 
 /** Item + ALL its subitems in one round-trip — for flows where cmp-tallas
