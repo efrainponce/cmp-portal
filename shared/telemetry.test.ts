@@ -110,6 +110,7 @@ describe('constantes de contrato', () => {
 
   it('isUxKind / isValidUxId', () => {
     expect(isUxKind('click')).toBe(true);
+    expect(isUxKind('perf')).toBe(true);
     expect(isUxKind('pageview')).toBe(false);
     expect(isValidUxId('9f8b7a6c-1234-4def-8888-aabbccddeeff')).toBe(true);
     expect(isValidUxId('corto')).toBe(false);

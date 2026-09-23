@@ -31,6 +31,7 @@ import { MuestrasTab } from '../muestras/MuestrasTab';
 import type { ProjectBoardKey } from '../../lib/projectStages';
 import type { OportunidadLigadaDTO } from '../../../shared/dto';
 import { canReadActivity } from '../../../shared/visibility';
+import { usePerfDrawer } from '../../lib/perfReal';
 
 type ProyectoTabKey = 'estadocuenta' | 'actualizaciones' | 'resumen' | 'actividad' | 'cotizacion' | 'costeo' | 'embellecimientos' | 'documentacion' | 'tallas' | 'ordenes' | 'muestras' | 'ejecucion' | 'logistica';
 
@@ -135,6 +136,8 @@ export function ProyectoDrawer({ id, boardKey, backLabel, defaultTab, openTab, o
   const isMobile = useIsMobile();
   const me = useMe();
   const [item, setItem] = useState<ItemDetailDTO | null>(null);
+  // Rendimiento real: abrir → detalle en pantalla (src/lib/perfReal.ts).
+  usePerfDrawer(boardKey, id, item?.id === id, detailCache.has(id));
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [tab, setTab] = useState<ProyectoTabKey>(() => (esTab(openTab) ? openTab : defaultTab as ProyectoTabKey));

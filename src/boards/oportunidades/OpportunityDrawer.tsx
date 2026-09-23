@@ -46,6 +46,7 @@ import { EditClienteModal } from './EditClienteModal';
 import { EditInstitucionModal } from './EditInstitucionModal';
 import { EditPersonaModal } from './EditPersonaModal';
 import { DuplicarOportunidadModal } from './DuplicarOportunidadModal';
+import { usePerfDrawer } from '../../lib/perfReal';
 
 interface Props {
   id: string;
@@ -146,6 +147,8 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, openTab, onTabCha
   // de Compras (Efraín, 2026-08-13) — por eso no mira readOnlyCosteo/isValidacion.
   const canEditNombre = !!oppCols.find((c) => c.id === 'name')?.w;
   const [item, setItem] = useState<ItemDetailDTO | null>(null);
+  // Rendimiento real: abrir → detalle en pantalla (src/lib/perfReal.ts).
+  usePerfDrawer(boardKey ?? 'oportunidades', id, item?.id === id, detailCache.has(id));
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   // Relectura contra Monday en curso (ver loadFresh). El ref evita que una

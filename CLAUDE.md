@@ -29,6 +29,12 @@ con el Worker (`/api/*`). Bot de WhatsApp + chat del portal comparten agente Cla
 - **Primero `node scripts/salud.mjs`** (o `--horas 72`): resume de D1 de producción
   los hallazgos abiertos de la revisión de salud, las excepciones reales del servidor
   y del front, las acciones rechazadas y el outbox. No necesita dev server.
+- **"Está lento"**: `node scripts/perf-real.mjs [--rol compras] [--email …] [--dias 7]`
+  resume lo que VIVE cada usuario en su red (ux_event kind `perf`, de
+  `src/lib/perfReal.ts`): conexión, primera lista, drawer, LCP/INP, bajada completa
+  por endpoint y % de 304. Para reproducir: `scripts/prod-waterfall.mjs /ruta
+  [--sin-cache]` (cascada con red lenta contra prod) y `scripts/prod-304.mjs`
+  (¿cada endpoint polleado contesta 304?); ambos usan el perfil de `prod-login.mjs`.
 - La revisión de salud (`worker/lib/salud.ts`) corre cada hora (dentro del cron de
   15 min) y guarda en `salud_hallazgo`: divisiones cuya línea nueva se borró en
   Monday, SKU/Producto en texto vacío o de otro producto, líneas fantasma, outbox

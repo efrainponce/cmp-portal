@@ -92,16 +92,38 @@ function enviar(): void {
   } catch { /* nunca debe verse desde el portal */ }
 }
 
+// Quien acumula algo en memoria y necesita soltarlo ANTES del último envío
+// (los resúmenes de rendimiento de src/lib/perfReal.ts). Corren dentro del
+// mismo listener de salida y antes de `enviar()`: si cada quien pusiera su
+// propio listener, el orden entre ellos dependería de quién se instaló
+// primero y lo acumulado se quedaría en un timer que ya nunca dispara.
+const alSalirFns: Array<() => void> = [];
+
+function salir(): void {
+  for (const fn of alSalirFns) { try { fn(); } catch { /* nunca bloquea el envío */ } }
+  enviar();
+}
+
+function instalarListeners(): void {
+  if (listenersReady) return;
+  listenersReady = true;
+  try {
+    // `visibilitychange` a oculto y `pagehide` son los dos momentos reales de
+    // salida en móvil; `beforeunload` no dispara confiablemente en iOS.
+    addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') salir(); });
+    addEventListener('pagehide', () => salir());
+  } catch { /* SSR/test sin DOM */ }
+}
+
+/** Registra `fn` para que vuelque lo que tenga acumulado justo antes del
+ * envío de salida (pestaña oculta / cierre). */
+export function alSalir(fn: () => void): void {
+  alSalirFns.push(fn);
+  instalarListeners();
+}
+
 function programar(): void {
-  if (!listenersReady) {
-    listenersReady = true;
-    try {
-      // `visibilitychange` a oculto y `pagehide` son los dos momentos reales de
-      // salida en móvil; `beforeunload` no dispara confiablemente en iOS.
-      addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') enviar(); });
-      addEventListener('pagehide', () => enviar());
-    } catch { /* SSR/test sin DOM */ }
-  }
+  instalarListeners();
   if (timer !== null) return;
   try {
     timer = window.setTimeout(() => { timer = null; enviar(); }, FLUSH_MS);
@@ -200,6 +222,12 @@ export function uxApiLatency(method: string, path: string, latencyMs: number, ok
       meta: { sampled: esGet },
     });
   } catch { /* nunca debe romper una petición real */ }
+}
+
+/** Resumen de rendimiento real (kind `perf`, src/lib/perfReal.ts). Ya viene
+ * agregado: un renglón por ventana y endpoint, no uno por petición. */
+export function uxPerf(target: string, extra: Partial<UxEventInput> = {}): void {
+  registrar('perf', target, extra);
 }
 
 // Errores de JavaScript (2026-09-10, Efraín: "telemetría o algo que puedas ver

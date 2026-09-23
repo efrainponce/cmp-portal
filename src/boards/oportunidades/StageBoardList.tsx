@@ -27,6 +27,7 @@ import { TotalesCells, TotalesChips, TotalesHeader, metricasVisibles, FECHAS_ADM
 import { ColumnPicker } from '../../components/board/ColumnPicker';
 import { useColumnasVisibles, type ColumnaDef } from '../../lib/useColumnasVisibles';
 import type { TotalesDTO } from '../../../shared/dto';
+import { perfListaLista } from '../../lib/perfReal';
 
 /** Mirror columns fan in one value per subitem, so `text` can be a long
  * comma-joined repeat (e.g. "Listo, Listo, Listo"). Collapse to the
@@ -168,8 +169,10 @@ export function StageBoardList({ config, groupColId = 'deal_stage', q, onSearch,
   useEffect(() => {
     if (avisado.current || status !== 'ready') return;
     avisado.current = true;
+    // Rendimiento real: primera lista pintada de la carga (src/lib/perfReal.ts).
+    perfListaLista(config.key);
     onReady?.();
-  }, [status, onReady]);
+  }, [status, onReady, config.key]);
   // Memoizado sobre data.items: el poll de 5 s re-renderiza este componente y
   // antes esta cadena de filtros corría de nuevo sobre los 628 items en CADA
   // render, devolviendo siempre un array nuevo. Eso además rompía los useMemo

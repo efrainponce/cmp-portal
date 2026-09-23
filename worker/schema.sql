@@ -745,7 +745,7 @@ CREATE TABLE IF NOT EXISTS ux_event (
                                   -- Entero a propósito: joinable 1:1 contra activity_log.user_id.
   role        TEXT    NOT NULL,   -- rol al momento del evento; el reporte por defecto es POR ROL
   session_id  TEXT    NOT NULL,   -- uuid por pestaña (sessionStorage), no persiste entre sesiones
-  kind        TEXT    NOT NULL,   -- click|ack|edit|nav|error
+  kind        TEXT    NOT NULL,   -- click|ack|edit|nav|error|perf (perf = resúmenes de rendimiento real, src/lib/perfReal.ts)
   target      TEXT    NOT NULL,   -- slug estable de control: ^[a-z][a-z0-9:_-]{0,63}$
   corr        TEXT,               -- correlación clic↔acuse (sin esto el 58/42 no se puede calcular)
   board_slug  TEXT,

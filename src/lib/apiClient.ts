@@ -23,6 +23,7 @@ import { getImpersonateTarget } from './impersonation';
 import { tomarPrecarga } from './apiPreload';
 import { markSessionExpired } from './sessionState';
 import { uxApiLatency, uxEdit } from './telemetry';
+import { perfNotarMetodo } from './perfReal';
 import { beginWrite } from './readConsistency';
 import { CATALOGO_COLS } from './productSearch';
 
@@ -112,6 +113,9 @@ export async function apiFetch(path: string, init?: RequestInit): Promise<Respon
   // el espejo D1 traería el snapshot viejo y "regresaría" el cambio en pantalla.
   const method = (init?.method ?? 'GET').toUpperCase();
   const finishWrite = method !== 'GET' && method !== 'HEAD' && !path.startsWith('/telemetry/') ? beginWrite() : null;
+  // Resource Timing no trae el método: sin esto un PATCH a /items/:id se
+  // contaría como la lectura del detalle (src/lib/perfReal.ts).
+  perfNotarMetodo(url, method);
   let res: Response;
   try {
     res = precargada

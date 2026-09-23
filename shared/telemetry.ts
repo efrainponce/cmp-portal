@@ -20,10 +20,14 @@
 
 import { BOARDS } from './boards';
 
-/** Tipos de evento. `click`+`ack` van correlacionados por `corr` (ver UxEventInput). */
-export type UxKind = 'click' | 'ack' | 'edit' | 'nav' | 'error';
+/** Tipos de evento. `click`+`ack` van correlacionados por `corr` (ver UxEventInput).
+ * `perf` (2026-09-23) es la medición de rendimiento de usuarios reales
+ * (src/lib/perfReal.ts): lo que tarda la página y cada endpoint EN LA RED DE
+ * CADA QUIEN, ya agregado en el navegador — son resúmenes, no un evento por
+ * petición. Mismas reglas de forma que el resto: solo números y slugs. */
+export type UxKind = 'click' | 'ack' | 'edit' | 'nav' | 'error' | 'perf';
 
-export const UX_KINDS: readonly UxKind[] = ['click', 'ack', 'edit', 'nav', 'error'];
+export const UX_KINDS: readonly UxKind[] = ['click', 'ack', 'edit', 'nav', 'error', 'perf'];
 
 /** Tope de eventos por POST. El cliente trocea; la ruta rechaza lotes mayores. */
 export const UX_MAX_BATCH = 200;

@@ -1,5 +1,22 @@
 # Log de commits
 
+## 2026-09-23 (medición real)
+
+- **Medición de rendimiento de usuarios reales** (para verificar las
+  optimizaciones de hoy y escoger la siguiente con datos). La latencia que
+  ya se guardaba paraba en los encabezados: la bajada del cuerpo, que es lo
+  que pesa con internet lento, no se veía — Mérida y CDMX salían iguales.
+  Nuevo `src/lib/perfReal.ts`: con las APIs del propio navegador (Resource
+  Timing, LCP/INP/CLS, `navigator.connection`) manda, en el mismo lote de
+  telemetría y sin peticiones nuevas, resúmenes `perf` en `ux_event`: la carga
+  de la página y la conexión, cuánto tarda en verse la primera lista y cada
+  drawer, y por endpoint la bajada completa (los 304 aparte), por ventanas de
+  10 min — no una fila por petición. Bajo "ver como" no se graba.
+- **`scripts/perf-real.mjs`**: reporte por persona/rol y por endpoint
+  (`--rol`, `--email`, `--dias`). Entran al repo los scripts de cascada con
+  red lenta contra producción (`prod-waterfall.mjs`) y de revisión de 304
+  (`prod-304.mjs`). `adopcion.mjs` ya no cuenta las filas `perf` como eventos.
+
 ## 2026-09-23 (2)
 
 - **Comentarios por producto en Actualizaciones** (Elisa, OPP-1100: Juan Carlos

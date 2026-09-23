@@ -41,6 +41,7 @@ import { getEstadoCuentaResumen } from '../../lib/estadoCuentaApi';
 import { getProyectoFiltros } from '../../lib/apiClient';
 import type { ProyectoFiltrosDTO } from '../../../shared/dto';
 import type { ResumenEstadoCuenta } from '../../../shared/estadoCuenta';
+import { perfListaLista } from '../../lib/perfReal';
 
 const FOLIO_COL = 'pulse_id_mm1a12gy';
 const INSTITUCION_COL = 'lookup_mm1dwn6';
@@ -194,8 +195,10 @@ export function ProyectoBoardList({ config, q, onSearch, onOpen, onReady, header
   useEffect(() => {
     if (avisado.current || status !== 'ready') return;
     avisado.current = true;
+    // Rendimiento real: primera lista pintada de la carga (src/lib/perfReal.ts).
+    perfListaLista(config.key);
     onReady?.();
-  }, [status, onReady]);
+  }, [status, onReady, config.key]);
   const allItems = data?.items ?? [];
   const statusItems = allItems
     .filter((it) => !config.statuses || config.statuses.includes(statusIndex(it.cols[STATUS_COL])))
