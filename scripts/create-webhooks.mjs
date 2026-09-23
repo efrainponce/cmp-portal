@@ -47,7 +47,11 @@ const TOP_LEVEL = ['oportunidades', 'proyectos', 'productos', 'instituciones', '
 // OJO: en el board ya existe un webhook de deal_stage que NO es nuestro (es de
 // Make, id 531643702) — no confundirlos ni borrar el ajeno.
 const BASE_EVENTS = ['create_item', 'change_name', 'item_deleted', 'create_update'];
-const SUBITEM_EVENTS = ['create_subitem', 'subitem_deleted'];
+// create_subitem_update (2026-09-23): comentario escrito sobre una LÍNEA dentro
+// de monday.com — `create_update` NO lo cubre (Monday lo manda como evento aparte),
+// así que una mención sobre un producto nunca avisaba en el portal (OPP-1100).
+// Se registra en el board PADRE, igual que create_subitem.
+const SUBITEM_EVENTS = ['create_subitem', 'subitem_deleted', 'create_subitem_update'];
 const hasSubitems = (slug) => Object.values(BOARDS).some(d => d.parent === slug);
 
 const MUTATION = `mutation($board:ID!,$url:String!,$event:WebhookEventType!,$config:JSON){

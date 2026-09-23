@@ -43,13 +43,16 @@ export function syncRoutes(app: Hono<{ Bindings: Env }>): void {
     // (Efraín 2026-08-18: "los comentarios que ponen los vendedores no llegan").
     // No toca el mirror — un update no cambia columnas — así que sale por aquí sin
     // pasar por el debounce/refetch de abajo.
-    if (type === 'create_update') {
+    // `create_subitem_update` (2026-09-23): lo mismo sobre una LÍNEA — se avisa
+    // en el item padre (updateNotify.ts resuelve cuál).
+    if (type === 'create_update' || type === 'create_subitem_update') {
       await notifyUpdateFromWebhook(c.env, {
         boardId, itemId,
         updateId: event.updateId,
         body: event.body,
         textBody: event.textBody,
         userId: event.userId,
+        parentItemId: event.parentItemId,
       });
       return c.json({ ok: true });
     }

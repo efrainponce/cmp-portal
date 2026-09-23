@@ -19,6 +19,7 @@ import type { BoardSlug } from '../../shared/boards';
 import { BOARDS, boardById } from '../../shared/boards';
 import { emitNotification, resolveRecipients, personIdsFromColumns } from './notify';
 import { logSync } from '../sync/log';
+import { etiquetaLinea } from './lineaEtiqueta';
 
 /** Firma que el portal agrega a todo update que publica (worker/routes/boards.ts).
  * El webhook la usa para NO re-notificar lo que ese POST ya notificó. */
@@ -108,6 +109,9 @@ export interface CommentNotifyArgs {
   actorMondayUserId?: number;      // sus OTROS logins tampoco (ver actorEmailsFor)
   actorName?: string | null;
   mentionIds?: number[];        // monday_user_ids etiquetados con @
+  /** El comentario se escribió sobre una LÍNEA (subitem) de este item:
+   * "Producto · Color", para que el aviso diga de qué producto habla. */
+  linea?: string;
 }
 
 /** Emite las notificaciones de UN comentario. Best-effort: nunca lanza — un fallo
@@ -122,6 +126,7 @@ export async function notifyItemComment(env: Env, args: CommentNotifyArgs): Prom
     const boardKey = notifyBoardKey(args.slug);
     const boardId = BOARDS[args.slug].id;
     const preview = args.text.trim().slice(0, 140);
+    const sobre = args.linea ? ` · ${args.linea}` : '';
     const actor = args.actorName ?? args.actorEmail ?? null;
     const actorEmails = await actorEmailsFor(env, args.actorMondayUserId, args.actorEmail);
 
@@ -135,7 +140,7 @@ export async function notifyItemComment(env: Env, args: CommentNotifyArgs): Prom
         recipientEmail: row.email,
         severity: 'importante',
         kind: 'mention',
-        title: `Te mencionaron en ${args.itemName}`,
+        title: `Te mencionaron en ${args.itemName}${sobre}`,
         body: preview,
         boardKey, boardId, itemId: args.itemId,
         actor,
@@ -159,7 +164,7 @@ export async function notifyItemComment(env: Env, args: CommentNotifyArgs): Prom
         severity: 'importante',
         wa: false,
         kind: 'update_comment',
-        title: `Nuevo comentario en ${args.itemName}`,
+        title: `Nuevo comentario en ${args.itemName}${sobre}`,
         body: preview,
         boardKey, boardId, itemId: args.itemId,
         actor,
@@ -178,6 +183,7 @@ export interface WebhookUpdateEvent {
   body?: string;        // HTML (trae las menciones)
   textBody?: string;    // texto plano
   userId?: number | string;
+  parentItemId?: number | string;   // solo en comentarios sobre un subitem
 }
 
 function stripHtml(html: string): string {
@@ -197,10 +203,27 @@ function stripHtml(html: string): string {
  * para poder auditarlo sin adivinar. */
 export async function notifyUpdateFromWebhook(env: Env, e: WebhookUpdateEvent): Promise<void> {
   try {
-    const board = boardById(e.boardId);
-    // Solo boards de primer nivel: una notificación sobre un subitem no tiene
-    // deep link al que apuntar (el drawer abre por el item padre).
-    if (!board || board.parent) return;
+    // Comentario sobre una LÍNEA (evento `create_subitem_update`, 2026-09-23 —
+    // Elisa, OPP-1100: Juan Carlos la mencionó sobre el botiquín y el portal
+    // nunca le avisó). Se avisa en el item PADRE, que es a donde lleva el deep
+    // link y donde el feed ya muestra ese comentario (worker/lib/updatesLineas.ts).
+    // Monday puede mandar el boardId del padre o el del subitem: se decide por
+    // la fila del mirror, no por el payload.
+    const linea = await env.DB.prepare(
+      `SELECT board_id, parent_item_id, name, columns FROM items WHERE item_id = ? AND parent_item_id IS NOT NULL`,
+    ).bind(e.itemId).first<{ board_id: number; parent_item_id: number; name: string; columns: string }>();
+    const lineaBoard = linea ? boardById(linea.board_id) : undefined;
+    const parentId = linea?.parent_item_id ?? (Number(e.parentItemId) || null);
+    const board = lineaBoard?.parent ? BOARDS[lineaBoard.parent] : boardById(e.boardId);
+    if (!board || board.parent) {
+      // Subitem que el mirror aún no tiene: sin padre no hay a dónde avisar.
+      if (board?.parent || parentId) {
+        await logSync(env, 'webhook', e.boardId, e.itemId, true, 'update sobre línea fuera del mirror — no se notificó');
+      }
+      return;
+    }
+    const itemId = lineaBoard?.parent ? linea!.parent_item_id : e.itemId;
+    const lineaTexto = lineaBoard?.parent ? etiquetaLinea(lineaBoard.slug, linea!) : undefined;
 
     const html = e.body ?? '';
     const text = (e.textBody ?? stripHtml(html)).trim();
@@ -221,9 +244,9 @@ export async function notifyUpdateFromWebhook(env: Env, e: WebhookUpdateEvent): 
 
     const row = await env.DB.prepare(
       `SELECT name, vendedor_ids, columns FROM items WHERE board_id = ? AND item_id = ?`,
-    ).bind(e.boardId, e.itemId).first<{ name: string; vendedor_ids: string; columns: string }>();
+    ).bind(board.id, itemId).first<{ name: string; vendedor_ids: string; columns: string }>();
     if (!row) {
-      await logSync(env, 'webhook', e.boardId, e.itemId, true, 'create_update sobre item fuera del mirror — no se notificó');
+      await logSync(env, 'webhook', board.id, itemId, true, 'create_update sobre item fuera del mirror — no se notificó');
       return;
     }
 
@@ -232,7 +255,7 @@ export async function notifyUpdateFromWebhook(env: Env, e: WebhookUpdateEvent): 
 
     await notifyItemComment(env, {
       slug: board.slug,
-      itemId: e.itemId,
+      itemId,
       itemName: row.name,
       updateId,
       text,
@@ -242,6 +265,7 @@ export async function notifyUpdateFromWebhook(env: Env, e: WebhookUpdateEvent): 
       actorMondayUserId: Number(e.userId),
       actorName: actor.nombre,
       mentionIds: mentionIdsFromBody(html),
+      linea: lineaTexto,
     });
   } catch (err) {
     await logSync(env, 'webhook', e.boardId ?? null, e.itemId ?? null, false, 'notify: create_update ' + err);

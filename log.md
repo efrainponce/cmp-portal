@@ -23,6 +23,18 @@
   también — sin duplicar updates en Monday. 25 por línea; el proyecto más
   grande (150 líneas) cuesta ~15k de complejidad, 1.7 s. Si esa lectura falla,
   el feed del item sale igual.
+- **Aviso de comentarios sobre una línea** (revisado a petición de Efraín): el
+  comentario de Juan Carlos mencionando a Elisa en OPP-1100 NO generó ninguna
+  notificación — Monday manda los comentarios de subitems como evento aparte,
+  `create_subitem_update`, que no estaba registrado, y `notifyUpdateFromWebhook`
+  además descartaba todo lo de un board de subitems. Ahora el webhook lo acepta
+  y avisa en el item PADRE (a donde lleva el link), con el producto en el
+  título: "Te mencionaron en OPP-1100 … · Kit táctico de primeros auxilios ·
+  VERDE". El padre se resuelve por la fila del mirror, no por el `boardId` del
+  payload (se probaron las dos formas). `scripts/create-webhooks.mjs` ya lo
+  incluye; **falta registrarlo en Monday** (oportunidades + proyectos) DESPUÉS
+  del deploy. Etiqueta de línea extraída a `worker/lib/lineaEtiqueta.ts` para
+  que updateNotify no arrastre las lecturas a Monday.
 - Verificado en local contra Monday real: OPP-1100 muestra el comentario de
   Juan Carlos etiquetado "Kit táctico de primeros auxilios · VERDE"; OPP-0140
   (ganada) muestra 6 notas por producto + la conversación de venta.
