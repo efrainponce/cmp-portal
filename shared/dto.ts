@@ -791,6 +791,9 @@ export interface OcListaRow {
   iva: number | null;
   total: number | null;
   moneda: string | null;
+  /** El viewer puede marcarla pagada: es de un proyecto que ESCRIBE (scope 'own').
+   * Verla no basta — compras ve las OC de todo el equipo. */
+  editable: boolean;
   /** El PDF vigente ya se leyó (aunque no trajera totales): no se vuelve a bajar. */
   pdfLeido: boolean;
   /** Estado de los productos de la orden HOY: piezas por etiqueta de "Estado

@@ -458,7 +458,7 @@ function Fila({ o, dudosa, ilegible, isMobile, onOpenProyecto, onVer, grid, colu
   );
   const pagada = (
     <label style={{ display: 'flex', alignItems: 'center', gap: 6, font: 'var(--text-label)', color: o.pagada ? 'var(--ink)' : 'var(--ink-tertiary)', cursor: 'pointer' }}>
-      <input type="checkbox" checked={o.pagada} onChange={onToggle} style={{ cursor: 'pointer' }} />
+      <input type="checkbox" checked={o.pagada} onChange={onToggle} disabled={!o.editable} title={o.editable ? undefined : 'Solo lo marca Compras del proyecto o un admin.'} style={{ cursor: o.editable ? 'pointer' : 'not-allowed' }} />
       {o.pagada ? 'Pagada' : 'Por pagar'}
     </label>
   );

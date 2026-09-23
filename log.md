@@ -17,6 +17,13 @@
   con el PDF firmado como su PDF (categoría `oc-firmada` de /api/files, misma
   visibilidad que `oc`). Huecos de folio que quedan, medidos: proyectos
   borrados (OC-12..15, 115..121) y folios del backfill "sin-rastro".
+- **Lista de OC: todas las órdenes para todos** (Efraín). Compras veía solo
+  las OC de los proyectos donde es Responsable compras — 41 a 87 de 272 —, así
+  que un folio o un proveedor "desaparecían" si la OC era de un proyecto de otro
+  comprador. Ahora la lista usa el scope de LECTURA (el mismo con el que compras
+  ya ve los Proyectos de todo el equipo). Marcar "pagada" sigue siendo solo
+  sobre proyectos propios: `editable` en `OcListaRow` (scope 'own'), checkbox
+  deshabilitado en las ajenas y 404 en el server.
 
 ## 2026-09-23 (medición real)
 
