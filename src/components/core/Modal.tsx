@@ -71,3 +71,15 @@ export function Modal({ title, onClose, children, footer, width = 480, closeOnBa
     </div>
   );
 }
+
+/** Fallback de Suspense para un modal diferido (`lazy`). Con `fallback={null}`
+ * el clic en "Nueva oportunidad" no mostraba NADA mientras bajaba el chunk —
+ * con red lenta, segundos — y parecía que el botón no servía (Clarity,
+ * 2026-09-22). */
+export function ModalCargando() {
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'var(--overlay-scrim)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, cursor: 'progress' }}>
+      <div style={{ background: 'var(--bg-raised)', borderRadius: 'var(--radius-xl)', boxShadow: 'var(--shadow-modal)', padding: '16px 22px', font: 'var(--text-label)', color: 'var(--ink-secondary)' }}>Abriendo…</div>
+    </div>
+  );
+}

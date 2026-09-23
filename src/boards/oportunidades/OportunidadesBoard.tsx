@@ -3,12 +3,15 @@ import { StageBoardList } from './StageBoardList';
 import { usePrefetchOnIdle } from '../../lib/lazyPrefetch';
 import { STAGE_BOARDS } from '../../lib/dealStages';
 import { Button } from '../../components/core/Button';
+import { ModalCargando } from '../../components/core/Modal';
 import { IconPlus } from '../../components/icons';
 
 const CONFIG = STAGE_BOARDS.oportunidades;
 
 // El modal solo pesa cuando alguien lo abre.
-const CreateOportunidadModal = lazy(() => import('./CreateOportunidadModal'));
+// También se precarga en idle: el clic abre el modal sin esperar la red.
+const cargarCrear = () => import('./CreateOportunidadModal');
+const CreateOportunidadModal = lazy(cargarCrear);
 
 // Igual que en StageBoard: el drawer se precarga en idle, no en la ruta.
 const cargarDrawer = () => import('./OpportunityDrawer').then((m) => ({ default: m.OpportunityDrawer }));
@@ -32,6 +35,7 @@ export function OportunidadesBoard({ openId, openTab, onTabChange, onOpenChange,
   // la red) y le roba ancho de banda justo al request que importa.
   const [listaLista, setListaLista] = useState(false);
   usePrefetchOnIdle(cargarDrawer, listaLista);
+  usePrefetchOnIdle(cargarCrear, listaLista);
 
   return (
     <div style={{ position: 'relative', height: '100%', width: '100%' }}>
@@ -64,7 +68,7 @@ export function OportunidadesBoard({ openId, openTab, onTabChange, onOpenChange,
         </Suspense>
       )}
       {creating && (
-        <Suspense fallback={null}>
+        <Suspense fallback={<ModalCargando />}>
           <CreateOportunidadModal
             onClose={() => setCreating(false)}
             onCreated={(itemId) => {

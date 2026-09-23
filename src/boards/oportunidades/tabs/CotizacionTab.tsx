@@ -17,6 +17,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ColMeta, ColVal, ItemDetailDTO, ItemDTO, QuoteVersionDTO } from '../../../lib/api';
 import { patchItem, apiFetch, getCatalogoProductos, getProductoGenero, patchProductoGenero, restaurarLineaDividida, descartarAvisoDivision } from '../../../lib/apiClient';
 import { Button } from '../../../components/core/Button';
+import { toast } from '../../../components/core/Toaster';
 import { DivisionesBorradas } from './cotizacion/DivisionesBorradas';
 import { previewRow, COL } from '../../../lib/costeoCalc';
 import { isNativeId } from '../../../../shared/nativeId';
@@ -394,10 +395,17 @@ export function CotizacionTab({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({}),
       });
-      if (!res.ok) throw new Error('No se pudo crear la línea');
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(body.error || 'No se pudo agregar la línea.');
+      }
+      toast('Línea agregada');
       onSaved?.();
     } catch (e) {
+      // Antes solo iba a la consola: el botón volvía a su estado y parecía
+      // que el clic no hizo nada (Clarity, 2026-09-22).
       console.error('Error creando línea:', e);
+      toast(e instanceof Error ? e.message : 'No se pudo agregar la línea.', 'error');
     } finally {
       setCreatingLine(false);
     }

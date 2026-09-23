@@ -1,5 +1,29 @@
 # Log de commits
 
+## 2026-09-22 (8)
+
+- **Respuesta visible en cada clic** (reporte de Clarity 20–22 sep: clics
+  repetidos sin respuesta, gente recargando para ver si se guardó). Nuevo
+  aviso flotante (`Toaster`, `toast()` desde cualquier lado) para confirmar o
+  explicar el error.
+- **Botones**: un clic sobre un botón deshabilitado ahora dice POR QUÉ (su
+  `title` sale como aviso — en celular no hay tooltip); si el handler es async
+  el botón queda ocupado hasta que termina y no se dispara dos veces; ligera
+  animación al presionar y teclado (Enter/Espacio). "Mandar a…" ocupado
+  responde "Mandando…" en vez de nada.
+- **Inventario 5.11**: "Subiendo imagen…" dentro del recuadro y aviso "Imagen
+  MEX/USA guardada" al terminar (en prod las subidas sí salían 200; lo que
+  faltaba era la señal). Los botones Agregar/Exportar PDF explican por qué
+  están apagados.
+- **"+ Agregar línea"**: un error ya no se queda en la consola — sale el
+  mensaje del servidor; al lograrlo, "Línea agregada".
+- **Avisos del drawer** ("Mandado a validación", "Costeo validado"…) también
+  salen como aviso flotante: el cuadro de arriba quedaba fuera de la vista de
+  quien estaba en la grid.
+- **"Nueva oportunidad"/"Nuevo proyecto"**: el modal se precarga en idle y,
+  si aún no llega, muestra "Abriendo…" — antes el clic no pintaba nada
+  mientras bajaba el chunk.
+
 ## 2026-09-22 (7)
 
 - **Inventario 5.11: una tarjeta por producto Y color** (Lili, OPP 1075: el

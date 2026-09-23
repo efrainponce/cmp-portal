@@ -25,7 +25,9 @@ export function ConfirmButton({ label, confirmLabel, busyLabel, variant = 'prima
   useEffect(() => () => window.clearTimeout(timer.current), []);
 
   if (disabled) return <Button variant="disabled" title={title} style={style}>{label}</Button>;
-  if (busy) return <Button variant="disabled" style={style}>{busyLabel ?? 'Procesando…'}</Button>;
+  // El title del ocupado = el mismo texto: un clic de más mientras corre
+  // responde "sigue en proceso" en vez de no hacer nada.
+  if (busy) return <Button variant="disabled" title={busyLabel ?? 'Procesando…'} style={style}>{busyLabel ?? 'Procesando…'}</Button>;
 
   if (!armed) {
     return (

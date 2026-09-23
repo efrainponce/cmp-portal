@@ -3,11 +3,13 @@ import { ProyectoBoardList } from './ProyectoBoardList';
 import { usePrefetchOnIdle } from '../../lib/lazyPrefetch';
 import { PROJECT_BOARDS, type ProjectBoardKey } from '../../lib/projectStages';
 import { Button } from '../../components/core/Button';
+import { ModalCargando } from '../../components/core/Modal';
 import { IconPlus } from '../../components/icons';
 import { carteraXlsx, downloadBlob } from '../../lib/estadoCuentaApi';
 
 // El modal solo pesa cuando alguien lo abre (igual que "Nueva oportunidad").
-const CrearProyectoModal = lazy(() => import('./CrearProyectoModal'));
+const cargarCrear = () => import('./CrearProyectoModal');
+const CrearProyectoModal = lazy(cargarCrear);
 
 // Un proyecto nuevo nace en "Desglose de tallas" (shared/createFields.ts
 // CREATE_DEFAULTS), así que el botón solo va en los accesos que muestran esa
@@ -50,6 +52,7 @@ export function ProyectoBoard({ boardKey, openId, openTab, onTabChange, onOpenCh
   const [listaLista, setListaLista] = useState(false);
   const [creating, setCreating] = useState(false);
   usePrefetchOnIdle(cargarDrawer, listaLista);
+  usePrefetchOnIdle(cargarCrear, listaLista);
   // Estado de Cuenta: "descargar todos los proyectos a excel" (Efraín,
   // 2026-09-08) — la lista completa que el viewer ve, un renglón por proyecto.
   const [exportando, setExportando] = useState(false);
@@ -96,7 +99,7 @@ export function ProyectoBoard({ boardKey, openId, openTab, onTabChange, onOpenCh
         </Suspense>
       )}
       {creating && (
-        <Suspense fallback={null}>
+        <Suspense fallback={<ModalCargando />}>
           <CrearProyectoModal
             onClose={() => setCreating(false)}
             onCreated={(itemId) => {

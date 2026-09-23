@@ -9,6 +9,7 @@ import { useRoute } from './lib/routing';
 import { useIsMobile } from './lib/useIsMobile';
 import { useSessionExpired } from './lib/sessionState';
 import { useMe } from './lib/useMe';
+import { Toaster } from './components/core/Toaster';
 
 // Cada vista es su propio chunk — el bundle inicial solo trae Sidebar + la vista
 // activa; las demás se cargan al navegar (misma UI, solo carga diferida).
@@ -120,6 +121,7 @@ function App() {
           {views}
         </div>
         <ChatBubble variant="dock" />
+        <Toaster />
       </div>
     );
   }
@@ -140,6 +142,7 @@ function App() {
         </div>
         <ChatBubble />
       </div>
+      <Toaster />
     </div>
   );
 }

@@ -6,6 +6,7 @@ import { getCatalogoProductos, getInventarioCotizacion, inventarioCotizacionPdf,
 import { downloadBlob } from '../../../lib/estadoCuentaApi';
 import { useIsMobile } from '../../../lib/useIsMobile';
 import { Button } from '../../../components/core/Button';
+import { toast } from '../../../components/core/Toaster';
 import { catalogIndex, COLOR_COL, displayProducto, linkedProductoId, PRODUCTO_REL_COL } from './cotizacion/gridMeta';
 import { ProductPicker } from '../../../components/forms/ProductPicker';
 import { colorInventario } from '../../../../shared/inventarioCotizacion';
@@ -97,6 +98,10 @@ export function InventarioCotizacionTab({ oppId, quoteLines, readOnly = false }:
   const [adding, setAdding] = useState<ItemDTO>();
   const [addingColor, setAddingColor] = useState('');
   const [saving, setSaving] = useState<Record<string, boolean>>({});
+  // Qué recuadro está subiendo, para pintar "Subiendo…" EN la foto: Clarity
+  // (2026-09-22) mostró clics repetidos en "Subir imagen" sin ninguna señal de
+  // que la subida iba en camino ni de que terminó.
+  const [subiendo, setSubiendo] = useState<Record<string, 'mexico' | 'usa'>>({});
   const [error, setError] = useState<string>();
   const [exporting, setExporting] = useState(false);
 
@@ -124,12 +129,21 @@ export function InventarioCotizacionTab({ oppId, quoteLines, readOnly = false }:
   const persist = async (row: ProductRow, files?: { mexico?: File; usa?: File }) => {
     if (readOnly) return;
     const key = claveInv(row.productoId, row.color);
+    const place = files?.mexico ? 'mexico' : files?.usa ? 'usa' : undefined;
     setSaving((p) => ({ ...p, [key]: true }));
+    if (place) setSubiendo((p) => ({ ...p, [key]: place }));
     setError(undefined);
-    const result = await saveInventarioCotizacion(oppId, row, files);
+    const result = await saveInventarioCotizacion(oppId, row, files).catch(() => ({ ok: false as const, producto: undefined, error: 'No se pudo guardar: revisa tu conexión.' }));
     setSaving((p) => ({ ...p, [key]: false }));
-    if (!result.ok || !result.producto) { setError(result.error ?? 'No se pudo guardar el producto.'); return; }
+    setSubiendo((p) => { const { [key]: _, ...rest } = p; return rest; });
+    if (!result.ok || !result.producto) {
+      const msg = result.error ?? 'No se pudo guardar el producto.';
+      setError(msg);
+      toast(msg, 'error');
+      return;
+    }
     replace(result.producto, row.colorGuardado);
+    toast(place ? `Imagen ${place === 'mexico' ? 'MEX' : 'USA'} guardada` : 'Guardado');
   };
 
   const onImage = (row: ProductRow, place: 'mexico' | 'usa', file: File) => {
@@ -169,7 +183,7 @@ export function InventarioCotizacionTab({ oppId, quoteLines, readOnly = false }:
           <div style={{ font: 'var(--text-body-strong)', color: 'var(--ink)', marginBottom: 4 }}>Inventario 5.11</div>
           <div style={{ font: 'var(--text-label)', color: 'var(--ink-secondary)' }}>Los productos 5.11 de la cotización aparecen aquí automáticamente, uno por color. Pega (⌘V / Ctrl+V), arrastra o sube la captura del inventario en México y USA, más comentarios.</div>
         </div>
-        <Button variant={loading || exporting || rows.length === 0 ? 'disabled' : 'secondary'} onClick={() => void exportPdf()}>{exporting ? 'Generando…' : 'Exportar PDF'}</Button>
+        <Button variant={loading || exporting || rows.length === 0 ? 'disabled' : 'secondary'} title={exporting ? 'Generando el PDF…' : !loading && rows.length === 0 ? 'No hay productos 5.11 para exportar' : undefined} onClick={() => void exportPdf()}>{exporting ? 'Generando…' : 'Exportar PDF'}</Button>
       </div>
       {!readOnly && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'end', padding: 14, border: '1px solid var(--border)', borderRadius: 'var(--radius-xl)', background: 'var(--bg-raised)', marginBottom: 18 }}>
@@ -190,14 +204,14 @@ export function InventarioCotizacionTab({ oppId, quoteLines, readOnly = false }:
             <input value={addingColor} onChange={(e) => setAddingColor(e.target.value)} list="inventario-511-colores" placeholder="Opcional" style={inputStyle} />
             <datalist id="inventario-511-colores">{coloresDe(adding).map((c) => <option key={c} value={c} />)}</datalist>
           </label>
-          <Button variant={!adding ? 'disabled' : 'secondary'} onClick={addProduct}>Agregar</Button>
+          <Button variant={!adding ? 'disabled' : 'secondary'} title={!adding ? 'Elige primero un producto 5.11 del catálogo' : undefined} onClick={addProduct}>Agregar</Button>
         </div>
       )}
       {error && <div style={{ color: 'var(--status-perdida)', font: 'var(--text-label)', marginBottom: 12 }}>{error}</div>}
       {loading ? <div style={{ color: 'var(--ink-tertiary)', font: 'var(--text-label)' }}>Cargando inventario…</div> : rows.length === 0 ? (
         <div style={{ padding: 24, border: '1px dashed var(--border)', borderRadius: 'var(--radius-xl)', color: 'var(--ink-tertiary)', font: 'var(--text-label)' }}>Esta cotización todavía no tiene productos 5.11. Puedes agregar uno del catálogo.</div>
       ) : <div style={{ display: 'grid', gap: 10 }}>{rows.map((row) => (
-        <ProductCard key={claveInv(row.productoId, row.color)} row={row} disabled={readOnly || !!saving[claveInv(row.productoId, row.color)]} onImage={onImage} onComments={(comentarios) => void persist({ ...row, comentarios })} />
+        <ProductCard key={claveInv(row.productoId, row.color)} row={row} disabled={readOnly || !!saving[claveInv(row.productoId, row.color)]} subiendo={subiendo[claveInv(row.productoId, row.color)]} onImage={onImage} onComments={(comentarios) => void persist({ ...row, comentarios })} />
       ))}</div>}
     </div>
   );
@@ -207,7 +221,7 @@ export function InventarioCotizacionTab({ oppId, quoteLines, readOnly = false }:
 // COMPLETAS (`contain`, nunca `cover` — así se recortaban) en una caja baja
 // para que la tab no se vuelva un muro de imágenes. Para leerlas: clic = visor
 // a pantalla completa. Cambiarla va por su botón aparte.
-function ProductCard({ row, disabled, onImage, onComments }: { row: ProductRow; disabled: boolean; onImage: (row: ProductRow, place: 'mexico' | 'usa', file: File) => void; onComments: (comments: string) => void }) {
+function ProductCard({ row, disabled, subiendo, onImage, onComments }: { row: ProductRow; disabled: boolean; subiendo?: 'mexico' | 'usa'; onImage: (row: ProductRow, place: 'mexico' | 'usa', file: File) => void; onComments: (comments: string) => void }) {
   const [zoom, setZoom] = useState<{ url: string; title: string }>();
   const isMobile = useIsMobile();
   return <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-xl)', padding: 12, background: 'var(--bg-raised)' }}>
@@ -217,8 +231,8 @@ function ProductCard({ row, disabled, onImage, onComments }: { row: ProductRow; 
       {row.fromQuote && <span style={{ font: 'var(--text-eyebrow)', color: 'var(--accent)', background: 'var(--status-ganada-tint)', borderRadius: 999, padding: '3px 7px' }}>En cotización</span>}
     </div>
     <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, minmax(0, 1fr))', gap: 12 }}>
-      <PhotoBox title="Inventario MEX" url={row.imagenMexicoUrl} disabled={disabled} onFile={(f) => onImage(row, 'mexico', f)} onZoom={setZoom} />
-      <PhotoBox title="Inventario USA" url={row.imagenUsaUrl} disabled={disabled} onFile={(f) => onImage(row, 'usa', f)} onZoom={setZoom} />
+      <PhotoBox title="Inventario MEX" url={row.imagenMexicoUrl} disabled={disabled} uploading={subiendo === 'mexico'} onFile={(f) => onImage(row, 'mexico', f)} onZoom={setZoom} />
+      <PhotoBox title="Inventario USA" url={row.imagenUsaUrl} disabled={disabled} uploading={subiendo === 'usa'} onFile={(f) => onImage(row, 'usa', f)} onZoom={setZoom} />
     </div>
     <label style={{ display: 'block', marginTop: 10 }}><span style={labelStyle}>Comentarios</span><textarea defaultValue={row.comentarios} disabled={disabled} onBlur={(e) => { if (e.target.value !== row.comentarios) onComments(e.target.value); }} rows={2} style={{ ...inputStyle, resize: 'vertical' }} placeholder="Agrega comentarios de disponibilidad, tallas o tiempos…" /></label>
     {zoom && <ImageZoom url={zoom.url} title={zoom.title} onClose={() => setZoom(undefined)} />}
@@ -242,7 +256,7 @@ function imagenDe(data: DataTransfer | null): File | undefined {
 // escucha en `document` mientras el recuadro tiene el foco: un div no editable
 // no recibe `paste` igual en todos los navegadores, el documento sí.
 // En celular pegar no aplica: el recuadro vacío abre el selector de archivo.
-function PhotoBox({ title, url, disabled, onFile, onZoom }: { title: string; url?: string; disabled: boolean; onFile: (file: File) => void; onZoom: (z: { url: string; title: string }) => void }) {
+function PhotoBox({ title, url, disabled, uploading = false, onFile, onZoom }: { title: string; url?: string; disabled: boolean; uploading?: boolean; onFile: (file: File) => void; onZoom: (z: { url: string; title: string }) => void }) {
   const isMobile = useIsMobile();
   const boxRef = useRef<HTMLDivElement>(null);
   const [armed, setArmed] = useState(false);
@@ -297,7 +311,8 @@ function PhotoBox({ title, url, disabled, onFile, onZoom }: { title: string; url
       </div>
       {isMobile && !url ? (
         <label style={{ ...frame, cursor: disabled ? 'default' : 'pointer' }}>
-          <span style={{ margin: 'auto', color: 'var(--ink-tertiary)', font: 'var(--text-label)' }}>{disabled ? 'Sin imagen' : 'Subir imagen'}</span>
+          <span style={{ margin: 'auto', color: 'var(--ink-tertiary)', font: 'var(--text-label)' }}>{disabled ? (uploading ? '' : 'Sin imagen') : 'Subir imagen'}</span>
+          {uploading && subiendoOverlay}
           <input aria-label={title} type="file" accept="image/*" disabled={disabled} onChange={pickFile} style={{ display: 'none' }} />
         </label>
       ) : (
@@ -316,7 +331,8 @@ function PhotoBox({ title, url, disabled, onFile, onZoom }: { title: string; url
           onClick={() => { if (url && !armed) onZoom({ url, title }); }}
         >
           {url && <img src={url} alt={title} style={{ display: 'block', width: '100%', height: '100%', objectFit: 'contain', opacity: hot ? 0.25 : 1 }} />}
-          {(!url || hot) && (url ? <div style={{ position: 'absolute', inset: 0, display: 'flex' }}>{hint}</div> : disabled ? <span style={{ margin: 'auto', color: 'var(--ink-tertiary)', font: 'var(--text-label)' }}>Sin imagen</span> : hint)}
+          {!uploading && (!url || hot) && (url ? <div style={{ position: 'absolute', inset: 0, display: 'flex' }}>{hint}</div> : disabled ? <span style={{ margin: 'auto', color: 'var(--ink-tertiary)', font: 'var(--text-label)' }}>Sin imagen</span> : hint)}
+          {uploading && subiendoOverlay}
         </div>
       )}
     </div>
@@ -345,6 +361,12 @@ function ImageZoom({ url, title, onClose }: { url: string; title: string; onClos
     document.body,
   );
 }
+
+const subiendoOverlay = (
+  <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: 'rgba(255,255,255,.8)', borderRadius: 'var(--radius-lg)', color: 'var(--accent)', font: 'var(--text-label-strong)', cursor: 'progress' }}>
+    <span aria-hidden>⏳</span> Subiendo imagen…
+  </div>
+);
 
 const PHOTO_H = 150;
 const labelStyle: React.CSSProperties = { display: 'block', font: 'var(--text-eyebrow)', color: 'var(--ink-tertiary)', textTransform: 'uppercase', letterSpacing: '.45px', marginBottom: 6 };

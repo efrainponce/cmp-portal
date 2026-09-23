@@ -9,6 +9,7 @@ import { useLiveRefresh } from '../../lib/useLiveRefresh';
 import { readIsCurrent, readRevision } from '../../lib/readConsistency';
 import { Button } from '../../components/core/Button';
 import { ConfirmButton } from '../../components/core/ConfirmButton';
+import { toast } from '../../components/core/Toaster';
 import { IconBack, IconEdit } from '../../components/icons';
 import { ActionMenu } from '../../components/core/ActionMenu';
 import { SyncIndicator } from '../../components/board/SyncIndicator';
@@ -155,6 +156,12 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, openTab, onTabCha
   currentIdRef.current = id;
   const [tab, setTab] = useState<DrawerTabKey>(() => (isDrawerTab(openTab) ? openTab : defaultTab as DrawerTabKey));
   const [notice, setNotice] = useState<Notice | null>(null);
+  // El aviso vive arriba del drawer y quien dio clic suele estar más abajo
+  // (en la grid): sin un toast, "Mandar a…" parecía no hacer nada y la gente
+  // recargaba para ver si se guardó (Clarity, 2026-09-22).
+  useEffect(() => {
+    if (notice) toast(notice.kind === 'ok' ? notice.title : `${notice.title} ${notice.lines[0] ?? ''}`.trim(), notice.kind === 'ok' ? 'ok' : 'error');
+  }, [notice]);
   // Pre-chequeo de costeo (todas las etapas): null = cargando; deshabilita el botón.
   const [costeoReady, setCosteoReady] = useState<{ ok: boolean; errors?: string[] } | null>(null);
   // Pre-chequeo de "Mandar a Validación de costeo" (board Costeo, etapa 15): cada

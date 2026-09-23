@@ -4,10 +4,12 @@ import { usePrefetchOnIdle } from '../../lib/lazyPrefetch';
 import { getCatalogoProductos } from '../../lib/apiClient';
 import { STAGE_BOARDS, type StageBoardKey } from '../../lib/dealStages';
 import { Button } from '../../components/core/Button';
+import { ModalCargando } from '../../components/core/Modal';
 import { IconPlus } from '../../components/icons';
 
 // El modal solo pesa cuando alguien lo abre.
-const CreateOportunidadModal = lazy(() => import('./CreateOportunidadModal'));
+const cargarCrear = () => import('./CreateOportunidadModal');
+const CreateOportunidadModal = lazy(cargarCrear);
 
 // El drawer no se necesita para VER la lista: se precarga en cuanto el hilo
 // principal se desocupa, así no le pelea ancho de banda a /items (ver
@@ -48,6 +50,7 @@ export function StageBoard({ boardKey, openId, openTab, onTabChange, onOpenChang
   const [creating, setCreating] = useState(false);
   const canCreate = boardKey === 'costeo' || boardKey === 'zona_efrain';
   usePrefetchOnIdle(cargarDrawer, listaLista);
+  usePrefetchOnIdle(cargarCrear, listaLista && canCreate);
 
   // En Costeo y Validación el drawer SIEMPRE carga el catálogo de Productos
   // (CotizacionTab con variant='costeo'), y medido en producción ese request no
@@ -93,7 +96,7 @@ export function StageBoard({ boardKey, openId, openTab, onTabChange, onOpenChang
         </Suspense>
       )}
       {canCreate && creating && (
-        <Suspense fallback={null}>
+        <Suspense fallback={<ModalCargando />}>
           <CreateOportunidadModal
             onClose={() => setCreating(false)}
             onCreated={(itemId) => {
