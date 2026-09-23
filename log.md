@@ -1,5 +1,32 @@
 # Log de commits
 
+## 2026-09-23 (2)
+
+- **Comentarios por producto en Actualizaciones** (Elisa, OPP-1100: Juan Carlos
+  le escribió sobre la línea del botiquín en Monday y el portal mostraba el
+  feed vacío — por eso ella seguía usando Monday). En Monday un comentario
+  sobre un producto vive en el SUBITEM, no en la oportunidad; el portal solo
+  leía los del item. Ahora el feed junta también los de cada línea, con una
+  etiqueta "Producto · Color" (en Proyectos, "Producto · Color · Talla").
+- **Oportunidad ganada: vuelve su conversación de venta.** Con Proyecto, el
+  drawer muestra el feed del Proyecto y todo lo que se habló en la
+  Oportunidad (y en sus líneas) desaparecía. Ahora sale junto, marcado con el
+  folio (OPP-0140). Solo si el viewer puede abrir esa oportunidad por su
+  cuenta (mismo scope; zona privada o board negado → no sale).
+- **"Notas por producto"** arriba del feed: la columna "Comentarios Ventas"
+  de cada línea (693 líneas en 252 oportunidades) nunca se pintaba en el
+  portal. Una por nota distinta por producto (las versiones duplicadas repiten
+  la misma).
+- **Backfill sin copiar nada**: se arma al LEER, de Monday en vivo
+  (`worker/lib/updatesLineas.ts`, `fetchSubitemUpdates`), así que TODO el
+  historial aparece ya y lo que se siga escribiendo sobre una línea en Monday
+  también — sin duplicar updates en Monday. 25 por línea; el proyecto más
+  grande (150 líneas) cuesta ~15k de complejidad, 1.7 s. Si esa lectura falla,
+  el feed del item sale igual.
+- Verificado en local contra Monday real: OPP-1100 muestra el comentario de
+  Juan Carlos etiquetado "Kit táctico de primeros auxilios · VERDE"; OPP-0140
+  (ganada) muestra 6 notas por producto + la conversación de venta.
+
 ## 2026-09-23
 
 - **Velocidad con internet lento** (Compras en Mérida, visto en Clarity).

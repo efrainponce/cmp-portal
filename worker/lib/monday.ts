@@ -332,6 +332,18 @@ export async function fetchUpdates(env: Env, itemId: number): Promise<MondayUpda
   return data?.items?.[0]?.updates ?? [];
 }
 
+export interface MondaySubitemUpdates { id: string; name: string; updates: MondayUpdate[] }
+
+/** Updates de las LÍNEAS (subitems) de un item, cada una con su hilo. En
+ * Monday un comentario escrito sobre un producto vive en el subitem, no en el
+ * padre — el feed del portal los junta (worker/lib/updatesLineas.ts). 25 por
+ * línea: el proyecto más grande (150 líneas) cuesta ~15k de complejidad. */
+export async function fetchSubitemUpdates(env: Env, itemId: number): Promise<MondaySubitemUpdates[]> {
+  const query = `query($id:[ID!]){ items(ids:$id){ subitems{ id name updates(limit:25){ ${UPDATE_FIELDS} replies{ ${REPLY_FIELDS} } } } } }`;
+  const data = await gql(env, query, { id: [String(itemId)] });
+  return data?.items?.[0]?.subitems ?? [];
+}
+
 export interface MentionInput { id: number; nombre: string }
 
 const MONDAY_DOMAIN = 'https://mexicanaproteccion.monday.com'; // single-tenant workspace, fixed

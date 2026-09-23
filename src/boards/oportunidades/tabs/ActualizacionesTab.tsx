@@ -1,4 +1,5 @@
-// Live feed backed by Monday's own item updates (GET/POST /boards/:slug/items/:id/updates)
+// Live feed backed by Monday's own item updates (GET/POST /boards/:slug/items/:id/updates),
+// más lo escrito sobre sus líneas y, en el Proyecto, su Oportunidad (worker/lib/updatesLineas.ts)
 // — never mirrored to D1, always a fresh read, so it stays the single source of
 // truth the team already checks inside monday.com itself.
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
@@ -69,6 +70,21 @@ function AttachmentChip({ slug, itemId, a, onPreview }: {
   );
 }
 
+/** De dónde viene un comentario que no es del item mismo: el producto (se
+ * escribió sobre la línea en Monday) o la Oportunidad ligada al Proyecto. */
+function OrigenChip({ origen }: { origen?: string }) {
+  if (!origen) return null;
+  return (
+    <span style={{
+      display: 'inline-block', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+      padding: '2px 8px', borderRadius: 999, background: 'var(--accent-soft)',
+      font: 'var(--text-caption)', color: 'var(--ink-secondary)', verticalAlign: 'middle',
+    }}>
+      {origen}
+    </span>
+  );
+}
+
 function fmtWhen(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
@@ -109,7 +125,7 @@ export function ActualizacionesTab({ slug, itemId }: Props) {
   const [pickerIndex, setPickerIndex] = useState(0);
   const [file, setFile] = useState<File | null>(null);
   const [attachError, setAttachError] = useState<string | null>(null);
-  const [preview, setPreview] = useState<UpdateAttachmentDTO | null>(null);
+  const [preview, setPreview] = useState<(UpdateAttachmentDTO & { fuente?: UpdateDTO['fuente'] }) | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -132,7 +148,8 @@ export function ActualizacionesTab({ slug, itemId }: Props) {
         if (loadTokenRef.current !== token) return;
         window.clearTimeout(timeout);
         setUpdates(data);
-        markUpdatesSeen(slug, itemId, data.map((u) => u.id));
+        // Las notas "Comentarios Ventas" no son updates: no llevan "visto".
+        markUpdatesSeen(slug, itemId, data.filter((u) => u.tipo !== 'nota').map((u) => u.id));
       })
       .catch(() => {
         if (loadTokenRef.current !== token) return;
@@ -150,6 +167,10 @@ export function ActualizacionesTab({ slug, itemId }: Props) {
     if (!updates?.some(u => u.attachments.some(a => a.ext === 'pdf'))) return;
     import('../../../components/core/PdfCanvasPreview').then((m) => m.warmPdfWorker()).catch(() => {});
   }, [updates]);
+
+  // "Comentarios Ventas" de las líneas van arriba, aparte: no tienen fecha.
+  const notas = useMemo(() => updates?.filter((u) => u.tipo === 'nota') ?? [], [updates]);
+  const feed = useMemo(() => updates?.filter((u) => u.tipo !== 'nota') ?? null, [updates]);
 
   const filteredUsers = useMemo(() => {
     if (!picker || !users) return [];
@@ -303,18 +324,31 @@ export function ActualizacionesTab({ slug, itemId }: Props) {
       {!error && updates === null && (
         <div style={{ font: 'var(--text-caption)', color: 'var(--ink-faint)', padding: '12px 2px' }}>Cargando…</div>
       )}
-      {updates !== null && updates.length === 0 && (
+      {notas.length > 0 && (
+        <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-xl)', padding: '12px 14px', background: 'var(--bg-sunken)' }}>
+          <div style={{ font: 'var(--text-label-strong)', color: 'var(--ink)', marginBottom: 6 }}>Notas por producto</div>
+          {notas.map((n) => (
+            <div key={n.id} style={{ paddingTop: 6 }}>
+              <OrigenChip origen={n.origen} />
+              <div style={{ font: 'var(--text-label)', color: 'var(--ink)', whiteSpace: 'pre-wrap', marginTop: 2 }}>{n.body}</div>
+            </div>
+          ))}
+        </div>
+      )}
+      {feed !== null && feed.length === 0 && notas.length === 0 && (
         <div style={{ font: 'var(--text-caption)', color: 'var(--ink-faint)', padding: '12px 2px' }}>
           Sin actualizaciones todavía.
         </div>
       )}
-      {updates?.map((u) => (
+      {feed?.map((u) => (
         <div key={u.id} style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: 12 }}>
+          {u.origen && <div style={{ marginBottom: 4 }}><OrigenChip origen={u.origen} /></div>}
           <div style={{ font: 'var(--text-label)', color: 'var(--ink)', whiteSpace: 'pre-wrap' }}>{renderBody(u.body, users)}</div>
           {u.attachments.length > 0 && (
             <div>
               {u.attachments.map((a) => (
-                <AttachmentChip key={a.id} slug={slug} itemId={itemId} a={a} onPreview={() => setPreview(a)} />
+                <AttachmentChip key={a.id} slug={u.fuente?.slug ?? slug} itemId={u.fuente?.itemId ?? itemId} a={a}
+                  onPreview={() => setPreview({ ...a, fuente: u.fuente })} />
               ))}
             </div>
           )}
@@ -333,7 +367,7 @@ export function ActualizacionesTab({ slug, itemId }: Props) {
       {preview && (
         <Modal title={preview.name} onClose={() => setPreview(null)} width={760}>
           <Suspense fallback={<div style={{ font: 'var(--text-label)', color: 'var(--ink-quiet)' }}>Cargando…</div>}>
-            <PdfCanvasPreview url={updateAttachmentHref(slug, itemId, preview.id, preview.name)} maxWidth={712} />
+            <PdfCanvasPreview url={updateAttachmentHref(preview.fuente?.slug ?? slug, preview.fuente?.itemId ?? itemId, preview.id, preview.name)} maxWidth={712} />
           </Suspense>
         </Modal>
       )}

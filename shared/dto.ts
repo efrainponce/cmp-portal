@@ -519,7 +519,19 @@ export interface ProductoGeneroResponse {
 // the frontend resolves a fresh one on demand via the attachment proxy route
 // (GET .../updates/attachments/:assetId), keyed by id.
 export interface UpdateAttachmentDTO { id: string; name: string; ext: string }
-export interface UpdateDTO { id: string; body: string; author: string; createdAt: string; attachments: UpdateAttachmentDTO[]; seenBy: string[] }
+export interface UpdateDTO {
+  id: string; body: string; author: string; createdAt: string; attachments: UpdateAttachmentDTO[]; seenBy: string[];
+  /** De dónde viene cuando NO es un comentario del item mismo: "Producto · Color"
+   * (comentario escrito sobre una línea en Monday) u "OPP-1100" (la Oportunidad
+   * ligada, en el feed del Proyecto). Ausente = comentario del item. */
+  origen?: string;
+  /** Item dueño del update cuando no es el que se pidió — los adjuntos se
+   * resuelven contra él (un adjunto nativo solo se encuentra en su item). */
+  fuente?: { slug: BoardSlug; itemId: string };
+  /** 'nota' = la columna "Comentarios Ventas" de una línea: no es un update
+   * (sin fecha ni autor propios), el feed la pinta aparte, arriba. */
+  tipo?: 'nota';
+}
 export interface CreateUpdateRequest { body: string; mentions?: { id: number; nombre: string }[] }
 
 // GET /api/boards/:slug/items/:id/activity — log de cambios de columna (mirror
