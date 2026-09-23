@@ -5,7 +5,7 @@
 import type { Context, Hono } from 'hono';
 import type { Env } from '../env';
 import { getBoardAccess } from '../lib/boardAccess';
-import { jsonStatus, rejectUnknownQuery } from '../lib/http';
+import { jsonStatus, rejectUnknownQuery, etagCoincide } from '../lib/http';
 import { errorInterno } from '../lib/errores';
 import { etagFiltrosProyecto, etagOcLista, filtrosPorProyecto, guardarPdfDatos, listarOrdenesCompra, marcarPagada, OcListaError } from '../lib/ocLista';
 
@@ -24,7 +24,7 @@ export function ocListaRoutes(app: Hono<{ Bindings: Env }>) {
     try {
       // El front refresca cada minuto: si nada cambió, 304 y no se arma nada.
       const etag = await etagOcLista(c.env, c.get('viewer'));
-      if (c.req.header('If-None-Match') === etag) return c.body(null, 304);
+      if (etagCoincide(c.req.header('If-None-Match'), etag)) return c.body(null, 304);
       c.header('ETag', etag);
       c.header('Cache-Control', 'private, no-cache');
       return c.json({ ordenes: await listarOrdenesCompra(c.env, c.get('viewer')) });
@@ -41,7 +41,7 @@ export function ocListaRoutes(app: Hono<{ Bindings: Env }>) {
     if (bad) return bad;
     try {
       const etag = await etagFiltrosProyecto(c.env, c.get('viewer'));
-      if (c.req.header('If-None-Match') === etag) return c.body(null, 304);
+      if (etagCoincide(c.req.header('If-None-Match'), etag)) return c.body(null, 304);
       c.header('ETag', etag);
       c.header('Cache-Control', 'private, no-cache');
       return c.json({ filtros: await filtrosPorProyecto(c.env, c.get('viewer')) });

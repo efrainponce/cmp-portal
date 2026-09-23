@@ -4,6 +4,7 @@ import type { Env } from '../env';
 import type { HomeResponse } from '../../shared/dto';
 import { buildHomeResponse } from '../lib/home';
 import { md5 } from '../lib/canon';
+import { etagCoincide } from '../lib/http';
 
 export function homeRoutes(app: Hono<{ Bindings: Env }>) {
   app.get('/api/home', async c => {
@@ -12,7 +13,7 @@ export function homeRoutes(app: Hono<{ Bindings: Env }>) {
 
     const fingerprint = response.sections.map(s => `${s.key}:${s.items.map(i => i.itemId).join(',')}`).join('|');
     const etag = '"' + md5(fingerprint) + '"';
-    if (c.req.header('If-None-Match') === etag) return c.body(null, 304, { ETag: etag });
+    if (etagCoincide(c.req.header('If-None-Match'), etag)) return c.body(null, 304, { ETag: etag });
     c.header('ETag', etag);
     return c.json(response);
   });

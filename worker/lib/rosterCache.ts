@@ -12,8 +12,15 @@ const CREATE = `CREATE TABLE IF NOT EXISTS api_cache (
 const KEY = 'monday_users';
 
 /** Roster de Monday con TTL. Si Monday falla y hay copia vieja en cache, se
- * sirve la copia (stale-if-error) — mejor un roster de ayer que un 502. */
-export async function cachedFetchUsers(env: Env, ttlMs: number): Promise<MondayUser[]> {
+ * sirve la copia (stale-if-error) — mejor un roster de ayer que un 502.
+ *
+ * Con `waitUntil` es además stale-while-revalidate: vencido el TTL, contesta
+ * YA con la copia y la refresca en segundo plano. Sin eso, a quien le tocaba
+ * el vencimiento esperaba la llamada a Monday entera: medido en ux_event
+ * (2026-09-23), `GET /api/users` promediaba 7.7 s para Compras, máx 15 s, en
+ * algo que cambia casi nunca. Sin `waitUntil` (admin, alta de registros) se
+ * sigue esperando el dato fresco. */
+export async function cachedFetchUsers(env: Env, ttlMs: number, waitUntil?: (p: Promise<unknown>) => void): Promise<MondayUser[]> {
   await env.DB.prepare(CREATE).run();
   const row = await env.DB
     .prepare('SELECT value, updated_at FROM api_cache WHERE key = ?')
@@ -25,18 +32,31 @@ export async function cachedFetchUsers(env: Env, ttlMs: number): Promise<MondayU
     try { return JSON.parse(row.value) as MondayUser[]; } catch { /* cache corrupto — refetch */ }
   }
 
+  if (row && waitUntil) {
+    let copia: MondayUser[] | null = null;
+    try { copia = JSON.parse(row.value) as MondayUser[]; } catch { /* cache corrupto — refetch en línea */ }
+    if (copia) {
+      waitUntil(refrescarRoster(env).catch(() => { /* se reintenta en la siguiente lectura */ }));
+      return copia;
+    }
+  }
+
   try {
-    const users = await fetchUsers(env);
-    await env.DB
-      .prepare(`INSERT INTO api_cache (key, value, updated_at) VALUES (?,?,?)
-        ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at`)
-      .bind(KEY, JSON.stringify(users), new Date().toISOString())
-      .run();
-    return users;
+    return await refrescarRoster(env);
   } catch (err) {
     if (row) {
       try { return JSON.parse(row.value) as MondayUser[]; } catch { /* sigue el throw */ }
     }
     throw err;
   }
+}
+
+async function refrescarRoster(env: Env): Promise<MondayUser[]> {
+  const users = await fetchUsers(env);
+  await env.DB
+    .prepare(`INSERT INTO api_cache (key, value, updated_at) VALUES (?,?,?)
+      ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at`)
+    .bind(KEY, JSON.stringify(users), new Date().toISOString())
+    .run();
+  return users;
 }

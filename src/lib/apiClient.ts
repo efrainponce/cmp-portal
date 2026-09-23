@@ -83,7 +83,11 @@ export function logout() {
   if (!isBehindAccess()) return;
   sessionStorage.removeItem(ACCESS_RETRY_KEY);
   const returnTo = encodeURIComponent(window.location.origin);
-  window.location.href = `https://${ACCESS_TEAM_DOMAIN}/cdn-cgi/access/logout?returnTo=${returnTo}`;
+  // El catálogo guardado en el navegador trae costos: no se queda en una
+  // máquina de la que alguien cerró sesión.
+  void borrarCatalogoGuardado().finally(() => {
+    window.location.href = `https://${ACCESS_TEAM_DOMAIN}/cdn-cgi/access/logout?returnTo=${returnTo}`;
+  });
 }
 
 export async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
@@ -200,12 +204,20 @@ export function getCatalogoProductos(): Promise<ItemDTO[]> {
     const previo = catalogoProductos;
     const etagPrevio = catalogoEtag;
     catalogoAt = Date.now();
-    catalogoProductos = listItemsConEtag('productos', CATALOGO_COLS, etagPrevio)
-      .then((r) => {
-        if (r.status === 304) return previo!; // solo se manda If-None-Match cuando hay previo
-        catalogoEtag = r.etag;
-        return r.items;
-      })
+    // Sin copia en memoria (pestaña recién cargada) se intenta la guardada en
+    // el navegador: con su ETag, el worker contesta 304 y no baja nada.
+    catalogoProductos = (previo ? Promise.resolve(null) : leerCatalogoGuardado())
+      .then((guardado) => listItemsConEtag('productos', CATALOGO_COLS, etagPrevio ?? guardado?.etag)
+        .then((r) => {
+          if (r.status === 304) {
+            if (previo) return previo; // solo se manda If-None-Match cuando hay previo o guardado
+            catalogoEtag = guardado!.etag;
+            return guardado!.items;
+          }
+          catalogoEtag = r.etag;
+          guardarCatalogo(r.etag, r.items);
+          return r.items;
+        }))
       .catch((e) => {
         // Sin caché: no guardar la falla, el siguiente intento reintenta. Con
         // caché: quédate con lo que había (la revalidación fue de cortesía).
@@ -220,6 +232,52 @@ export function getCatalogoProductos(): Promise<ItemDTO[]> {
 export function invalidarCatalogoProductos(): void {
   catalogoProductos = null;
   catalogoEtag = undefined;
+  void borrarCatalogoGuardado();
+}
+
+// Copia del catálogo que sobrevive a RECARGAR la pestaña (Cache API del
+// navegador). El caché en memoria de arriba muere con cada recarga y el
+// catálogo son ~346 KB (106 KB comprimidos): medido en prod con red lenta el
+// 2026-09-23, se re-bajaba en cada carga de página, compitiendo con la lista y
+// el drawer — en conexiones como la de Compras en Mérida eso se nota.
+// Siempre se REVALIDA con el worker (If-None-Match): la copia guardada nunca se
+// usa sin que el server confirme que sigue igual, así que no hay datos viejos.
+// Es seguro entre usuarios del mismo navegador porque el ETag de las listas
+// lleva el correo y el rol de quien pide (worker/lib/dal.ts, etagFor) — un 304
+// solo puede salir para la misma persona. La llave lleva además el "ver como"
+// y las columnas, para no ni siquiera intentar con la copia de otra forma.
+const CATALOGO_CACHE = 'cmp-catalogo-v1';
+
+function catalogoCacheKey(): string {
+  return `/__cmp/catalogo-productos?cols=${CATALOGO_COLS.join(',')}&como=${encodeURIComponent(getImpersonateTarget() ?? '')}`;
+}
+
+async function leerCatalogoGuardado(): Promise<{ etag: string; items: ItemDTO[] } | null> {
+  try {
+    if (typeof caches === 'undefined') return null;
+    const res = await (await caches.open(CATALOGO_CACHE)).match(catalogoCacheKey());
+    if (!res) return null;
+    const data = await res.json() as { etag?: unknown; items?: unknown };
+    return typeof data.etag === 'string' && Array.isArray(data.items)
+      ? { etag: data.etag, items: data.items as ItemDTO[] }
+      : null;
+  } catch {
+    return null; // sin Cache API, cuota llena o JSON roto: se baja normal
+  }
+}
+
+function guardarCatalogo(etag: string, items: ItemDTO[]): void {
+  if (typeof caches === 'undefined') return;
+  const key = catalogoCacheKey();
+  void caches.open(CATALOGO_CACHE)
+    .then((c) => c.put(key, new Response(JSON.stringify({ etag, items }), { headers: { 'Content-Type': 'application/json' } })))
+    .catch(() => { /* es una optimización: si no cabe, no pasa nada */ });
+}
+
+async function borrarCatalogoGuardado(): Promise<void> {
+  try {
+    if (typeof caches !== 'undefined') await caches.delete(CATALOGO_CACHE);
+  } catch { /* nada que borrar */ }
 }
 
 /** `listItems` con ETag: manda If-None-Match si hay uno conocido y devuelve

@@ -5,6 +5,7 @@ import type { Hono } from 'hono';
 import type { Env } from '../env';
 import type { NotificationDTO, NotificationsResponse } from '../../shared/dto';
 import { md5 } from '../lib/canon';
+import { etagCoincide } from '../lib/http';
 
 type Severity = 'importante' | 'actualizacion';
 
@@ -65,7 +66,7 @@ export function notificationRoutes(app: Hono<{ Bindings: Env }>) {
 
     const maxId = notifications[0]?.id ?? 0;
     const etag = '"' + md5(`${maxId}:${unread.importante}:${unread.actualizacion}:${validFilter ?? 'all'}`) + '"';
-    if (c.req.header('If-None-Match') === etag) return c.body(null, 304, { ETag: etag });
+    if (etagCoincide(c.req.header('If-None-Match'), etag)) return c.body(null, 304, { ETag: etag });
     c.header('ETag', etag);
     return c.json(response);
   });

@@ -49,9 +49,15 @@ describe('precarga de index.html', () => {
     // columnas fueran idénticas. Resultado real: la lista se bajaba dos veces
     // y la "optimización" salía peor que no hacer nada. Esto compara la URL
     // completa contra la que de verdad construye usePoll.
+    // `totales = true`: StageBoardList llama usePoll(..., true) en TODOS los
+    // boards de etapa. El test armaba la URL sin él y por eso no vio que la
+    // precarga llevaba un mes sin coincidir (2026-08-20 → 2026-09-23).
+    expect(stageBoardList).toMatch(/usePoll\('oportunidades', q, pollCols, true\)/);
     const urlApp = '/api/boards/oportunidades/items'
-      + queryLista('', colsDelComponente().join(','));
-    const urlHtml = '/api/boards/oportunidades/items?cols=' + colsDelHtml().join(',');
+      + queryLista('', colsDelComponente().join(','), true);
+    const pedido = html.match(/pedir\('(\/api\/boards\/oportunidades\/items\?cols=)' \+ COLS \+ '([^']*)'\)/);
+    if (!pedido) throw new Error('no encontré el pedir() de la lista en index.html');
+    const urlHtml = pedido[1] + colsDelHtml().join(',') + pedido[2];
     expect(urlApp).toBe(urlHtml);
     expect(urlApp).not.toContain('%2C');
   });

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { rejectUnknownQuery } from './http';
+import { rejectUnknownQuery, etagCoincide } from './http';
 
 const BASE = 'https://portal.mexicanadeproteccion.com/api/boards/oportunidades_sub/items';
 
@@ -39,5 +39,30 @@ describe('rejectUnknownQuery', () => {
 
   it('distingue mayúsculas — ?Q= no es ?q=', () => {
     expect(rejectUnknownQuery(`${BASE}?Q=bota`, ['q', 'cols'])?.status).toBe(400);
+  });
+});
+
+describe('etagCoincide', () => {
+  it('empata el ETag débil que devuelve el navegador tras la compresión de Cloudflare', () => {
+    // El caso real de producción: el worker manda "abc", Cloudflare lo
+    // degrada a W/"abc" al comprimir y el navegador devuelve ése.
+    expect(etagCoincide('W/"abc"', '"abc"')).toBe(true);
+  });
+
+  it('empata el fuerte tal cual (local, sin compresión)', () => {
+    expect(etagCoincide('"abc"', '"abc"')).toBe(true);
+  });
+
+  it('no empata otro ETag', () => {
+    expect(etagCoincide('W/"abd"', '"abc"')).toBe(false);
+  });
+
+  it('sin header no hay 304', () => {
+    expect(etagCoincide(undefined, '"abc"')).toBe(false);
+    expect(etagCoincide('', '"abc"')).toBe(false);
+  });
+
+  it('acepta listas separadas por comas', () => {
+    expect(etagCoincide('"x", W/"abc"', '"abc"')).toBe(true);
   });
 });

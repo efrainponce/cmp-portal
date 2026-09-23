@@ -79,7 +79,13 @@
           if (esOportunidad) pedir('/api/boards/oportunidades/items/' + encodeURIComponent(itemId));
           else if (esProyecto) pedir('/api/boards/proyectos/items/' + encodeURIComponent(itemId));
         } else if (esOportunidad) {
-          pedir('/api/boards/oportunidades/items?cols=' + COLS);
+          // `&totales=1`: la lista lo pide en TODOS los boards de etapa desde
+          // 2026-08-20. Sin él la URL dejó de coincidir y la lista se bajaba
+          // DOS veces sin que nada fallara (medido en prod 2026-09-23: la real
+          // arrancaba en el segundo 2.0 en vez del 0.4).
+          // Vale también para admin: su lista extendida (fechas) depende de
+          // /api/me, así que su PRIMER request sale igual que éste.
+          pedir('/api/boards/oportunidades/items?cols=' + COLS + '&totales=1');
         } else if (esProyecto) {
           pedir('/api/boards/proyectos/items');
         }

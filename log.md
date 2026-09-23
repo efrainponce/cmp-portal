@@ -1,5 +1,29 @@
 # Log de commits
 
+## 2026-09-23
+
+- **Velocidad con internet lento** (Compras en Mérida, visto en Clarity).
+  Medido en prod con red lenta simulada: dos optimizaciones ya existentes
+  estaban apagadas en silencio, sin quitar ninguna función.
+- **Los 304 nunca salían en producción**: Cloudflare, al comprimir, cambia el
+  ETag a `W/"…"` y el worker comparaba con `===`. Resultado: el drawer de un
+  Proyecto re-bajaba y re-procesaba ~280 KB de JSON cada 5 s; lo mismo el de
+  Oportunidad, notificaciones, anuncios, inicio, OC y filtros de Proyectos.
+  Nuevo `etagCoincide` (`worker/lib/http.ts`, comparación débil) en los 7
+  endpoints. En local no se veía porque `wrangler dev` no comprime.
+- **La precarga de la lista no coincidía** desde el 2026-08-20 (la app pide
+  `&totales=1`, `index.html` no): la lista de Oportunidades/Costeo se bajaba
+  dos veces y la buena arrancaba en el segundo 2.0 en vez del 0.4. El test
+  armaba la URL sin `totales`, por eso no lo vio; ya lo cubre.
+- **Catálogo de Productos guardado en el navegador** (Cache API): antes
+  ~106 KB comprimidos en CADA carga de página; ahora se revalida con ETag y
+  al recargar es un 304. Se borra al cerrar sesión. Para que sea seguro, el
+  ETag de las listas lleva ahora correo+rol de quien pide (admin y compras
+  compartían llave aunque ven columnas distintas).
+- **`/api/users`** (lista para @mencionar) ya no hace esperar a Monday cuando
+  vence su caché de 6 h: contesta con la copia y refresca en segundo plano
+  (promediaba 7.7 s para Compras, máx 15 s).
+
 ## 2026-09-22 (8)
 
 - **Respuesta visible en cada clic** (reporte de Clarity 20–22 sep: clics

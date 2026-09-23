@@ -43,3 +43,21 @@ export function contentDisposition(filename: string, tipo: 'inline' | 'attachmen
   const ascii = filename.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '');
   return `${tipo}; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
 }
+
+/** ¿El `If-None-Match` del cliente corresponde al ETag actual? (comparación DÉBIL, RFC 9110 §13.1.2)
+ *
+ * NO basta `header === etag`. Cloudflare comprime las respuestas JSON (zstd/br)
+ * y, al hacerlo, degrada el ETag fuerte que manda el worker (`"abc"`) a débil
+ * (`W/"abc"`). El navegador guarda y devuelve el débil, el `===` nunca empataba
+ * y TODO endpoint con ETag contestaba 200 completo en vez de 304. Medido en
+ * producción el 2026-09-23: el drawer de un Proyecto re-bajaba y re-parseaba
+ * ~280 KB de JSON cada 5 s; lista, notificaciones, anuncios, home, OC y filtros
+ * igual. Se veía bien en local porque `wrangler dev` no comprime.
+ */
+export function etagCoincide(ifNoneMatch: string | undefined | null, etag: string): boolean {
+  if (!ifNoneMatch) return false;
+  const opaco = (t: string) => t.trim().replace(/^W\//, '');
+  if (ifNoneMatch.trim() === '*') return true;
+  const actual = opaco(etag);
+  return ifNoneMatch.split(',').some(t => opaco(t) === actual);
+}

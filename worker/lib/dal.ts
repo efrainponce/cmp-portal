@@ -389,7 +389,14 @@ export async function etagFor(env: Env, slug: BoardSlug, viewer: Identity, varia
   // llave propia — si cayera en el mismo ETag que la respuesta completa, un
   // 304 le entregaría al selector la forma con TODAS las columnas.
   const shape = variant !== undefined ? `:${fnv1a(variant)}` : '';
-  return `"${slug}:${scopeKey}:${row?.c ?? 0}:${row?.m ?? ''}${shape}"`;
+  // Quién pide entra también (2026-09-23): las COLUMNAS legibles dependen del
+  // rol y hasta del correo (utilidades, shared/visibility.ts), y admin y
+  // compras caen los dos en scope 'all' — con la misma llave, un 304 le daría a
+  // uno la forma del otro. Hasta hoy solo pasaba al cambiar de identidad en la
+  // misma pestaña ("ver como"); con el catálogo guardado en el navegador entre
+  // recargas (src/lib/apiClient.ts, getCatalogoProductos) ya no sería raro.
+  const quien = fnv1a(`${viewer.email.toLowerCase()}|${viewer.role}`);
+  return `"${slug}:${scopeKey}:${row?.c ?? 0}:${row?.m ?? ''}${shape}:${quien}"`;
 }
 
 // role: 'vendedor' (default) o 'compras' — alimenta los selects de personas del

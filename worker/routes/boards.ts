@@ -35,7 +35,7 @@ import { firmaAutor } from '../lib/firmaUpdate';
 import { getNavBoards } from '../lib/boardAccess';
 import { isZonaPrivadaAdminPermitido } from '../lib/zonas';
 import { refetchItem, refetchItemTree, deltaSyncIfStale, mirrorVerificadoAt } from '../sync';
-import { jsonStatus, rejectUnknownQuery, contentDisposition } from '../lib/http';
+import { jsonStatus, rejectUnknownQuery, contentDisposition, etagCoincide } from '../lib/http';
 import { errorInterno } from '../lib/errores';
 import { nombreDescarga, extensionDe } from '../../shared/nombreArchivo';
 import { totalesPorOportunidad, totalesPorProyecto, totalesVersion } from '../lib/totales';
@@ -184,7 +184,7 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
   app.get('/api/users', async c => {
     try {
       // Roster cacheado 6 h en D1 — cambia casi nunca y esto se abre muy seguido.
-      const users = await cachedFetchUsers(c.env, 6 * 3600_000);
+      const users = await cachedFetchUsers(c.env, 6 * 3600_000, p => c.executionCtx.waitUntil(p));
       const dto: MentionUserDTO[] = users
         .map(u => ({ id: Number(u.id), nombre: u.name }))
         .sort((a, b) => a.nombre.localeCompare(b.nombre));
@@ -287,7 +287,7 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
     const variante = conTotales ? `${colsParam ?? ''}|t${tvServer}` : colsParam;
     const etag = await etagFor(c.env, slug, viewer, variante);
     c.header('ETag', etag);
-    if (c.req.header('If-None-Match') === etag) return c.body(null, 304);
+    if (etagCoincide(c.req.header('If-None-Match'), etag)) return c.body(null, 304);
 
     const [rows, pending] = await Promise.all([
       listItems(c.env, slug, viewer, q),
@@ -437,7 +437,7 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
     // La hora de sincronización viaja aparte porque NO entra en el ETag: así un
     // 304 igual puede refrescar el "sincronizado hace …" del drawer.
     if (dto.syncedAt) c.header('X-Synced-At', dto.syncedAt);
-    if (c.req.header('If-None-Match') === etag) return c.body(null, 304);
+    if (etagCoincide(c.req.header('If-None-Match'), etag)) return c.body(null, 304);
     return c.json(dto);
   });
 
@@ -666,7 +666,7 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
     // usuario de Monday con ese id ES el autor; con un id PRESTADO (Rodrigo,
     // Paola → id de Efraín) va en texto plano con el nombre del portal.
     const roster = viewer.monday_user_id > 0 && !isNativeId(itemId)
-      ? await cachedFetchUsers(c.env, 6 * 3600_000).catch(() => [])
+      ? await cachedFetchUsers(c.env, 6 * 3600_000, p => c.executionCtx.waitUntil(p)).catch(() => [])
       : [];
     const usuarioMonday = roster.find(u => String(u.id) === String(viewer.monday_user_id));
     const { firma, mention: authorMention } = firmaAutor(viewer, usuarioMonday, { itemNativo: isNativeId(itemId) });
@@ -863,7 +863,7 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
     const userIds = [...new Set(rows.map(r => r.user_id).filter((id): id is number => id != null))];
     const actorEmails = [...new Set(rows.map(r => r.actor_email).filter((e): e is string => !!e))];
     const [users, identityRows] = await Promise.all([
-      cachedFetchUsers(c.env, 6 * 3600_000).catch(() => []),
+      cachedFetchUsers(c.env, 6 * 3600_000, p => c.executionCtx.waitUntil(p)).catch(() => []),
       userIds.length > 0 || actorEmails.length > 0
         ? c.env.DB.prepare(
             `SELECT email, monday_user_id, nombre FROM identity

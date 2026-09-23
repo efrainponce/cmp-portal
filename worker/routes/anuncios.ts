@@ -11,6 +11,7 @@ import {
 } from '../lib/anuncios';
 import { notifyAnuncioWa } from '../wa/notify';
 import { md5 } from '../lib/canon';
+import { etagCoincide } from '../lib/http';
 
 function severidadDe(v: unknown): AnuncioSeveridad {
   return v === 'importante' ? 'importante' : 'normal';
@@ -25,7 +26,7 @@ export function anuncioRoutes(app: Hono<{ Bindings: Env }>) {
     // El ETag entra updated_at + visto de cada fila: editar un anuncio o marcarlo
     // leído tiene que romper el 304 (si no, el badge se queda pegado).
     const etag = '"' + md5(anuncios.map(a => `${a.id}:${a.updatedAt}:${a.visto ? 1 : 0}:${a.archivado ? 1 : 0}`).join('|') + `#${noLeidos}`) + '"';
-    if (c.req.header('If-None-Match') === etag) return c.body(null, 304, { ETag: etag });
+    if (etagCoincide(c.req.header('If-None-Match'), etag)) return c.body(null, 304, { ETag: etag });
     c.header('ETag', etag);
     return c.json(response);
   });
