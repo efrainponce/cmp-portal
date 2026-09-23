@@ -21,6 +21,11 @@ import { ensureOcLedger, numeroDeFolio, type OcEmitidaRow } from './ocLedger';
 import { fechaValida, montoCuadra } from '../../shared/ocMontoPdf';
 
 const PROYECTO_OC_PDF = 'file_mm0hj9pn';
+// "OC Prov. Firmada": la copia firmada que Compras sube a mano. Casi siempre
+// repite un folio de la columna de arriba, pero no siempre — medido
+// 2026-09-23: OC-214, 216, 237 y 238 SOLO existen aquí y la lista no las
+// mostraba (ni el buscador por folio ni el filtro de proveedor las encontraban).
+const PROYECTO_OC_FIRMADA = 'file_mm1g7cqz';
 const PROYECTO_ZONA = 'dropdown_mm0hnyv';
 const PROYECTO_FOLIO = 'pulse_id_mm1a12gy';
 // Líneas del Proyecto (proyectos_sub) — mismos ids que worker/lib/oc.ts.
@@ -96,13 +101,15 @@ export function ordenesDeProyecto(row: MirrorItem): OcListaRow[] {
   // Aquí el proyecto dueño del archivo ya se sabe. El costo: no pega al R2 de
   // `oportunidades/…` y siempre se sirve desde Monday, que es de donde sale
   // esta lista de todos modos.
-  const url = (archivo: string) => `/api/files/proyectos/${row.item_id}/oc/${encodeURIComponent(archivo)}`;
+  const url = (archivo: string, categoria = 'oc') => `/api/files/proyectos/${row.item_id}/${categoria}/${encodeURIComponent(archivo)}`;
+
+  const archivos = (colId: string) => texto(colId).split(',').map(s => s.trim()).filter(Boolean).map(entrada => {
+    const archivo = decode(entrada.split('/').pop() ?? '');
+    return { archivo, assetId: /\/resources\/(\d+)\//.exec(entrada)?.[1] ?? null, m: OC_NOMBRE_RE.exec(archivo) };
+  });
 
   const porFolio = new Map<string, OcListaRow>();
-  for (const entrada of texto(PROYECTO_OC_PDF).split(',').map(s => s.trim()).filter(Boolean)) {
-    const archivo = decode(entrada.split('/').pop() ?? '');
-    const assetId = /\/resources\/(\d+)\//.exec(entrada)?.[1] ?? null;
-    const m = OC_NOMBRE_RE.exec(archivo);
+  for (const { archivo, assetId, m } of archivos(PROYECTO_OC_PDF)) {
     if (!m) continue;
     const folio = m[1].toUpperCase();
     let fila = porFolio.get(folio);
@@ -118,6 +125,17 @@ export function ordenesDeProyecto(row: MirrorItem): OcListaRow[] {
     }
     if (m[3]) fila.urlSinCostos = url(archivo);
     else { fila.url = url(archivo); fila.assetId = assetId; fila.proveedor = m[2].replace(/_/g, ' ').trim(); }
+  }
+  // Folios que solo están firmados: entran con el PDF firmado como su PDF.
+  for (const { archivo, assetId, m } of archivos(PROYECTO_OC_FIRMADA)) {
+    if (!m || m[3] || porFolio.has(m[1].toUpperCase())) continue;
+    porFolio.set(m[1].toUpperCase(), {
+      folio: m[1].toUpperCase(), proveedor: m[2].replace(/_/g, ' ').trim(),
+      proyectoId: String(row.item_id), proyecto: row.name, proyectoFolio: texto(PROYECTO_FOLIO) || null,
+      zona: texto(PROYECTO_ZONA) || null, tambienEn: [], reemplazadaPor: null,
+      url: url(archivo, 'oc-firmada'), urlSinCostos: null, assetId,
+      fecha: null, subtotal: null, iva: null, total: null, moneda: null, pdfLeido: false, pagada: false, estados: null,
+    });
   }
   return [...porFolio.values()];
 }

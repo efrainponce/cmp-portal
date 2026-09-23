@@ -26,6 +26,20 @@ describe('ordenesDeProyecto', () => {
     });
   });
 
+  it('una OC que solo está en "OC Prov. Firmada" también sale (OC-214, 2026-09-23)', () => {
+    const rows = ordenesDeProyecto(proyecto([
+      { id: 'file_mm0hj9pn', text: `${M}/1/OC_OC-213_GDL_TACTICAL.pdf` },
+      { id: 'file_mm1g7cqz', text: `${M}/2/OC_OC-213_GDL_TACTICAL.pdf.pdf, ${M}/3/OC_OC-214_DIANA%20LAURA.pdf.pdf` },
+    ]));
+    expect(rows.map(r => r.folio)).toEqual(['OC-213', 'OC-214']);
+    // La repetida conserva el PDF de la columna de siempre.
+    expect(rows[0].url).toBe('/api/files/proyectos/555/oc/OC_OC-213_GDL_TACTICAL.pdf');
+    expect(rows[1]).toMatchObject({
+      proveedor: 'DIANA LAURA', assetId: '3',
+      url: '/api/files/proyectos/555/oc-firmada/OC_OC-214_DIANA%20LAURA.pdf.pdf',
+    });
+  });
+
   it('las dos copias de una orden (con y sin costos) son UNA fila', () => {
     const rows = ordenesDeProyecto(proyecto([
       { id: 'file_mm0hj9pn', text: `${M}/1/OC_OC-310_GDL_TACTICAL_SIN-COSTOS.pdf, ${M}/2/OC_OC-310_GDL_TACTICAL.pdf` },

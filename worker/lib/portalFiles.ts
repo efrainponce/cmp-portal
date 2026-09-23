@@ -39,6 +39,9 @@ export const OPP_FILE_COLS: Record<string, string> = {
 export const PROYECTO_FILE_COLS: Record<string, string> = {
   'tallas': 'file_mm0hcrtz',
   'oc': 'file_mm0hj9pn',
+  // "OC Prov. Firmada": solo lectura, para las OC que no están en la de arriba
+  // (Lista de OC, worker/lib/ocLista.ts). Misma visibilidad (AC) que 'oc'.
+  'oc-firmada': 'file_mm1g7cqz',
   // La sube el portal (tab Documentación) con dual-write a R2, igual que
   // 'documento' — está aquí porque la resolución por key es la misma.
   'acta-entrega': PROYECTO_ACTA_COL,

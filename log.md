@@ -1,5 +1,23 @@
 # Log de commits
 
+## 2026-09-23 (buscador de OC)
+
+- **Lista de OC: el buscador encuentra el folio escrito como sea.** "#317",
+  "oc317" y "OC 317" no encontraban OC-317 (el buscador comparaba el texto
+  completo, con guion). Ahora cada palabra se busca en cualquier campo, tal
+  cual o sin guiones/espacios/# (`searchMatches` en `src/lib/textMatch.ts`),
+  y también cuenta el folio de los proyectos clonados. Misma regla en el
+  buscador del Reporte de Proyectos, que ya buscaba por folio de OC.
+- **Filtro de proveedor por llave, no por texto exacto**: el nombre sale del
+  archivo y el mismo proveedor llegaba escrito distinto ("CASTAÑEDA" 29 OC /
+  "CASTANEDA" 1): elegir uno dejaba fuera las del otro. Una sola opción por
+  proveedor, con la variante más usada.
+- **Las OC que solo están en "OC Prov. Firmada" (`file_mm1g7cqz`) ya salen**:
+  OC-214, 216, 237 y 238 existían solo firmadas y la lista no las leía. Entran
+  con el PDF firmado como su PDF (categoría `oc-firmada` de /api/files, misma
+  visibilidad que `oc`). Huecos de folio que quedan, medidos: proyectos
+  borrados (OC-12..15, 115..121) y folios del backfill "sin-rastro".
+
 ## 2026-09-23 (medición real)
 
 - **Medición de rendimiento de usuarios reales** (para verificar las

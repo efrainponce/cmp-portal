@@ -22,7 +22,7 @@ import { ProgressBattery } from '../../components/board/ProgressBattery';
 import { useColumnasVisibles, type ColumnaDef } from '../../lib/useColumnasVisibles';
 import { batteryFromLabelWeights, type BatteryData } from '../../lib/estadoProductoBuckets';
 import { useIsMobile } from '../../lib/useIsMobile';
-import { textIncludes } from '../../lib/textMatch';
+import { compactText, searchMatches } from '../../lib/textMatch';
 
 const TODAS = '__todas__';
 const SIN_ZONA = 'Sin zona';
@@ -206,15 +206,28 @@ export default function OcListaBoard({ onOpenProyecto }: Props) {
   }, [ordenes, trabajar]);
 
   const zonas = useMemo(() => [...new Set((ordenes ?? []).map(o => o.zona ?? SIN_ZONA))].sort(), [ordenes]);
-  const proveedores = useMemo(() => [...new Set((ordenes ?? []).map(o => o.proveedor))].sort(), [ordenes]);
+  // Un proveedor por LLAVE, no por texto: el nombre sale del archivo y la misma
+  // razón social llega escrita distinto ("CASTAÑEDA" / "CASTANEDA"); filtrar por
+  // el texto exacto dejaba fuera parte de sus órdenes. Se muestra la variante
+  // más usada.
+  const proveedores = useMemo(() => {
+    const conteo = new Map<string, Map<string, number>>();
+    for (const o of ordenes ?? []) {
+      const k = compactText(o.proveedor);
+      const v = conteo.get(k) ?? conteo.set(k, new Map()).get(k)!;
+      v.set(o.proveedor, (v.get(o.proveedor) ?? 0) + 1);
+    }
+    return [...conteo].map(([clave, v]) => ({ clave, nombre: [...v].sort((a, b) => b[1] - a[1])[0][0] }))
+      .sort((a, b) => a.nombre.localeCompare(b.nombre));
+  }, [ordenes]);
 
   const visibles = useMemo(() => (ordenes ?? []).filter(o =>
     (zona === TODAS || (o.zona ?? SIN_ZONA) === zona)
-    && (proveedor === TODAS || o.proveedor === proveedor)
+    && (proveedor === TODAS || compactText(o.proveedor) === proveedor)
     && (pago === TODAS || (pago === 'si') === o.pagada)
     && (!soloVigentes || !o.reemplazadaPor)
     && (entrega === TODAS || (() => { const e = estadoDe(o); return !!e && (entrega === 'si') === (e.entregadas === e.bateria.total); })())
-    && (!q.trim() || [o.folio, o.proveedor, o.proyecto, o.proyectoFolio ?? ''].some(t => textIncludes(t, q))),
+    && searchMatches([o.folio, o.proveedor, o.proyecto, o.proyectoFolio ?? '', ...o.tambienEn.map(t => t.proyectoFolio ?? '')], q),
   ), [ordenes, zona, proveedor, pago, soloVigentes, entrega, q]);
 
   // Re-emisiones cuyo monto no se parece al de la orden que las reemplazó: se
@@ -279,7 +292,7 @@ export default function OcListaBoard({ onOpenProyecto }: Props) {
           </select>
           <select aria-label="Proveedor" value={proveedor} onChange={(e) => setProveedor(e.target.value)} style={{ ...selectStyle, maxWidth: isMobile ? '100%' : 260 }}>
             <option value={TODAS}>Proveedor: todos</option>
-            {proveedores.map(p => <option key={p} value={p}>{p}</option>)}
+            {proveedores.map(p => <option key={p.clave} value={p.clave}>{p.nombre}</option>)}
           </select>
           <select aria-label="Pago" value={pago} onChange={(e) => setPago(e.target.value)} style={selectStyle}>
             <option value={TODAS}>Pago: todas</option>
