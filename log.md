@@ -1,5 +1,16 @@
 # Log de commits
 
+## 2026-09-24 (versiones de OC por proveedor)
+
+- **Versiones de la OC en la tarjeta de cada proveedor** (Efraín: "en Monday
+  si generaba una y otra vez la OC para el mismo proveedor se podían ver sus
+  versiones; en el portal solo sale la actual"). Los PDFs viejos nunca se
+  borraban (la columna de OCs los acumula), solo no se enseñaban. Ahora,
+  cuando un proveedor tiene 2+ OC, sale una fila de chips "V1 · OC-100",
+  "V2 · OC-226 · vigente" como en la cotización; cada chip abre su PDF con
+  descarga. Mismo empate que la miniatura (ledger o nombre del archivo); la
+  copia sin costos no cuenta como versión. `ocVersionesDelProveedor`, con test.
+
 ## 2026-09-24 (lista de cotizaciones)
 
 - **Nuevo board "Lista de cotizaciones" en Ventas** (Efraín: "así como la

@@ -2,7 +2,7 @@
 // orden, y de él sale la miniatura del tab. Si el match se rompe, la tarjeta
 // muestra la copia sin precios como si fuera la orden — o deja de mostrar nada.
 import { describe, it, expect } from 'vitest';
-import { findLatestOcFile } from './OrdenesSection';
+import { findLatestOcFile, ocVersionesDelProveedor } from './OrdenesSection';
 
 const f = (name: string) => ({ url: `/api/files/${name}`, name });
 const PROVEEDOR = ['5.11 Tactical de México SA De CV'];
@@ -66,5 +66,23 @@ describe('findLatestOcFile', () => {
 
   it('sin candidatos no adivina', () => {
     expect(findLatestOcFile([f(`OC_OC-226_${RZ}.pdf`)], [])).toEqual({});
+  });
+});
+
+describe('ocVersionesDelProveedor', () => {
+  it('trae todas las OC del proveedor en orden, sin las copias sin costos ni las de otro', () => {
+    const r = ocVersionesDelProveedor([
+      f(`OC_OC-100_${RZ}.pdf`), f('OC_OC-150_Otro Proveedor SA.pdf'),
+      f(`OC_OC-226_${RZ}.pdf`), f(`OC_OC-226_${RZ}_SIN-COSTOS.pdf`),
+    ], PROVEEDOR);
+    expect(r.map(v => v.folio)).toEqual(['OC-100', 'OC-226']);
+  });
+
+  it('usa el archivo del ledger aunque el nombre no empate', () => {
+    const r = ocVersionesDelProveedor(
+      [f('OC_OC-500_Nombre Que Nadie Adivina.pdf')], ['no empata'],
+      [{ archivo: 'OC_OC-500_Nombre Que Nadie Adivina.pdf' }],
+    );
+    expect(r.map(v => v.folio)).toEqual(['OC-500']);
   });
 });
