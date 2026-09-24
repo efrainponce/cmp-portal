@@ -175,6 +175,29 @@ export function findLatestOcFile(
   return { conCostos, sinCostos };
 }
 
+/** TODAS las OC con costos de este proveedor, de la más vieja a la más nueva
+ * (Efraín, 2026-09-24: en Monday se veían todas las versiones regeneradas; la
+ * tarjeta solo enseñaba la última). Mismo empate que `findLatestOcFile`: el
+ * archivo que registró el ledger, o el nombre `OC_<folio>_<proveedor>.pdf`
+ * para las órdenes de antes del ledger. Las copias _SIN-COSTOS no cuentan
+ * como versión: son la misma orden. */
+export function ocVersionesDelProveedor(
+  files: { url: string; name: string }[], candidatos: string[],
+  delLedger: { archivo: string | null }[] = [],
+): { url: string; name: string; folio: string }[] {
+  const delLedgerSet = new Set(delLedger.map(o => o.archivo).filter(Boolean));
+  const wanted = candidatos.filter(Boolean).map(normalizeProveedorNombre);
+  const out: { url: string; name: string; folio: string }[] = [];
+  for (const f of files) {
+    const m = OC_FILE_RE.exec(f.name);
+    if (!m || m[3]) continue;
+    if (delLedgerSet.has(f.name) || wanted.includes(normalizeProveedorNombre(m[2]))) {
+      out.push({ ...f, folio: m[1] });
+    }
+  }
+  return out;
+}
+
 // 12 columnas. Desde 2026-09-21 el tab usa TODO el ancho del drawer (antes
 // maxWidth 920: en una pantalla grande el Producto se partía en 12 renglones
 // con media pantalla vacía al lado). Las de acciones van al final y TIENEN que
@@ -674,6 +697,52 @@ function OcThumb({ file }: { file: { url: string; name: string } | undefined }) 
   );
 }
 
+/** Chips con cada OC emitida a este proveedor (como las versiones de la
+ * cotización): la vigente resaltada, las anteriores se abren en solo lectura.
+ * Con una sola OC no se pinta — la miniatura de la tarjeta ya la enseña. */
+function OcVersiones({ versiones, vigente }: {
+  versiones: { url: string; name: string; folio: string }[]; vigente: string | undefined;
+}) {
+  const [abierta, setAbierta] = useState<{ url: string; name: string; folio: string } | null>(null);
+  if (versiones.length < 2) return null;
+  return (
+    <div style={{
+      padding: '8px 14px', borderBottom: '1px solid var(--border-subtle)',
+      display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center',
+    }}>
+      <span style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)', marginRight: 2 }}>Versiones:</span>
+      {versiones.map((v, i) => {
+        const esVigente = v.name === vigente;
+        return (
+          <div
+            key={v.name}
+            onClick={() => setAbierta(v)}
+            title={esVigente ? 'OC vigente' : 'OC anterior — reemplazada por una más nueva'}
+            style={{
+              cursor: 'pointer', font: 'var(--text-label-strong)', padding: '3px 10px',
+              borderRadius: 'var(--radius-pill)',
+              background: esVigente ? 'var(--ink)' : 'var(--bg-sunken)',
+              color: esVigente ? '#fff' : 'var(--ink-secondary)',
+            }}
+          >
+            V{i + 1} · {v.folio}{esVigente ? ' · vigente' : ''}
+          </div>
+        );
+      })}
+      {abierta && (
+        <Modal title={`Orden de compra ${abierta.folio}${abierta.name === vigente ? '' : ' (anterior)'}`} onClose={() => setAbierta(null)} width={760}>
+          <Suspense fallback={<div style={{ font: 'var(--text-label)', color: 'var(--ink-quiet)' }}>Cargando…</div>}>
+            <PdfCanvasPreview url={abierta.url} maxWidth={712} />
+          </Suspense>
+          <a href={abierta.url} download style={{ display: 'inline-block', marginTop: 12, font: 'var(--text-label)', color: 'var(--accent)' }}>
+            Descargar
+          </a>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
 /** Botón "Ver OC (portal)" — arma el PDF al vuelo en el Worker
  * (worker/lib/ocProveedorPdf.ts) en vez de disparar Eledo/cmp-tallas. Es SOLO
  * vista previa: no consume folio ni guarda nada. Para emitirla de verdad está
@@ -1153,6 +1222,7 @@ function ProveedorCard({ group, proyecto, oppId, reload, canEdit, activity, nota
   const { conCostos: ocFile, sinCostos: ocFileSinCostos } = findLatestOcFile(
     ocFiles, [group.nombre, group.nombreItem], ordenes,
   );
+  const versionesOc = ocVersionesDelProveedor(ocFiles, [group.nombre, group.nombreItem], ordenes);
 
   const correr = (accion: 'generar-oc' | 'generar-oc-portal' | 'generar-oc-portal-imagenes') => async () => {
     setOutcome(null);
@@ -1237,6 +1307,7 @@ function ProveedorCard({ group, proyecto, oppId, reload, canEdit, activity, nota
           )}
         </div>
       </div>
+      <OcVersiones versiones={versionesOc} vigente={ocFile?.name} />
       {canEdit && (
         <div style={{
           padding: '10px 14px', borderBottom: '1px solid var(--border-subtle)',
