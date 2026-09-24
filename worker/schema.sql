@@ -296,7 +296,7 @@ INSERT OR IGNORE INTO role_board_access (role, board_key) VALUES
   -- Solicitudes de muestra (Efraín, 2026-09-21).
   ('vendedor', 'muestras'), ('compras', 'muestras'),
   -- Lista de cotizaciones (Efraín, 2026-09-24).
-  ('vendedor', 'cot_lista');
+  ('vendedor', 'cot_lista'), ('compras', 'cot_lista');
 
 -- Menú del sidebar POR PERSONA (worker/lib/boardAccess.ts getNavBoards, Efraín
 -- 2026-09-19): PAM y Elisa son admin y veían los 14 boards. Solo declutter — los

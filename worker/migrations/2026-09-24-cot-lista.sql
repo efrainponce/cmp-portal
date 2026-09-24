@@ -3,4 +3,4 @@
 -- hace falta en remoto es el acceso del sidebar por rol:
 --   env -u CLOUDFLARE_API_TOKEN npx wrangler d1 execute cmp-portal --remote --env-file=.dev.vars --file worker/migrations/2026-09-24-cot-lista.sql
 INSERT OR IGNORE INTO role_board_access (role, board_key) VALUES
-  ('vendedor', 'cot_lista');
+  ('vendedor', 'cot_lista'), ('compras', 'cot_lista');

@@ -26,8 +26,12 @@
   GB) lo precarga `scripts/cot-lista-backfill.mjs --aplicar`; lo nuevo lo lee
   el navegador de a dos, una sola vez.
 - Acceso: board `cot_lista` para vendedor (admin siempre) — correr
-  `worker/migrations/2026-09-24-cot-lista.sql` en remoto. Compras NO lo tiene
-  por default (se le agrega en Configuración si se quiere).
+  `worker/migrations/2026-09-24-cot-lista.sql` en remoto.
+- **Compras también ve la Lista de cotizaciones** (Efraín, mismo día): el cambio
+  desde Configuración nunca llegó al server (ninguna petición a board-access
+  en `accion_log`), así que se aplicó directo en D1: rol compras + el menú
+  personal de compras@ (un menú personal solo recorta; sin el board en su
+  lista no le aparecía). Default y seed actualizados.
 
 ## 2026-09-23 (buscador de OC)
 
