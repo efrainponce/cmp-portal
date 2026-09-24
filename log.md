@@ -1,5 +1,34 @@
 # Log de commits
 
+## 2026-09-24 (lista de cotizaciones)
+
+- **Nuevo board "Lista de cotizaciones" en Ventas** (Efraín: "así como la
+  lista de OC… y sobre todo filtrar por cliente, no solo dropdown, algo que se
+  pueda buscar"). Todas las cotizaciones al cliente en una lista, sacadas de
+  las columnas "Cotizaciones generadas" y "Cotizaciones Firmadas" de cada
+  Oportunidad: folio (1109-1), fecha, cliente (institución + contacto),
+  oportunidad (abre su tab Cotizaciones), vendedor, zona, etapa, subtotal y
+  los PDFs (sin firmar / firmada por vendedor). Filtros: buscador, **Cliente
+  con buscador** (escribes y filtra; muestra cuántas cotizaciones tiene cada
+  uno), zona, vendedor, etapa, firma y "solo la vigente". Mismos renglones que
+  ve cada quien en Oportunidades (un vendedor: las suyas y las de su zona).
+- **Versiones**: la versión más nueva de cada oportunidad es la vigente; las
+  anteriores se listan atenuadas con "→ vigente" y no suman. Ojo, medido: el
+  folio se REPITE entre el formato de las hojas ("cotización_0282 - 1", abril)
+  y el de cmp-tallas ("cotizacion_0282_-_1", agosto) en 19 oportunidades — son
+  PDFs distintos, así que la fila se identifica por formato+folio (`clave`).
+- **Oportunidades duplicadas en Monday** se llevan los PDFs de la original
+  (OPP-1107/1108/1109 traen las 0624-1/2): una sola fila, en la dueña del folio,
+  con "+ OPP-…" de referencia — si no, el total se triplicaba.
+- **Montos y fecha salen del PDF** (bloque "Subtotal: | IVA: | Total:",
+  autoverificado; 26 de 26 PDFs de muestra de marzo a septiembre). Se guardan
+  en `cot_pdf_datos` (propia, nada en Monday). El histórico (~1,090 PDFs, medio
+  GB) lo precarga `scripts/cot-lista-backfill.mjs --aplicar`; lo nuevo lo lee
+  el navegador de a dos, una sola vez.
+- Acceso: board `cot_lista` para vendedor (admin siempre) — correr
+  `worker/migrations/2026-09-24-cot-lista.sql` en remoto. Compras NO lo tiene
+  por default (se le agrega en Configuración si se quiere).
+
 ## 2026-09-23 (buscador de OC)
 
 - **Lista de OC: el buscador encuentra el folio escrito como sea.** "#317",

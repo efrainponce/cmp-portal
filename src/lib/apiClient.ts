@@ -14,7 +14,7 @@ import type {
   ProductoResumenDTO, ProductoResumenResponse, ProductoGeneroResponse,
   UpdateAttachmentDTO, UpdateDTO, VendedorDTO, WriteResponse, ZonaDTO,
   OportunidadLigadaDTO, ProyectoOportunidadResponse, WaPreferenciasDTO,
-  OcListaRow, OcListaResponse, ProyectoFiltrosDTO, ProyectoFiltrosResponse,
+  OcListaRow, OcListaResponse, CotListaRow, CotListaResponse, ProyectoFiltrosDTO, ProyectoFiltrosResponse,
 } from '../../shared/dto';
 import type { AddProposedProductResponse, ProposedProductDTO, ProposedProductsResponse } from '../../shared/productosPropuestos';
 import type { InventarioCotizacionProductoDTO, InventarioCotizacionResponse } from '../../shared/inventarioCotizacion';
@@ -1411,6 +1411,30 @@ export async function setOcPdfDatos(folio: string, d: {
   fecha: string | null; subtotal: number | null; iva: number | null; total: number | null; moneda: string | null;
 }): Promise<void> {
   const res = await apiFetch(`/oc-lista/${encodeURIComponent(folio)}/pdf-datos`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(d),
+  });
+  if (!res.ok) throw new Error(`No se pudo guardar lo leído del PDF (${res.status}).`);
+}
+
+let cotListaEtag: string | undefined;
+
+/** Tablero "Lista de cotizaciones" de Ventas (worker/lib/cotLista.ts). Mismo
+ * contrato que listOcLista: truena en vez de devolver [], `null` = 304. */
+export async function listCotLista(desdeCero = false): Promise<CotListaRow[] | null> {
+  if (desdeCero) cotListaEtag = undefined;
+  const res = await apiFetch('/cot-lista', cotListaEtag ? { headers: { 'If-None-Match': cotListaEtag } } : undefined);
+  if (res.status === 304) return null;
+  if (!res.ok) throw new Error(`No se pudo cargar la lista de cotizaciones (${res.status}).`);
+  cotListaEtag = res.headers.get('ETag') ?? undefined;
+  const body: CotListaResponse = await res.json();
+  return body.cotizaciones ?? [];
+}
+
+/** Asienta lo que se leyó del PDF de la cotización (src/lib/cotPdfMonto.ts). */
+export async function setCotPdfDatos(clave: string, d: {
+  fecha: string | null; subtotal: number | null; iva: number | null; total: number | null; moneda: string | null;
+}): Promise<void> {
+  const res = await apiFetch(`/cot-lista/${encodeURIComponent(clave)}/pdf-datos`, {
     method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(d),
   });
   if (!res.ok) throw new Error(`No se pudo guardar lo leído del PDF (${res.status}).`);

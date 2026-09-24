@@ -16,7 +16,7 @@ import {
 
 export type BoardKey =
   | 'home' | 'anuncios'
-  | 'oportunidades' | 'oportunidades_web' | 'costeo' | 'validacion' | 'muestras' | 'doctallas' | 'ordenescompra' | 'oc_lista' | 'ejecucion' | 'logistica'
+  | 'oportunidades' | 'oportunidades_web' | 'costeo' | 'validacion' | 'muestras' | 'cot_lista' | 'doctallas' | 'ordenescompra' | 'oc_lista' | 'ejecucion' | 'logistica'
   | 'productos' | 'instituciones' | 'contactos' | 'proveedores' | 'inventario' | 'settings' | 'analisis'
   | 'zona_efrain' | 'zona_efrain_proy' | 'estadocuenta';
 
@@ -31,6 +31,9 @@ const VENTAS_ITEMS: NavItemConfig[] = [
   // Las solicitudes de muestra de todos, en una lista (Efraín, 2026-09-21) —
   // se crean desde el tab «Muestras» de cada oportunidad o proyecto.
   { key: 'muestras', label: 'Solicitudes de muestra', icon: IconMuestras },
+  // Todas las cotizaciones al cliente en una lista (Efraín, 2026-09-24), como
+  // la Lista de OC — sin entrar a cada oportunidad.
+  { key: 'cot_lista', label: 'Lista de cotizaciones', icon: IconDocTallas },
 ];
 
 // Zona privada "Efrain" (worker/lib/zonas.ts, Efraín 2026-08-12): NO vive en
