@@ -56,11 +56,12 @@ export const TEAM_ROLES: Role[] = ['vendedor', 'compras', 'almacen'];
 // cotizaciones al cliente en una lista (como Lista de OC), en Ventas. Como
 // 'oc_lista', la ruta /api/cot-lista lo checa (403 sin él) y los renglones van
 // acotados por el scoping de Oportunidades — cada vendedor ve las suyas y las
-// de su zona.
+// de su zona. Compras también (Efraín, mismo día): ve las de las oportunidades
+// que ya lee.
 export const DEFAULT_BOARD_ACCESS: Record<Role, readonly ConfigurableBoardKey[]> = {
   vendedor: ['oportunidades', 'oportunidades_web', 'muestras', 'cot_lista', 'doctallas',
     'productos', 'instituciones', 'contactos'],
-  compras: ['costeo', 'muestras', 'ejecucion', 'oc_lista',
+  compras: ['costeo', 'muestras', 'cot_lista', 'ejecucion', 'oc_lista',
     'productos', 'instituciones', 'contactos', 'proveedores'],
   almacen: ['inventario'],
   admin: BOARD_KEYS,
