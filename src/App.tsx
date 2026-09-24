@@ -21,6 +21,7 @@ const StageBoard = lazy(() => import('./boards/oportunidades/StageBoard').then((
 // Proyectos directo (no filtrando Oportunidades por etapa) — ver ProyectoBoard.
 const ProyectoBoard = lazy(() => import('./boards/proyectos/ProyectoBoard').then((m) => ({ default: m.ProyectoBoard })));
 const OcListaBoard = lazy(() => import('./boards/proyectos/OcListaBoard'));
+const CotListaBoard = lazy(() => import('./boards/oportunidades/CotListaBoard'));
 const MuestrasBoard = lazy(() => import('./boards/muestras/MuestrasBoard'));
 const GenericBoardView = lazy(() => import('./boards/generic/GenericBoardView').then((m) => ({ default: m.GenericBoardView })));
 const InventarioBoard = lazy(() => import('./boards/inventario/InventarioBoard').then((m) => ({ default: m.InventarioBoard })));
@@ -88,6 +89,11 @@ function App() {
         // de etapa) directo en su tab de órdenes; sin ese acceso, en el otro
         // board que trae el tab.
         <OcListaBoard onOpenProyecto={(id) => navigate(me?.boardAccess.includes('ejecucion') ? 'ejecucion' : 'ordenescompra', id, 'ordenes')} />
+      )}
+      {activeBoard === 'cot_lista' && (
+        // La oportunidad se abre en el board Oportunidades (abre cualquier id,
+        // sin importar la etapa) directo en su tab de cotizaciones.
+        <CotListaBoard onOpenOportunidad={(id) => navigate('oportunidades', id, 'cotizacion')} />
       )}
       {activeBoard === 'muestras' && (
         // Directo al tab Muestras del item ligado. El proyecto se abre en el

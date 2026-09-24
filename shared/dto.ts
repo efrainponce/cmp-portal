@@ -804,6 +804,48 @@ export interface OcListaRow {
 }
 export interface OcListaResponse { ordenes: OcListaRow[] }
 
+/** Una cotización al cliente del tablero "Lista de cotizaciones" de Ventas
+ * (worker/lib/cotLista.ts). Sale de los PDFs de la Oportunidad. */
+export interface CotListaRow {
+  /** Identidad de la fila: `<era>-<numero>-<versión>` (worker/lib/cotLista.ts
+   * folioDeArchivo — el folio solo se repite entre el formato viejo y el nuevo). */
+  clave: string;
+  /** "1109-1": número de la oportunidad y versión, como en el nombre del PDF. */
+  folio: string;
+  numero: string;
+  version: number;
+  /** 0 = nombre de la época de las hojas de cálculo, 1 = el de cmp-tallas. */
+  era: 0 | 1;
+  oportunidadId: string;
+  oportunidad: string;
+  oportunidadFolio: string | null;
+  institucion: string | null;
+  contacto: string | null;
+  zona: string | null;
+  vendedor: string | null;
+  etapa: string | null;
+  /** Otras oportunidades (duplicadas en Monday) que traen el mismo PDF. */
+  tambienEn: { oportunidadId: string; oportunidadFolio: string | null; oportunidad: string }[];
+  /** Folio de la versión más reciente de la misma oportunidad, cuando NO es
+   * ésta: ya no es la vigente y no suma. null = vigente. */
+  reemplazadaPor: string | null;
+  /** PDF sin firmar (el que genera cmp-tallas). */
+  url: string | null;
+  /** PDF firmado por el vendedor. */
+  urlFirmada: string | null;
+  /** El archivo cuyo texto se lee (asset de Monday, o `r2:` en nativas). */
+  llave: string | null;
+  /** Fecha impresa en la cotización, aaaa-mm-dd. */
+  fecha: string | null;
+  subtotal: number | null;
+  iva: number | null;
+  total: number | null;
+  moneda: string | null;
+  /** El PDF vigente ya se leyó (aunque no trajera totales): no se vuelve a bajar. */
+  pdfLeido: boolean;
+}
+export interface CotListaResponse { cotizaciones: CotListaRow[] }
+
 // Carpeta de Google Drive de una Oportunidad o un Proyecto (worker/routes/
 // drive.ts, tab Documentación, 2026-09-15). `disponible=false` = el ambiente no
 // tiene credenciales de Google; `carpeta=null` = el item no tiene carpeta
