@@ -4,7 +4,7 @@
 // contra shared/column-meta.gen.ts (secciones "productos" y "oportunidades_sub").
 import { describe, it, expect } from 'vitest';
 import type { RawColumn } from './canon';
-import { lineaColsDesdeProducto } from './nativeMirrors';
+import { lineaColsDesdeProducto, elegirCosteoPrevio } from './nativeMirrors';
 
 // Catálogo de Productos.
 const P_COSTO = 'numeric_mkzpx7eb';
@@ -73,5 +73,67 @@ describe('lineaColsDesdeProducto', () => {
       [P_NOMBRE]: 'Camisa', [P_COSTO]: '1530', [P_DESCUENTO]: '0.18', [P_GASTOS]: '0.05', [P_MONEDA]: 'MXN',
     }));
     expect(byId(cols, PRECIO_VENTA_CU)).toBeUndefined();
+  });
+
+  // Elisa, 2026-09-25: la Bota 12477 no trae costo en el catálogo (baja de
+  // Airtable vacío) pero ya se había costeado en 3340 con 18% en otra OPP.
+  it('catálogo sin costo: siembra con el último costeo del producto', () => {
+    const { cols } = lineaColsDesdeProducto(
+      producto({ [P_NOMBRE]: 'Bota Lite Mid', [P_GASTOS]: '0.05', [P_MONEDA]: 'MXN' }),
+      { costo: 3340, descPct: 18, moneda: '' },
+    );
+    expect(byId(cols, SNAP_COSTO)?.text).toBe('3340');
+    expect(byId(cols, SNAP_DESC_PCT)?.text).toBe('18');
+    expect(byId(cols, SNAP_GAST_PCT)?.text).toBe('5');
+    expect(byId(cols, SNAP_TC)?.text).toBe('1');
+    // (1+0.05)·(3340·0.82)·1·1.3
+    expect(Number(byId(cols, SNAP_PRECIO)?.text)).toBeCloseTo(3738.46, 2);
+    // El espejo "Costo (auto)" sigue diciendo lo que dice el catálogo: nada.
+    expect(byId(cols, 'lookup_mm5ck4b3')).toBeUndefined();
+  });
+
+  it('el costeo previo en USD trae su moneda y su tipo de cambio', () => {
+    const { cols } = lineaColsDesdeProducto(
+      producto({ [P_NOMBRE]: 'Bota', [P_MONEDA]: 'MXN' }),
+      { costo: 100, descPct: 0, moneda: 'USD' },
+    );
+    expect(byId(cols, SNAP_TC)?.text).toBe('18');
+    expect(byId(cols, LINEA_MONEDA)?.text).toBe('USD');
+  });
+
+  it('con costo en el catálogo gana el catálogo, no el costeo previo', () => {
+    const { cols } = lineaColsDesdeProducto(
+      producto({ [P_NOMBRE]: 'Pantalón', [P_COSTO]: '1500', [P_DESCUENTO]: '0.18', [P_MONEDA]: 'MXN' }),
+      { costo: 999, descPct: 50, moneda: 'USD' },
+    );
+    expect(byId(cols, SNAP_COSTO)?.text).toBe('1500');
+    expect(byId(cols, SNAP_DESC_PCT)?.text).toBe('18');
+    expect(byId(cols, LINEA_MONEDA)?.text).toBe('MXN');
+  });
+});
+
+describe('elegirCosteoPrevio', () => {
+  const linea = (itemId: number, productoId: number, costo: string, changedAt: string, extra: Record<string, string> = {}) => ({
+    item_id: itemId,
+    columns: JSON.stringify([
+      { id: 'board_relation_mkzmafgp', type: 'board_relation', text: 'x', value: JSON.stringify({ linked_item_ids: [String(productoId)] }) },
+      { id: SNAP_COSTO, type: 'numbers', text: costo, value: JSON.stringify(costo) },
+      { id: 'color_mm084gvf', type: 'status', text: 'Listo', value: JSON.stringify({ index: 1, changed_at: changedAt }) },
+      ...Object.entries(extra).map(([id, text]) => ({ id, type: 'text', text, value: null })),
+    ]),
+  });
+
+  it('toma la línea costeada más reciente del MISMO producto', () => {
+    const previo = elegirCosteoPrevio(12023585364, [
+      linea(12355197671, 12023585364, '245', '2026-06-26T17:07:31Z'),
+      linea(12959662757, 12023585364, '260', '2026-07-24T00:29:46Z', { [SNAP_DESC_PCT]: '10', [LINEA_MONEDA]: 'MXN' }),
+      linea(12000000001, 12023585364, '0', '2026-09-01T00:00:00Z'),       // sin costo: no cuenta
+      linea(12000000002, 99, '5000', '2026-09-02T00:00:00Z'),             // otro producto (el LIKE lo dejó pasar)
+    ]);
+    expect(previo).toEqual({ costo: 260, descPct: 10, moneda: 'MXN' });
+  });
+
+  it('sin líneas costeadas no inventa nada', () => {
+    expect(elegirCosteoPrevio(1, [linea(2, 1, '', '2026-07-01T00:00:00Z')])).toBeNull();
   });
 });

@@ -23,7 +23,10 @@ import type { Env } from '../env';
 import { BOARDS, type BoardSlug } from '../../shared/boards';
 import type { RawColumn } from './canon';
 import { nativeStatusValue } from './nativeItems';
-import { computeSnapshot, snapshotRawCols, snapshotEmptyCols } from './costeoSnapshot';
+import {
+  computeSnapshot, snapshotRawCols, snapshotEmptyCols,
+  SCOL_COSTO, SCOL_DESCUENTO, SCOL_MONEDA, SNAP_COSTO, SNAP_DESC_PCT,
+} from './costeoSnapshot';
 
 // ── Oportunidad ───────────────────────────────────────────────────────────────
 const OPP_CONTACTO_REL = 'deal_contact';
@@ -61,8 +64,10 @@ const LINEA_TEXTO_DESDE_PRODUCTO: Record<string, string> = {
  * `lookup_mm11t8gj`, pero quien manda para el costeo es esta (ver
  * src/boards/oportunidades/tabs/cotizacion/gridMeta.tsx MONEDA_COL). */
 const LINEA_MONEDA = 'color_mm5s709s';
+const LINEA_ETAPA_COSTEO = 'color_mm084gvf';   // su changed_at fecha el último costeo
 const PRODUCTO_MONEDA = 'text_mkzp59zf';   // Moneda en el catálogo (fuente del espejo lookup_mm11t8gj)
 const PRODUCTO_NOMBRE = 'text_mm0wvga2';
+const PRODUCTO_COSTO = 'numeric_mkzpx7eb';       // Costo Distribuidor (baja de Airtable)
 const PRODUCTO_PROVEEDOR_REL = 'board_relation_mm1cwqky';
 const PROVEEDOR_RAZON_SOCIAL = 'text_mm1d43t4';
 
@@ -198,14 +203,70 @@ export async function stampInstitucionEnOpsDeContacto(
 export async function stampProductoEnLinea(env: Env, lineaId: number, productoId: number): Promise<void> {
   const producto = await rowOf(env, 'productos', productoId);
   if (!producto) return;
-  const { cols, nombre } = lineaColsDesdeProducto(producto);
+  const sinCostoEnCatalogo = !(Number(producto.cols.get(PRODUCTO_COSTO)?.text ?? '') > 0);
+  const previo = sinCostoEnCatalogo ? await ultimoCosteoDeProducto(env, productoId, lineaId) : null;
+  const { cols, nombre } = lineaColsDesdeProducto(producto, previo);
   await merge(env, 'oportunidades_sub', lineaId, cols, nombre || undefined);
 }
 
+/** Lo que Compras capturó la última vez que se costeó este producto. */
+export interface CosteoPrevio {
+  costo: number;
+  /** Descuento en % (18 = 18%), como lo guarda la línea. */
+  descPct: number;
+  /** Moneda de ESA línea; vacío = hereda la del catálogo. */
+  moneda: string;
+}
+
+/** Último costeo capturado de un producto en cualquier línea de cotización.
+ *
+ * El Costo Distribuidor del catálogo baja de Airtable (cmp-tallas
+ * sync_producto) y el 2026-09-25 venía vacío en 756 de 1470 productos, aunque
+ * 517 de esos ya se habían costeado antes en alguna cotización. Elisa armaba
+ * una cotización en la Zona Efrain, elegía la Bota 12477 o la Polo dry fit y
+ * el costo no salía: los tecleaba a mano (3340 y 250), justo lo que ya estaba
+ * costeado en OPPs anteriores. "La más reciente" = la que cambió de Etapa
+ * Costeo al último (el `changed_at` de ese status), no el id: los ids nativos
+ * no crecen con el tiempo. El LIKE solo acota el escaneo; quién está ligado
+ * de verdad lo decide `linkedId`. */
+async function ultimoCosteoDeProducto(
+  env: Env, productoId: number, excluirLineaId: number,
+): Promise<CosteoPrevio | null> {
+  const res = await env.DB
+    .prepare(`SELECT item_id, columns FROM items WHERE board_id = ? AND item_id != ? AND columns LIKE ? LIMIT 500`)
+    .bind(BOARDS.oportunidades_sub.id, excluirLineaId, `%${productoId}%`)
+    .all<{ item_id: number; columns: string }>();
+  return elegirCosteoPrevio(productoId, res.results ?? []);
+}
+
+/** La parte pura de `ultimoCosteoDeProducto`. */
+export function elegirCosteoPrevio(
+  productoId: number, filas: { item_id: number; columns: string }[],
+): CosteoPrevio | null {
+  let mejor: { at: string; id: number; previo: CosteoPrevio } | null = null;
+  for (const fila of filas) {
+    const cols = colsOf(fila.columns);
+    if (linkedId(cols.get(LINEA_PRODUCTO_REL)) !== productoId) continue;
+    const costo = Number(cols.get(SNAP_COSTO)?.text ?? '');
+    if (!(costo > 0)) continue;
+    let at = '';
+    try { at = String((JSON.parse(cols.get(LINEA_ETAPA_COSTEO)?.value ?? '{}') as { changed_at?: unknown }).changed_at ?? ''); } catch { /* sin fecha */ }
+    if (mejor && (at < mejor.at || (at === mejor.at && fila.item_id < mejor.id))) continue;
+    const desc = Number(cols.get(SNAP_DESC_PCT)?.text ?? '');
+    mejor = {
+      at, id: fila.item_id,
+      previo: { costo, descPct: Number.isFinite(desc) ? desc : 0, moneda: cols.get(LINEA_MONEDA)?.text?.trim() ?? '' },
+    };
+  }
+  return mejor?.previo ?? null;
+}
+
 /** La parte pura de `stampProductoEnLinea`: producto del catálogo → columnas de
- * la línea + nombre. Separada para poder anclarla en tests sin D1. */
+ * la línea + nombre. Separada para poder anclarla en tests sin D1. `previo` =
+ * último costeo del producto, solo se usa si el catálogo no trae costo. */
 export function lineaColsDesdeProducto(
   producto: { name: string; cols: Map<string, RawColumn> },
+  previo: CosteoPrevio | null = null,
 ): { cols: RawColumn[]; nombre: string } {
   const cols: RawColumn[] = [];
   for (const [destino, origen] of Object.entries(LINEA_DESDE_PRODUCTO)) {
@@ -228,11 +289,14 @@ export function lineaColsDesdeProducto(
   // la metadata, `nativeStatusValue` devuelve el texto suelto — eso dejaría a
   // la línea fuera de todo filtro por índice, así que en ese caso no se escribe
   // y manda el espejo del catálogo, que es como funcionaba hasta ahora.
-  const monedaCatalogo = producto.cols.get(PRODUCTO_MONEDA)?.text?.trim();
-  if (monedaCatalogo) {
-    const value = nativeStatusValue('oportunidades_sub', LINEA_MONEDA, monedaCatalogo);
+  // Si el costo sale de un costeo anterior, manda la moneda de ESE costeo.
+  const catalogoSinCosto = !(Number(producto.cols.get(PRODUCTO_COSTO)?.text ?? '') > 0);
+  const usarPrevio = catalogoSinCosto && !!previo && previo.costo > 0;
+  const moneda = (usarPrevio && previo!.moneda) || producto.cols.get(PRODUCTO_MONEDA)?.text?.trim();
+  if (moneda) {
+    const value = nativeStatusValue('oportunidades_sub', LINEA_MONEDA, moneda);
     if (typeof value === 'object' && value !== null) {
-      cols.push({ id: LINEA_MONEDA, type: 'status', text: monedaCatalogo, value: JSON.stringify(value) });
+      cols.push({ id: LINEA_MONEDA, type: 'status', text: moneda, value: JSON.stringify(value) });
     }
   }
 
@@ -246,7 +310,20 @@ export function lineaColsDesdeProducto(
   // Sin costo en el catálogo se LIMPIA en vez de dejar lo anterior: cambiar de
   // producto invalida el costo del producto viejo, y dejarlo puesto es peor que
   // el aviso "Pendiente de costeo" (que así vuelve a salir solo).
-  const snapshot = computeSnapshot(cols);
+  //
+  // Catálogo sin costo pero el producto YA se costeó antes: se siembra con ese
+  // último costeo (ver `ultimoCosteoDeProducto`). Los espejos "(auto)" de la
+  // línea NO se tocan — siguen diciendo lo que dice el catálogo; solo cambia
+  // la entrada del cálculo.
+  const entrada: RawColumn[] = usarPrevio
+    ? [
+        ...cols.filter(c => c.id !== SCOL_COSTO && c.id !== SCOL_DESCUENTO && c.id !== SCOL_MONEDA),
+        mirror(SCOL_COSTO, String(previo!.costo)),
+        mirror(SCOL_DESCUENTO, String(previo!.descPct / 100)),
+        mirror(SCOL_MONEDA, moneda ?? ''),
+      ]
+    : cols;
+  const snapshot = computeSnapshot(entrada);
   cols.push(...(snapshot.costo > 0 ? snapshotRawCols(snapshot) : snapshotEmptyCols()));
 
   return { cols, nombre: producto.cols.get(PRODUCTO_NOMBRE)?.text?.trim() || producto.name };
