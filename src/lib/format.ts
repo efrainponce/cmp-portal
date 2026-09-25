@@ -20,6 +20,12 @@ export function fmtMoney2(n: number): string {
   return `${signo}$${Math.abs(n).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+/** Número con comas de millar y a lo más dos decimales (Efraín, 2026-09-25:
+ * "114928.96" en la grid de cotización no se leía). Para cantidades y %. */
+export function fmtNum2(n: number): string {
+  return n.toLocaleString('es-MX', { maximumFractionDigits: 2 });
+}
+
 /** Semáforo de la Utilidad %: rojo si se pierde dinero, ámbar abajo del 20%,
  * verde arriba. La misma escala en la grid de Cotización y en la lista, para
  * que un renglón no cambie de color al abrirlo. */

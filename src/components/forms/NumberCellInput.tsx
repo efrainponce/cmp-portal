@@ -20,6 +20,8 @@
 // (cotización) y en una de celdas que solo abren editor al hacer clic (OC), y no
 // hay que hilar un índice por props ni mantenerlo sincronizado con el orden.
 import type React from 'react';
+import { useState } from 'react';
+import { fmtNum2 } from '../../lib/format';
 
 /** Contenedor de una grid navegable — ↑/↓ solo buscan celdas dentro de él. */
 export const NAV_GRID_ATTR = { 'data-cmp-navgrid': 'true' } as const;
@@ -86,14 +88,30 @@ export interface NumberCellInputProps
   noNegative?: boolean;
 }
 
-export function NumberCellInput({ navCol, noNegative, className, onKeyDown, ...rest }: NumberCellInputProps) {
+export function NumberCellInput({ navCol, noNegative, className, onKeyDown, onFocus, onBlur, value, ...rest }: NumberCellInputProps) {
+  // Fuera de foco se muestra con comas y a lo más dos decimales (Efraín,
+  // 2026-09-25: "114928.96" no se leía); al enfocar vuelve el número crudo
+  // en un type="number", así que lo que se edita y se guarda no cambia.
+  const [focused, setFocused] = useState(false);
+  const n = value === '' || value == null ? NaN : Number(value);
+  const formatted = !focused && Number.isFinite(n);
   return (
     <input
       {...rest}
-      type="number"
+      type={formatted ? 'text' : 'number'}
+      value={formatted ? fmtNum2(n) : value}
       {...(navCol ? navCellAttrs(navCol) : {})}
       {...(noNegative ? { min: 0 } : {})}
       className={className ? `cmp-grid-num-input ${className}` : 'cmp-grid-num-input'}
+      onFocus={(e) => {
+        setFocused(true);
+        // El cambio de type tira la selección: se re-selecciona ya con el valor
+        // crudo (↑/↓ y el clic dejan la celda lista para sobrescribir).
+        const el = e.currentTarget;
+        requestAnimationFrame(() => { if (document.activeElement === el) el.select(); });
+        onFocus?.(e);
+      }}
+      onBlur={(e) => { setFocused(false); onBlur?.(e); }}
       onKeyDown={(e) => {
         numberCellKeyDown(e, { noNegative });
         if (!e.defaultPrevented) onKeyDown?.(e);

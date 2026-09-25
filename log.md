@@ -1,5 +1,16 @@
 # Log de commits
 
+## 2026-09-25 (cotización: comas de millar y dos decimales en todos los números)
+
+- **Números legibles en la grid de cotización** (Efraín, captura de "Costo distr.
+  C/U" en 114928.96).
+  - `NumberCellInput` (inputs de cotización, tallas y OC): fuera de foco muestra
+    el número con comas y a lo más dos decimales; al enfocar vuelve al crudo en
+    `type="number"`, así que lo que se edita y se guarda no cambia.
+  - Celdas de solo lectura, totales, snapshot de versiones y la cotización
+    virtual de Proyectos: dinero con `fmtMoney2` (antes se redondeaba a pesos),
+    % con dos decimales (`fmtNum2`) y Cant./Conversión con comas.
+
 ## 2026-09-24 (sidebar: globo de notificaciones, hover y menú colapsado por grupos)
 
 - **Tres cambios de UI en la barra lateral** (Jorge, con capturas).

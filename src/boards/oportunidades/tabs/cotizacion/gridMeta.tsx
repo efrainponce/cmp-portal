@@ -4,7 +4,7 @@
 // Monday; columnas que el rol del viewer no puede ver simplemente no vienen en
 // `cols` y se saltan (el server ya las filtra — docs/dev-contracts.md).
 import type { ColVal, ItemDTO } from '../../../../lib/api';
-import { fmtMoney } from '../../../../lib/format';
+import { fmtMoney2, fmtNum2 } from '../../../../lib/format';
 import { COL } from '../../../../lib/costeoCalc';
 import { EMB_STATUS_COL, EMB_LABEL_CON, explodeEmbellecimiento } from '../../../../../shared/embellecimiento';
 export { EMB_STATUS_COL, EMB_LABEL_CON, EMB_LABEL_SIN } from '../../../../../shared/embellecimiento';
@@ -476,11 +476,16 @@ export function cellValue(col: GridCol, val?: ColVal): string {
   if (!val || val.text === '') return '—';
   if (col.kind === 'money') {
     const n = Number(val.value ?? val.text);
-    return Number.isNaN(n) ? val.text : fmtMoney(n);
+    return Number.isNaN(n) ? val.text : fmtMoney2(n);
   }
   if (col.kind === 'percent') {
     const n = Number(val.value ?? val.text);
-    return Number.isNaN(n) ? val.text : `${n}%`;
+    return Number.isNaN(n) ? val.text : `${fmtNum2(n)}%`;
+  }
+  // Columnas numéricas con kind 'text' (Cant., Conversión): mismas comas y
+  // dos decimales. Solo numeric_/formula_ — un SKU numérico no se toca.
+  if (/^(numeric|formula)_/.test(col.id) && /^-?\d+(\.\d+)?$/.test(val.text.trim())) {
+    return fmtNum2(Number(val.text));
   }
   return val.text;
 }

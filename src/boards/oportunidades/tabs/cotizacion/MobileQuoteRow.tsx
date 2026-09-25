@@ -5,7 +5,7 @@
 // mobil esta horrible la ventana de cotizacion... quizas en lista").
 import { memo } from 'react';
 import type { ItemDTO } from '../../../../lib/api';
-import { fmtMoney } from '../../../../lib/format';
+import { fmtMoney2 } from '../../../../lib/format';
 import { AjusteLabelBadge, MonoTag, StatusBadge } from '../../../../components/core/Badges';
 import { COL } from '../../../../lib/costeoCalc';
 import { LineDetailPanel } from './LineDetailPanel';
@@ -230,7 +230,7 @@ function MobileQuoteRowInner({
       if (suggested === undefined) return <div style={{ ...valueChipStyle, font: 'var(--text-label)', color: 'var(--ink-secondary)' }}>—</div>;
       return (
         <div style={{ ...valueChipStyle, fontStyle: 'italic', font: 'var(--text-label)', color: 'var(--ink-tertiary)' }} title="Calculado para 23% de utilidad (Margen Gob ya tomado como costo)">
-          {fmtMoney(suggested)}
+          {fmtMoney2(suggested)}
         </div>
       );
     }
