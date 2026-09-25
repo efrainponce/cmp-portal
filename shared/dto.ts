@@ -531,6 +531,9 @@ export interface UpdateDTO {
   /** 'nota' = la columna "Comentarios Ventas" de una línea: no es un update
    * (sin fecha ni autor propios), el feed la pinta aparte, arriba. */
   tipo?: 'nota';
+  /** Respuestas del hilo, en orden de conversación (worker/lib/updatesLineas.ts
+   * armarHilos). Solo en comentarios de primer nivel; una respuesta no trae. */
+  replies?: UpdateDTO[];
 }
 export interface CreateUpdateRequest { body: string; mentions?: { id: number; nombre: string }[] }
 

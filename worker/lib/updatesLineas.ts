@@ -30,6 +30,7 @@ import { seenByFor } from './updateSeen';
 import { resolveOportunidadId } from './proyectoTallas';
 import { folioDe } from './oportunidadLigada';
 import { colTexts, etiquetaLinea } from './lineaEtiqueta';
+import { separarFirma } from '../../shared/firmaPortal';
 
 export { etiquetaLinea };
 
@@ -55,6 +56,49 @@ export function notasDeLineas(rows: Pick<MirrorItem, 'item_id' | 'name' | 'colum
 
 interface Fuente { slug: BoardSlug; itemId: number; origen?: string }
 interface Crudo { u: MondayUpdate; origen?: string; fuente: Fuente }
+
+const alTiempo = (u: MondayUpdate) => new Date(u.created_at).getTime();
+
+/** Ids de todo lo que va a pintar el feed — comentarios Y sus respuestas —
+ * para pedir su "visto" de una vez. */
+export function idsDelFeed(crudos: Pick<Crudo, 'u'>[]): string[] {
+  return crudos.flatMap(c => [c.u.id, ...(c.u.replies ?? []).map(r => r.id)]);
+}
+
+/** Comentarios con su hilo, como los guarda Monday (Jorge, 2026-09-25: tarjeta
+ * por comentario y respuestas adentro, estilo Slack). Antes el feed aplanaba
+ * las respuestas en la misma lista y no se sabía a qué contestaban.
+ *  - Comentarios: el más reciente arriba. Respuestas: en orden de conversación.
+ *  - `author`: quien firmó si lo escribió el portal (Monday lo atribuye al
+ *    dueño del token — shared/firmaPortal.ts); si no, el creador de Monday.
+ *  - La respuesta hereda `fuente` del comentario (vive en el mismo item), pero
+ *    no `origen`: el chip de producto ya va en la tarjeta. */
+export function armarHilos(
+  crudos: Crudo[], seenBy: Map<string, string[]>, itemIdPedido: number,
+): UpdateDTO[] {
+  const aDto = (u: MondayUpdate, fuente: Fuente, origen?: string): UpdateDTO => {
+    const names = new Map<string, string>();
+    for (const n of seenBy.get(u.id) ?? []) names.set(n.toLowerCase(), n);
+    for (const v of u.viewers ?? []) if (v.user?.name) names.set(v.user.name.toLowerCase(), v.user.name);
+    const body = u.text_body ?? '';
+    const dto: UpdateDTO = {
+      id: u.id, body, author: separarFirma(body).autor ?? u.creator?.name ?? 'Monday', createdAt: u.created_at,
+      attachments: (u.assets ?? []).map(a => ({ id: a.id, name: a.name, ext: a.file_extension.replace(/^\./, '').toLowerCase() })),
+      seenBy: [...names.values()].sort((a, b) => a.localeCompare(b)),
+    };
+    if (origen) dto.origen = origen;
+    if (fuente.itemId !== itemIdPedido) dto.fuente = { slug: fuente.slug, itemId: String(fuente.itemId) };
+    return dto;
+  };
+  return [...crudos]
+    .sort((a, b) => alTiempo(b.u) - alTiempo(a.u))
+    .map(({ u, origen, fuente }) => {
+      const dto = aDto(u, fuente, origen);
+      const replies = [...(u.replies ?? [])].sort((a, b) => alTiempo(a) - alTiempo(b)).map(r => aDto(r, fuente));
+      if (replies.length) dto.replies = replies;
+      return dto;
+    });
+}
 
 /** Updates del item + los de sus líneas (etiquetados). Las líneas son
  * best-effort: si Monday falla ahí, el feed del item sale igual. */
@@ -94,29 +138,12 @@ export async function feedActualizaciones(
 
   const partes = await Promise.all(fuentes.map(f => updatesDe(env, f, viewer)));
 
-  // Monday anida las replies bajo su update; el feed no tiene hilos, así que
-  // se aplanan heredando el origen del padre.
-  const planos = partes.flatMap(p => p.crudos)
-    .flatMap(c => [c, ...(c.u.replies ?? []).map(r => ({ ...c, u: r }))])
-    .sort((a, b) => new Date(b.u.created_at).getTime() - new Date(a.u.created_at).getTime());
-
   // "Ojitos": Monday's own `viewers` solo se llena por vistas dentro de
   // Monday.com; se fusiona con lo que el portal registró en D1 (updateSeen.ts)
   // para que el indicador cubra ambas superficies. Dedupe case-insensitive.
-  const portalSeenBy = await seenByFor(env, planos.map(c => c.u.id));
-  const feed: UpdateDTO[] = planos.map(({ u, origen, fuente }) => {
-    const names = new Map<string, string>();
-    for (const n of portalSeenBy.get(u.id) ?? []) names.set(n.toLowerCase(), n);
-    for (const v of u.viewers ?? []) if (v.user?.name) names.set(v.user.name.toLowerCase(), v.user.name);
-    const dto: UpdateDTO = {
-      id: u.id, body: u.text_body ?? '', author: u.creator?.name ?? 'Monday', createdAt: u.created_at,
-      attachments: (u.assets ?? []).map(a => ({ id: a.id, name: a.name, ext: a.file_extension.replace(/^\./, '').toLowerCase() })),
-      seenBy: [...names.values()].sort((a, b) => a.localeCompare(b)),
-    };
-    if (origen) dto.origen = origen;
-    if (fuente.itemId !== row.item_id) dto.fuente = { slug: fuente.slug, itemId: String(fuente.itemId) };
-    return dto;
-  });
+  const crudos = partes.flatMap(p => p.crudos);
+  const portalSeenBy = await seenByFor(env, idsDelFeed(crudos));
+  const feed = armarHilos(crudos, portalSeenBy, row.item_id);
 
   // Notas "Comentarios Ventas" de las líneas de la Oportunidad (la propia o la
   // ligada al Proyecto), si el rol puede leer esa columna.

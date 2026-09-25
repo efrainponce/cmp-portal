@@ -1,5 +1,35 @@
 # Log de commits
 
+## 2026-09-25 (Actualizaciones, fase 1: tarjetas, burbuja e hilos)
+
+- **El feed de Actualizaciones se parece al de Monday** (Jorge, con capturas).
+  Fase 1 de 3, solo presentación: no cambia nada de lo que se escribe a Monday.
+  - **Una tarjeta blanca por comentario** con burbuja de iniciales (solo
+    iniciales, sin foto — decisión de Jorge), nombre y fecha ("18 jun, 03:10
+    p.m."; la relativa en el tooltip). Color fijo por persona; automatizaciones
+    ("Monday") en gris. `initials` pasa a `src/lib/initials.ts` para
+    compartirla con `PersonAvatar`.
+  - **Respuestas dentro de su tarjeta**, en orden de conversación. Antes
+    `feedActualizaciones` las APLANABA en la lista y no se sabía a qué
+    contestaban; ahora `armarHilos` (`worker/lib/updatesLineas.ts`) las deja
+    anidadas en `UpdateDTO.replies`, que es como Monday ya las guarda. El
+    "visto" sigue cubriendo las respuestas (`idsDelFeed`, y el front manda sus
+    ids a `markUpdatesSeen`).
+  - **Autor real de lo escrito desde el portal**: Monday atribuye todo al dueño
+    del token (Efraín), así que el autor sale de la firma "— Fulano vía Portal
+    CMP" (`shared/firmaPortal.ts separarFirma`), y la firma se oculta SOLO en
+    pantalla — el texto en Monday no cambia y el webhook sigue reconociéndola
+    por `PORTAL_SIGNATURE`.
+  - Revisado antes de tocar nada: el feed se lee de Monday en vivo en cada
+    apertura (nada se copia a D1 salvo el "visto"); `UpdateDTO` solo lo usa
+    este tab; el bot de WhatsApp lee Monday por su lado.
+  - Probado en local con Vite + API simulada (hilo con respuestas, comentario
+    firmado desde el portal, automatización, adjunto, chip de producto): sin
+    errores de consola. 7 pruebas de `separarFirma` y 5 de `armarHilos`;
+    `npm run typecheck`, `lint` y `npm test` (1015) limpios.
+  - Pendiente: fase 2 (responder, escribe a Monday con `parent_id`) y fase 3
+    (reacciones, solo en D1).
+
 ## 2026-09-25 (Solicitudes de muestra: visibles para Elisa y PAM + filtro Oportunidad/Proyecto)
 
 - **Pedido de Elisa**: "la parte de muestras necesitamos que esté afuera, como la

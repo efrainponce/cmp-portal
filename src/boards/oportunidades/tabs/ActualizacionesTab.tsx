@@ -6,6 +6,8 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import type { BoardSlug, MentionUserDTO, UpdateAttachmentDTO, UpdateDTO } from '../../../lib/apiClient';
 import { getMentionUsers, getUpdates, markUpdatesSeen, postUpdate, postUpdateAttachment, updateAttachmentHref } from '../../../lib/api';
 import { Modal } from '../../../components/core/Modal';
+import { initials } from '../../../lib/initials';
+import { separarFirma } from '../../../../shared/firmaPortal';
 
 const PdfCanvasPreview = lazy(() =>
   import('../../../components/core/PdfCanvasPreview').then((m) => ({ default: m.PdfCanvasPreview })),
@@ -98,6 +100,59 @@ function fmtWhen(iso: string): string {
   return `Hace ${days} d`;
 }
 
+/** Fecha en que se registró: "17 sept, 14:32" (con año si no es el actual).
+ * La relativa ("Hace 3 d") queda en el tooltip. */
+function fmtFecha(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const mismoAnio = d.getFullYear() === new Date().getFullYear();
+  const fecha = d.toLocaleDateString('es-MX', { day: 'numeric', month: 'short', ...(mismoAnio ? {} : { year: 'numeric' }) });
+  const hora = d.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+  return `${fecha}, ${hora}`;
+}
+
+// Un color fijo por persona (el mismo nombre siempre cae en el mismo), para
+// que en un hilo largo se distinga quién es quién sin leer el nombre.
+const AVATAR_COLORS = [
+  'var(--accent)', 'var(--accent-blue)', 'var(--status-en-coste)',
+  'var(--accent-red)', 'var(--status-confirmado)', 'var(--status-esperando)',
+];
+function avatarColor(name: string): string {
+  if (name === 'Monday') return 'var(--status-nueva)'; // automatizaciones
+  let h = 0;
+  for (const ch of name.toLowerCase()) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return AVATAR_COLORS[h % AVATAR_COLORS.length];
+}
+
+/** Burbuja con iniciales (Jorge, 2026-09-25: solo iniciales, sin foto). */
+function Avatar({ name, size }: { name: string; size: number }) {
+  return (
+    <div title={name} style={{
+      width: size, height: size, borderRadius: '50%', flex: 'none',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      background: avatarColor(name), color: '#fff',
+      font: `600 ${Math.round(size * 0.38)}px var(--font-ui)`, letterSpacing: '-.2px',
+    }}>
+      {initials(name)}
+    </div>
+  );
+}
+
+/** Nombre + fecha, junto a la burbuja. */
+function Encabezado({ u, size }: { u: UpdateDTO; size: number }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+      <Avatar name={u.author} size={size} />
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', minWidth: 0 }}>
+        <span style={{ font: 'var(--text-label-strong)', color: 'var(--ink)' }}>{u.author}</span>
+        <span title={fmtWhen(u.createdAt)} style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)' }}>
+          {fmtFecha(u.createdAt)}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 // Splits an update body on any "@Full Name" that matches a known teammate so
 // mentions render highlighted in the feed, same names the composer below can tag.
 function renderBody(text: string, users: MentionUserDTO[] | null): React.ReactNode {
@@ -149,7 +204,9 @@ export function ActualizacionesTab({ slug, itemId }: Props) {
         window.clearTimeout(timeout);
         setUpdates(data);
         // Las notas "Comentarios Ventas" no son updates: no llevan "visto".
-        markUpdatesSeen(slug, itemId, data.filter((u) => u.tipo !== 'nota').map((u) => u.id));
+        // Las respuestas también llevan su "visto" (ya no vienen aplanadas).
+        markUpdatesSeen(slug, itemId, data.filter((u) => u.tipo !== 'nota')
+          .flatMap((u) => [u.id, ...(u.replies ?? []).map((r) => r.id)]));
       })
       .catch(() => {
         if (loadTokenRef.current !== token) return;
@@ -341,9 +398,19 @@ export function ActualizacionesTab({ slug, itemId }: Props) {
         </div>
       )}
       {feed?.map((u) => (
-        <div key={u.id} style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: 12 }}>
-          {u.origen && <div style={{ marginBottom: 4 }}><OrigenChip origen={u.origen} /></div>}
-          <div style={{ font: 'var(--text-label)', color: 'var(--ink)', whiteSpace: 'pre-wrap' }}>{renderBody(u.body, users)}</div>
+        // Una tarjeta por comentario, con sus respuestas adentro (Jorge,
+        // 2026-09-25, como en Monday): así se ve dónde empieza y termina cada uno.
+        <div key={u.id} style={{
+          background: '#fff', border: '1px solid var(--border)', borderRadius: 'var(--radius-xl)',
+          padding: '14px 16px',
+        }}>
+          <Encabezado u={u} size={32} />
+          {u.origen && <div style={{ marginTop: 8 }}><OrigenChip origen={u.origen} /></div>}
+          <div style={{ font: 'var(--text-label)', color: 'var(--ink)', whiteSpace: 'pre-wrap', marginTop: 10 }}>
+            {/* La firma "— Fulano vía Portal CMP" ya se ve arriba como autor;
+                solo se oculta aquí — el texto en Monday no cambia. */}
+            {renderBody(separarFirma(u.body).texto, users)}
+          </div>
           {u.attachments.length > 0 && (
             <div>
               {u.attachments.map((a) => (
@@ -352,13 +419,23 @@ export function ActualizacionesTab({ slug, itemId }: Props) {
               ))}
             </div>
           )}
-          <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)', marginTop: 4 }}>
-            {u.author} · {fmtWhen(u.createdAt)}
-          </div>
           {u.seenBy.length > 0 && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4, font: 'var(--text-caption)', color: 'var(--ink-faint)', marginTop: 2 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, font: 'var(--text-caption)', color: 'var(--ink-faint)', marginTop: 10 }}>
               <EyeIcon color="var(--ink-faint)" />
               <span>Visto por {seenByLabel(u.seenBy)}</span>
+            </div>
+          )}
+          {u.replies && u.replies.length > 0 && (
+            <div style={{ marginTop: 12, paddingTop: 4, borderTop: '1px solid var(--border-subtle)' }}>
+              {u.replies.map((r) => (
+                <div key={r.id} style={{ paddingTop: 10 }}>
+                  <Encabezado u={r} size={24} />
+                  {/* Alineado con el nombre, no con la burbuja (24 + gap 10). */}
+                  <div style={{ font: 'var(--text-label)', color: 'var(--ink)', whiteSpace: 'pre-wrap', margin: '4px 0 0 34px' }}>
+                    {renderBody(separarFirma(r.body).texto, users)}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>
