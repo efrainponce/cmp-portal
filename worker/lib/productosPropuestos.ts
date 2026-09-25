@@ -50,6 +50,15 @@ export async function ensureProposedProductsTable(env: Env): Promise<void> {
     )`),
     env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_producto_propuesto_opp ON producto_propuesto(oportunidad_id)'),
   ]);
+  // Editar/eliminar (2026-09-25, pedido de un vendedor): borrar es LÓGICO
+  // (`deleted_at`) y la imagen vieja se queda en R2 — es D1 nativo, sin Monday,
+  // así que un error se arregla con un UPDATE. Tablas previas se migran con el
+  // ALTER; si la columna ya existe D1 tira error y se ignora.
+  for (const col of ['deleted_at TEXT', 'deleted_by TEXT', 'updated_at TEXT']) {
+    try {
+      await env.DB.prepare(`ALTER TABLE producto_propuesto ADD COLUMN ${col}`).run();
+    } catch { /* ya existe */ }
+  }
   tableReady = true;
 }
 
@@ -79,7 +88,7 @@ export async function listProposedProducts(env: Env, itemId: number, viewer: Ide
 
   await ensureProposedProductsTable(env);
   const { results } = await env.DB.prepare(
-    'SELECT id, nombre, descripcion, image_key, created_by, created_at FROM producto_propuesto WHERE oportunidad_id = ? ORDER BY created_at ASC',
+    'SELECT id, nombre, descripcion, image_key, created_by, created_at FROM producto_propuesto WHERE oportunidad_id = ? AND deleted_at IS NULL ORDER BY created_at ASC',
   ).bind(itemId).all<Row>();
   return (results ?? []).map(toDTO);
 }
@@ -167,16 +176,7 @@ export async function addProposedProduct(
 
   await ensureProposedProductsTable(env);
   const id = crypto.randomUUID();
-  let imageKey: string | null = null;
-  if (file) {
-    imageKey = oportunidadFileKey(itemId, 'productos-propuestos', `${id}-${file.name}`);
-    await putFile(env, imageKey, file);
-    await registrarArchivo(env, {
-      acto: 'sube', categoria: 'producto-propuesto', nombre: file.name,
-      boardId: BOARDS.oportunidades.id, itemId, r2Key: imageKey,
-      bytes: file.size, porEmail: viewer.email,
-    });
-  }
+  const imageKey = file ? await subirImagen(env, itemId, id, viewer, file) : null;
   const cleanDescripcion = descripcion.trim();
   const createdAt = new Date().toISOString();
   await env.DB.prepare(
@@ -189,4 +189,71 @@ export async function addProposedProduct(
   // notifyComprador ya es best-effort (se traga y loguea a sync_log).
   ctx.waitUntil(notifyComprador(env, itemId, opp.columns, opp.name, viewer, dto));
   return dto;
+}
+
+async function subirImagen(env: Env, itemId: number, productoId: string, viewer: Identity, file: File): Promise<string> {
+  // Prefijo con timestamp: al CAMBIAR la imagen el key es nuevo (la anterior se
+  // queda en R2 de respaldo y el navegador no sirve la vieja de su caché).
+  const imageKey = oportunidadFileKey(itemId, 'productos-propuestos', `${productoId}-${Date.now()}-${file.name}`);
+  await putFile(env, imageKey, file);
+  await registrarArchivo(env, {
+    acto: 'sube', categoria: 'producto-propuesto', nombre: file.name,
+    boardId: BOARDS.oportunidades.id, itemId, r2Key: imageKey,
+    bytes: file.size, porEmail: viewer.email,
+  });
+  return imageKey;
+}
+
+/** La propuesta viva de ESTA oportunidad, con el mismo scope que proponer
+ * ('own': propias + zona que lidera/auxilia). 404 si no existe o ya se borró. */
+async function propuestaEditable(env: Env, itemId: number, productoId: string, viewer: Identity): Promise<Row> {
+  const opp = await getItem(env, 'oportunidades', itemId, viewer, 'own');
+  if (!opp) throw new ProposedProductError(404, 'not found');
+  await ensureProposedProductsTable(env);
+  const row = await env.DB.prepare(
+    'SELECT id, nombre, descripcion, image_key, created_by, created_at FROM producto_propuesto WHERE id = ? AND oportunidad_id = ? AND deleted_at IS NULL',
+  ).bind(productoId, itemId).first<Row>();
+  if (!row) throw new ProposedProductError(404, 'producto no encontrado');
+  return row;
+}
+
+export interface ProposedProductPatch {
+  nombre: string;
+  descripcion: string;
+  /** Imagen nueva (reemplaza la anterior). */
+  file?: File;
+  /** Quitar la imagen sin poner otra. Se ignora si viene `file`. */
+  quitarImagen?: boolean;
+}
+
+export async function updateProposedProduct(
+  env: Env, itemId: number, productoId: string, viewer: Identity, patch: ProposedProductPatch,
+): Promise<ProposedProductDTO> {
+  const cleanNombre = patch.nombre.trim();
+  if (!cleanNombre) throw new ProposedProductError(400, 'nombre requerido');
+  if (patch.file && patch.file.size > MAX_IMAGE_BYTES) throw new ProposedProductError(400, 'la imagen supera 8MB');
+
+  const row = await propuestaEditable(env, itemId, productoId, viewer);
+  let imageKey = row.image_key;
+  if (patch.file) imageKey = await subirImagen(env, itemId, productoId, viewer, patch.file);
+  else if (patch.quitarImagen) imageKey = null;
+  if (row.image_key && imageKey !== row.image_key) {
+    await registrarArchivo(env, {
+      acto: 'borra', categoria: 'producto-propuesto', nombre: row.image_key.split('/').pop() ?? row.image_key,
+      boardId: BOARDS.oportunidades.id, itemId, r2Key: row.image_key, porEmail: viewer.email,
+    });
+  }
+
+  const cleanDescripcion = patch.descripcion.trim();
+  await env.DB.prepare(
+    'UPDATE producto_propuesto SET nombre = ?, descripcion = ?, image_key = ?, updated_at = ? WHERE id = ?',
+  ).bind(cleanNombre, cleanDescripcion, imageKey, new Date().toISOString(), productoId).run();
+  return toDTO({ ...row, nombre: cleanNombre, descripcion: cleanDescripcion, image_key: imageKey });
+}
+
+export async function deleteProposedProduct(env: Env, itemId: number, productoId: string, viewer: Identity): Promise<void> {
+  await propuestaEditable(env, itemId, productoId, viewer);
+  await env.DB.prepare(
+    'UPDATE producto_propuesto SET deleted_at = ?, deleted_by = ? WHERE id = ?',
+  ).bind(new Date().toISOString(), viewer.email, productoId).run();
 }

@@ -16,7 +16,7 @@ import type {
   OportunidadLigadaDTO, ProyectoOportunidadResponse, WaPreferenciasDTO,
   OcListaRow, OcListaResponse, CotListaRow, CotListaResponse, ProyectoFiltrosDTO, ProyectoFiltrosResponse,
 } from '../../shared/dto';
-import type { AddProposedProductResponse, ProposedProductDTO, ProposedProductsResponse } from '../../shared/productosPropuestos';
+import type { AddProposedProductResponse, ProposedProductDTO, ProposedProductsResponse, UpdateProposedProductResponse } from '../../shared/productosPropuestos';
 import type { InventarioCotizacionProductoDTO, InventarioCotizacionResponse } from '../../shared/inventarioCotizacion';
 import { mockBoardMeta, mockItemDetail, mockPatch } from './mockFallback';
 import { getImpersonateTarget } from './impersonation';
@@ -675,6 +675,30 @@ export async function addProposedProduct(
   const body = await res.json();
   if (!res.ok) return { ok: false, error: body.error ?? 'No se pudo guardar el producto.' };
   return body as AddProposedProductResponse;
+}
+
+/** Edita una propuesta: nombre/descripción y, opcional, imagen nueva o quitarla. */
+export async function updateProposedProduct(
+  oppId: string, productoId: string, nombre: string, descripcion: string,
+  imagen: { file?: File; quitar?: boolean } = {},
+): Promise<{ ok: boolean; producto?: ProposedProductDTO; error?: string }> {
+  const form = new FormData();
+  form.append('nombre', nombre);
+  form.append('descripcion', descripcion);
+  if (imagen.file) form.append('file', imagen.file);
+  else if (imagen.quitar) form.append('quitarImagen', '1');
+  const res = await apiFetch(`/oportunidades/${oppId}/productos-propuestos/${encodeURIComponent(productoId)}`, { method: 'PATCH', body: form });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) return { ok: false, error: body.error ?? 'No se pudo guardar el producto.' };
+  return body as UpdateProposedProductResponse;
+}
+
+/** Elimina una propuesta (borrado lógico en D1). */
+export async function deleteProposedProduct(oppId: string, productoId: string): Promise<{ ok: boolean; error?: string }> {
+  const res = await apiFetch(`/oportunidades/${oppId}/productos-propuestos/${encodeURIComponent(productoId)}`, { method: 'DELETE' });
+  if (res.ok) return { ok: true };
+  const body = await res.json().catch(() => ({}));
+  return { ok: false, error: body.error ?? 'No se pudo eliminar el producto.' };
 }
 
 /** El Proyecto ligado a la oportunidad (con sus subitems de tallas); null si no existe. */

@@ -18,3 +18,8 @@ export interface AddProposedProductResponse {
   ok: true;
   producto: ProposedProductDTO;
 }
+
+export interface UpdateProposedProductResponse {
+  ok: true;
+  producto: ProposedProductDTO;
+}

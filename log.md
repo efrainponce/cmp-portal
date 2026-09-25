@@ -1,5 +1,19 @@
 # Log de commits
 
+## 2026-09-25 (Nuevos productos: editar, eliminar y ver la imagen en grande)
+
+- **Propuestas de producto editables** (pedido de un vendedor: "al crear nuevo
+  producto no hay opción para editar o eliminar").
+  - Tab "Nuevos productos": cada propuesta trae **Editar** (nombre, descripción,
+    cambiar o quitar la imagen) y **Eliminar** (confirmación de dos clics).
+  - La imagen (miniatura de la lista y la vista previa al proponer) se abre en
+    grande en el visor del portal (`FilePreviewModal`).
+  - Worker: `PATCH` y `DELETE /api/oportunidades/:id/productos-propuestos/:productoId`
+    con el mismo scope `'own'` que proponer. Eliminar es LÓGICO (`deleted_at`/
+    `deleted_by` en `producto_propuesto`, migrado con ALTER) y la imagen anterior
+    se queda en R2 de respaldo (key nuevo por imagen, así el navegador no sirve
+    la vieja de caché). Nada de esto toca Monday.
+
 ## 2026-09-25 (cotización: comas de millar y dos decimales en todos los números)
 
 - **Números legibles en la grid de cotización** (Efraín, captura de "Costo distr.
