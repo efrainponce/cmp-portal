@@ -1,4 +1,5 @@
 import { NavItem } from '../components/navigation/NavItem';
+import { NavGroup } from '../components/navigation/NavGroup';
 import { NotificationBell } from '../components/notifications/NotificationBell';
 import { UserChip } from './UserChip';
 import { useMe } from '../lib/useMe';
@@ -115,6 +116,39 @@ export function Sidebar({ activeBoard, onSelectBoard, collapsed, onToggleCollaps
   ];
   const inventarioItems = visible(INVENTARIO_ITEMS);
   const catalogItems = visible(CATALOG_ITEMS);
+
+  /** Una sección del sidebar. Expandido: título + sus opciones, como siempre.
+   * Colapsado: un solo ícono con panel flotante si trae más de una opción. */
+  const renderSection = (label: string, groupIcon: React.ReactNode, items: NavItemConfig[]) => {
+    if (items.length === 0) return null;
+    if (collapsed && items.length > 1) {
+      return (
+        <NavGroup
+          label={label}
+          icon={groupIcon}
+          items={items.map((item) => ({ key: item.key, label: item.label, icon: <item.icon /> }))}
+          activeKey={activeBoard}
+          onSelect={onSelectBoard}
+        />
+      );
+    }
+    return (
+      <>
+        {!collapsed && <SectionLabel>{label}</SectionLabel>}
+        {items.map((item) => (
+          <NavItem
+            key={item.key}
+            icon={<item.icon />}
+            label={item.label}
+            active={activeBoard === item.key}
+            collapsed={collapsed}
+            onClick={() => onSelectBoard(item.key)}
+          />
+        ))}
+      </>
+    );
+  };
+
   return (
     <div className="sidebar-verde" style={{
       width: collapsed ? 60 : 220,
@@ -185,76 +219,40 @@ export function Sidebar({ activeBoard, onSelectBoard, collapsed, onToggleCollaps
           />
         </div>
 
-        {ventasItems.length > 0 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 26 }}>
-            {!collapsed && <SectionLabel>Ventas</SectionLabel>}
-            {ventasItems.map((item) => (
-              <NavItem
-                key={item.key}
-                icon={<item.icon />}
-                label={item.label}
-                active={activeBoard === item.key}
-                collapsed={collapsed}
-                onClick={() => onSelectBoard(item.key)}
-              />
+        {collapsed ? (
+          // Colapsado: una sección = un ícono con panel flotante (NavGroup), en
+          // vez de ~20 íconos sueltos (Jorge, 2026-09-24). Una sección con una
+          // sola opción visible (Inventario, o lo que deje el rol) va suelta.
+          (ventasItems.length + proyectosItems.length + inventarioItems.length + catalogItems.length) > 0 && (
+            <>
+              <Divider />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {renderSection('Ventas', <IconOportunidades />, ventasItems)}
+                {renderSection('Proyectos', <IconDocTallas />, proyectosItems)}
+                {renderSection('Inventario', <IconInventario />, inventarioItems)}
+                {renderSection('Catálogos', <IconProductos />, catalogItems)}
+              </div>
+            </>
+          )
+        ) : (
+          <>
+            {ventasItems.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 26 }}>
+                {renderSection('Ventas', <IconOportunidades />, ventasItems)}
+              </div>
+            )}
+            {[
+              { label: 'Proyectos', icon: <IconDocTallas />, items: proyectosItems },
+              { label: 'Inventario', icon: <IconInventario />, items: inventarioItems },
+              { label: 'Catálogos', icon: <IconProductos />, items: catalogItems },
+            ].filter((sec) => sec.items.length > 0).map((sec) => (
+              <div key={sec.label}>
+                <Divider />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  {renderSection(sec.label, sec.icon, sec.items)}
+                </div>
+              </div>
             ))}
-          </div>
-        )}
-
-        {proyectosItems.length > 0 && (
-          <>
-            <Divider />
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              {!collapsed && <SectionLabel>Proyectos</SectionLabel>}
-              {proyectosItems.map((item) => (
-                <NavItem
-                  key={item.key}
-                  icon={<item.icon />}
-                  label={item.label}
-                  active={activeBoard === item.key}
-                  collapsed={collapsed}
-                  onClick={() => onSelectBoard(item.key)}
-                />
-              ))}
-            </div>
-          </>
-        )}
-
-        {inventarioItems.length > 0 && (
-          <>
-            <Divider />
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              {!collapsed && <SectionLabel>Inventario</SectionLabel>}
-              {inventarioItems.map((item) => (
-                <NavItem
-                  key={item.key}
-                  icon={<item.icon />}
-                  label={item.label}
-                  active={activeBoard === item.key}
-                  collapsed={collapsed}
-                  onClick={() => onSelectBoard(item.key)}
-                />
-              ))}
-            </div>
-          </>
-        )}
-
-        {catalogItems.length > 0 && (
-          <>
-            <Divider />
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              {!collapsed && <SectionLabel>Catálogos</SectionLabel>}
-              {catalogItems.map((item) => (
-                <NavItem
-                  key={item.key}
-                  icon={<item.icon />}
-                  label={item.label}
-                  active={activeBoard === item.key}
-                  collapsed={collapsed}
-                  onClick={() => onSelectBoard(item.key)}
-                />
-              ))}
-            </div>
           </>
         )}
 
@@ -297,7 +295,7 @@ export function Sidebar({ activeBoard, onSelectBoard, collapsed, onToggleCollaps
             flex: 'none',
             borderRadius: '50%',
             border: '1px solid var(--border)',
-            background: 'var(--surface-sidebar)',
+            // Sin `background` en línea: le ganaría al :hover (ver src/index.css).
             color: 'var(--ink-secondary)',
             display: 'flex',
             alignItems: 'center',

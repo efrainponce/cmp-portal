@@ -57,10 +57,20 @@ input, textarea, select, button {
   --ink-faint: rgba(255, 255, 255, .36);
   --accent: var(--accent-lime);
   --ink-on-accent: #164d38;
-  --fill-hover: rgba(255, 255, 255, .07);
-  --fill-active: rgba(255, 255, 255, .13);
+  /* Hover subido de .07 (Jorge, 2026-09-24: "que aparezca sobre un recuadro de
+     un tono grisáceo") y el activo de .13 a .16 para que los dos no se confundan. */
+  --fill-hover: rgba(255, 255, 255, .10);
+  --fill-active: rgba(255, 255, 255, .16);
 }
 .sidebar-verde :focus-visible { outline-color: rgba(217, 243, 172, .6); }
+
+/* Fondos base de los botones del sidebar. Van aquí y NO en el style en línea:
+   un `background` en línea le gana a cualquier :hover de la hoja de estilos,
+   y por eso el hover del menú nunca se veía (2026-09-24). */
+.nav-item { background: transparent; transition: background .12s; }
+.nav-item.is-active { background: var(--fill-active); }
+.notif-bell-btn { background: transparent; }
+.sidebar-collapse-btn { background: var(--surface-sidebar); }
 
 /* Solo con puntero real — en touch el :hover se "pega" tras el tap. */
 @media (hover: hover) {
@@ -68,7 +78,8 @@ input, textarea, select, button {
     background: #fafafa !important;
   }
 
-  .nav-item:hover {
+  .nav-item:not(.is-active):hover,
+  .notif-bell-btn:hover {
     background: var(--fill-hover);
   }
 

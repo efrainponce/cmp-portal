@@ -16,13 +16,14 @@ interface NavItemProps {
 export function NavItem({ icon, label, active, collapsed, onClick, activeColor = 'var(--accent)', badge }: NavItemProps) {
   return (
     <div
-      className="nav-item"
+      // El fondo (reposo/hover/activo) vive en src/index.css: puesto aquí en
+      // línea le ganaba al :hover y el recuadro de hover nunca se pintaba.
+      className={active ? 'nav-item is-active' : 'nav-item'}
       onClick={onClick}
       title={label}
       style={{
         display: 'flex', alignItems: 'center', gap: 11, padding: '8px 10px',
         borderRadius: 'var(--radius-lg)', cursor: 'pointer',
-        background: active ? 'var(--fill-active)' : 'transparent',
       }}
     >
       <div style={{ width: 16, height: 16, flex: 'none', color: active ? activeColor : 'var(--ink-quiet)', position: 'relative' }}>

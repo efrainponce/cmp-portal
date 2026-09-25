@@ -69,8 +69,11 @@ export function NotificationBell({ onNavigate }: NotificationBellProps) {
     return () => document.removeEventListener('keydown', onKey);
   }, [open, isMobile]);
 
-  const badgeCount = unread.importante > 0 ? (unread.importante > 9 ? '9+' : String(unread.importante)) : null;
-  const showQuietDot = !badgeCount && unread.actualizacion > 0;
+  // Todas las sin leer, no solo las Importantes (Jorge, 2026-09-24): con solo
+  // Actualizaciones pendientes la campana pintaba un puntito lima que sobre el
+  // verde del sidebar no se veía, y parecía que no había nada.
+  const totalUnread = unread.importante + unread.actualizacion;
+  const badgeCount = totalUnread > 0 ? (totalUnread > 9 ? '9+' : String(totalUnread)) : null;
 
   const handleNavigate = (boardKey: string, itemId: string | null) => {
     onNavigate(boardKey, itemId);
@@ -85,27 +88,25 @@ export function NotificationBell({ onNavigate }: NotificationBellProps) {
         aria-label="Notificaciones"
         title="Notificaciones"
         style={{
-          width: 32, height: 32, border: 'none', background: 'transparent', color: 'var(--ink-secondary)',
+          // Sin `background` en línea: le ganaría al :hover de .notif-bell-btn (src/index.css).
+          width: 32, height: 32, border: 'none', color: 'var(--ink-secondary)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', position: 'relative',
           flex: 'none', padding: 0, borderRadius: 'var(--radius-md)',
         }}
+        className="notif-bell-btn"
       >
         <IconBell />
         {badgeCount && (
+          // El anillo del color del fondo despega el globo del trazo de la campana.
           <span style={{
-            position: 'absolute', top: 1, right: 1, minWidth: 14, height: 14, padding: '0 3px',
+            position: 'absolute', top: -2, right: -3, minWidth: 18, height: 18, padding: '0 4px',
             borderRadius: 'var(--radius-pill)', background: 'var(--status-perdida)', color: '#fff',
-            font: '600 8.5px var(--font-ui)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            border: '2px solid var(--surface-sidebar)',
+            font: '700 9.5px var(--font-ui)', display: 'flex', alignItems: 'center', justifyContent: 'center',
             lineHeight: 1, boxSizing: 'border-box',
           }}>
             {badgeCount}
           </span>
-        )}
-        {showQuietDot && (
-          <span style={{
-            position: 'absolute', top: 4, right: 4, width: 7, height: 7,
-            borderRadius: 'var(--radius-full)', background: 'var(--accent)', border: '1.5px solid var(--surface-sidebar)',
-          }} />
         )}
       </button>
 

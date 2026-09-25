@@ -1,5 +1,36 @@
 # Log de commits
 
+## 2026-09-24 (sidebar: globo de notificaciones, hover y menú colapsado por grupos)
+
+- **Tres cambios de UI en la barra lateral** (Jorge, con capturas).
+  - **Globo de la campana** (`NotificationBell.tsx`): cuenta TODAS las sin leer
+    (Importantes + Actualizaciones), no solo las Importantes. Con solo
+    Actualizaciones pendientes se pintaba un puntito lima que sobre el verde no
+    se veía, y parecía que no había nada. El globo pasa a 18 px con anillo del
+    color del fondo. Aplica también en la barra móvil (mismo componente).
+  - **Hover que sí se ve**: `.nav-item:hover` existía en `src/index.css` pero
+    nunca se pintaba, porque `NavItem` ponía `background: transparent` EN LÍNEA
+    y eso le gana a cualquier regla de la hoja. Los fondos (reposo/hover/activo)
+    se movieron a clases (`.nav-item`, `.is-active`); `--fill-hover` sube de .07
+    a .10 y `--fill-active` de .13 a .16 para que no se confundan. Mismo bug y
+    mismo arreglo en la campana y en el botón de colapsar.
+  - **Colapsado por grupos, estilo HubSpot** (`NavGroup.tsx` nuevo): Ventas,
+    Proyectos y Catálogos se vuelven un ícono cada uno; al pasar el mouse sale
+    un panel verde con sus opciones (portal a `document.body`, como la campana,
+    porque el sidebar tiene overflow hidden). Cierre con 180 ms de margen para
+    cruzar del ícono al panel, clic abre (touch/teclado), `Esc` y clic afuera
+    cierran, y el panel se sube si no cabe (Catálogos). Inicio, Anuncios,
+    Inventario (1 opción), Análisis y Configuración quedan sueltos: de ~20
+    íconos a 8. Una sección con una sola opción visible para el rol va suelta.
+    El sidebar expandido queda igual; `Sidebar.tsx` junta los tres bloques
+    repetidos en `renderSection`.
+  - Verificado con Playwright contra Vite con la API simulada (admin, 0
+    Importantes / 3 Actualizaciones): globo "3", hover .10 vs activo .16, 8
+    íconos colapsado, panel de Ventas con sus 6 opciones, no se cierra al
+    cruzar al panel, clic navega y cierra, Catálogos dentro de la ventana, `Esc`
+    y salir lo cierran, sin errores de página. `npm run typecheck`, `lint` y
+    `npm test` (999) limpios.
+
 ## 2026-09-24 (versiones de OC por proveedor)
 
 - **Versiones de la OC en la tarjeta de cada proveedor** (Efraín: "en Monday
