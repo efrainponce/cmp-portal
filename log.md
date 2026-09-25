@@ -1,5 +1,23 @@
 # Log de commits
 
+## 2026-09-25 (Zona Efrain: el costo sale del último costeo si el catálogo no lo trae)
+
+- **Reporte de Elisa**: "cuando creas una oportunidad y la vas a costear el
+  costo del producto no sale en automático" (BOMBEROS YUCATAN, Zona Efrain).
+  - Causa: la automatización sí corre (Ridge Pant salió solo con 1500), pero
+    copia el Costo Distribuidor del CATÁLOGO, y la Bota 12477 y la Polo dry fit
+    no lo traen — el catálogo baja de Airtable y hoy 756 de 1470 productos
+    vienen sin costo. 517 de esos ya se habían costeado antes en alguna OPP;
+    Elisa tecleó a mano justo esos valores (3340 con 18%; 250→394 la Polo).
+  - Fix: al elegir producto en una línea nativa, si el catálogo no trae costo
+    se siembra con el ÚLTIMO costeo capturado de ese producto (costo,
+    descuento % y moneda de la línea costeada más reciente por `changed_at` de
+    Etapa Costeo). Con costo en el catálogo gana el catálogo, como antes.
+    Los espejos "(auto)" no se tocan. `worker/lib/nativeMirrors.ts`
+    (`elegirCosteoPrevio`), anclado en `nativeMirrors.test.ts`.
+  - Fuera de alcance (pendiente de Efraín): en el flujo con Monday, cmp-tallas
+    congela el costo del catálogo al "Mandar a costeo" y con catálogo vacío lo
+    deja en 0 para que Compras lo capture; y el costo no regresa a Airtable.
 ## 2026-09-25 (Actualizaciones, fase 2: responder en hilo)
 
 - **Botón "Responder" en cada comentario del feed** (Jorge), estilo Slack: abre
