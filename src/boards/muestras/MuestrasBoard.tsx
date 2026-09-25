@@ -46,6 +46,7 @@ export default function MuestrasBoard({ onOpenItem, openId }: Props) {
   const [q, setQ] = useState('');
   const [estado, setEstado] = useState(TODAS);
   const [vendedor, setVendedor] = useState(TODAS);
+  const [padre, setPadre] = useState(TODAS);
   const [abiertas, setAbiertas] = useState<Set<string>>(() => new Set(openId ? [openId] : []));
   const desplazado = useRef(false);
   const toggle = (id: string) => setAbiertas(prev => {
@@ -81,11 +82,12 @@ export default function MuestrasBoard({ onOpenItem, openId }: Props) {
   const visibles = useMemo(() => (solicitudes ?? []).filter(s =>
     (estado === TODAS || (estado === VENCIDAS ? retornoVencido(s, hoy) : s.estado === estado))
     && (vendedor === TODAS || (s.vendedor ?? SIN_VENDEDOR) === vendedor)
+    && (padre === TODAS || s.padre === padre)
     && (!q.trim() || [s.folio, s.itemNombre, s.itemFolio ?? '', s.institucion ?? '', s.solicitante, ...s.lineas.map(l => `${l.producto} ${l.sku}`)]
       .some(t => textIncludes(t, q))),
-  ), [solicitudes, estado, vendedor, q, hoy]);
+  ), [solicitudes, estado, vendedor, padre, q, hoy]);
 
-  const hayFiltro = estado !== TODAS || vendedor !== TODAS || !!q.trim();
+  const hayFiltro = estado !== TODAS || vendedor !== TODAS || padre !== TODAS || !!q.trim();
   const cuenta = (e: string) => (solicitudes ?? []).filter(s => s.estado === e).length;
   const vencidas = (solicitudes ?? []).filter(s => retornoVencido(s, hoy)).length;
 
@@ -116,8 +118,13 @@ export default function MuestrasBoard({ onOpenItem, openId }: Props) {
             <option value={TODAS}>Vendedor: todos</option>
             {vendedores.map(v => <option key={v} value={v}>{v}</option>)}
           </select>
+          <select aria-label="De" value={padre} onChange={(e) => setPadre(e.target.value)} style={selectStyle}>
+            <option value={TODAS}>De: oportunidades y proyectos</option>
+            <option value="oportunidades">Oportunidades</option>
+            <option value="proyectos">Proyectos</option>
+          </select>
           {hayFiltro && (
-            <button onClick={() => { setQ(''); setEstado(TODAS); setVendedor(TODAS); }} style={{ ...linkStyle, font: 'var(--text-label)' }}>
+            <button onClick={() => { setQ(''); setEstado(TODAS); setVendedor(TODAS); setPadre(TODAS); }} style={{ ...linkStyle, font: 'var(--text-label)' }}>
               Quitar filtros
             </button>
           )}

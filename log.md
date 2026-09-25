@@ -1,5 +1,18 @@
 # Log de commits
 
+## 2026-09-25 (Solicitudes de muestra: visibles para Elisa y PAM + filtro Oportunidad/Proyecto)
+
+- **Pedido de Elisa**: "la parte de muestras necesitamos que esté afuera, como la
+  lista de OC". El board "Solicitudes de muestra" ya existía (2026-09-21), pero
+  Elisa y PAM tienen **menú personal** (`identity_board_access`, 2026-09-19) y ese
+  menú se armó ANTES del board, así que no les aparecía. Mismo caso con la Lista
+  de cotizaciones para Elisa.
+  - Prod D1: se agregó `muestras` al menú de Elisa y de PAM, y `cot_lista` al de
+    Elisa (editable en Configuración). Ojo para boards futuros: un board nuevo NO
+    entra solo a los menús personales — hay que agregarlo ahí también.
+  - Board: filtro nuevo "De: oportunidades / proyectos" junto a Estado y
+    Vendedor (el link de cada renglón ya abría el tab Muestras del item).
+
 ## 2026-09-25 (Inventario 5.11: fecha de cada captura y versiones por fecha)
 
 - **Pedido de Pam**: que se vea de qué día es el inventario (cambia a diario) y
