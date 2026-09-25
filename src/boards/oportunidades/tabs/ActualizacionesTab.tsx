@@ -169,20 +169,221 @@ function renderBody(text: string, users: MentionUserDTO[] | null): React.ReactNo
 
 interface Picker { query: string; start: number }
 
-export function ActualizacionesTab({ slug, itemId }: Props) {
-  const [updates, setUpdates] = useState<UpdateDTO[] | null>(null);
-  const [error, setError] = useState(false);
+function ReplyIcon({ color }: { color: string }) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ flex: 'none' }}>
+      <path d="M10 9V5l-7 7 7 7v-4.1c5 0 8.5 1.6 11 5.1-1-5-4-10-11-11Z" stroke={color} strokeWidth="1.6" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+interface ComposerProps {
+  users: MentionUserDTO[] | null;
+  placeholder: string;
+  rows: number;
+  submitLabel: string;
+  busyLabel: string;
+  /** Solo el comentario nuevo: una respuesta en Monday no puede llevar
+   * archivos (el tipo `Reply` de la API no tiene `assets`). */
+  allowAttachment?: boolean;
+  /** Dentro de una tarjeta (responder): sin marco propio. */
+  compact?: boolean;
+  autoFocus?: boolean;
+  onCancel?: () => void;
+  /** Lanza si no se publicó (el borrador se queda para reintentar); devuelve
+   * un mensaje si solo falló el adjunto. */
+  onSubmit: (text: string, mentions: MentionUserDTO[], file: File | null) => Promise<string | null>;
+}
+
+/** Cuadro para escribir con @menciones — el mismo para un comentario nuevo y
+ * para responder en un hilo (Jorge, 2026-09-25). */
+function Composer({
+  users, placeholder, rows, submitLabel, busyLabel, allowAttachment, compact, autoFocus, onCancel, onSubmit,
+}: ComposerProps) {
   const [draft, setDraft] = useState('');
   const [posting, setPosting] = useState(false);
-  const [users, setUsers] = useState<MentionUserDTO[] | null>(null);
   const [mentions, setMentions] = useState<MentionUserDTO[]>([]);
   const [picker, setPicker] = useState<Picker | null>(null);
   const [pickerIndex, setPickerIndex] = useState(0);
   const [file, setFile] = useState<File | null>(null);
   const [attachError, setAttachError] = useState<string | null>(null);
-  const [preview, setPreview] = useState<(UpdateAttachmentDTO & { fuente?: UpdateDTO['fuente'] }) | null>(null);
+  const [failed, setFailed] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { if (autoFocus) textareaRef.current?.focus(); }, [autoFocus]);
+
+  const filteredUsers = useMemo(() => {
+    if (!picker || !users) return [];
+    const q = picker.query.toLowerCase();
+    return users.filter(u => u.nombre.toLowerCase().includes(q)).slice(0, 6);
+  }, [picker, users]);
+
+  const onDraftChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const value = e.target.value;
+    setDraft(value);
+    const cursor = e.target.selectionStart ?? value.length;
+    const uptoCursor = value.slice(0, cursor);
+    const atIndex = uptoCursor.lastIndexOf('@');
+    if (atIndex === -1) { setPicker(null); return; }
+    const between = uptoCursor.slice(atIndex + 1);
+    if (/\s/.test(between)) { setPicker(null); return; }
+    setPicker({ query: between, start: atIndex });
+    setPickerIndex(0);
+  };
+
+  const selectMention = (u: MentionUserDTO) => {
+    if (!picker) return;
+    const before = draft.slice(0, picker.start);
+    const after = draft.slice(picker.start + 1 + picker.query.length);
+    const insertion = `@${u.nombre} `;
+    const newDraft = before + insertion + after;
+    setDraft(newDraft);
+    setMentions(prev => [...prev, u]);
+    setPicker(null);
+    requestAnimationFrame(() => {
+      const el = textareaRef.current;
+      if (!el) return;
+      const pos = before.length + insertion.length;
+      el.focus();
+      el.setSelectionRange(pos, pos);
+    });
+  };
+
+  const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (!picker || filteredUsers.length === 0) {
+      if (e.key === 'Escape' && onCancel) onCancel();
+      return;
+    }
+    if (e.key === 'ArrowDown') { e.preventDefault(); setPickerIndex(i => (i + 1) % filteredUsers.length); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setPickerIndex(i => (i - 1 + filteredUsers.length) % filteredUsers.length); }
+    else if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); selectMention(filteredUsers[pickerIndex]); }
+    else if (e.key === 'Escape') { setPicker(null); }
+  };
+
+  const canSubmit = !!(draft.trim() || (allowAttachment && file)) && !posting;
+
+  const submit = async () => {
+    const text = draft.trim();
+    if (!text && !file) return;
+    setPosting(true);
+    setAttachError(null);
+    setFailed(false);
+    try {
+      const activeMentions = mentions.filter(m => draft.includes(`@${m.nombre}`));
+      const err = await onSubmit(text, activeMentions, allowAttachment ? file : null);
+      if (err) setAttachError(err);
+      setDraft('');
+      setMentions([]);
+      setFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    } catch {
+      setFailed(true); // el borrador se queda para reintentar
+    } finally {
+      setPosting(false);
+    }
+  };
+
+  return (
+    <div style={compact
+      ? { position: 'relative', marginTop: 10 }
+      : { border: '1px solid var(--border)', borderRadius: 'var(--radius-xl)', padding: 14, background: '#fff', position: 'relative' }}>
+      <textarea
+        ref={textareaRef}
+        value={draft}
+        onChange={onDraftChange}
+        onKeyDown={onKeyDown}
+        onBlur={() => setTimeout(() => setPicker(null), 150)}
+        placeholder={placeholder}
+        rows={rows}
+        disabled={posting}
+        style={{ width: '100%', boxSizing: 'border-box', font: 'var(--text-label)', color: 'var(--ink)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '10px 12px', resize: 'vertical' }}
+      />
+      {picker && filteredUsers.length > 0 && (
+        <div style={{
+          position: 'absolute', left: compact ? 0 : 14, right: compact ? 0 : 14, bottom: compact ? 48 : 62, zIndex: 10,
+          background: '#fff', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)',
+          boxShadow: '0 4px 16px rgba(0,0,0,0.12)', maxHeight: 200, overflowY: 'auto',
+        }}>
+          {filteredUsers.map((u, i) => (
+            <div
+              key={u.id}
+              onMouseDown={(e) => { e.preventDefault(); selectMention(u); }}
+              style={{
+                padding: '8px 12px', cursor: 'pointer', font: 'var(--text-label)',
+                background: i === pickerIndex ? 'var(--surface-hover, #f3f3f3)' : 'transparent',
+                color: 'var(--ink)',
+              }}
+            >
+              {u.nombre}
+            </div>
+          ))}
+        </div>
+      )}
+      {allowAttachment && (
+        <input
+          ref={fileInputRef}
+          type="file"
+          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+          disabled={posting}
+          style={{ display: 'none' }}
+        />
+      )}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, gap: 8 }}>
+        {!allowAttachment ? <span /> : file ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, font: 'var(--text-caption)', color: 'var(--ink-quiet)', overflow: 'hidden' }}>
+            <AttachmentIcon color="var(--ink-quiet)" />
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name}</span>
+            <span onClick={() => { setFile(null); if (fileInputRef.current) fileInputRef.current.value = ''; }} style={{ cursor: 'pointer', color: 'var(--status-perdida)' }}>✕</span>
+          </div>
+        ) : (
+          <div
+            onClick={() => !posting && fileInputRef.current?.click()}
+            style={{ cursor: posting ? 'default' : 'pointer', font: 'var(--text-caption)', color: 'var(--ink-quiet)', display: 'flex', alignItems: 'center', gap: 4 }}
+          >
+            <AttachmentIcon color="var(--ink-quiet)" /> Adjuntar archivo
+          </div>
+        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 'none' }}>
+          {onCancel && (
+            <div
+              onClick={posting ? undefined : onCancel}
+              style={{ padding: '8px 12px', borderRadius: 'var(--radius-lg)', font: 'var(--text-label)', color: 'var(--ink-secondary)', cursor: posting ? 'default' : 'pointer' }}
+            >
+              Cancelar
+            </div>
+          )}
+          <div
+            onClick={canSubmit ? submit : undefined}
+            style={{
+              padding: '8px 14px', borderRadius: 'var(--radius-lg)', font: 'var(--text-label-strong)', cursor: canSubmit ? 'pointer' : 'default',
+              background: canSubmit ? 'var(--accent)' : 'var(--border)',
+              color: canSubmit ? 'var(--ink-on-accent)' : 'var(--ink-quiet)',
+            }}
+          >
+            {posting ? busyLabel : submitLabel}
+          </div>
+        </div>
+      </div>
+      {failed && (
+        <div style={{ font: 'var(--text-caption)', color: 'var(--status-perdida)', marginTop: 6 }}>
+          No se pudo publicar. Tu texto sigue aquí para reintentar.
+        </div>
+      )}
+      {attachError && (
+        <div style={{ font: 'var(--text-caption)', color: 'var(--status-perdida)', marginTop: 6 }}>{attachError}</div>
+      )}
+    </div>
+  );
+}
+
+export function ActualizacionesTab({ slug, itemId }: Props) {
+  const [updates, setUpdates] = useState<UpdateDTO[] | null>(null);
+  const [error, setError] = useState(false);
+  const [users, setUsers] = useState<MentionUserDTO[] | null>(null);
+  const [preview, setPreview] = useState<(UpdateAttachmentDTO & { fuente?: UpdateDTO['fuente'] }) | null>(null);
+  // Comentario cuyo cuadro de respuesta está abierto (uno a la vez).
+  const [replyTo, setReplyTo] = useState<string | null>(null);
 
   // apiFetch puede colgarse sin resolver ni rechazar si la sesión de Cloudflare
   // Access expiró y el redirect de recuperación no completa (ver apiClient.ts,
@@ -229,149 +430,26 @@ export function ActualizacionesTab({ slug, itemId }: Props) {
   const notas = useMemo(() => updates?.filter((u) => u.tipo === 'nota') ?? [], [updates]);
   const feed = useMemo(() => updates?.filter((u) => u.tipo !== 'nota') ?? null, [updates]);
 
-  const filteredUsers = useMemo(() => {
-    if (!picker || !users) return [];
-    const q = picker.query.toLowerCase();
-    return users.filter(u => u.nombre.toLowerCase().includes(q)).slice(0, 6);
-  }, [picker, users]);
-
-  const onDraftChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const value = e.target.value;
-    setDraft(value);
-    const cursor = e.target.selectionStart ?? value.length;
-    const uptoCursor = value.slice(0, cursor);
-    const atIndex = uptoCursor.lastIndexOf('@');
-    if (atIndex === -1) { setPicker(null); return; }
-    const between = uptoCursor.slice(atIndex + 1);
-    if (/\s/.test(between)) { setPicker(null); return; }
-    setPicker({ query: between, start: atIndex });
-    setPickerIndex(0);
-  };
-
-  const selectMention = (u: MentionUserDTO) => {
-    if (!picker) return;
-    const before = draft.slice(0, picker.start);
-    const after = draft.slice(picker.start + 1 + picker.query.length);
-    const insertion = `@${u.nombre} `;
-    const newDraft = before + insertion + after;
-    setDraft(newDraft);
-    setMentions(prev => [...prev, u]);
-    setPicker(null);
-    requestAnimationFrame(() => {
-      const el = textareaRef.current;
-      if (!el) return;
-      const pos = before.length + insertion.length;
-      el.focus();
-      el.setSelectionRange(pos, pos);
-    });
-  };
-
-  const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (!picker || filteredUsers.length === 0) return;
-    if (e.key === 'ArrowDown') { e.preventDefault(); setPickerIndex(i => (i + 1) % filteredUsers.length); }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); setPickerIndex(i => (i - 1 + filteredUsers.length) % filteredUsers.length); }
-    else if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); selectMention(filteredUsers[pickerIndex]); }
-    else if (e.key === 'Escape') { setPicker(null); }
-  };
-
-  const submit = async () => {
-    const text = draft.trim();
-    if (!text && !file) return;
-    setPosting(true);
-    setAttachError(null);
-    try {
-      const activeMentions = mentions.filter(m => draft.includes(`@${m.nombre}`));
-      const body = text || `📎 ${file!.name}`;
-      const created = await postUpdate(slug, itemId, body, activeMentions);
-      if (file) {
-        const result = await postUpdateAttachment(slug, itemId, created.id, file);
-        if (!result.ok) setAttachError(result.error ?? 'No se pudo adjuntar el archivo.');
-      }
-      setDraft('');
-      setMentions([]);
-      setFile(null);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-      load();
-    } catch {
-      /* leave the draft so the user can retry */
-    } finally {
-      setPosting(false);
-    }
-  };
-
   return (
     <div style={{ padding: '24px 32px 40px', maxWidth: 640, width: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-xl)', padding: 14, background: '#fff', position: 'relative' }}>
-        <textarea
-          ref={textareaRef}
-          value={draft}
-          onChange={onDraftChange}
-          onKeyDown={onKeyDown}
-          onBlur={() => setTimeout(() => setPicker(null), 150)}
-          placeholder="Escribe una actualización para el equipo… usa @ para etiquetar a alguien"
-          rows={3}
-          disabled={posting}
-          style={{ width: '100%', boxSizing: 'border-box', font: 'var(--text-label)', color: 'var(--ink)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '10px 12px', resize: 'vertical' }}
-        />
-        {picker && filteredUsers.length > 0 && (
-          <div style={{
-            position: 'absolute', left: 14, right: 14, bottom: 62, zIndex: 10,
-            background: '#fff', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)',
-            boxShadow: '0 4px 16px rgba(0,0,0,0.12)', maxHeight: 200, overflowY: 'auto',
-          }}>
-            {filteredUsers.map((u, i) => (
-              <div
-                key={u.id}
-                onMouseDown={(e) => { e.preventDefault(); selectMention(u); }}
-                style={{
-                  padding: '8px 12px', cursor: 'pointer', font: 'var(--text-label)',
-                  background: i === pickerIndex ? 'var(--surface-hover, #f3f3f3)' : 'transparent',
-                  color: 'var(--ink)',
-                }}
-              >
-                {u.nombre}
-              </div>
-            ))}
-          </div>
-        )}
-        <input
-          ref={fileInputRef}
-          type="file"
-          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-          disabled={posting}
-          style={{ display: 'none' }}
-        />
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, gap: 8 }}>
-          {file ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, font: 'var(--text-caption)', color: 'var(--ink-quiet)', overflow: 'hidden' }}>
-              <AttachmentIcon color="var(--ink-quiet)" />
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name}</span>
-              <span onClick={() => { setFile(null); if (fileInputRef.current) fileInputRef.current.value = ''; }} style={{ cursor: 'pointer', color: 'var(--status-perdida)' }}>✕</span>
-            </div>
-          ) : (
-            <div
-              onClick={() => !posting && fileInputRef.current?.click()}
-              style={{ cursor: posting ? 'default' : 'pointer', font: 'var(--text-caption)', color: 'var(--ink-quiet)', display: 'flex', alignItems: 'center', gap: 4 }}
-            >
-              <AttachmentIcon color="var(--ink-quiet)" /> Adjuntar archivo
-            </div>
-          )}
-          <div
-            onClick={(draft.trim() || file) && !posting ? submit : undefined}
-            style={{
-              padding: '8px 14px', borderRadius: 'var(--radius-lg)', font: 'var(--text-label-strong)', cursor: (draft.trim() || file) && !posting ? 'pointer' : 'default',
-              background: (draft.trim() || file) && !posting ? 'var(--accent)' : 'var(--border)',
-              color: (draft.trim() || file) && !posting ? 'var(--ink-on-accent)' : 'var(--ink-quiet)',
-              flex: 'none',
-            }}
-          >
-            {posting ? 'Publicando…' : 'Publicar'}
-          </div>
-        </div>
-        {attachError && (
-          <div style={{ font: 'var(--text-caption)', color: 'var(--status-perdida)', marginTop: 6 }}>{attachError}</div>
-        )}
-      </div>
+      <Composer
+        users={users}
+        placeholder="Escribe una actualización para el equipo… usa @ para etiquetar a alguien"
+        rows={3}
+        submitLabel="Publicar"
+        busyLabel="Publicando…"
+        allowAttachment
+        onSubmit={async (text, mentions, file) => {
+          const created = await postUpdate(slug, itemId, text || `📎 ${file!.name}`, mentions);
+          let attachErr: string | null = null;
+          if (file) {
+            const result = await postUpdateAttachment(slug, itemId, created.id, file);
+            if (!result.ok) attachErr = result.error ?? 'No se pudo adjuntar el archivo.';
+          }
+          load();
+          return attachErr;
+        }}
+      />
 
       {error && (
         <div style={{ font: 'var(--text-caption)', color: 'var(--status-perdida)', padding: '12px 2px' }}>
@@ -436,6 +514,39 @@ export function ActualizacionesTab({ slug, itemId }: Props) {
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+          {/* Responder en el hilo: se escribe en Monday como respuesta de ESTE
+              comentario (create_update con parent_id), igual que su "Responder". */}
+          {replyTo === u.id ? (
+            <Composer
+              key={u.id}
+              users={users}
+              placeholder="Escribe una respuesta… usa @ para etiquetar a alguien"
+              rows={2}
+              submitLabel="Responder"
+              busyLabel="Enviando…"
+              compact
+              autoFocus
+              onCancel={() => setReplyTo(null)}
+              onSubmit={async (text, mentions) => {
+                await postUpdate(slug, itemId, text, mentions, u.id);
+                setReplyTo(null);
+                load();
+                return null;
+              }}
+            />
+          ) : (
+            <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--border-subtle)' }}>
+              <span
+                role="button"
+                tabIndex={0}
+                onClick={() => setReplyTo(u.id)}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setReplyTo(u.id); } }}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', font: 'var(--text-caption)', color: 'var(--ink-secondary)' }}
+              >
+                <ReplyIcon color="var(--ink-secondary)" /> Responder
+              </span>
             </div>
           )}
         </div>

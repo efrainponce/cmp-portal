@@ -1,5 +1,40 @@
 # Log de commits
 
+## 2026-09-25 (Actualizaciones, fase 2: responder en hilo)
+
+- **Botón "Responder" en cada comentario del feed** (Jorge), estilo Slack: abre
+  ahí mismo un cuadro con @menciones y la respuesta cae DENTRO del hilo de ese
+  comentario en Monday, igual que su "Responder". Es la única escritura nueva
+  de las 3 fases.
+  - Verificado contra el esquema REAL de la API 2025-04 antes de programar:
+    `create_update(body, item_id, parent_id)`. `createUpdate` y `postUpdate`
+    ganan un `parentId` opcional al final (los ~20 llamadores no cambian).
+  - **Candado**: el `parentId` lo manda el cliente, así que `POST /updates` solo
+    escribe si `ubicarComentario` (`worker/lib/updatesLineas.ts`) lo encuentra
+    entre los comentarios de primer nivel del feed que el viewer YA puede ver;
+    si no, 404 sin tocar Monday — mismo hueco que cerró el adjunto. La
+    respuesta se escribe en el item donde vive el comentario (la oportunidad,
+    una de sus LÍNEAS o la Oportunidad ligada al Proyecto). Firma, menciones y
+    avisos salen igual que un comentario nuevo.
+  - Sin adjuntos en respuestas: el tipo `Reply` de Monday no tiene `assets`.
+  - Items nativos (Zona Efrain): `native_updates.parent_id`, agregada sola por
+    `ensureNativeUpdateTable` (migración opcional
+    `worker/migrations/2026-09-25-native-updates-parent.sql`); `listUpdates`
+    arma los hilos con el mismo shape que Monday.
+  - Front: el cuadro de escribir pasa a `Composer` (comentario nuevo y
+    respuesta usan el mismo, con @menciones); Cancelar/Esc cierran; si falla,
+    el texto se queda para reintentar.
+  - **Prueba real en Monday** con OPP-1090 - Test (autorizada por Jorge): la
+    respuesta quedó dentro del hilo, no suelta; los 5 mensajes de prueba se
+    borraron después a petición de Jorge (las automatizaciones se quedaron).
+    Hallazgo de esa prueba: en Monday reacciones casi nadie usa — 5 en 772
+    comentarios, todas 👍 (`reaction_type` "+1" o vacío).
+  - Pruebas: 4 de la ruta (fuera del feed → 404 sin escribir; id no numérico;
+    respuesta sobre una línea va a su subitem con firma; sin parentId igual que
+    antes) y 2 de hilos nativos. `npm run typecheck`, `lint` y `npm test`
+    (1021) limpios.
+  - Pendiente: fase 3 (reacciones, solo en D1).
+
 ## 2026-09-25 (Actualizaciones, fase 1: tarjetas, burbuja e hilos)
 
 - **El feed de Actualizaciones se parece al de Monday** (Jorge, con capturas).

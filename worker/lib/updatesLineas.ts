@@ -21,6 +21,7 @@ import type { Env } from '../env';
 import type { Identity, MirrorItem } from '../../shared/types';
 import type { UpdateDTO } from '../../shared/dto';
 import type { BoardSlug } from '../../shared/boards';
+import { BOARDS } from '../../shared/boards';
 import { isNativeId } from '../../shared/nativeId';
 import { canRead, canReadBoard } from '../../shared/visibility';
 import { childrenOf, childSlugOf, getItem } from './dal';
@@ -55,7 +56,10 @@ export function notasDeLineas(rows: Pick<MirrorItem, 'item_id' | 'name' | 'colum
 }
 
 interface Fuente { slug: BoardSlug; itemId: number; origen?: string }
-interface Crudo { u: MondayUpdate; origen?: string; fuente: Fuente }
+/** `dueno`: el item de Monday donde vive DE VERDAD el comentario — el de la
+ * fuente, o la línea (subitem) si se escribió sobre un producto. Es a donde
+ * hay que mandar una respuesta. */
+interface Crudo { u: MondayUpdate; origen?: string; fuente: Fuente; dueno: { boardId: number; itemId: number } }
 
 const alTiempo = (u: MondayUpdate) => new Date(u.created_at).getTime();
 
@@ -74,7 +78,7 @@ export function idsDelFeed(crudos: Pick<Crudo, 'u'>[]): string[] {
  *  - La respuesta hereda `fuente` del comentario (vive en el mismo item), pero
  *    no `origen`: el chip de producto ya va en la tarjeta. */
 export function armarHilos(
-  crudos: Crudo[], seenBy: Map<string, string[]>, itemIdPedido: number,
+  crudos: Omit<Crudo, 'dueno'>[], seenBy: Map<string, string[]>, itemIdPedido: number,
 ): UpdateDTO[] {
   const aDto = (u: MondayUpdate, fuente: Fuente, origen?: string): UpdateDTO => {
     const names = new Map<string, string>();
@@ -113,21 +117,22 @@ async function updatesDe(env: Env, f: Fuente, viewer: Identity): Promise<{ crudo
       : Promise.resolve([]),
   ]);
   const porId = new Map(lineas.map(l => [String(l.item_id), l]));
-  const crudos: Crudo[] = propios.map(u => ({ u, origen: f.origen, fuente: f }));
+  const duenoPropio = { boardId: BOARDS[f.slug].id, itemId: f.itemId };
+  const crudos: Crudo[] = propios.map(u => ({ u, origen: f.origen, fuente: f, dueno: duenoPropio }));
   for (const sub of subUpdates) {
     if (!sub.updates?.length) continue;
     const row = porId.get(String(sub.id));
     const producto = childSlug ? etiquetaLinea(childSlug, row ?? { name: sub.name, columns: '[]' }) : sub.name;
     const origen = f.origen ? `${f.origen} · ${producto}` : producto;
-    for (const u of sub.updates) crudos.push({ u, origen, fuente: f });
+    const dueno = { boardId: childSlug ? BOARDS[childSlug].id : BOARDS[f.slug].id, itemId: Number(sub.id) };
+    for (const u of sub.updates) crudos.push({ u, origen, fuente: f, dueno });
   }
   return { crudos, lineas };
 }
 
-/** El feed completo de Actualizaciones de un item ya autorizado (`row`). */
-export async function feedActualizaciones(
-  env: Env, slug: BoardSlug, row: MirrorItem, viewer: Identity,
-): Promise<UpdateDTO[]> {
+/** De dónde sale el feed de un item: él mismo y, en el Proyecto, su
+ * Oportunidad ligada si el viewer la puede leer por su cuenta. */
+async function fuentesDe(env: Env, slug: BoardSlug, row: MirrorItem, viewer: Identity): Promise<Fuente[]> {
   const fuentes: Fuente[] = [{ slug, itemId: row.item_id }];
   if (slug === 'proyectos' && canReadBoard('oportunidades', viewer.role)) {
     const oppId = await resolveOportunidadId(env, viewer, row.item_id).catch(() => null);
@@ -135,7 +140,29 @@ export async function feedActualizaciones(
     const opp = oppId ? await getItem(env, 'oportunidades', oppId, viewer) : null;
     if (opp) fuentes.push({ slug: 'oportunidades', itemId: opp.item_id, origen: folioDe(opp) || 'Oportunidad' });
   }
+  return fuentes;
+}
 
+/** ¿Dónde vive el comentario `updateId` al que se quiere RESPONDER? Solo se
+ * busca entre los comentarios de primer nivel del MISMO feed que este viewer ya
+ * puede ver (Jorge, 2026-09-25): sin esto, cualquier id de update de todo
+ * Monday recibiría la respuesta — mismo hueco que cerró el adjunto
+ * (worker/routes/boards.ts). Una respuesta a una respuesta no existe en Monday
+ * (los hilos son de un nivel), así que un id de respuesta tampoco se encuentra.
+ * null = no está en su feed → la ruta responde 404. */
+export async function ubicarComentario(
+  env: Env, slug: BoardSlug, row: MirrorItem, viewer: Identity, updateId: string,
+): Promise<{ boardId: number; itemId: number } | null> {
+  const fuentes = await fuentesDe(env, slug, row, viewer);
+  const partes = await Promise.all(fuentes.map(f => updatesDe(env, f, viewer)));
+  return partes.flatMap(p => p.crudos).find(c => c.u.id === updateId)?.dueno ?? null;
+}
+
+/** El feed completo de Actualizaciones de un item ya autorizado (`row`). */
+export async function feedActualizaciones(
+  env: Env, slug: BoardSlug, row: MirrorItem, viewer: Identity,
+): Promise<UpdateDTO[]> {
+  const fuentes = await fuentesDe(env, slug, row, viewer);
   const partes = await Promise.all(fuentes.map(f => updatesDe(env, f, viewer)));
 
   // "Ojitos": Monday's own `viewers` solo se llena por vistas dentro de

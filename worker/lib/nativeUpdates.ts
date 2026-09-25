@@ -29,6 +29,8 @@ interface NativeUpdateRow {
   body: string;
   created_at: string;
   attachments: string;
+  /** Comentario al que responde (hilo, 2026-09-25); null = de primer nivel. */
+  parent_id?: string | null;
 }
 
 let tableReady = false;
@@ -44,10 +46,16 @@ async function ensureNativeUpdateTable(env: Env): Promise<void> {
       author_name  TEXT NOT NULL,
       body         TEXT NOT NULL,
       created_at   TEXT NOT NULL,
-      attachments  TEXT NOT NULL DEFAULT '[]'
+      attachments  TEXT NOT NULL DEFAULT '[]',
+      parent_id    TEXT
     )`),
     env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_native_updates_item ON native_updates(item_id, created_at DESC)'),
   ]);
+  // Bases que ya traían la tabla de antes de los hilos (2026-09-25): el CREATE
+  // de arriba no las toca. Misma sentencia que
+  // worker/migrations/2026-09-25-native-updates-parent.sql; si ya se corrió,
+  // falla con "duplicate column name" y se ignora.
+  await env.DB.prepare('ALTER TABLE native_updates ADD COLUMN parent_id TEXT').run().catch(() => {});
   tableReady = true;
 }
 
@@ -73,7 +81,7 @@ function parseAttachments(raw: string): NativeAttachment[] {
   }
 }
 
-function toMondayShape(row: NativeUpdateRow): MondayUpdate {
+function toMondayShape(row: NativeUpdateRow, replies: MondayUpdate[] = []): MondayUpdate {
   const assets: MondayUpdateAsset[] = parseAttachments(row.attachments)
     .map(a => ({ id: a.id, name: a.name, file_extension: a.ext }));
   return {
@@ -82,25 +90,32 @@ function toMondayShape(row: NativeUpdateRow): MondayUpdate {
     created_at: row.created_at,
     creator: { name: row.author_name },
     assets,
-    // Sin hilos: el portal aplana replies en un solo feed y aquí nunca se creó
-    // uno anidado (eso solo pasa dentro de Monday.com).
-    replies: [],
+    replies,
     viewers: [],
   };
 }
 
 /** Comentarios de un item, del lado que le toque. Nativo: D1, más nuevo
  * primero, sin el límite de 50 de Monday (una fila local no cuesta una
- * llamada de API). */
+ * llamada de API), cada uno con sus respuestas anidadas — mismo shape que
+ * Monday (`replies`), para que el feed no sepa de qué lado está el item. */
 export async function listUpdates(env: Env, itemId: number): Promise<MondayUpdate[]> {
   if (!isNativeId(itemId)) return fetchUpdates(env, itemId);
   await ensureNativeUpdateTable(env);
   const res = await env.DB
-    .prepare(`SELECT id, item_id, author_name, body, created_at, attachments
-              FROM native_updates WHERE item_id = ? ORDER BY created_at DESC, id DESC LIMIT 200`)
+    .prepare(`SELECT id, item_id, author_name, body, created_at, attachments, parent_id
+              FROM native_updates WHERE item_id = ? ORDER BY created_at DESC, id DESC LIMIT 500`)
     .bind(itemId)
     .all<NativeUpdateRow>();
-  return (res.results ?? []).map(toMondayShape);
+  const rows = res.results ?? [];
+  const respuestas = new Map<string, MondayUpdate[]>();
+  for (const r of rows) {
+    if (!r.parent_id) continue;
+    const lista = respuestas.get(r.parent_id) ?? [];
+    lista.push(toMondayShape(r));
+    respuestas.set(r.parent_id, lista);
+  }
+  return rows.filter(r => !r.parent_id).map(r => toMondayShape(r, respuestas.get(r.id) ?? []));
 }
 
 /** Postea un comentario en el item, del lado que le toque. Reemplaza a
@@ -118,8 +133,11 @@ export async function postUpdate(
   body: string,
   mentions: MentionInput[] = [],
   author?: { email?: string; nombre?: string },
+  /** Respuesta dentro del hilo de este comentario (2026-09-25). El caller ya
+   * validó que el comentario vive en `itemId`. */
+  parentId?: string,
 ): Promise<MondayUpdate> {
-  if (!isNativeId(itemId)) return createUpdate(env, itemId, body, mentions);
+  if (!isNativeId(itemId)) return createUpdate(env, itemId, body, mentions, parentId);
   await ensureNativeUpdateTable(env);
   const id = await reserveUpdateId(env);
   const createdAt = new Date().toISOString();
@@ -127,11 +145,11 @@ export async function postUpdate(
   // de Monday, donde estos updates salen a nombre de la cuenta de integración.
   const authorName = author?.nombre || author?.email || 'Portal CMP';
   await env.DB
-    .prepare(`INSERT INTO native_updates (id, board_id, item_id, author_email, author_name, body, created_at, attachments)
-              VALUES (?, ?, ?, ?, ?, ?, ?, '[]')`)
-    .bind(id, boardId, itemId, author?.email ?? null, authorName, body, createdAt)
+    .prepare(`INSERT INTO native_updates (id, board_id, item_id, author_email, author_name, body, created_at, attachments, parent_id)
+              VALUES (?, ?, ?, ?, ?, ?, ?, '[]', ?)`)
+    .bind(id, boardId, itemId, author?.email ?? null, authorName, body, createdAt, parentId ?? null)
     .run();
-  return toMondayShape({ id, item_id: itemId, author_name: authorName, body, created_at: createdAt, attachments: '[]' });
+  return toMondayShape({ id, item_id: itemId, author_name: authorName, body, created_at: createdAt, attachments: '[]', parent_id: parentId ?? null });
 }
 
 /** Adjunta un archivo a un update nativo: los bytes van a R2 y el registro

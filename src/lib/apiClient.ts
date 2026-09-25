@@ -1178,9 +1178,13 @@ export async function getUpdates(slug: BoardSlug, id: string): Promise<UpdateDTO
   return res.json();
 }
 
-export async function postUpdate(slug: BoardSlug, id: string, body: string, mentions?: MentionUserDTO[]): Promise<UpdateDTO> {
+/** `parentId` = responder dentro del hilo de ese comentario (el server valida
+ * que sea del feed de este item y escribe la respuesta donde vive). */
+export async function postUpdate(
+  slug: BoardSlug, id: string, body: string, mentions?: MentionUserDTO[], parentId?: string,
+): Promise<UpdateDTO> {
   const res = await apiFetch(`/boards/${slug}/items/${id}/updates`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body, mentions }),
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body, mentions, parentId }),
   });
   if (!res.ok) throw new Error('POST update failed: ' + res.status);
   return res.json();

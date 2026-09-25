@@ -43,7 +43,7 @@ import { oportunidadesLigadas } from '../lib/oportunidadLigada';
 import { contentTypeFor } from '../lib/mime';
 import { notifyItemComment } from '../lib/updateNotify';
 import { markUpdatesSeen } from '../lib/updateSeen';
-import { feedActualizaciones } from '../lib/updatesLineas';
+import { feedActualizaciones, ubicarComentario } from '../lib/updatesLineas';
 
 // `s` acepta undefined porque c.req.param() lo devuelve así cuando la ruta no
 // trae el parámetro — y ahí la respuesta correcta es la misma que para un slug
@@ -645,19 +645,31 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
     if (!text) return c.json({ error: 'body is required' }, 400);
     const mentions = (body.mentions ?? []).filter(m => Number.isFinite(m.id) && typeof m.nombre === 'string' && m.nombre.length > 0);
 
+    // RESPUESTA en un hilo (Jorge, 2026-09-25): el comentario tiene que ser de
+    // primer nivel y estar en el feed que este viewer ya puede ver — si no, 404
+    // (mismo criterio que el adjunto, abajo). La respuesta se escribe en el item
+    // donde vive ese comentario: esta oportunidad, una de sus líneas o la
+    // Oportunidad ligada al Proyecto.
+    const parentId = typeof body.parentId === 'string' && /^\d+$/.test(body.parentId) ? body.parentId : undefined;
+    if (body.parentId !== undefined && !parentId) return c.json({ error: 'not found' }, 404);
+    const destino = parentId
+      ? await ubicarComentario(c.env, slug, row, viewer, parentId)
+      : { boardId: BOARDS[slug].id, itemId };
+    if (!destino) return c.json({ error: 'not found' }, 404);
+
     // Firma (worker/lib/firmaUpdate.ts): @mention de verdad solo cuando el
     // usuario de Monday con ese id ES el autor; con un id PRESTADO (Rodrigo,
     // Paola → id de Efraín) va en texto plano con el nombre del portal.
-    const roster = viewer.monday_user_id > 0 && !isNativeId(itemId)
+    const roster = viewer.monday_user_id > 0 && !isNativeId(destino.itemId)
       ? await cachedFetchUsers(c.env, 6 * 3600_000, p => c.executionCtx.waitUntil(p)).catch(() => [])
       : [];
     const usuarioMonday = roster.find(u => String(u.id) === String(viewer.monday_user_id));
-    const { firma, mention: authorMention } = firmaAutor(viewer, usuarioMonday, { itemNativo: isNativeId(itemId) });
+    const { firma, mention: authorMention } = firmaAutor(viewer, usuarioMonday, { itemNativo: isNativeId(destino.itemId) });
     const signed = `${text}\n\n${firma}`;
     const updateMentions = authorMention ? [...mentions, authorMention] : mentions;
-    const u = await postUpdate(c.env, BOARDS[slug].id, itemId, signed, updateMentions, {
+    const u = await postUpdate(c.env, destino.boardId, destino.itemId, signed, updateMentions, {
       email: viewer.email, nombre: viewer.nombre ?? undefined,
-    });
+    }, parentId);
 
     // Notifica el comentario: mencionados (Importantes + WhatsApp) + vendedor
     // dueño y comprador(es) asignado(s) (Importantes, sin WhatsApp) — mismo emisor

@@ -394,11 +394,20 @@ function buildUpdateBody(text: string, mentions: MentionInput[]): string {
 
 /** Post an update (comment) on an item — the portal's channel for solicitudes
  * de pago y avisos, so they land where the rest of the team already works.
- * `mentions` (optional) tags teammates so Monday notifies them directly. */
-export async function createUpdate(env: Env, itemId: number, body: string, mentions: MentionInput[] = []): Promise<MondayUpdate> {
-  const query = `mutation($id:ID!,$b:String!){ create_update(item_id:$id,body:$b){ id text_body created_at creator{name} } }`;
+ * `mentions` (optional) tags teammates so Monday notifies them directly.
+ * `parentId` (opcional) = RESPUESTA dentro del hilo de ese comentario, igual que
+ * el "Responder" de Monday — verificado contra el esquema real de API 2025-04
+ * (2026-09-25): `create_update(body, item_id, parent_id)`. */
+export async function createUpdate(
+  env: Env, itemId: number, body: string, mentions: MentionInput[] = [], parentId?: string,
+): Promise<MondayUpdate> {
+  const query = parentId
+    ? `mutation($id:ID!,$b:String!,$p:ID!){ create_update(item_id:$id,body:$b,parent_id:$p){ id text_body created_at creator{name} } }`
+    : `mutation($id:ID!,$b:String!){ create_update(item_id:$id,body:$b){ id text_body created_at creator{name} } }`;
   const finalBody = mentions.length ? buildUpdateBody(body, mentions) : body;
-  const data = await gql(env, query, { id: String(itemId), b: finalBody });
+  const vars: Record<string, string> = { id: String(itemId), b: finalBody };
+  if (parentId) vars.p = parentId;
+  const data = await gql(env, query, vars);
   return data?.create_update;
 }
 

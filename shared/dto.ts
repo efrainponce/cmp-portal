@@ -535,7 +535,11 @@ export interface UpdateDTO {
    * armarHilos). Solo en comentarios de primer nivel; una respuesta no trae. */
   replies?: UpdateDTO[];
 }
-export interface CreateUpdateRequest { body: string; mentions?: { id: number; nombre: string }[] }
+export interface CreateUpdateRequest {
+  body: string; mentions?: { id: number; nombre: string }[];
+  /** Responder dentro del hilo de ese comentario (primer nivel, del mismo feed). */
+  parentId?: string;
+}
 
 // GET /api/boards/:slug/items/:id/activity — log de cambios de columna (mirror
 // D1 de activity_logs de Monday, worker/lib/activityLog.ts). Solo columnas en
