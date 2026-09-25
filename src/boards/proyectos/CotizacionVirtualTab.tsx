@@ -9,7 +9,7 @@ import { useEffect, useState } from 'react';
 import type { AjusteDTO, CostoDivergenciaDTO, ItemDTO, QuoteLineSnapshot } from '../../lib/api';
 import { getCotizacionVirtual, listItems, restaurarLineaDivididaVirtual, descartarAvisoDivisionVirtual } from '../../lib/apiClient';
 import { useMe } from '../../lib/useMe';
-import { fmtMoney } from '../../lib/format';
+import { fmtMoney2 } from '../../lib/format';
 import { AjusteLabelBadge } from '../../components/core/Badges';
 import { DivisionesBorradas } from '../oportunidades/tabs/cotizacion/DivisionesBorradas';
 import { AjustarLineaVirtualModal } from './AjustarLineaVirtualModal';
@@ -115,8 +115,8 @@ export function CotizacionVirtualTab({ proyectoId }: { proyectoId: string }) {
               <div style={cellStyle}>{l.color || '—'}</div>
               <div style={cellStyle}>{l.cantidad}</div>
               <div style={cellStyle}>{l.embellecimiento ? 'Con' : 'Sin'}</div>
-              <div style={cellStyle}>{fmtMoney(l.precioUnitario ?? 0)}</div>
-              <div style={cellStyle}>{fmtMoney((l.precioUnitario ?? 0) * l.cantidad)}</div>
+              <div style={cellStyle}>{fmtMoney2(l.precioUnitario ?? 0)}</div>
+              <div style={cellStyle}>{fmtMoney2((l.precioUnitario ?? 0) * l.cantidad)}</div>
               <div style={{ ...cellStyle, flex: '0 0 110px', textAlign: 'right' }}>
                 {canAjustar && l.subitemId != null && (
                   <button
@@ -137,7 +137,7 @@ export function CotizacionVirtualTab({ proyectoId }: { proyectoId: string }) {
             <div style={cellStyle} />
             <div style={cellStyle} />
             <div style={cellStyle} />
-            <div style={{ ...cellStyle, fontWeight: 600 }}>{fmtMoney(total)}</div>
+            <div style={{ ...cellStyle, fontWeight: 600 }}>{fmtMoney2(total)}</div>
             <div style={{ ...cellStyle, flex: '0 0 110px' }} />
           </div>
         </div>

@@ -1,5 +1,5 @@
 import type { ItemDTO } from '../../../../lib/api';
-import { fmtMoney } from '../../../../lib/format';
+import { fmtMoney2, fmtNum2 } from '../../../../lib/format';
 import { COL } from '../../../../lib/costeoCalc';
 import {
   type GridCol, type RowEditState, EMPTY_ROW, numFrom, marginColor, colsTemplate, gridWrapStyle,
@@ -51,14 +51,14 @@ export function TotalsRow({ variant, visibleCols, products, rows, isMobile = fal
   const byCol: Record<string, { value: string; color?: string }> =
     variant === 'venta'
       ? {
-          [COL.cantidad]: { value: String(cantidad) },
-          [SUBTOTAL_COL]: { value: fmtMoney(subtotal) },
-          [IVA_COL]: { value: fmtMoney(iva) },
-          [TOTAL_CON_IVA_COL]: { value: fmtMoney(totalConIva) },
+          [COL.cantidad]: { value: fmtNum2(cantidad) },
+          [SUBTOTAL_COL]: { value: fmtMoney2(subtotal) },
+          [IVA_COL]: { value: fmtMoney2(iva) },
+          [TOTAL_CON_IVA_COL]: { value: fmtMoney2(totalConIva) },
         }
       : {
-          [COL.cantidad]: { value: String(cantidad) },
-          [COL.costoTotalUnit]: { value: fmtMoney(costoTotal) },
+          [COL.cantidad]: { value: fmtNum2(cantidad) },
+          [COL.costoTotalUnit]: { value: fmtMoney2(costoTotal) },
           // Subtotal/IVA/Total c/IVA también en Costeo (Efraín, 2026-07-30) —
           // el mismo agregado que ya se calculaba arriba para la vista de
           // Venta, que aquí se tiraba a la basura por no tener columnas donde
@@ -66,15 +66,15 @@ export function TotalsRow({ variant, visibleCols, products, rows, isMobile = fal
           // C/U) como sustituto del Subtotal que no existía; ahora vive bajo
           // Subtotal, su columna real — si no, el mismo número salía dos veces
           // en celdas contiguas.
-          [SUBTOTAL_COL]: { value: fmtMoney(subtotal) },
-          [IVA_COL]: { value: fmtMoney(iva) },
-          [TOTAL_CON_IVA_COL]: { value: fmtMoney(totalConIva) },
+          [SUBTOTAL_COL]: { value: fmtMoney2(subtotal) },
+          [IVA_COL]: { value: fmtMoney2(iva) },
+          [TOTAL_CON_IVA_COL]: { value: fmtMoney2(totalConIva) },
           ...(hayMargenGob ? {
-            [COL.margenGobPct]: { value: `${margenGobPct.toFixed(1)}%` },
-            [COL.margenGobTotal]: { value: fmtMoney(margenGobTotal) },
+            [COL.margenGobPct]: { value: `${margenGobPct.toFixed(2)}%` },
+            [COL.margenGobTotal]: { value: fmtMoney2(margenGobTotal) },
           } : {}),
-          [UTILIDAD_TOTAL_COL]: { value: fmtMoney(utilidadTotal), color: marginColor(margenPct) },
-          [MARGEN_COL]: { value: `${margenPct.toFixed(1)}%`, color: marginColor(margenPct) },
+          [UTILIDAD_TOTAL_COL]: { value: fmtMoney2(utilidadTotal), color: marginColor(margenPct) },
+          [MARGEN_COL]: { value: `${margenPct.toFixed(2)}%`, color: marginColor(margenPct) },
         };
 
   if (isMobile) {

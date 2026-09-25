@@ -12,7 +12,7 @@
 // de memoizar en silencio.
 import { memo } from 'react';
 import type { ItemDTO } from '../../../../lib/api';
-import { fmtMoney } from '../../../../lib/format';
+import { fmtMoney2 } from '../../../../lib/format';
 import { AjusteLabelBadge, MonoTag, StatusBadge } from '../../../../components/core/Badges';
 import { COL } from '../../../../lib/costeoCalc';
 import { LineDetailPanel } from './LineDetailPanel';
@@ -369,7 +369,7 @@ function QuoteRowInner({
                 if (suggested === undefined) return '—';
                 return (
                   <span style={{ fontStyle: 'italic', color: 'var(--ink-tertiary)' }} title="Calculado para 23% de utilidad (Margen Gob ya tomado como costo)">
-                    {fmtMoney(suggested)}
+                    {fmtMoney2(suggested)}
                   </span>
                 );
               })()}

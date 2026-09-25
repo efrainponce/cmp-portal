@@ -1,5 +1,5 @@
 import type { QuoteVersionDTO } from '../../../../lib/api';
-import { fmtMoney } from '../../../../lib/format';
+import { fmtMoney2 } from '../../../../lib/format';
 import { MonoTag } from '../../../../components/core/Badges';
 import { useIsMobile } from '../../../../lib/useIsMobile';
 
@@ -25,8 +25,8 @@ export function SnapshotTable({ version }: { version: QuoteVersionDTO }) {
               <span style={{ font: 'var(--text-label)', color: 'var(--ink-secondary)' }}>Cant. {p.cantidad}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, font: 'var(--text-label)', color: 'var(--ink-secondary)' }}>
-              <span>{p.precioUnitario ? `${fmtMoney(p.precioUnitario)} c/u` : '—'}</span>
-              <span style={{ font: 'var(--text-body-strong)', color: 'var(--ink)' }}>{fmtMoney((p.precioUnitario ?? 0) * p.cantidad)}</span>
+              <span>{p.precioUnitario ? `${fmtMoney2(p.precioUnitario)} c/u` : '—'}</span>
+              <span style={{ font: 'var(--text-body-strong)', color: 'var(--ink)' }}>{fmtMoney2((p.precioUnitario ?? 0) * p.cantidad)}</span>
             </div>
           </div>
         ))}
@@ -56,8 +56,8 @@ export function SnapshotTable({ version }: { version: QuoteVersionDTO }) {
           <div>{p.sku ? <MonoTag style={{ display: 'inline-block' }}>{p.sku}</MonoTag> : '—'}</div>
           <div>{p.color || '—'}</div>
           <div>{p.cantidad}</div>
-          <div style={{ textAlign: 'right' }}>{p.precioUnitario ? fmtMoney(p.precioUnitario) : '—'}</div>
-          <div style={{ textAlign: 'right' }}>{fmtMoney((p.precioUnitario ?? 0) * p.cantidad)}</div>
+          <div style={{ textAlign: 'right' }}>{p.precioUnitario ? fmtMoney2(p.precioUnitario) : '—'}</div>
+          <div style={{ textAlign: 'right' }}>{fmtMoney2((p.precioUnitario ?? 0) * p.cantidad)}</div>
         </div>
       ))}
     </div>
