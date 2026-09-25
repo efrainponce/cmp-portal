@@ -17,7 +17,7 @@ import type {
   OcListaRow, OcListaResponse, CotListaRow, CotListaResponse, ProyectoFiltrosDTO, ProyectoFiltrosResponse,
 } from '../../shared/dto';
 import type { AddProposedProductResponse, ProposedProductDTO, ProposedProductsResponse, UpdateProposedProductResponse } from '../../shared/productosPropuestos';
-import type { InventarioCotizacionProductoDTO, InventarioCotizacionResponse } from '../../shared/inventarioCotizacion';
+import type { InventarioCotizacionProductoDTO, InventarioCotizacionResponse, InventarioVersionDTO } from '../../shared/inventarioCotizacion';
 import { mockBoardMeta, mockItemDetail, mockPatch } from './mockFallback';
 import { getImpersonateTarget } from './impersonation';
 import { tomarPrecarga } from './apiPreload';
@@ -1464,11 +1464,11 @@ export async function setCotPdfDatos(clave: string, d: {
   if (!res.ok) throw new Error(`No se pudo guardar lo leído del PDF (${res.status}).`);
 }
 
-export async function getInventarioCotizacion(oppId: string): Promise<InventarioCotizacionProductoDTO[]> {
+export async function getInventarioCotizacion(oppId: string): Promise<InventarioCotizacionResponse> {
   const res = await apiFetch(`/oportunidades/${oppId}/inventario-cotizacion`);
   if (!res.ok) throw new Error(`No se pudo cargar el inventario (${res.status}).`);
   const body: InventarioCotizacionResponse = await res.json();
-  return body.productos;
+  return { productos: body.productos, historial: body.historial ?? [] };
 }
 
 /** PDF del tab Inventario 5.11 con los productos que el tab tiene en pantalla.
@@ -1476,11 +1476,13 @@ export async function getInventarioCotizacion(oppId: string): Promise<Inventario
 export async function inventarioCotizacionPdf(
   oppId: string,
   productos: { productoId: string; productoNombre: string; color: string; colorGuardado?: string }[],
+  /** YYYY-MM-DD de una versión pasada; sin él, la vigente. */
+  dia?: string,
 ): Promise<{ blob: Blob; filename: string }> {
   const res = await apiFetch(`/oportunidades/${oppId}/inventario-cotizacion/pdf`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ productos }),
+    body: JSON.stringify({ productos, dia }),
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -1496,7 +1498,7 @@ export async function saveInventarioCotizacion(
   oppId: string,
   producto: { productoId: string; productoNombre: string; color: string; colorGuardado?: string; comentarios: string; agregadoManualmente: boolean },
   files?: { mexico?: File; usa?: File },
-): Promise<{ ok: boolean; producto?: InventarioCotizacionProductoDTO; error?: string }> {
+): Promise<{ ok: boolean; producto?: InventarioCotizacionProductoDTO; version?: InventarioVersionDTO; error?: string }> {
   const form = new FormData();
   form.append('productoId', producto.productoId);
   form.append('productoNombre', producto.productoNombre);

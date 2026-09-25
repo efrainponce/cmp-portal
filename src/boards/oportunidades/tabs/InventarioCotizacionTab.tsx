@@ -9,7 +9,7 @@ import { Button } from '../../../components/core/Button';
 import { toast } from '../../../components/core/Toaster';
 import { catalogIndex, COLOR_COL, displayProducto, linkedProductoId, PRODUCTO_REL_COL } from './cotizacion/gridMeta';
 import { ProductPicker } from '../../../components/forms/ProductPicker';
-import { colorInventario } from '../../../../shared/inventarioCotizacion';
+import { colorInventario, diaInventario, diasInventario, fechaInventario, inventarioAlDia, type InventarioVersionDTO } from '../../../../shared/inventarioCotizacion';
 
 const MARCA_COL = 'product_and_service_description';
 
@@ -94,6 +94,9 @@ const CATALOGO_COLOR_COL = 'dropdown_mkztty4b';
 export function InventarioCotizacionTab({ oppId, quoteLines, readOnly = false }: { oppId: string; quoteLines: ItemDTO[]; readOnly?: boolean }) {
   const [catalogo, setCatalogo] = useState<ItemDTO[]>([]);
   const [saved, setSaved] = useState<InventarioCotizacionProductoDTO[]>([]);
+  const [historial, setHistorial] = useState<InventarioVersionDTO[]>([]);
+  // Día de una versión pasada (YYYY-MM-DD); null = la vigente, la única editable.
+  const [dia, setDia] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState<ItemDTO>();
   const [addingColor, setAddingColor] = useState('');
@@ -109,13 +112,22 @@ export function InventarioCotizacionTab({ oppId, quoteLines, readOnly = false }:
     let cancelled = false;
     setLoading(true);
     Promise.all([getCatalogoProductos(), getInventarioCotizacion(oppId)])
-      .then(([products, entries]) => { if (!cancelled) { setCatalogo(products); setSaved(entries); } })
+      .then(([products, entries]) => { if (!cancelled) { setCatalogo(products); setSaved(entries.productos); setHistorial(entries.historial); setDia(null); } })
       .catch(() => { if (!cancelled) setError('No se pudo cargar el inventario de esta cotización.'); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [oppId]);
 
-  const rows = useMemo(() => armarTarjetas(quoteLines, catalogo, saved), [catalogo, quoteLines, saved]);
+  // Versiones POR FECHA, como las de la cotización (Pam, 2026-09-25): cada día
+  // con guardados es una; la más reciente es la vigente. Una pasada muestra solo
+  // lo que ya estaba capturado ese día, en solo lectura.
+  const dias = useMemo(() => diasInventario(historial), [historial]);
+  const pasado = dia !== null && dias.includes(dia) && dia !== dias[0] ? dia : null;
+  const rows = useMemo(
+    () => (pasado ? armarTarjetas([], catalogo, inventarioAlDia(historial, pasado)) : armarTarjetas(quoteLines, catalogo, saved)),
+    [catalogo, quoteLines, saved, historial, pasado],
+  );
+  const ro = readOnly || pasado !== null;
   // TODO el catálogo 5.11, incluidos los que ya están en la cotización: agregar
   // otro color del mismo SKU es justo lo que se buscaba y no salía.
   const catalogo511 = useMemo(() => catalogo.filter(es511), [catalogo]);
@@ -127,7 +139,7 @@ export function InventarioCotizacionTab({ oppId, quoteLines, readOnly = false }:
   ]);
 
   const persist = async (row: ProductRow, files?: { mexico?: File; usa?: File }) => {
-    if (readOnly) return;
+    if (ro) return;
     const key = claveInv(row.productoId, row.color);
     const place = files?.mexico ? 'mexico' : files?.usa ? 'usa' : undefined;
     setSaving((p) => ({ ...p, [key]: true }));
@@ -143,6 +155,15 @@ export function InventarioCotizacionTab({ oppId, quoteLines, readOnly = false }:
       return;
     }
     replace(result.producto, row.colorGuardado);
+    const version = result.version;
+    if (version) {
+      // Reclamar la captura sin color también se lleva su historial (igual que el server).
+      const reclama = row.colorGuardado === '' && !!row.color;
+      setHistorial((prev) => [
+        ...prev.map((h) => (reclama && h.productoId === row.productoId && h.color === '' ? { ...h, color: row.color } : h)),
+        version,
+      ]);
+    }
     toast(place ? `Imagen ${place === 'mexico' ? 'MEX' : 'USA'} guardada` : 'Guardado');
   };
 
@@ -167,7 +188,7 @@ export function InventarioCotizacionTab({ oppId, quoteLines, readOnly = false }:
     setExporting(true);
     setError(undefined);
     try {
-      const { blob, filename } = await inventarioCotizacionPdf(oppId, rows.map((r) => ({ productoId: r.productoId, productoNombre: r.productoNombre, color: r.color, colorGuardado: r.colorGuardado })));
+      const { blob, filename } = await inventarioCotizacionPdf(oppId, rows.map((r) => ({ productoId: r.productoId, productoNombre: r.productoNombre, color: r.color, colorGuardado: r.colorGuardado })), pasado ?? undefined);
       downloadBlob(blob, filename);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo generar el PDF del inventario.');
@@ -181,11 +202,38 @@ export function InventarioCotizacionTab({ oppId, quoteLines, readOnly = false }:
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, marginBottom: 20 }}>
         <div>
           <div style={{ font: 'var(--text-body-strong)', color: 'var(--ink)', marginBottom: 4 }}>Inventario 5.11</div>
-          <div style={{ font: 'var(--text-label)', color: 'var(--ink-secondary)' }}>Los productos 5.11 de la cotización aparecen aquí automáticamente, uno por color. Pega (⌘V / Ctrl+V), arrastra o sube la captura del inventario en México y USA, más comentarios.</div>
+          <div style={{ font: 'var(--text-label)', color: 'var(--ink-secondary)' }}>Los productos 5.11 de la cotización aparecen aquí automáticamente, uno por color. Pega (⌘V / Ctrl+V), arrastra o sube la captura del inventario en México y USA, más comentarios. Cada captura queda con su fecha: subir la de hoy no borra la anterior.</div>
         </div>
         <Button variant={loading || exporting || rows.length === 0 ? 'disabled' : 'secondary'} title={exporting ? 'Generando el PDF…' : !loading && rows.length === 0 ? 'No hay productos 5.11 para exportar' : undefined} onClick={() => void exportPdf()}>{exporting ? 'Generando…' : 'Exportar PDF'}</Button>
       </div>
-      {!readOnly && (
+      {dias.length > 0 && (
+        <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ ...labelStyle, marginBottom: 0, marginRight: 4 }}>Versiones</span>
+          {dias.map((d, i) => {
+            const sel = pasado ? d === pasado : i === 0;
+            return (
+              <button
+                key={d}
+                type="button"
+                onClick={() => setDia(i === 0 ? null : d)}
+                title={i === 0 ? 'Inventario vigente — aquí se sube la captura nueva' : `Así estaba el inventario al ${fechaInventario(d)}`}
+                style={{
+                  cursor: 'pointer', border: 0, font: 'var(--text-label-strong)', padding: '4px 12px', borderRadius: 'var(--radius-pill)',
+                  background: sel ? 'var(--ink)' : 'var(--bg-sunken)', color: sel ? '#fff' : 'var(--ink-secondary)',
+                }}
+              >
+                {fechaInventario(d)}{i === 0 ? ' · vigente' : ''}
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {pasado && (
+        <div style={{ padding: '10px 14px', marginBottom: 14, borderRadius: 'var(--radius-lg)', background: 'var(--bg-sunken)', color: 'var(--ink-secondary)', font: 'var(--text-label)' }}>
+          Así estaba el inventario al <b>{fechaInventario(pasado)}</b> (solo lectura). Para actualizarlo, regresa a la <button type="button" onClick={() => setDia(null)} style={{ background: 'none', border: 0, padding: 0, font: 'inherit', color: 'var(--accent)', cursor: 'pointer' }}>vigente</button> y sube la captura nueva — esta versión no se pierde.
+        </div>
+      )}
+      {!ro && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'end', padding: 14, border: '1px solid var(--border)', borderRadius: 'var(--radius-xl)', background: 'var(--bg-raised)', marginBottom: 18 }}>
           <label style={{ flex: '3 1 260px', minWidth: 0 }}>
             <span style={labelStyle}>Agregar producto 5.11</span>
@@ -211,7 +259,7 @@ export function InventarioCotizacionTab({ oppId, quoteLines, readOnly = false }:
       {loading ? <div style={{ color: 'var(--ink-tertiary)', font: 'var(--text-label)' }}>Cargando inventario…</div> : rows.length === 0 ? (
         <div style={{ padding: 24, border: '1px dashed var(--border)', borderRadius: 'var(--radius-xl)', color: 'var(--ink-tertiary)', font: 'var(--text-label)' }}>Esta cotización todavía no tiene productos 5.11. Puedes agregar uno del catálogo.</div>
       ) : <div style={{ display: 'grid', gap: 10 }}>{rows.map((row) => (
-        <ProductCard key={claveInv(row.productoId, row.color)} row={row} disabled={readOnly || !!saving[claveInv(row.productoId, row.color)]} subiendo={subiendo[claveInv(row.productoId, row.color)]} onImage={onImage} onComments={(comentarios) => void persist({ ...row, comentarios })} />
+        <ProductCard key={`${pasado ?? 'vigente'}|${claveInv(row.productoId, row.color)}`} row={row} disabled={ro || !!saving[claveInv(row.productoId, row.color)]} subiendo={subiendo[claveInv(row.productoId, row.color)]} onImage={onImage} onComments={(comentarios) => void persist({ ...row, comentarios })} />
       ))}</div>}
     </div>
   );
@@ -231,8 +279,8 @@ function ProductCard({ row, disabled, subiendo, onImage, onComments }: { row: Pr
       {row.fromQuote && <span style={{ font: 'var(--text-eyebrow)', color: 'var(--accent)', background: 'var(--status-ganada-tint)', borderRadius: 999, padding: '3px 7px' }}>En cotización</span>}
     </div>
     <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, minmax(0, 1fr))', gap: 12 }}>
-      <PhotoBox title="Inventario MEX" url={row.imagenMexicoUrl} disabled={disabled} uploading={subiendo === 'mexico'} onFile={(f) => onImage(row, 'mexico', f)} onZoom={setZoom} />
-      <PhotoBox title="Inventario USA" url={row.imagenUsaUrl} disabled={disabled} uploading={subiendo === 'usa'} onFile={(f) => onImage(row, 'usa', f)} onZoom={setZoom} />
+      <PhotoBox title="Inventario MEX" url={row.imagenMexicoUrl} fecha={row.imagenMexicoFecha} disabled={disabled} uploading={subiendo === 'mexico'} onFile={(f) => onImage(row, 'mexico', f)} onZoom={setZoom} />
+      <PhotoBox title="Inventario USA" url={row.imagenUsaUrl} fecha={row.imagenUsaFecha} disabled={disabled} uploading={subiendo === 'usa'} onFile={(f) => onImage(row, 'usa', f)} onZoom={setZoom} />
     </div>
     <label style={{ display: 'block', marginTop: 10 }}><span style={labelStyle}>Comentarios</span><textarea defaultValue={row.comentarios} disabled={disabled} onBlur={(e) => { if (e.target.value !== row.comentarios) onComments(e.target.value); }} rows={2} style={{ ...inputStyle, resize: 'vertical' }} placeholder="Agrega comentarios de disponibilidad, tallas o tiempos…" /></label>
     {zoom && <ImageZoom url={zoom.url} title={zoom.title} onClose={() => setZoom(undefined)} />}
@@ -256,7 +304,7 @@ function imagenDe(data: DataTransfer | null): File | undefined {
 // escucha en `document` mientras el recuadro tiene el foco: un div no editable
 // no recibe `paste` igual en todos los navegadores, el documento sí.
 // En celular pegar no aplica: el recuadro vacío abre el selector de archivo.
-function PhotoBox({ title, url, disabled, uploading = false, onFile, onZoom }: { title: string; url?: string; disabled: boolean; uploading?: boolean; onFile: (file: File) => void; onZoom: (z: { url: string; title: string }) => void }) {
+function PhotoBox({ title, url, fecha, disabled, uploading = false, onFile, onZoom }: { title: string; url?: string; fecha?: string; disabled: boolean; uploading?: boolean; onFile: (file: File) => void; onZoom: (z: { url: string; title: string }) => void }) {
   const isMobile = useIsMobile();
   const boxRef = useRef<HTMLDivElement>(null);
   const [armed, setArmed] = useState(false);
@@ -305,7 +353,10 @@ function PhotoBox({ title, url, disabled, uploading = false, onFile, onZoom }: {
   return (
     <div style={{ minWidth: 0 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
-        <div style={{ ...labelStyle, marginBottom: 0 }}>{title}</div>
+        <div style={{ ...labelStyle, marginBottom: 0 }}>
+          {title}
+          {url && fecha && <span title={`Captura subida el ${fechaInventario(fecha)}`} style={{ marginLeft: 6, textTransform: 'none', letterSpacing: 0, color: haceDias(fecha) > 1 ? 'var(--status-perdida)' : 'var(--ink-secondary)' }}>· {fechaInventario(fecha)} ({haceTexto(fecha)})</span>}
+        </div>
         {url && !disabled && !isMobile && !armed && <button type="button" onClick={() => boxRef.current?.focus()} style={{ background: 'none', border: 0, padding: 0, font: 'var(--text-label)', color: 'var(--accent)', cursor: 'pointer' }}>Cambiar imagen</button>}
         {url && !disabled && isMobile && fileLink('Cambiar imagen')}
       </div>
@@ -367,6 +418,16 @@ const subiendoOverlay = (
     <span aria-hidden>⏳</span> Subiendo imagen…
   </div>
 );
+
+/** Días desde la subida, en calendario de México (hoy = 0). */
+function haceDias(iso: string): number {
+  const dia = (d: string) => Date.parse(`${d}T00:00:00Z`);
+  return Math.round((dia(diaInventario(new Date().toISOString())) - dia(diaInventario(iso))) / 86_400_000);
+}
+function haceTexto(iso: string): string {
+  const n = haceDias(iso);
+  return n <= 0 ? 'hoy' : n === 1 ? 'ayer' : `hace ${n} días`;
+}
 
 const PHOTO_H = 150;
 const labelStyle: React.CSSProperties = { display: 'block', font: 'var(--text-eyebrow)', color: 'var(--ink-tertiary)', textTransform: 'uppercase', letterSpacing: '.45px', marginBottom: 6 };

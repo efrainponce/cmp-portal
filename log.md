@@ -1,5 +1,22 @@
 # Log de commits
 
+## 2026-09-25 (Inventario 5.11: fecha de cada captura y versiones por fecha)
+
+- **Pedido de Pam**: que se vea de qué día es el inventario (cambia a diario) y
+  poder actualizarlo sin perder la versión anterior.
+  - Cada foto (MEX/USA) muestra la fecha en que se subió y "hoy / ayer / hace N
+    días" (en rojo si tiene más de un día). El PDF también la lleva.
+  - Versiones POR FECHA, como las de la cotización: chips "25/09/2026 · vigente",
+    "20/09/2026"… Una pasada muestra el inventario como estaba al cierre de ese
+    día (solo lectura) y se puede exportar a PDF ("Inventario 5.11 <día>").
+    Actualizar = subir la captura nueva en la vigente; nada se reescribe.
+  - D1: `inventario_511` gana `imagen_mexico_at`/`imagen_usa_at` (ALTER) y se
+    agrega `inventario_511_version` (un renglón por guardado, con quién guardó).
+    Lo capturado antes entra como primera versión con su último `updated_at`.
+    Las fotos reemplazadas siguen en R2 (cada subida lleva llave propia).
+    Nada toca Monday. Lógica de días en `shared/inventarioCotizacion.ts` (hora de
+    México), anclada en `shared/inventarioCotizacion.test.ts`.
+
 ## 2026-09-25 (Nuevos productos: editar, eliminar y ver la imagen en grande)
 
 - **Propuestas de producto editables** (pedido de un vendedor: "al crear nuevo

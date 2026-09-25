@@ -1062,7 +1062,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     const itemId = Number(c.req.param('id'));
     if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
     try {
-      return c.json({ productos: await listInventarioCotizacion(c.env, itemId, c.get('viewer')) });
+      return c.json(await listInventarioCotizacion(c.env, itemId, c.get('viewer')));
     } catch (err) {
       if (err instanceof InventarioCotizacionError) return jsonStatus({ error: err.message }, err.status);
       return errorInterno(c, err);
@@ -1076,7 +1076,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     const mexico = form.get('mexico');
     const usa = form.get('usa');
     try {
-      const producto = await saveInventarioCotizacion(c.env, itemId, c.get('viewer'), {
+      const { producto, version } = await saveInventarioCotizacion(c.env, itemId, c.get('viewer'), {
         productoId: String(form.get('productoId') ?? ''),
         productoNombre: String(form.get('productoNombre') ?? ''),
         color: String(form.get('color') ?? ''),
@@ -1086,7 +1086,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
         mexico: mexico instanceof File ? mexico : undefined,
         usa: usa instanceof File ? usa : undefined,
       });
-      return c.json({ ok: true, producto });
+      return c.json({ ok: true, producto, version });
     } catch (err) {
       if (err instanceof InventarioCotizacionError) return jsonStatus({ error: err.message }, err.status);
       return errorInterno(c, err);
@@ -1098,8 +1098,11 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
   app.post('/api/oportunidades/:id/inventario-cotizacion/pdf', async c => {
     const itemId = Number(c.req.param('id'));
     if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
-    const body = await c.req.json<{ productos?: unknown }>().catch(() => ({ productos: undefined }));
+    const body = await c.req.json<{ productos?: unknown; dia?: unknown }>().catch(() => ({ productos: undefined, dia: undefined }));
     if (!Array.isArray(body.productos)) return jsonStatus({ error: 'productos requerido' }, 400);
+    // Versión pasada del tab: el día (YYYY-MM-DD) cuyo inventario se exporta.
+    const dia = typeof body.dia === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.dia) ? body.dia : undefined;
+    if (body.dia !== undefined && !dia) return jsonStatus({ error: 'dia inválido' }, 400);
     const productos = body.productos
       .filter((p): p is { productoId: unknown; productoNombre: unknown; color: unknown; colorGuardado: unknown } => !!p && typeof p === 'object')
       .map(p => ({
@@ -1110,13 +1113,13 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       }))
       .filter(p => p.productoId);
     try {
-      const { bytes, oppName } = await inventarioCotizacionPdf(c.env, itemId, c.get('viewer'), productos);
+      const { bytes, oppName } = await inventarioCotizacionPdf(c.env, itemId, c.get('viewer'), productos, dia);
       return new Response(bytes, {
         status: 200,
         headers: {
           'Content-Type': 'application/pdf',
           'Content-Length': String(bytes.length),
-          'Content-Disposition': contentDisposition(nombreDescarga({ item: oppName, etiqueta: 'Inventario 5.11' })),
+          'Content-Disposition': contentDisposition(nombreDescarga({ item: oppName, etiqueta: dia ? `Inventario 5.11 ${dia}` : 'Inventario 5.11' })),
           'Cache-Control': 'private, no-store',
         },
       });
