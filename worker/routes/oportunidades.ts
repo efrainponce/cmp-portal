@@ -10,7 +10,7 @@ import { isNativeId } from '../../shared/nativeId';
 import { stageAtOrAfter, stageKeyForLabel } from '../../shared/dealStages';
 import type { AjustarLineaRequest, AjustarLineaResponse, CotizacionVirtualDTO, DuplicarOportunidadRequest, DuplicarOportunidadResponse, DuplicarVersionResponse, ItemDetailDTO, QuoteVersionsResponse, TallaBoxInput, CapturarTallasResponse, CambiarProductoLineasRequest, CambiarProductoLineasResponse, CambiosProductoResponse, ProyectoImagenesResponse, OcAdjuntosResponse, EstadoHistorialResponse, ProductoResumenResponse, ProductoGeneroResponse, ProyectoOportunidadResponse } from '../../shared/dto';
 import { MAX_TALLAS_POR_REQUEST } from '../../shared/dto';
-import type { ProposedProductsResponse, AddProposedProductResponse } from '../../shared/productosPropuestos';
+import type { ProposedProductsResponse, AddProposedProductResponse, UpdateProposedProductResponse } from '../../shared/productosPropuestos';
 import { getItem, childrenOf, pendingItemIds, proyectoForOportunidad, linkedItemId, PROYECTO_OPP_REL } from '../lib/dal';
 import { toItemDTO } from '../lib/serialize';
 import { OutboxError, submitWrite, flushOutbox } from '../lib/outbox';
@@ -60,7 +60,7 @@ import { stampInstitucionEnOpsDeContacto } from '../lib/nativeMirrors';
 import { toNativeColumns, insertNativeSubitem, stampNativeFileMarker } from '../lib/nativeItems';
 import { insertSeguimiento } from '../lib/home';
 import { listZoneImages, uploadZoneImage, EmbellImageError } from '../lib/embellecimientoImagenes';
-import { listProposedProducts, addProposedProduct, ProposedProductError } from '../lib/productosPropuestos';
+import { listProposedProducts, addProposedProduct, updateProposedProduct, deleteProposedProduct, ProposedProductError } from '../lib/productosPropuestos';
 import { listInventarioCotizacion, saveInventarioCotizacion, inventarioCotizacionPdf, InventarioCotizacionError } from '../lib/inventarioCotizacion';
 import { resolveMondayAsset, keyLegado, PROYECTO_DOCUMENTO_COL, PROYECTO_ACTA_COL } from '../lib/portalFiles';
 import { putFile, oportunidadFileKey, proyectoFileKey } from '../lib/r2';
@@ -1017,6 +1017,39 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     try {
       const producto = await addProposedProduct(c.env, c.executionCtx, itemId, viewer, nombre, descripcion, file instanceof File ? file : undefined);
       return c.json({ ok: true, producto } satisfies AddProposedProductResponse);
+    } catch (err) {
+      if (err instanceof ProposedProductError) return jsonStatus({ error: err.message }, err.status);
+      return errorInterno(c, err);
+    }
+  });
+
+  // Editar (nombre/descripción/imagen) y eliminar una propuesta (2026-09-25).
+  // Mismo scope que proponer ('own'); eliminar es lógico (deleted_at).
+  app.patch('/api/oportunidades/:id/productos-propuestos/:productoId', async c => {
+    const itemId = Number(c.req.param('id'));
+    if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
+    const form = await c.req.formData();
+    const file = form.get('file');
+    try {
+      const producto = await updateProposedProduct(c.env, itemId, c.req.param('productoId'), c.get('viewer'), {
+        nombre: String(form.get('nombre') ?? ''),
+        descripcion: String(form.get('descripcion') ?? ''),
+        file: file instanceof File ? file : undefined,
+        quitarImagen: form.get('quitarImagen') === '1',
+      });
+      return c.json({ ok: true, producto } satisfies UpdateProposedProductResponse);
+    } catch (err) {
+      if (err instanceof ProposedProductError) return jsonStatus({ error: err.message }, err.status);
+      return errorInterno(c, err);
+    }
+  });
+
+  app.delete('/api/oportunidades/:id/productos-propuestos/:productoId', async c => {
+    const itemId = Number(c.req.param('id'));
+    if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
+    try {
+      await deleteProposedProduct(c.env, itemId, c.req.param('productoId'), c.get('viewer'));
+      return c.json({ ok: true });
     } catch (err) {
       if (err instanceof ProposedProductError) return jsonStatus({ error: err.message }, err.status);
       return errorInterno(c, err);
