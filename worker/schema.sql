@@ -359,7 +359,8 @@ CREATE TABLE IF NOT EXISTS notifications (
   actor           TEXT,              -- nombre de quien lo causó (display)
   dedupe_key      TEXT NOT NULL,
   read_at         TEXT,              -- NULL = no leída
-  created_at      TEXT NOT NULL
+  created_at      TEXT NOT NULL,
+  link            TEXT               -- link externo (Airtable); el clic lo abre en otra pestaña
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_notif_dedupe ON notifications(dedupe_key);
 CREATE INDEX IF NOT EXISTS idx_notif_inbox ON notifications(recipient_email, read_at, id);

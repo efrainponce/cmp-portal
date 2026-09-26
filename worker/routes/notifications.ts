@@ -20,6 +20,7 @@ interface NotificationRow {
   board_id: number | null;
   item_id: number | null;
   actor: string | null;
+  link?: string | null;         // columna agregada 2026-09-25
   dedupe_key: string;
   read_at: string | null;
   created_at: string;
@@ -34,6 +35,7 @@ function toDTO(row: NotificationRow): NotificationDTO {
     body: row.body ?? null,
     boardKey: row.board_key ?? null,
     itemId: row.item_id != null ? String(row.item_id) : null,
+    link: row.link ?? null,
     actor: row.actor ?? null,
     read: row.read_at != null,
     createdAt: row.created_at,

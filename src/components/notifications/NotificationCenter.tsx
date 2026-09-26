@@ -40,6 +40,8 @@ function KindBadge({ kind }: { kind: string }) {
     // Comentario de un compañero (dentro del portal o de monday.com), 2026-08-18.
     update_comment: { letter: '”', color: 'var(--accent)' },
     costeo_incompleto: { letter: '!', color: 'var(--status-esperando)' },
+    // Producto sin Costo Distribuidor en Airtable (worker/lib/costoSinAirtable.ts).
+    costo_sin_airtable: { letter: '$', color: 'var(--status-perdida)' },
     stage_change: { letter: '→', color: 'var(--status-confirmado)' },
     project_status_change: { letter: '→', color: 'var(--status-confirmado)' },
   };
@@ -76,6 +78,11 @@ function NotificationRow({ n, onClick }: { n: NotificationDTO; onClick: () => vo
             {n.body}
           </div>
         )}
+        {n.link && (
+          <div style={{ font: 'var(--text-caption)', color: 'var(--accent-blue)', marginTop: 2 }}>
+            Abrir en Airtable ↗
+          </div>
+        )}
         <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)', marginTop: 4 }}>
           {[n.actor, fmtWhen(n.createdAt)].filter(Boolean).join(' · ')}
         </div>
@@ -100,7 +107,11 @@ export function NotificationCenter({
   const activeUnread = unread[tab];
 
   const handleRowClick = async (n: NotificationDTO) => {
+    // Link externo (Airtable): se abre ANTES del await para que el navegador no
+    // lo trate como popup sin gesto del usuario.
+    if (n.link) window.open(n.link, '_blank', 'noopener');
     if (!n.read) await markRead(n.id).catch(() => {});
+    if (n.link) { onClose(); return; }
     if (n.itemId) onNavigate(n.boardKey ?? 'oportunidades', n.itemId);
     onClose();
   };

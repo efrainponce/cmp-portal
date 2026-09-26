@@ -629,11 +629,13 @@ export interface AssistantChatResponse { reply: string }
 export interface NotificationDTO {
   id: number;
   severity: 'importante' | 'actualizacion';
-  kind: string;                 // 'mention' | 'costeo_incompleto' | 'stage_change'
+  kind: string;                 // 'mention' | 'costeo_incompleto' | 'stage_change' | 'costo_sin_airtable'
   title: string;
   body: string | null;
   boardKey: string | null;
   itemId: string | null;
+  /** Link externo (Airtable): el clic lo abre en otra pestaña en vez del deep link. */
+  link: string | null;
   actor: string | null;
   read: boolean;
   createdAt: string;            // ISO

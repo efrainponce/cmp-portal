@@ -1,5 +1,20 @@
 # Log de commits
 
+## 2026-09-25 (Aviso "Sin costo en Airtable" con link al producto; se quita el último costeo)
+
+- **Efraín: "no podemos usar el último costo"**. Se revierte el respaldo del
+  commit anterior (la línea nativa ya NO se siembra con el último costeo del
+  producto; con catálogo vacío el costo queda vacío, como antes).
+- En su lugar, **aviso**: al elegir un producto en una línea de cotización
+  (nativa o de Monday) cuyo Costo Distribuidor no está en Airtable, quien lo
+  eligió recibe una notificación en Importantes (sin WhatsApp) "Sin costo en
+  Airtable: <producto>"; el clic abre el registro del producto en Airtable
+  (base/tabla de cmp-tallas `sync_producto.py`, id de `text_mkzmgvc7`).
+  - Solo admin/compras (vendedor no ve costos). Una por persona, producto y día.
+  - `notifications` gana la columna `link` (aplicada en remoto,
+    `worker/migrations/2026-09-25-notifications-link.sql`); `emitNotification`
+    solo la manda cuando hay link. `worker/lib/costoSinAirtable.ts` + test.
+
 ## 2026-09-25 (Zona Efrain: el costo sale del último costeo si el catálogo no lo trae)
 
 - **Reporte de Elisa**: "cuando creas una oportunidad y la vas a costear el

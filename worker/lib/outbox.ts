@@ -7,6 +7,7 @@ import type { WriteResponse } from '../../shared/dto';
 import { BOARDS, boardById } from '../../shared/boards';
 import { isNativeId } from '../../shared/nativeId';
 import { nativeStatusValue, assertNoNativeLink } from './nativeItems';
+import { avisarSiFaltaCosto } from './costoSinAirtable';
 import { stampProductoEnLinea, stampInstitucionDeContacto, OPP_CONTACTO_REL } from './nativeMirrors';
 import { dealStageValue } from '../../shared/dealStages';
 import { canWrite } from '../../shared/visibility';
@@ -217,6 +218,9 @@ export async function submitWrite(
     // copia el catálogo completo (SKU, ficha, colores, tallas, moneda, unidad,
     // proveedor) y se renombra la línea al producto — worker/lib/nativeMirrors.ts.
     if (isNativeId(itemId) && productoId) await stampProductoEnLinea(env, itemId, productoId);
+    // Sin Costo Distribuidor en Airtable la línea se queda sin costo: se avisa
+    // con link al producto en Airtable (Efraín, 2026-09-25).
+    if (productoId) await avisarSiFaltaCosto(env, viewer, itemId, productoId);
     const ficha = productoId ? (await fichasDeProductos(env, [productoId])).get(productoId) : undefined;
     if (ficha) {
       const fichaJson = JSON.stringify({ id: SUB_FICHA, type: 'mirror', text: ficha, value: null } satisfies RawCol);
