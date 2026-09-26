@@ -27,6 +27,9 @@ export interface NotifyInput {
   itemId?: number | null;
   actor?: string | null;
   dedupeKey: string;
+  /** Link EXTERNO (p.ej. el producto en Airtable, worker/lib/costoSinAirtable.ts):
+   * el clic en la notificación lo abre en otra pestaña en vez del deep link. */
+  link?: string | null;
   /** Solo para severidad 'importante': `false` la deja en la bandeja Importantes
    * pero SIN WhatsApp. Lo usan los comentarios (worker/lib/updateNotify.ts) —
    * Efraín 2026-08-18: el comentario pide atención, pero el WhatsApp se reserva
@@ -38,10 +41,14 @@ export interface NotifyInput {
  * fallo se loguea a sync_log y se traga — nunca rompe al caller. */
 export async function emitNotification(env: Env, n: NotifyInput): Promise<void> {
   try {
+    // `link` solo entra al INSERT cuando viene: así ningún otro aviso depende
+    // de que la columna (worker/migrations/2026-09-25-notifications-link.sql)
+    // ya exista.
+    const conLink = !!n.link;
     const result = await env.DB.prepare(
       `INSERT OR IGNORE INTO notifications
-        (recipient_email, severity, kind, title, body, board_key, board_id, item_id, actor, dedupe_key, read_at, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,NULL,?)`,
+        (recipient_email, severity, kind, title, body, board_key, board_id, item_id, actor, dedupe_key, read_at, created_at${conLink ? ', link' : ''})
+       VALUES (?,?,?,?,?,?,?,?,?,?,NULL,?${conLink ? ',?' : ''})`,
     ).bind(
       n.recipientEmail,
       n.severity,
@@ -54,6 +61,7 @@ export async function emitNotification(env: Env, n: NotifyInput): Promise<void> 
       n.actor ?? null,
       n.dedupeKey,
       new Date().toISOString(),
+      ...(conLink ? [n.link] : []),
     ).run();
 
     // Fila nueva (no un replay del mismo dedupe_key) + severidad importante → WhatsApp,
