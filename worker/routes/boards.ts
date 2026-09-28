@@ -43,7 +43,9 @@ import { oportunidadesLigadas } from '../lib/oportunidadLigada';
 import { contentTypeFor } from '../lib/mime';
 import { notifyItemComment } from '../lib/updateNotify';
 import { markUpdatesSeen } from '../lib/updateSeen';
-import { feedActualizaciones, ubicarComentario } from '../lib/updatesLineas';
+import { feedActualizaciones, ubicarComentario, estaEnFeed } from '../lib/updatesLineas';
+import { ponerReaccion } from '../lib/reacciones';
+import { esTipoReaccion } from '../../shared/reacciones';
 
 // `s` acepta undefined porque c.req.param() lo devuelve así cuando la ruta no
 // trae el parámetro — y ahí la respuesta correcta es la misma que para un slug
@@ -688,6 +690,34 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
       attachments: [], seenBy: [],
     };
     return c.json(dto);
+  });
+
+  // Reacción con emoji a un comentario o respuesta (Jorge, 2026-09-25, fase 3).
+  // SOLO en D1, nunca a Monday (shared/reacciones.ts). Mismo permiso que
+  // comentar: poder leer el item. El updateId lo manda el cliente, así que
+  // tiene que ser del feed que este viewer ya ve (estaEnFeed); si no, 404.
+  // `activa` es el estado final, no un "alternar" — un doble clic no la voltea.
+  app.post('/api/boards/:slug/items/:id/updates/:updateId/reacciones', async c => {
+    const slug = boardFor(c);
+    if (!slug) return c.json({ error: 'not found' }, 404);
+    const itemId = Number(c.req.param('id'));
+    const updateId = c.req.param('updateId');
+    if (!Number.isFinite(itemId) || !/^\d+$/.test(updateId)) return c.json({ error: 'not found' }, 404);
+    const viewer = c.get('viewer');
+
+    const body = await c.req.json<{ tipo?: unknown; activa?: unknown }>().catch(() => ({}) as { tipo?: unknown; activa?: unknown });
+    if (!esTipoReaccion(body.tipo) || typeof body.activa !== 'boolean') {
+      return c.json({ error: 'reacción inválida' }, 400);
+    }
+
+    const row = await getItem(c.env, slug, itemId, viewer);
+    if (!row) return c.json({ error: 'not found' }, 404);
+    if (!(await estaEnFeed(c.env, slug, row, viewer, updateId))) return c.json({ error: 'not found' }, 404);
+
+    await ponerReaccion(c.env, {
+      updateId, itemId, email: viewer.email, nombre: viewer.nombre || viewer.email, tipo: body.tipo, activa: body.activa,
+    });
+    return c.json({ ok: true });
   });
 
   // Attaches one file to an update that already exists (the composer creates

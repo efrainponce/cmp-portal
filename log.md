@@ -1,5 +1,37 @@
 # Log de commits
 
+## 2026-09-28 (Actualizaciones, fase 3: reacciones con emoji)
+
+- **Reacciones con emoji en comentarios y respuestas del feed** (Jorge; los 6
+  del selector de Monday: 👍 👏 🙏 ❤️ 😃 ✅). Barra de cada comentario como la
+  de Monday: píldoras "👍 3" (nombres al pasar el mouse; clic pone/quita la
+  propia, resaltada en verde) + botón 😊+ con el selector + Responder.
+  - **Solo en el portal** (decisión de Jorge): tabla `update_reaccion` en D1,
+    con el nombre real de cada quien. No van a Monday a propósito: todo lo que
+    escribe el portal le aparece a Monday como del dueño del token (Efraín) y
+    Monday deja un solo like por persona — cinco personas reaccionando saldrían
+    allá como UN like de Efraín. Los likes dados DENTRO de Monday sí se
+    muestran, de solo lectura, junto a los del portal y sin contar dos veces a
+    la misma persona (`likes{reaction_type creator{name}}` en la misma consulta
+    del feed; verificado en vivo). Casi no se usan: 5 en 772 comentarios, todos
+    👍 ("+1" o null).
+  - Se guarda la CLAVE (`+1`, `clap`, `pray`, `heart`, `smile`, `check`), no el
+    emoji: ❤ llega con o sin selector de variación según el teclado
+    (`shared/reacciones.ts`).
+  - `POST /updates/:updateId/reacciones {tipo, activa}`: estado final, no
+    "alternar" (un doble clic no la voltea). Mismo permiso que comentar (leer
+    el item) y candado `estaEnFeed`: el comentario o respuesta tiene que ser del
+    feed que el viewer ya ve; si no, 404 sin guardar. Cuesta la misma consulta
+    a Monday que responder — la UI pinta la reacción al instante y la guarda
+    por detrás; si el server la rechaza, recarga el feed.
+  - Tabla lazy (`worker/lib/reacciones.ts`); migración opcional
+    `worker/migrations/2026-09-25-update-reaccion.sql`. Leer reacciones es
+    best-effort: una falla no tumba el feed.
+  - Pruebas: 11 de la lógica pura (agrupar, likes de Monday, cambio optimista),
+    9 de la ruta y 2 del feed. Probado en Chrome con API simulada: sumarse a un
+    👍 existente, ✅ desde el selector, quitar la propia, reaccionar a una
+    respuesta, y todo sigue tras recargar.
+
 ## 2026-09-28 (Cotización: asa ⠿ para reordenar las líneas de la Oportunidad)
 
 - **Reordenar las líneas de la grid de Cotización arrastrando** (Jorge, rama

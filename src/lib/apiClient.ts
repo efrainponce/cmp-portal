@@ -1207,6 +1207,18 @@ export async function postUpdate(
   return res.json();
 }
 
+/** Pone (`activa`) o quita la reacción del viewer en un comentario o respuesta.
+ * Solo portal: no va a Monday (shared/reacciones.ts). Lanza si el server la
+ * rechazó, para que la pantalla deshaga el cambio optimista. */
+export async function reaccionar(
+  slug: BoardSlug, id: string, updateId: string, tipo: string, activa: boolean,
+): Promise<void> {
+  const res = await apiFetch(`/boards/${slug}/items/${id}/updates/${updateId}/reacciones`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tipo, activa }),
+  });
+  if (!res.ok) throw new Error('POST reacción failed: ' + res.status);
+}
+
 /** Marca updates/replies como vistos por el viewer actual — best-effort, nunca lanza
  * (el "ojito" nunca debe romper la carga del feed). */
 export async function markUpdatesSeen(slug: BoardSlug, id: string, ids: string[]): Promise<void> {

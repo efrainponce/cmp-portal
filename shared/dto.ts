@@ -3,6 +3,7 @@
 import type { Role } from './types';
 import type { ResumenEstadoCuenta } from './estadoCuenta';
 import type { BoardSlug } from './boards';
+import type { ReaccionDTO } from './reacciones';
 
 export interface ColVal {
   text: string;                 // Monday's display text ('' if empty)
@@ -534,6 +535,9 @@ export interface UpdateDTO {
   /** Respuestas del hilo, en orden de conversación (worker/lib/updatesLineas.ts
    * armarHilos). Solo en comentarios de primer nivel; una respuesta no trae. */
   replies?: UpdateDTO[];
+  /** Reacciones con emoji: las del portal + los likes de Monday (solo
+   * lectura) — shared/reacciones.ts. Ausente = ninguna. */
+  reacciones?: ReaccionDTO[];
 }
 export interface CreateUpdateRequest {
   body: string; mentions?: { id: number; nombre: string }[];

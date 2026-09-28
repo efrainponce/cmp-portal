@@ -4,7 +4,9 @@
 // truth the team already checks inside monday.com itself.
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import type { BoardSlug, MentionUserDTO, UpdateAttachmentDTO, UpdateDTO } from '../../../lib/apiClient';
-import { getMentionUsers, getUpdates, markUpdatesSeen, postUpdate, postUpdateAttachment, updateAttachmentHref } from '../../../lib/api';
+import { getMentionUsers, getUpdates, markUpdatesSeen, postUpdate, postUpdateAttachment, reaccionar, updateAttachmentHref } from '../../../lib/api';
+import { useMe } from '../../../lib/useMe';
+import { REACCIONES, alternarReaccion, emojiDe, type ReaccionDTO } from '../../../../shared/reacciones';
 import { Modal } from '../../../components/core/Modal';
 import { initials } from '../../../lib/initials';
 import { separarFirma } from '../../../../shared/firmaPortal';
@@ -174,6 +176,110 @@ function ReplyIcon({ color }: { color: string }) {
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ flex: 'none' }}>
       <path d="M10 9V5l-7 7 7 7v-4.1c5 0 8.5 1.6 11 5.1-1-5-4-10-11-11Z" stroke={color} strokeWidth="1.6" strokeLinejoin="round" />
     </svg>
+  );
+}
+
+function SmileyPlusIcon({ color }: { color: string }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ flex: 'none' }}>
+      <path d="M20.5 11.5A8.5 8.5 0 1 1 12.5 3" stroke={color} strokeWidth="1.6" strokeLinecap="round" />
+      <path d="M8.5 14.5s1.2 1.8 3.5 1.8 3.5-1.8 3.5-1.8" stroke={color} strokeWidth="1.6" strokeLinecap="round" />
+      <circle cx="9" cy="10" r="1" fill={color} />
+      <circle cx="15" cy="10" r="1" fill={color} />
+      <path d="M19 2v5M16.5 4.5h5" stroke={color} strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+/** Píldoras "👍 2" + botón para reaccionar con los 6 emojis del selector de
+ * Monday (Jorge, 2026-09-25, fase 3). Clic en una píldora pone o quita la
+ * propia; los nombres salen al pasar el mouse. Solo portal: no va a Monday. */
+function Reacciones({ reacciones, onToggle }: {
+  reacciones?: ReaccionDTO[];
+  onToggle: (tipo: string, activa: boolean) => void;
+}) {
+  const [abierto, setAbierto] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const lista = reacciones ?? [];
+
+  useEffect(() => {
+    if (!abierto) return;
+    const onDown = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setAbierto(false); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setAbierto(false); };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [abierto]);
+
+  return (
+    <div ref={ref} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', position: 'relative' }}>
+      {lista.map((r) => (
+        <button
+          key={r.tipo}
+          type="button"
+          className="reaccion-pildora"
+          aria-pressed={r.mia}
+          title={r.nombres.join(', ')}
+          onClick={() => onToggle(r.tipo, !r.mia)}
+          // Sin `background` en línea cuando no es mía: le ganaría al :hover (src/index.css).
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 999, cursor: 'pointer',
+            border: `1px solid ${r.mia ? 'var(--accent)' : 'var(--border)'}`,
+            ...(r.mia ? { background: 'var(--accent-soft)' } : {}),
+            font: 'var(--text-caption)', color: r.mia ? 'var(--accent)' : 'var(--ink-secondary)',
+          }}
+        >
+          <span style={{ fontSize: 13, lineHeight: 1 }}>{emojiDe(r.tipo)}</span>{r.count}
+        </button>
+      ))}
+      <button
+        type="button"
+        className="reaccion-agregar"
+        aria-label="Reaccionar"
+        aria-haspopup="menu"
+        aria-expanded={abierto}
+        title="Reaccionar"
+        onClick={() => setAbierto((a) => !a)}
+        style={{
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 26, height: 22,
+          borderRadius: 999, border: '1px solid var(--border-subtle)', cursor: 'pointer', padding: 0,
+        }}
+      >
+        <SmileyPlusIcon color="var(--ink-quiet)" />
+      </button>
+      {abierto && (
+        <div role="menu" aria-label="Reacciones" style={{
+          position: 'absolute', bottom: 'calc(100% + 6px)', left: 0, zIndex: 20,
+          display: 'flex', gap: 2, padding: '6px 8px', background: '#fff', borderRadius: 999,
+          border: '1px solid var(--border)', boxShadow: '0 6px 20px rgba(0,0,0,.14)',
+        }}>
+          {REACCIONES.map((t) => {
+            const mia = lista.find((r) => r.tipo === t.tipo)?.mia ?? false;
+            return (
+              <button
+                key={t.tipo}
+                type="button"
+                role="menuitem"
+                className="reaccion-opcion"
+                title={t.nombre}
+                aria-label={t.nombre}
+                aria-pressed={mia}
+                onClick={() => { onToggle(t.tipo, !mia); setAbierto(false); }}
+                style={{
+                  fontSize: 20, lineHeight: 1, padding: 6, border: 'none', borderRadius: '50%', cursor: 'pointer',
+                  ...(mia ? { background: 'var(--accent-soft)' } : {}),
+                }}
+              >
+                {t.emoji}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -384,6 +490,9 @@ export function ActualizacionesTab({ slug, itemId }: Props) {
   const [preview, setPreview] = useState<(UpdateAttachmentDTO & { fuente?: UpdateDTO['fuente'] }) | null>(null);
   // Comentario cuyo cuadro de respuesta está abierto (uno a la vez).
   const [replyTo, setReplyTo] = useState<string | null>(null);
+  const me = useMe();
+  // Mismo nombre que guarda el server (viewer.nombre || viewer.email).
+  const miNombre = me?.nombre || me?.email || '';
 
   // apiFetch puede colgarse sin resolver ni rechazar si la sesión de Cloudflare
   // Access expiró y el redirect de recuperación no completa (ver apiClient.ts,
@@ -425,6 +534,17 @@ export function ActualizacionesTab({ slug, itemId }: Props) {
     if (!updates?.some(u => u.attachments.some(a => a.ext === 'pdf'))) return;
     import('../../../components/core/PdfCanvasPreview').then((m) => m.warmPdfWorker()).catch(() => {});
   }, [updates]);
+
+  // Reacción: se pinta al instante y luego se guarda; si el server la rechaza,
+  // se recarga el feed para no dejar en pantalla algo que no quedó.
+  const toggleReaccion = (updateId: string, tipo: string, activa: boolean) => {
+    const aplicar = (u: UpdateDTO): UpdateDTO => {
+      if (u.id === updateId) return { ...u, reacciones: alternarReaccion(u.reacciones ?? [], tipo, activa, miNombre) };
+      return u.replies ? { ...u, replies: u.replies.map(aplicar) } : u;
+    };
+    setUpdates((prev) => prev?.map(aplicar) ?? prev);
+    reaccionar(slug, itemId, updateId, tipo, activa).catch(() => load());
+  };
 
   // "Comentarios Ventas" de las líneas van arriba, aparte: no tienen fecha.
   const notas = useMemo(() => updates?.filter((u) => u.tipo === 'nota') ?? [], [updates]);
@@ -503,22 +623,48 @@ export function ActualizacionesTab({ slug, itemId }: Props) {
               <span>Visto por {seenByLabel(u.seenBy)}</span>
             </div>
           )}
+
+          {/* Barra del comentario, como la de Monday: reacciones + Responder. */}
+          <div style={{
+            marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--border-subtle)',
+            display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
+          }}>
+            <Reacciones reacciones={u.reacciones} onToggle={(tipo, activa) => toggleReaccion(u.id, tipo, activa)} />
+            {replyTo !== u.id && (
+              <span
+                role="button"
+                tabIndex={0}
+                onClick={() => setReplyTo(u.id)}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setReplyTo(u.id); } }}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', font: 'var(--text-caption)', color: 'var(--ink-secondary)' }}
+              >
+                <ReplyIcon color="var(--ink-secondary)" /> Responder
+              </span>
+            )}
+          </div>
+
           {u.replies && u.replies.length > 0 && (
-            <div style={{ marginTop: 12, paddingTop: 4, borderTop: '1px solid var(--border-subtle)' }}>
+            <div style={{ marginTop: 4 }}>
               {u.replies.map((r) => (
-                <div key={r.id} style={{ paddingTop: 10 }}>
+                <div key={r.id} style={{ paddingTop: 12 }}>
                   <Encabezado u={r} size={24} />
                   {/* Alineado con el nombre, no con la burbuja (24 + gap 10). */}
-                  <div style={{ font: 'var(--text-label)', color: 'var(--ink)', whiteSpace: 'pre-wrap', margin: '4px 0 0 34px' }}>
-                    {renderBody(separarFirma(r.body).texto, users)}
+                  <div style={{ margin: '4px 0 0 34px' }}>
+                    <div style={{ font: 'var(--text-label)', color: 'var(--ink)', whiteSpace: 'pre-wrap' }}>
+                      {renderBody(separarFirma(r.body).texto, users)}
+                    </div>
+                    <div style={{ marginTop: 6 }}>
+                      <Reacciones reacciones={r.reacciones} onToggle={(tipo, activa) => toggleReaccion(r.id, tipo, activa)} />
+                    </div>
                   </div>
                 </div>
               ))}
             </div>
           )}
+
           {/* Responder en el hilo: se escribe en Monday como respuesta de ESTE
               comentario (create_update con parent_id), igual que su "Responder". */}
-          {replyTo === u.id ? (
+          {replyTo === u.id && (
             <Composer
               key={u.id}
               users={users}
@@ -536,18 +682,6 @@ export function ActualizacionesTab({ slug, itemId }: Props) {
                 return null;
               }}
             />
-          ) : (
-            <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--border-subtle)' }}>
-              <span
-                role="button"
-                tabIndex={0}
-                onClick={() => setReplyTo(u.id)}
-                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setReplyTo(u.id); } }}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', font: 'var(--text-caption)', color: 'var(--ink-secondary)' }}
-              >
-                <ReplyIcon color="var(--ink-secondary)" /> Responder
-              </span>
-            </div>
           )}
         </div>
       ))}

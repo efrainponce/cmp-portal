@@ -32,6 +32,8 @@ import { resolveOportunidadId } from './proyectoTallas';
 import { folioDe } from './oportunidadLigada';
 import { colTexts, etiquetaLinea } from './lineaEtiqueta';
 import { separarFirma } from '../../shared/firmaPortal';
+import { agregarReacciones, type ReaccionPortal } from '../../shared/reacciones';
+import { reaccionesDe } from './reacciones';
 
 export { etiquetaLinea };
 
@@ -79,6 +81,8 @@ export function idsDelFeed(crudos: Pick<Crudo, 'u'>[]): string[] {
  *    no `origen`: el chip de producto ya va en la tarjeta. */
 export function armarHilos(
   crudos: Omit<Crudo, 'dueno'>[], seenBy: Map<string, string[]>, itemIdPedido: number,
+  /** Reacciones del portal por comentario y quién mira (para marcar las suyas). */
+  reac?: { porUpdate: Map<string, ReaccionPortal[]>; viewerEmail: string },
 ): UpdateDTO[] {
   const aDto = (u: MondayUpdate, fuente: Fuente, origen?: string): UpdateDTO => {
     const names = new Map<string, string>();
@@ -92,6 +96,12 @@ export function armarHilos(
     };
     if (origen) dto.origen = origen;
     if (fuente.itemId !== itemIdPedido) dto.fuente = { slug: fuente.slug, itemId: String(fuente.itemId) };
+    const reacciones = agregarReacciones(
+      reac?.porUpdate.get(u.id) ?? [],
+      (u.likes ?? []).map(l => ({ reactionType: l.reaction_type, nombre: l.creator?.name ?? null })),
+      reac?.viewerEmail ?? '',
+    );
+    if (reacciones.length) dto.reacciones = reacciones;
     return dto;
   };
   return [...crudos]
@@ -158,6 +168,18 @@ export async function ubicarComentario(
   return partes.flatMap(p => p.crudos).find(c => c.u.id === updateId)?.dueno ?? null;
 }
 
+/** ¿`updateId` es un comentario O una respuesta del feed que este viewer ya
+ * puede ver? Candado para reaccionar (fase 3): a diferencia de responder, a
+ * una respuesta sí se le puede reaccionar. Sin esto, una reacción con un id
+ * ajeno aparecería en el comentario de un item que el viewer no ve. */
+export async function estaEnFeed(
+  env: Env, slug: BoardSlug, row: MirrorItem, viewer: Identity, updateId: string,
+): Promise<boolean> {
+  const fuentes = await fuentesDe(env, slug, row, viewer);
+  const partes = await Promise.all(fuentes.map(f => updatesDe(env, f, viewer)));
+  return idsDelFeed(partes.flatMap(p => p.crudos)).includes(updateId);
+}
+
 /** El feed completo de Actualizaciones de un item ya autorizado (`row`). */
 export async function feedActualizaciones(
   env: Env, slug: BoardSlug, row: MirrorItem, viewer: Identity,
@@ -169,8 +191,13 @@ export async function feedActualizaciones(
   // Monday.com; se fusiona con lo que el portal registró en D1 (updateSeen.ts)
   // para que el indicador cubra ambas superficies. Dedupe case-insensitive.
   const crudos = partes.flatMap(p => p.crudos);
-  const portalSeenBy = await seenByFor(env, idsDelFeed(crudos));
-  const feed = armarHilos(crudos, portalSeenBy, row.item_id);
+  const ids = idsDelFeed(crudos);
+  const [portalSeenBy, porUpdate] = await Promise.all([
+    seenByFor(env, ids),
+    // Best-effort: una falla leyendo reacciones no debe tumbar el feed entero.
+    reaccionesDe(env, ids).catch(() => new Map<string, ReaccionPortal[]>()),
+  ]);
+  const feed = armarHilos(crudos, portalSeenBy, row.item_id, { porUpdate, viewerEmail: viewer.email });
 
   // Notas "Comentarios Ventas" de las líneas de la Oportunidad (la propia o la
   // ligada al Proyecto), si el rol puede leer esa columna.

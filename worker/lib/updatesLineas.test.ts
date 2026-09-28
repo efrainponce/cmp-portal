@@ -76,6 +76,29 @@ describe('armarHilos', () => {
     expect(d.replies?.[0].origen).toBeUndefined();
   });
 
+  it('reacciones: las del portal + los likes de Monday, en el comentario y en sus respuestas', () => {
+    const [d] = armarHilos([{
+      u: u('1', '2026-09-01T10:00:00Z', {
+        likes: [{ reaction_type: '+1', creator: { name: 'Elisa Vallado' } }],
+        replies: [u('1a', '2026-09-02T10:00:00Z')],
+      }),
+      fuente: item,
+    }], new Map(), 10, {
+      porUpdate: new Map([
+        ['1', [{ email: 'jorge@cmp.com', nombre: 'Jorge Perez', tipo: '+1' }]],
+        ['1a', [{ email: 'emy@cmp.com', nombre: 'EMILY MARTINEZ GONZALEZ', tipo: 'check' }]],
+      ]),
+      viewerEmail: 'jorge@cmp.com',
+    });
+    expect(d.reacciones).toEqual([{ tipo: '+1', count: 2, nombres: ['Jorge Perez', 'Elisa Vallado'], mia: true }]);
+    expect(d.replies?.[0].reacciones).toEqual([{ tipo: 'check', count: 1, nombres: ['EMILY MARTINEZ GONZALEZ'], mia: false }]);
+  });
+
+  it('sin reacciones no se manda el campo', () => {
+    const [d] = armarHilos([{ u: u('1', '2026-09-01T10:00:00Z'), fuente: item }], new Map(), 10);
+    expect(d.reacciones).toBeUndefined();
+  });
+
   it('el "visto" cubre también las respuestas', () => {
     const crudos = [{ u: u('1', '2026-09-01T10:00:00Z', { replies: [u('1a', '2026-09-02T10:00:00Z')] }), fuente: item }];
     expect(idsDelFeed(crudos)).toEqual(['1', '1a']);
