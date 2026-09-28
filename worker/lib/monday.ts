@@ -338,11 +338,15 @@ export interface MondayUpdate {
   // lectura vía API, que es como el portal sirve el feed) — boards.ts lo
   // fusiona con worker/lib/updateSeen.ts para cubrir ambas superficies.
   viewers?: { user: { name: string } | null }[];
+  // Reacciones dadas DENTRO de Monday — el feed las muestra de solo lectura
+  // junto a las del portal (shared/reacciones.ts). `reaction_type` "+1" o null.
+  likes?: { reaction_type: string | null; creator: { name: string } | null }[];
 }
 
-const UPDATE_FIELDS = `id text_body created_at creator{name} assets{id name file_extension} viewers{user{name}}`;
+const LIKE_FIELDS = `likes{reaction_type creator{name}}`;
+const UPDATE_FIELDS = `id text_body created_at creator{name} assets{id name file_extension} viewers{user{name}} ${LIKE_FIELDS}`;
 // Monday's `Reply` type (unlike `Update`) has no `assets` field in API 2025-04 — replies can't carry attachments.
-const REPLY_FIELDS = `id text_body created_at creator{name} viewers{user{name}}`;
+const REPLY_FIELDS = `id text_body created_at creator{name} viewers{user{name}} ${LIKE_FIELDS}`;
 
 /** Updates (comments) on an item, newest first, each with its own replies thread
  * (Monday keeps replies nested under their parent update, not as siblings). */

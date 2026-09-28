@@ -28,6 +28,7 @@ import { submitWrite } from './outbox';
 import { stampNativeFileMarker } from './nativeItems';
 import { putFile } from './r2';
 import { cotizacionR2Key } from './cotizacionPdfs';
+import { ordenarComoElPortal } from './itemOrder';
 import type { RawCol } from './serialize';
 
 export class CotizacionError extends Error {
@@ -397,7 +398,13 @@ export async function generarCotizacionNative(env: Env, itemId: number, viewer: 
 
   const fetched = await fetchItemWithSubitems(env, itemId);
   if (!fetched) throw new CotizacionError(404, 'not found');
-  const { item, subitems } = fetched;
+  const { item } = fetched;
+  // Las líneas en el orden en que el vendedor las acomodó en el portal
+  // (Jorge, 2026-09-28): Monday no deja reordenar subitems por API —"Changing
+  // position of subitems is not supported", probado contra OPP-1090— así que
+  // ese orden solo vive en item_order. OJO: esto cubre SOLO esta rama nativa
+  // (COTIZACION_NATIVE=1); la de cmp-tallas lee Monday y sale en su orden.
+  const subitems = await ordenarComoElPortal(env, BOARDS.oportunidades_sub.id, itemId, fetched.subitems);
   const cols = item.column_values;
 
   const folioOpp = cvText(cols, OPP_FOLIO) || String(itemId);

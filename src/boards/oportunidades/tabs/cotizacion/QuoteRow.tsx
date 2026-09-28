@@ -20,7 +20,7 @@ import { ProductPicker, type ProductoChoice } from '../../../../components/forms
 import { NumberCellInput } from '../../../../components/forms/NumberCellInput';
 import {
   type GridCol, type RowEditState, marginColor, suggestedPrecio23, numFrom, displayProducto, cellValue,
-  inputStyle, valueChipStyle, ETAPA_COSTEO_COLORS, etapaCosteoSelectStyle, computeLineBanner, gridWrapStyle, colsTemplate,
+  inputStyle, valueChipStyle, ETAPA_COSTEO_COLORS, etapaCosteoSelectStyle, computeLineBanner, gridWrapStyle, colsTemplate, anchoPartida,
   STICKY_PRODUCTO_STYLE,
   ETAPA_COSTEO_COL, SUGERIDO_COL, MARGEN_COL,
   PRODUCTO_COL, PRODUCTO_TXT_COL, PRODUCTO_REL_COL, COLOR_COL,
@@ -85,6 +85,16 @@ export interface QuoteRowProps {
   onVerActividad: (product: ItemDTO, displayName: string) => void;
   /** "Dividida"/"Editada" al final del nombre — ver CotizacionTab.tsx (ajusteLabels). */
   ajusteLabel?: 'Dividida' | 'Editada';
+  /** Asa ⠿ para acomodar la línea arrastrando (src/lib/useReordenar.ts,
+   * 2026-09-28). Ausente = la grid no se puede reordenar aquí (Costeo,
+   * Validación, sin permiso). Los callbacks son estables (CotizacionTab) para
+   * no romper el memo de la fila. */
+  arrastre?: {
+    activa: boolean;
+    onDown: (id: string, e: React.PointerEvent) => void;
+    onMove: (e: React.PointerEvent) => void;
+    onUp: () => void;
+  };
 }
 
 function QuoteRowInner({
@@ -96,6 +106,7 @@ function QuoteRowInner({
   generoMF, generoSaving, onToggleGenero,
   proveedorSaving, proveedorError, onEditProveedor,
   canDelete, deleting, onDeleteLine, canAjustar, onAjustarLinea, canVerActividad, onVerActividad, ajusteLabel,
+  arrastre,
 }: QuoteRowProps) {
   const { lineWarnings, bannerText } = computeLineBanner(p, state, variant, catalog, precioOnly);
 
@@ -147,7 +158,13 @@ function QuoteRowInner({
     // 2026-08-05, con Playwright confirmando el span en x≈2488 con viewport 1280).
     // El tinte de warnings se repite en el grid interno para que siga cubriendo
     // toda la fila incluso scrolleada.
-    <div style={{ background: rowTint }}>
+    <div style={{
+      background: rowTint,
+      // La fila que viaja se despega del resto (mismo trato que en la OC).
+      ...(arrastre?.activa ? {
+        position: 'relative', zIndex: 1, boxShadow: 'var(--shadow-md, 0 2px 8px rgba(0,0,0,.12))',
+      } : {}),
+    }}>
       {bannerText && (
         <div style={{ padding: '8px 10px 0', font: '600 11px var(--font-ui)', color: '#ce3048' }}>
           ⚠ {bannerText}
@@ -155,10 +172,30 @@ function QuoteRowInner({
       )}
       <div style={{
         ...gridWrapStyle,
-        display: 'grid', gridTemplateColumns: `28px ${colsTemplate(visibleCols)}${canDelete ? ' 32px' : ''}`,
+        display: 'grid', gridTemplateColumns: `${anchoPartida(!!arrastre)}px ${colsTemplate(visibleCols)}${canDelete ? ' 32px' : ''}`,
         gap: 6, alignItems: 'center', padding: '8px 10px', background: rowTint,
       }}>
-        <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)', fontWeight: 600 }}>{partida}</div>
+        <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+          {arrastre && (
+            <span
+              onPointerDown={(e) => arrastre.onDown(p.id, e)}
+              onPointerMove={arrastre.onMove}
+              onPointerUp={arrastre.onUp}
+              onPointerCancel={arrastre.onUp}
+              title="Arrastra para subir o bajar esta línea"
+              aria-label={`Mover la línea ${partida}`}
+              style={{
+                cursor: arrastre.activa ? 'grabbing' : 'grab', userSelect: 'none', color: 'var(--ink-quiet)',
+                padding: '2px 1px', borderRadius: 'var(--radius-md)',
+                // Sin esto el dedo hace scroll de la página en vez de arrastrar.
+                touchAction: 'none',
+              }}
+            >
+              ⠿
+            </span>
+          )}
+          {partida}
+        </div>
         {visibleCols.map((c, idx) => {
           // lookup_mm0x4kda es un mirror — Monday nunca lo deja escribir
           // directo, así que no está en writableIds. Lo real editable son

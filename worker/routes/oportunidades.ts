@@ -227,6 +227,39 @@ async function generarHojaValidacion(c: Context<{ Bindings: Env }>, itemId: numb
   }
 }
 
+/** Guarda el reacomodo manual de las líneas de un padre (Proyecto u
+ * Oportunidad) — worker/lib/itemOrder.ts. `ids` en el orden nuevo: todas las
+ * líneas, o solo un subconjunto (una tarjeta de proveedor de la OC), en cuyo
+ * caso se permutan los lugares que esas líneas ya ocupaban. Muta → scope 'own'. */
+async function guardarOrdenLineas(
+  c: Context<{ Bindings: Env }>, slug: 'proyectos' | 'oportunidades', childBoardId: number,
+): Promise<Response> {
+  const itemId = Number(c.req.param('id'));
+  if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
+  const viewer = c.get('viewer');
+  const row = await getItem(c.env, slug, itemId, viewer, 'own');
+  if (!row) return c.json({ error: 'not found' }, 404);
+
+  const body = await c.req.json().catch(() => ({} as Record<string, unknown>));
+  const pedidos: number[] = Array.isArray(body.ids) ? body.ids.map(Number) : [];
+  if (pedidos.length === 0 || pedidos.some(n => !Number.isFinite(n))) {
+    return jsonStatus({ error: 'ids inválidos' }, 400);
+  }
+  if (new Set(pedidos).size !== pedidos.length) return jsonStatus({ error: 'ids repetidos' }, 400);
+
+  const hijos = await childrenOf(c.env, slug, itemId, viewer);
+  const actual = hijos.map(h => Number(h.item_id));
+  const conocidas = new Set(actual);
+  // Una línea que no es de este padre no se acomoda "por default" al final:
+  // se rechaza la petición completa (mismo criterio que rejectUnknownQuery).
+  if (pedidos.some(id => !conocidas.has(id))) {
+    return jsonStatus({ error: slug === 'proyectos' ? 'línea ajena al proyecto' : 'línea ajena a la oportunidad' }, 400);
+  }
+
+  await setManualOrder(c.env, childBoardId, itemId, aplicarOrdenParcial(actual, pedidos));
+  return c.json({ ok: true });
+}
+
 export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
   // Pre-chequeo de solo lectura: la UI deshabilita "Mandar a costeo" y lista lo
   // que falta ANTES de que alguien pueda dar click. Sin ningún efecto.
@@ -1401,39 +1434,31 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
   // tab "Órdenes de compra", Efraín 2026-08-25): el orden en que Compras las
   // acomoda es el orden en que salen impresas en la OC. Se guarda en D1
   // (worker/lib/itemOrder.ts) porque Monday NO tiene cómo reordenar subitems
-  // por API, y el PDF ya lee de ahí — los dos motores del portal
-  // (generarOcPortal / generarOcNativeD1) arman sus líneas con `childrenOf`,
-  // que ordena por COALESCE(manual_order, monday_order).
+  // por API ("Changing position of subitems is not supported" — probado de
+  // nuevo el 2026-09-28 con change_item_position de la API 2025-10), y el PDF
+  // ya lee de ahí — los dos motores del portal (generarOcPortal /
+  // generarOcNativeD1) arman sus líneas con `childrenOf`, que ordena por
+  // COALESCE(manual_order, monday_order).
   //
   // El body trae SOLO las líneas de ese proveedor: se permutan los lugares que
   // ya ocupaban en el orden global del Proyecto, para no revolver las líneas de
   // los demás proveedores (ni las de Cotización/Tallas, que leen el mismo orden).
   app.put('/api/proyectos/:id/orden-lineas', async c => {
-    const itemId = Number(c.req.param('id'));
-    if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
     const viewer = c.get('viewer');
     if (viewer.role !== 'compras' && viewer.role !== 'admin') return jsonStatus({ error: 'forbidden' }, 403);
-    // Muta -> scope 'own' (worker/lib/dal.ts), igual que la nota de arriba.
-    const row = await getItem(c.env, 'proyectos', itemId, viewer, 'own');
-    if (!row) return c.json({ error: 'not found' }, 404);
-
-    const body = await c.req.json().catch(() => ({} as Record<string, unknown>));
-    const pedidos: number[] = Array.isArray(body.ids) ? body.ids.map(Number) : [];
-    if (pedidos.length === 0 || pedidos.some(n => !Number.isFinite(n))) {
-      return jsonStatus({ error: 'ids inválidos' }, 400);
-    }
-    if (new Set(pedidos).size !== pedidos.length) return jsonStatus({ error: 'ids repetidos' }, 400);
-
-    const hijos = await childrenOf(c.env, 'proyectos', itemId, viewer);
-    const actual = hijos.map(h => Number(h.item_id));
-    const conocidas = new Set(actual);
-    // Una línea que no es de este Proyecto no se acomoda "por default" al final:
-    // se rechaza la petición completa (mismo criterio que rejectUnknownQuery).
-    if (pedidos.some(id => !conocidas.has(id))) return jsonStatus({ error: 'línea ajena al proyecto' }, 400);
-
-    await setManualOrder(c.env, BOARDS.proyectos_sub.id, itemId, aplicarOrdenParcial(actual, pedidos));
-    return c.json({ ok: true });
+    return guardarOrdenLineas(c, 'proyectos', BOARDS.proyectos_sub.id);
   });
+
+  // El mismo asa ⠿, en la grid de Cotización de la Oportunidad (Jorge,
+  // 2026-09-28: "la opción que está en órdenes de compra donde podemos mover los
+  // productos de lugar"). Sin gate de rol: quien puede editar las líneas de ESA
+  // oportunidad (scope 'own': dueño, líder/auxiliar de su zona, admin) puede
+  // acomodarlas — la UI solo pinta el asa donde la grid es editable (no en
+  // Costeo ni en Validación). Se ve en la pestaña, en los PDFs que arma el
+  // portal con `childrenOf` y en la cotización NATIVA (generarCotizacionNative).
+  // La de cmp-tallas lee Monday y sigue saliendo en el orden de Monday.
+  app.put('/api/oportunidades/:id/orden-lineas', async c =>
+    guardarOrdenLineas(c, 'oportunidades', BOARDS.oportunidades_sub.id));
 
   // Cotización — vista previa generada nativa por el portal (2026-08-13), mismo
   // template visual que la OC a proveedor. SOLO vista previa: no se guarda en

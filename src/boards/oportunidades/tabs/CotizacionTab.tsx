@@ -15,7 +15,8 @@
 // the mirror catches up on refetch.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ColMeta, ColVal, ItemDetailDTO, ItemDTO, QuoteVersionDTO } from '../../../lib/api';
-import { patchItem, apiFetch, getCatalogoProductos, getProductoGenero, patchProductoGenero, restaurarLineaDividida, descartarAvisoDivision } from '../../../lib/apiClient';
+import { patchItem, apiFetch, getCatalogoProductos, getProductoGenero, patchProductoGenero, restaurarLineaDividida, descartarAvisoDivision, reordenarLineasOportunidad } from '../../../lib/apiClient';
+import { useReordenar } from '../../../lib/useReordenar';
 import { Button } from '../../../components/core/Button';
 import { toast } from '../../../components/core/Toaster';
 import { DivisionesBorradas } from './cotizacion/DivisionesBorradas';
@@ -38,7 +39,7 @@ import { ProductoActividadDrawer } from '../../generic/ProductoActividadDrawer';
 import { ColumnVisibilityPicker } from './cotizacion/ColumnVisibilityPicker';
 import {
   type RowEditState, EMPTY_ROW, inlineEditableCols,
-  GRID_COLS_COSTEO, GRID_COLS_VENTA, colsTemplate, displayProducto,
+  GRID_COLS_COSTEO, GRID_COLS_VENTA, colsTemplate, anchoPartida, displayProducto,
   loadHiddenCols, saveHiddenCols, gridWrapStyle, STICKY_PRODUCTO_STYLE,
   PRODUCTO_COL, PRODUCTO_TXT_COL, PRODUCTO_REL_COL, COLOR_COL,
   EMB_STATUS_COL, EMB_LABEL_CON, EMB_LABEL_SIN,
@@ -187,6 +188,22 @@ export function CotizacionTab({
     [precioOnly, capturaEnValidacion, lineEdits, zonaPrivada, ajusteLineEdits],
   );
   const canAddLines = lineEdits && editable;
+
+  // Asa ⠿ para acomodar las líneas arrastrando (Jorge, 2026-09-28 — la misma
+  // de Órdenes de compra, src/lib/useReordenar.ts). Donde se editan las líneas
+  // (no en Costeo ni en Validación) y solo en la grid de escritorio. El orden
+  // se guarda en el portal (Monday no deja reordenar subitems): lo ven esta
+  // pestaña, los PDFs del portal y la cotización nativa; la de cmp-tallas sale
+  // en el orden de Monday.
+  const puedeReordenar = canAddLines && !!oppId && !isMobile && products.length > 1;
+  const reorden = useReordenar(products, (ids) => reordenarLineasOportunidad(oppId!, ids));
+  // QuoteRow está memoizada: callbacks estables que siempre llaman al hook del
+  // render más reciente (mismo patrón que `latest`, más abajo).
+  const reordenRef = useRef(reorden);
+  reordenRef.current = reorden;
+  const arrastreDown = useCallback((id: string, e: React.PointerEvent) => reordenRef.current.onPointerDown(id)(e), []);
+  const arrastreMove = useCallback((e: React.PointerEvent) => reordenRef.current.onPointerMove(e), []);
+  const arrastreUp = useCallback(() => { void reordenRef.current.onPointerUp(); }, []);
 
   // "Ajustar línea" (Efraín, 2026-07-31): el complemento exacto de
   // `canAddLines` (edición inline libre) — es decir, siempre que la línea NO
@@ -835,7 +852,7 @@ export function CotizacionTab({
         <div>
           <div style={{
             ...gridWrapStyle,
-            display: 'grid', gridTemplateColumns: `28px ${colsTemplate(visibleCols)}${canAddLines ? ' 32px' : ''}`,
+            display: 'grid', gridTemplateColumns: `${anchoPartida(puedeReordenar)}px ${colsTemplate(visibleCols)}${canAddLines ? ' 32px' : ''}`,
             gap: 6, padding: '9px 10px', borderBottom: '1px solid var(--border)',
             font: '500 11px var(--font-ui)', color: 'var(--ink-tertiary)', background: 'var(--bg-raised)',
           }}>
@@ -853,11 +870,18 @@ export function CotizacionTab({
             ))}
             {canAddLines && <div />}
           </div>
-          {products.map((p, lineIdx) => (
+          {/* El ref envuelve SOLO las filas: el arrastre ubica la fila destino
+              midiendo los hijos de este contenedor (useReordenar). */}
+          <div ref={reorden.contenedor}>
+          {(puedeReordenar ? reorden.ordenadas : products).map((p, lineIdx) => (
             <QuoteRow
               key={p.id}
               product={p}
               partida={lineIdx + 1}
+              arrastre={puedeReordenar ? {
+                activa: reorden.arrastrando === p.id,
+                onDown: arrastreDown, onMove: arrastreMove, onUp: arrastreUp,
+              } : undefined}
               state={rowState(p.id)}
               visibleCols={visibleCols}
               variant={variant}
@@ -898,8 +922,12 @@ export function CotizacionTab({
               ajusteLabel={ajusteLabels.get(Number(p.id))}
             />
           ))}
+          </div>
+          {reorden.error && (
+            <div style={{ padding: '6px 12px', font: 'var(--text-caption)', color: 'var(--status-perdida)' }}>{reorden.error}</div>
+          )}
           {addingLineRow}
-          <TotalsRow variant={variant} visibleCols={visibleCols} products={products} rows={rowsView} showActionsCol={canAddLines} />
+          <TotalsRow variant={variant} visibleCols={visibleCols} products={products} rows={rowsView} showActionsCol={canAddLines} anchoPartida={anchoPartida(puedeReordenar)} />
         </div>
         {canAddLines && (
           <div style={{ padding: '16px', borderTop: '1px solid var(--border)', display: 'flex', gap: 8 }}>

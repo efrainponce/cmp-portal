@@ -1,5 +1,72 @@
 # Log de commits
 
+## 2026-09-28 (Actualizaciones, fase 3: reacciones con emoji)
+
+- **Reacciones con emoji en comentarios y respuestas del feed** (Jorge; los 6
+  del selector de Monday: 👍 👏 🙏 ❤️ 😃 ✅). Barra de cada comentario como la
+  de Monday: píldoras "👍 3" (nombres al pasar el mouse; clic pone/quita la
+  propia, resaltada en verde) + botón 😊+ con el selector + Responder.
+  - **Solo en el portal** (decisión de Jorge): tabla `update_reaccion` en D1,
+    con el nombre real de cada quien. No van a Monday a propósito: todo lo que
+    escribe el portal le aparece a Monday como del dueño del token (Efraín) y
+    Monday deja un solo like por persona — cinco personas reaccionando saldrían
+    allá como UN like de Efraín. Los likes dados DENTRO de Monday sí se
+    muestran, de solo lectura, junto a los del portal y sin contar dos veces a
+    la misma persona (`likes{reaction_type creator{name}}` en la misma consulta
+    del feed; verificado en vivo). Casi no se usan: 5 en 772 comentarios, todos
+    👍 ("+1" o null).
+  - Se guarda la CLAVE (`+1`, `clap`, `pray`, `heart`, `smile`, `check`), no el
+    emoji: ❤ llega con o sin selector de variación según el teclado
+    (`shared/reacciones.ts`).
+  - `POST /updates/:updateId/reacciones {tipo, activa}`: estado final, no
+    "alternar" (un doble clic no la voltea). Mismo permiso que comentar (leer
+    el item) y candado `estaEnFeed`: el comentario o respuesta tiene que ser del
+    feed que el viewer ya ve; si no, 404 sin guardar. Cuesta la misma consulta
+    a Monday que responder — la UI pinta la reacción al instante y la guarda
+    por detrás; si el server la rechaza, recarga el feed.
+  - Tabla lazy (`worker/lib/reacciones.ts`); migración opcional
+    `worker/migrations/2026-09-25-update-reaccion.sql`. Leer reacciones es
+    best-effort: una falla no tumba el feed.
+  - Pruebas: 11 de la lógica pura (agrupar, likes de Monday, cambio optimista),
+    9 de la ruta y 2 del feed. Probado en Chrome con API simulada: sumarse a un
+    👍 existente, ✅ desde el selector, quitar la propia, reaccionar a una
+    respuesta, y todo sigue tras recargar.
+
+## 2026-09-28 (Cotización: asa ⠿ para reordenar las líneas de la Oportunidad)
+
+- **Reordenar las líneas de la grid de Cotización arrastrando** (Jorge, rama
+  `ordenar-lineas-cotizacion` a pedido de Efraín: "la opción que está en
+  órdenes de compra donde podemos mover los productos de lugar"). La misma asa
+  ⠿ de la OC, junto al número de partida; se guarda al soltar, y soltar en su
+  lugar no manda nada.
+  - **Monday NO deja reordenar subitems por API** — probado el 2026-09-28 con
+    `change_item_position` (existe desde la API 2025-10): "Changing position of
+    subitems is not supported" sobre OPP-1090 - Test, sin cambiar nada. Así que
+    el orden vive en el portal (`item_order.manual_order`, el mismo de la OC) y
+    se ve en: la pestaña, los PDFs que arma el portal con `childrenOf` y la
+    cotización NATIVA (`generarCotizacionNative` ahora reacomoda lo que trae de
+    Monday con `ordenarComoElPortal`). **La cotización oficial de cmp-tallas
+    sigue saliendo en el orden de Monday** (lee Monday directo): para que el
+    cliente la reciba en este orden hay que encender `COTIZACION_NATIVE` o
+    cambiar cmp-tallas — decisión de Efraín.
+  - `PUT /api/oportunidades/:id/orden-lineas`: scope `'own'` (dueño,
+    líder/auxiliar de su zona, admin), sin gate de rol; la UI solo pinta el asa
+    donde las líneas son editables (no en Costeo ni Validación) y en escritorio.
+    Comparte `guardarOrdenLineas` con la de la OC (misma validación: ids
+    repetidos, ajenos o inválidos → 400), que conserva su gate Compras/admin.
+  - Front: `useReordenar` sale de `OrdenesSection` a `src/lib/useReordenar.ts`
+    (genérico). Arreglo de paso que también aplica a la OC: "soltar en el mismo
+    lugar" se compara contra el orden al EMPEZAR el arrastre — antes, tras un
+    primer reacomodo, un simple clic en el asa volvía a mandar el mismo orden.
+    La columna "#" pasa a 40 px con asa (`anchoPartida`, encabezado + filas +
+    totales). QuoteRow sigue memoizada: callbacks estables vía ref.
+  - `ordenarComoElPortal` pasa de `oc.ts` a `itemOrder.ts` (+ `ordenarPorPosicion`
+    pura). Pruebas: 8 de las rutas (incluida la regresión "un vendedor sigue sin
+    poder reacomodar la OC") y 3 del helper. Probado en Chrome con los datos de
+    ejemplo sin conexión: la línea sube, se renumera, un solo PUT.
+  - Pendiente, fuera de alcance: vista de celular; y la solicitud de costeo
+    nativa (`COSTEO_NATIVE`) sigue en el orden de Monday.
+
 ## 2026-09-25 (Aviso "Sin costo en Airtable" con link al producto; se quita el último costeo)
 
 - **Efraín: "no podemos usar el último costo"**. Se revierte el respaldo del

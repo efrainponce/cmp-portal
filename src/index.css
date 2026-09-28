@@ -70,6 +70,8 @@ input, textarea, select, button {
 .nav-item { background: transparent; transition: background .12s; }
 .nav-item.is-active { background: var(--fill-active); }
 .notif-bell-btn { background: transparent; }
+.reaccion-pildora, .reaccion-agregar, .reaccion-opcion { background: transparent; }
+.reaccion-pildora[aria-pressed="false"] { background: #fff; }
 .sidebar-collapse-btn { background: var(--surface-sidebar); }
 
 /* Solo con puntero real — en touch el :hover se "pega" tras el tap. */
@@ -81,6 +83,19 @@ input, textarea, select, button {
   .nav-item:not(.is-active):hover,
   .notif-bell-btn:hover {
     background: var(--fill-hover);
+  }
+
+  /* Reacciones del feed de Actualizaciones (2026-09-25). */
+  .reaccion-pildora[aria-pressed="false"]:hover,
+  .reaccion-agregar:hover {
+    background: var(--bg-sunken, #f3f3f3);
+  }
+  .reaccion-opcion {
+    transition: transform .1s;
+  }
+  .reaccion-opcion:hover {
+    transform: scale(1.18);
+    background: var(--bg-sunken, #f3f3f3);
   }
 
   .sidebar-collapse-btn:hover {
