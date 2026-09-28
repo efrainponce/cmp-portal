@@ -94,6 +94,26 @@ export async function setManualOrder(
   }
 }
 
+/** Línea recién creada: si el padre ya se reacomodó con el asa (tiene
+ * `manual_order`), la nueva entra al FINAL de ese orden. Sin esto, la
+ * relectura del árbol le daría su `monday_order` y, con líneas borradas de por
+ * medio, ese índice puede caer a media lista (Elisa, 2026-09-28: "que se
+ * agregue abajo y listo"). Sin orden manual no hace nada: el respaldo por orden
+ * de alta de childrenOf ya la deja abajo. */
+export async function alFinalDelOrdenManual(
+  env: Env, boardId: number, parentItemId: number, itemId: number,
+): Promise<void> {
+  await ensureItemOrderTable(env);
+  await env.DB.prepare(
+    `INSERT INTO item_order (board_id, item_id, parent_item_id, manual_order, updated_at)
+     SELECT ?, ?, ?, MAX(manual_order) + 1, ? FROM item_order
+      WHERE board_id = ? AND parent_item_id = ? AND manual_order IS NOT NULL
+     HAVING COUNT(*) > 0
+     ON CONFLICT(board_id, item_id) DO UPDATE SET
+       parent_item_id = excluded.parent_item_id, manual_order = excluded.manual_order, updated_at = excluded.updated_at`,
+  ).bind(boardId, itemId, parentItemId, new Date().toISOString(), boardId, parentItemId).run();
+}
+
 /** Acomoda líneas que vinieron de Monday como las muestra el portal. Las que
  * no tienen lugar en `orden` —recién creadas, todavía sin relectura del árbol—
  * se quedan al final, en el orden en que Monday las regresó. Pura. */
