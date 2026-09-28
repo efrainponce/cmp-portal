@@ -32,6 +32,22 @@
     👍 existente, ✅ desde el selector, quitar la propia, reaccionar a una
     respuesta, y todo sigue tras recargar.
 
+## 2026-09-28 (Asa ⠿ de las líneas también en Costeo y Validación)
+
+- **El asa para reacomodar las líneas ya sale en los boards de Costeo y
+  Validación** (Efraín: "¿esto puede salir en costeo?" + "que sea válido en
+  oportunidades y en costeo"). Antes iba atada a "líneas editables"
+  (`canAddLines`), que es falso en esas etapas. Reordenar no toca ningún valor
+  ni a Monday — solo `item_order.manual_order` — así que no descostea, no
+  versiona ni afecta `validar_costeo`.
+  - Un solo orden: Costeo y Validación son el mismo item de Oportunidades, y
+    `childrenOf` ordena por `(board de líneas, item)`. Lo que se acomoda en un
+    board se ve igual en el otro, en los PDFs del portal y en la cotización
+    nativa (cmp-tallas sigue en el orden de Monday).
+  - Queda fuera en una oportunidad ajena (`ownedByViewer === false`; el server
+    exige scope `'own'` — compras solo donde es Responsable compras), en el tab
+    de solo lectura de Proyectos (`soloLectura`) y en celular.
+
 ## 2026-09-28 (Cotización: asa ⠿ para reordenar las líneas de la Oportunidad)
 
 - **Reordenar las líneas de la grid de Cotización arrastrando** (Jorge, rama
