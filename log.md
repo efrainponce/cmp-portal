@@ -1,5 +1,19 @@
 # Log de commits
 
+## 2026-09-28 (Aviso "Costo sin actualizar hace N días" desde Airtable)
+
+- **Pedido de Efraín**: avisar cuando el costo lleva más de 30 días sin
+  actualizarse en Airtable.
+  - Campo nuevo en Airtable (tabla productos): **"Costo actualizado"**
+    (`fld0YELJC7CJIVyMK`, Last modified time que solo mira Costo Distribuidor),
+    creado por API el 2026-09-28; Airtable lo rellenó con el historial real.
+    No se usa "ultima modificacion" porque cambia con cualquier edición
+    (incluidas las Tallas Portal que escribe el portal).
+  - Al elegir un producto CON costo, se lee esa fecha (1 llamada a Airtable,
+    5 s de tope, si falla no avisa); si pasan más de 30 días, admin/compras
+    reciben "Costo sin actualizar hace N días: <producto>" con link al registro.
+    Una por persona, producto y día. `worker/lib/costoSinAirtable.ts` + test.
+
 ## 2026-09-28 (Actualizaciones, fase 3: reacciones con emoji)
 
 - **Reacciones con emoji en comentarios y respuestas del feed** (Jorge; los 6

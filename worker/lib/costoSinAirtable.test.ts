@@ -1,7 +1,7 @@
 // Aviso "Sin costo en Airtable" (Efraín, 2026-09-25): el costo NO se inventa,
 // se avisa con link al producto en Airtable.
 import { describe, it, expect } from 'vitest';
-import { airtableProductoUrl, faltaCosto } from './costoSinAirtable';
+import { airtableProductoUrl, faltaCosto, diasDesde } from './costoSinAirtable';
 
 const col = (id: string, text: string) => ({ id, text });
 
@@ -31,5 +31,17 @@ describe('airtableProductoUrl', () => {
     expect(airtableProductoUrl('')).toBeNull();
     expect(airtableProductoUrl('12443362292')).toBeNull();
     expect(airtableProductoUrl(' recFR8CKeTKaUTvNM ')).toBe('https://airtable.com/apprQnMOKPEBYt4AU/tblxZZLHRUAeJbGa2/recFR8CKeTKaUTvNM');
+  });
+});
+
+describe('diasDesde', () => {
+  const ahora = Date.parse('2026-09-28T12:00:00Z');
+  it('cuenta días completos desde "Costo actualizado"', () => {
+    expect(diasDesde('2026-08-28T12:00:00Z', ahora)).toBe(31);
+    expect(diasDesde('2026-08-29T13:00:00Z', ahora)).toBe(29);
+  });
+  it('sin fecha no hay número (y no se avisa)', () => {
+    expect(diasDesde(null, ahora)).toBeNull();
+    expect(diasDesde('', ahora)).toBeNull();
   });
 });
