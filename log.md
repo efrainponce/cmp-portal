@@ -1,5 +1,14 @@
 # Log de commits
 
+## 2026-09-28 (Se quita el aviso de costo con más de 30 días; se guarda el dato)
+
+- **Efraín confirmó con PAM**: el aviso "Costo sin actualizar hace N días" no
+  se necesita en el portal. Se quita; el único aviso que queda es "Sin costo
+  en Airtable" (cuando el Costo Distribuidor está vacío).
+- El dato se guarda: el campo "Costo actualizado" de Airtable
+  (`fld0YELJC7CJIVyMK`, solo mira Costo Distribuidor) se queda allá con su
+  historial para consultarlo. Documentado en `worker/lib/costoSinAirtable.ts`.
+
 ## 2026-09-28 (Cotización: la línea nueva ya no brinca de lugar)
 
 - **Elisa (video por WhatsApp): "que se agregue abajo y listo, no que pones el
