@@ -232,6 +232,13 @@ export const GRID_COLS_COSTEO: GridCol[] = [
 // en vez de encogerse — es responsive por construcción, no por media queries
 // (Efraín, 2026-07-21: "que la tabla llegue hasta avisos y se corte, que sea
 // responsive").
+/** Ancho de la columna "#": con el asa ⠿ de reordenar (2026-09-28) lleva
+ * "⠿ 1"; sin ella, solo el número. Encabezado, filas (QuoteRow) y totales usan
+ * el mismo valor para que las columnas no se desfasen. */
+export function anchoPartida(conAsa: boolean): number {
+  return conAsa ? 40 : 28;
+}
+
 export function colsTemplate(cols: GridCol[]): string {
   const [first, ...rest] = cols;
   const firstW = first?.width ?? 160;

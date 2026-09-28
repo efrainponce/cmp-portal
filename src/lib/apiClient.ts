@@ -901,6 +901,23 @@ export async function reordenarLineasOc(
   return { ok: true };
 }
 
+/** Reacomodo de las líneas de la Oportunidad (asa ⠿ de la grid de Cotización,
+ * 2026-09-28). `ids` = todas las líneas en el orden nuevo. Se guarda en el
+ * portal (Monday no deja reordenar subitems): lo ven la pestaña, los PDFs del
+ * portal y la cotización nativa; la de cmp-tallas sale en el orden de Monday. */
+export async function reordenarLineasOportunidad(
+  oportunidadId: string, ids: string[],
+): Promise<{ ok: boolean; error?: string }> {
+  const res = await apiFetch(`/oportunidades/${oportunidadId}/orden-lineas`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) return { ok: false, error: body.error ?? 'No se pudo guardar el orden.' };
+  return { ok: true };
+}
+
 /** Guarda la nota de UN proveedor (vacía = se borra). Devuelve la nota ya
  * recortada por el server, que es la que va a salir impresa. */
 export async function saveOcNota(

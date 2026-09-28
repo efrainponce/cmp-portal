@@ -94,6 +94,28 @@ export async function setManualOrder(
   }
 }
 
+/** Acomoda líneas que vinieron de Monday como las muestra el portal. Las que
+ * no tienen lugar en `orden` —recién creadas, todavía sin relectura del árbol—
+ * se quedan al final, en el orden en que Monday las regresó. Pura. */
+export function ordenarPorPosicion<T extends { id: string }>(lineas: T[], orden: Map<number, number>): T[] {
+  if (orden.size === 0) return lineas;
+  const alFinal = lineas.length + orden.size;
+  return lineas
+    .map((s, i) => ({ s, pos: orden.get(Number(s.id)) ?? alFinal + i }))
+    .sort((a, b) => a.pos - b.pos)
+    .map(x => x.s);
+}
+
+/** Las líneas que un motor trajo DIRECTO de Monday, en el orden del portal
+ * (manual si alguien ya arrastró, si no el de Monday). La usan la OC nativa y
+ * la cotización nativa (2026-09-28): sin esto imprimirían en el orden de Monday
+ * aunque en el portal se vean acomodadas de otra forma. */
+export async function ordenarComoElPortal<T extends { id: string }>(
+  env: Env, boardId: number, parentItemId: number, lineas: T[],
+): Promise<T[]> {
+  return ordenarPorPosicion(lineas, await ordenPortal(env, boardId, parentItemId));
+}
+
 /** Orden del portal (manual si lo hay, si no el de Monday) por item_id — para
  * los caminos que NO leen del espejo, como `generarOcNative`, que trae los
  * subitems directo de Monday y sin esto imprimiría la OC en el orden viejo. */

@@ -1,5 +1,40 @@
 # Log de commits
 
+## 2026-09-28 (Cotización: asa ⠿ para reordenar las líneas de la Oportunidad)
+
+- **Reordenar las líneas de la grid de Cotización arrastrando** (Jorge, rama
+  `ordenar-lineas-cotizacion` a pedido de Efraín: "la opción que está en
+  órdenes de compra donde podemos mover los productos de lugar"). La misma asa
+  ⠿ de la OC, junto al número de partida; se guarda al soltar, y soltar en su
+  lugar no manda nada.
+  - **Monday NO deja reordenar subitems por API** — probado el 2026-09-28 con
+    `change_item_position` (existe desde la API 2025-10): "Changing position of
+    subitems is not supported" sobre OPP-1090 - Test, sin cambiar nada. Así que
+    el orden vive en el portal (`item_order.manual_order`, el mismo de la OC) y
+    se ve en: la pestaña, los PDFs que arma el portal con `childrenOf` y la
+    cotización NATIVA (`generarCotizacionNative` ahora reacomoda lo que trae de
+    Monday con `ordenarComoElPortal`). **La cotización oficial de cmp-tallas
+    sigue saliendo en el orden de Monday** (lee Monday directo): para que el
+    cliente la reciba en este orden hay que encender `COTIZACION_NATIVE` o
+    cambiar cmp-tallas — decisión de Efraín.
+  - `PUT /api/oportunidades/:id/orden-lineas`: scope `'own'` (dueño,
+    líder/auxiliar de su zona, admin), sin gate de rol; la UI solo pinta el asa
+    donde las líneas son editables (no en Costeo ni Validación) y en escritorio.
+    Comparte `guardarOrdenLineas` con la de la OC (misma validación: ids
+    repetidos, ajenos o inválidos → 400), que conserva su gate Compras/admin.
+  - Front: `useReordenar` sale de `OrdenesSection` a `src/lib/useReordenar.ts`
+    (genérico). Arreglo de paso que también aplica a la OC: "soltar en el mismo
+    lugar" se compara contra el orden al EMPEZAR el arrastre — antes, tras un
+    primer reacomodo, un simple clic en el asa volvía a mandar el mismo orden.
+    La columna "#" pasa a 40 px con asa (`anchoPartida`, encabezado + filas +
+    totales). QuoteRow sigue memoizada: callbacks estables vía ref.
+  - `ordenarComoElPortal` pasa de `oc.ts` a `itemOrder.ts` (+ `ordenarPorPosicion`
+    pura). Pruebas: 8 de las rutas (incluida la regresión "un vendedor sigue sin
+    poder reacomodar la OC") y 3 del helper. Probado en Chrome con los datos de
+    ejemplo sin conexión: la línea sube, se renumera, un solo PUT.
+  - Pendiente, fuera de alcance: vista de celular; y la solicitud de costeo
+    nativa (`COSTEO_NATIVE`) sigue en el orden de Monday.
+
 ## 2026-09-25 (Aviso "Sin costo en Airtable" con link al producto; se quita el último costeo)
 
 - **Efraín: "no podemos usar el último costo"**. Se revierte el respaldo del
