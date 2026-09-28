@@ -1,5 +1,24 @@
 # Log de commits
 
+## 2026-09-28 (Cotización: la línea nueva ya no brinca de lugar)
+
+- **Elisa (video por WhatsApp): "que se agregue abajo y listo, no que pones el
+  modelo y se mueve; luego el color y se vuelve a mover"**. Causa: las líneas
+  sin fila en `item_order` —TODAS las de items nativos (Zona Efrain, nunca
+  pasan por `refetchItemTree`) y las de Monday antes de su primera relectura
+  del árbol— se desempataban por `items.name`. La línea nacía "Nueva línea"
+  (quedaba arriba de las "Stryke…"), y al elegir el producto el nombre cambiaba
+  y volvía a acomodarse alfabéticamente.
+  - `childrenOf`/`childrenOfMany` (`worker/lib/dal.ts`) desempatan por
+    `items.rowid` = orden de ALTA en el espejo (el upsert `ON CONFLICT DO
+    UPDATE` lo conserva). Efecto único: las oportunidades nativas que se veían
+    alfabéticas pasan a verse en el orden en que se capturaron.
+  - `alFinalDelOrdenManual` (`worker/lib/itemOrder.ts`): si el padre ya se
+    reacomodó con el asa ⠿, la línea nueva entra con `manual_order` = máx+1 —
+    si no, su `monday_order` podía caer a media lista tras borrar líneas. Se
+    llama al crear la línea (nativa y de Monday) en
+    `POST /api/oportunidades/:id/productos`.
+
 ## 2026-09-28 (Aviso "Costo sin actualizar hace N días" desde Airtable)
 
 - **Pedido de Efraín**: avisar cuando el costo lleva más de 30 días sin

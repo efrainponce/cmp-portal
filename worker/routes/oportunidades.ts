@@ -34,7 +34,7 @@ import {
 } from '../lib/proyectoImagenes';
 import { generarOcNative, generarOcNativeD1, generarOcPortal } from '../lib/oc';
 import { getOcNota, getOcNotas, setOcNota, OC_NOTA_MAX } from '../lib/ocNotas';
-import { aplicarOrdenParcial, setManualOrder } from '../lib/itemOrder';
+import { alFinalDelOrdenManual, aplicarOrdenParcial, setManualOrder } from '../lib/itemOrder';
 import { listarOc, getOc, type OcEstado } from '../lib/ocLedger';
 import { registrarArchivo, historialArchivos } from '../lib/archivoLog';
 import {
@@ -706,6 +706,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
             userId: viewer.monday_user_id, userEmail: viewer.email,
           }]);
         } catch { /* best-effort */ }
+        await alFinalDelOrdenManual(c.env, BOARDS.oportunidades_sub.id, itemId, lineId);
         return c.json({ ok: true, id: String(lineId) });
       }
 
@@ -727,6 +728,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
 
       await upsertItem(c.env, 'oportunidades_sub', subitem);
       const subitemId = Number(subitem.id);
+      await alFinalDelOrdenManual(c.env, BOARDS.oportunidades_sub.id, itemId, subitemId);
       c.executionCtx.waitUntil(
         refetchItem(c.env, BOARDS.oportunidades_sub.id, subitemId)
           .catch(err => console.log('[productos] refetch de la línea nueva: ' + String(err))),

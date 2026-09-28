@@ -245,9 +245,13 @@ export async function getItemTrusted(env: Env, slug: BoardSlug, itemId: number):
   return row ?? null;
 }
 
-// Orden: manual (Fase 2, futura) > el que Monday muestra > alfabético como
-// último respaldo para líneas que aún no tuvieron una relectura de árbol
-// completo (worker/sync/refetch.ts refetchItemTree — ver worker/lib/itemOrder.ts).
+// Orden: manual (el asa ⠿) > el que Monday muestra > orden de ALTA en el
+// espejo (`rowid`, que el upsert ON CONFLICT DO UPDATE conserva) para líneas
+// que aún no tuvieron una relectura de árbol completo (worker/sync/refetch.ts
+// refetchItemTree — ver worker/lib/itemOrder.ts) y para las de items nativos,
+// que nunca la tienen. Antes el respaldo era alfabético por `name` y la línea
+// nueva brincaba: nacía "Nueva línea", subía, y al elegir el producto el
+// nombre cambiaba y volvía a moverse (Elisa, 2026-09-28).
 export async function childrenOf(env: Env, parentSlug: BoardSlug, itemId: number, viewer: Identity): Promise<MirrorItem[]> {
   const childSlug = childSlugOf(parentSlug);
   if (!childSlug) return [];
@@ -257,7 +261,7 @@ export async function childrenOf(env: Env, parentSlug: BoardSlug, itemId: number
   const sql = `SELECT items.* FROM items
     LEFT JOIN item_order io ON io.board_id = items.board_id AND io.item_id = items.item_id
     WHERE items.board_id = ? AND items.parent_item_id = ? AND (${scope.where})
-    ORDER BY COALESCE(io.manual_order, io.monday_order, 999999), items.name`;
+    ORDER BY COALESCE(io.manual_order, io.monday_order, 999999), items.rowid`;
   const res = await env.DB.prepare(sql).bind(childBoard.id, itemId, ...scope.binds).all<MirrorItem>();
   return res.results ?? [];
 }
@@ -280,7 +284,7 @@ export async function childrenOfMany(
     const sql = `SELECT items.* FROM items
       LEFT JOIN item_order io ON io.board_id = items.board_id AND io.item_id = items.item_id
       WHERE items.board_id = ? AND items.parent_item_id IN (${lote.map(() => '?').join(',')}) AND (${scope.where})
-      ORDER BY COALESCE(io.manual_order, io.monday_order, 999999), items.name`;
+      ORDER BY COALESCE(io.manual_order, io.monday_order, 999999), items.rowid`;
     const res = await env.DB.prepare(sql).bind(childBoard.id, ...lote, ...scope.binds).all<MirrorItem>();
     for (const row of res.results ?? []) {
       if (row.parent_item_id == null) continue;
