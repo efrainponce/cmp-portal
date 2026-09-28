@@ -190,12 +190,17 @@ export function CotizacionTab({
   const canAddLines = lineEdits && editable;
 
   // Asa ⠿ para acomodar las líneas arrastrando (Jorge, 2026-09-28 — la misma
-  // de Órdenes de compra, src/lib/useReordenar.ts). Donde se editan las líneas
-  // (no en Costeo ni en Validación) y solo en la grid de escritorio. El orden
-  // se guarda en el portal (Monday no deja reordenar subitems): lo ven esta
-  // pestaña, los PDFs del portal y la cotización nativa; la de cmp-tallas sale
-  // en el orden de Monday.
-  const puedeReordenar = canAddLines && !!oppId && !isMobile && products.length > 1;
+  // de Órdenes de compra, src/lib/useReordenar.ts), solo en la grid de
+  // escritorio. El orden se guarda en el portal (Monday no deja reordenar
+  // subitems): lo ven esta pestaña, los PDFs del portal y la cotización nativa;
+  // la de cmp-tallas sale en el orden de Monday. Desde 2026-09-28 también en
+  // Costeo y Validación (Efraín: "¿esto puede salir en costeo?"): no depende de
+  // que las líneas se editen porque no toca ningún valor ni a Monday — no
+  // descostea ni versiona. Fuera en una oportunidad ajena (el server exige
+  // scope 'own': compras solo donde es Responsable compras) y en la vista de
+  // solo lectura de Proyectos.
+  const puedeReordenar = editable && !soloLectura && item?.ownedByViewer !== false
+    && !!oppId && !isMobile && products.length > 1;
   const reorden = useReordenar(products, (ids) => reordenarLineasOportunidad(oppId!, ids));
   // QuoteRow está memoizada: callbacks estables que siempre llaman al hook del
   // render más reciente (mismo patrón que `latest`, más abajo).
