@@ -42,6 +42,8 @@ function KindBadge({ kind }: { kind: string }) {
     costeo_incompleto: { letter: '!', color: 'var(--status-esperando)' },
     // Producto sin Costo Distribuidor en Airtable (worker/lib/costoSinAirtable.ts).
     costo_sin_airtable: { letter: '$', color: 'var(--status-perdida)' },
+    // Costo con más de 30 días sin actualizar en Airtable (2026-09-28).
+    costo_desactualizado: { letter: '$', color: 'var(--status-esperando)' },
     stage_change: { letter: '→', color: 'var(--status-confirmado)' },
     project_status_change: { letter: '→', color: 'var(--status-confirmado)' },
   };
