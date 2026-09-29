@@ -58,6 +58,11 @@ export interface EstatusProyecto {
   /** Fecha Entrega del Proyecto (la que sube el vendedor), YYYY-MM-DD o ''. */
   fechaEntrega: string;
   documentacion: string;
+  /** Primera vez que el Proyecto pasó a "Tallas Confirmadas" (el vendedor
+   * confirmó tallas → le toca a Compras), YYYY-MM-DD o ''. De activity_log. */
+  tallasConfirmadas?: string;
+  /** Primera vez que pasó a "Ordenes de compra listas", YYYY-MM-DD o ''. */
+  ocListas?: string;
   lineas: EstatusLinea[];
   /** Resumen libre por producto+color (producto_resumen), llave `producto|color`. */
   resumenes: Record<string, string>;
@@ -102,6 +107,20 @@ export function fechaCorta(iso: string): string {
   if (!m) return iso.trim();
   const mes = MESES[Number(m[2]) - 1];
   return mes ? `${m[3]}-${mes}-${m[1].slice(2)}` : iso.trim();
+}
+
+/** Días entre hoy y la Fecha Entrega del contrato, en palabras: "Faltan 29
+ * días", "Vence hoy", "Vencido hace 3 días". Fechas YYYY-MM-DD (hoy en hora de
+ * CDMX, lo arma el llamador). Sin fecha o proyecto terminado ⇒ texto fijo. */
+export function diasParaEntregar(fechaEntrega: string, hoy: string, estadoProyecto = ''): string {
+  if (/terminado/i.test(estadoProyecto)) return 'Proyecto terminado';
+  const a = /^(\d{4})-(\d{2})-(\d{2})/.exec(fechaEntrega.trim());
+  const b = /^(\d{4})-(\d{2})-(\d{2})/.exec(hoy.trim());
+  if (!a || !b) return 'Sin fecha de entrega';
+  const dias = Math.round((Date.UTC(+a[1], +a[2] - 1, +a[3]) - Date.UTC(+b[1], +b[2] - 1, +b[3])) / 86_400_000);
+  if (dias === 0) return 'Vence hoy';
+  if (dias > 0) return `Faltan ${dias} ${dias === 1 ? 'día' : 'días'}`;
+  return `Vencido hace ${-dias} ${dias === -1 ? 'día' : 'días'}`;
 }
 
 /** Misma llave que groupByProductoColor (TallasSection.tsx) — con ella cuadra

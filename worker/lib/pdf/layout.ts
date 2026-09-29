@@ -116,6 +116,10 @@ export interface DocumentMeta {
    * que no caben en 516pt de contenido (hoja de costeo de Validación,
    * 2026-08-14: ~20 columnas). */
   landscape?: boolean;
+  /** Márgenes mínimos para meter la mayor información por hoja (Estatus de
+   * proyectos, 2026-09-29: "carta horizontal con poco margen, como la hoja de
+   * Elisa"). El encabezado/pie se dibujan igual, solo más pegados al borde. */
+  compacto?: boolean;
 }
 
 /** Medidas de página resueltas UNA vez por documento — todo lo que dibuja
@@ -131,18 +135,19 @@ interface Metrics {
   footerTop: number;
 }
 
-function metricsFor(landscape: boolean): Metrics {
+function metricsFor(landscape: boolean, compacto = false): Metrics {
   const size = landscape ? { width: LETTER.height, height: LETTER.width } : LETTER;
-  const contentLeft = MARGIN;
-  const contentRight = size.width - MARGIN;
+  const margin = compacto ? 20 : MARGIN;
+  const contentLeft = margin;
+  const contentRight = size.width - margin;
   return {
     pageWidth: size.width,
     pageHeight: size.height,
     contentLeft,
     contentRight,
     contentWidth: contentRight - contentLeft,
-    headerBottom: HEADER_BOTTOM,
-    footerTop: size.height - FOOTER_MARGIN,
+    headerBottom: compacto ? 78 : HEADER_BOTTOM,
+    footerTop: size.height - (compacto ? 30 : FOOTER_MARGIN),
   };
 }
 
@@ -229,7 +234,10 @@ class Cursor {
 }
 
 function drawHeading(pdf: PdfWriter, cur: Cursor, m: Metrics, text: string): void {
-  cur.ensure(30);
+  // 70 y no 30: un título pide espacio para al menos un renglón de lo que
+  // encabeza — si no, queda huérfano al pie de la hoja y su contenido en la
+  // siguiente.
+  cur.ensure(70);
   cur.y += 6;
   pdf.text(cur.page, m.contentLeft, cur.y, text.toUpperCase(), { size: 9, font: 'HB', color: ACCENT });
   cur.y += 5;
@@ -667,7 +675,7 @@ function drawChrome(pdf: PdfWriter, m: Metrics, meta: DocumentMeta): void {
 
 /** Renderiza los bloques a un PDF completo (encabezado/pie incluidos). */
 export function renderDocument(meta: DocumentMeta, blocks: Block[]): Uint8Array {
-  const m = metricsFor(!!meta.landscape);
+  const m = metricsFor(!!meta.landscape, !!meta.compacto);
   const pdf = new PdfWriter({ width: m.pageWidth, height: m.pageHeight });
   const cur = new Cursor(pdf, m);
 

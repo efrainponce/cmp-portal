@@ -15,7 +15,7 @@ import type { PdfImageData } from './png';
 import { LOGO_JPG_BASE64, CMP_ORANGE } from './logo';
 import { llaveFotoOc } from '../../../shared/ocFotoLlave';
 import {
-  estatusDeLineas, fechaCorta, textoEmbellecimientos, TONO_FILL,
+  diasParaEntregar, estatusDeLineas, fechaCorta, textoEmbellecimientos, TONO_FILL,
   type EstatusProyecto,
 } from '../../../shared/estatusProyecto';
 
@@ -31,6 +31,8 @@ export interface EstatusProyectoInput {
   /** Qué se pidió cuando son varios ("Zona Sureste", "lo filtrado en pantalla"). */
   alcance?: string;
   fecha: string;
+  /** Hoy en CDMX, YYYY-MM-DD — para "Faltan N días". Ausente ⇒ no se calcula. */
+  hoy?: string;
   /** Foto de catálogo por producto (la misma que la OC con imágenes), llave =
    * `llaveFotoOc(sku, producto)`: el SKU, o el nombre si la línea no trae SKU. Ausente ⇒ la columna Foto no sale. Un SKU sin foto
    * en el mapa sale con el recuadro "Sin foto". */
@@ -40,7 +42,7 @@ export interface EstatusProyectoInput {
   fotosOmitidas?: number;
 }
 
-function bloquesDeProyecto(p: EstatusProyecto, imagenes?: Map<string, PdfImageData>): Block[] {
+function bloquesDeProyecto(p: EstatusProyecto, imagenes?: Map<string, PdfImageData>, hoy?: string): Block[] {
   const { grupos, sueltos } = estatusDeLineas(p.lineas, p.resumenes);
   const conProveedor = grupos.some(g => g.proveedor);
   const conEmbell = grupos.some(g => g.embellecimientos.length > 0);
@@ -51,21 +53,36 @@ function bloquesDeProyecto(p: EstatusProyecto, imagenes?: Map<string, PdfImageDa
     ? `${entregadas} de ${total} piezas entregadas (${Math.round((entregadas / total) * 100)}%)`
     : '—';
 
+  // Franja de UN renglón con los datos del proyecto (antes un kv de media
+  // hoja): carta horizontal con poco margen, lo más posible por hoja, como la
+  // hoja de Elisa (Efraín, 2026-09-29). Incluye la línea de tiempo que pidió
+  // Elisa: tallas confirmadas (pasa a Compras), OC listas, entrega del
+  // contrato y días que faltan.
+  const franja: [string, string, number][] = [
+    ['Institución', p.institucion || '—', 0.12],
+    ['Vendedor', p.vendedor || '—', 0.13],
+    ['Estado', p.estadoProyecto || '—', 0.11],
+    ['Tallas conf. (a Compras)', p.tallasConfirmadas ? fechaCorta(p.tallasConfirmadas) : 'Todavía no', 0.12],
+    ['OC listas', p.ocListas ? fechaCorta(p.ocListas) : 'Todavía no', 0.08],
+    ['Entrega contrato', p.fechaEntrega ? fechaCorta(p.fechaEntrega) : 'Sin fecha', 0.1],
+    ...(hoy ? [['Días p/ entregar', diasParaEntregar(p.fechaEntrega, hoy, p.estadoProyecto), 0.1] as [string, string, number]] : []),
+    ['Documentación', p.documentacion || 'Sin cargar', 0.1],
+    ['Avance', avance, 0.14],
+  ];
+  const anchoFranja = franja.reduce((s, [, , w]) => s + w, 0);
   const blocks: Block[] = [
     { kind: 'heading', text: [p.folio, p.nombre].filter(Boolean).join(' — ') },
     {
-      kind: 'kv',
-      columns: 2,
-      rows: [
-        ['Institución', p.institucion || '—'],
-        ['Vendedor', p.vendedor || '—'],
-        ['Zona', p.zona || '—'],
-        ['Estado del proyecto', p.estadoProyecto || '—'],
-        ['Fecha de entrega', p.fechaEntrega ? fechaCorta(p.fechaEntrega) : 'Sin fecha'],
-        ['Documentación', p.documentacion || 'Sin cargar'],
-        ['Avance', avance],
-      ],
+      kind: 'wrapTable',
+      columns: franja.map(([header, , w]) => ({ header, width: w / anchoFranja })),
+      rows: [franja.map(([, v]) => v)],
+      wrapCols: franja.map((_, i) => i),
+      headerFill: '#eef1f5',
+      headerTextColor: '#5b6472',
+      cellSize: 8,
+      headerSize: 6.5,
     },
+    { kind: 'spacer', height: 4 },
   ];
 
   if (grupos.length === 0) {
@@ -77,8 +94,8 @@ function bloquesDeProyecto(p: EstatusProyecto, imagenes?: Map<string, PdfImageDa
   // Anchos que suman 1 en las 4 combinaciones (foto × proveedor); la foto se
   // lleva un poco de Producto y de Estatus, nunca de Cant./Entrega. Con
   // Embellecimientos (una línea por zona) se re-escalan para seguir sumando 1.
-  const foto: TableColumn[] = conFoto ? [{ header: 'Foto', width: 0.09, align: 'center' }] : [];
-  const extraTxt = conFoto ? 0 : 0.045;
+  const foto: TableColumn[] = conFoto ? [{ header: 'Foto', width: 0.06, align: 'center' }] : [];
+  const extraTxt = conFoto ? 0 : 0.03;
   const base: TableColumn[] = conProveedor
     ? [
         { header: '#', width: 0.04 },
@@ -126,7 +143,7 @@ function bloquesDeProyecto(p: EstatusProyecto, imagenes?: Map<string, PdfImageDa
     // Producto, Proveedor, Estatus y Embellecimientos envuelven; lo demás es corto.
     wrapCols: [iProducto, iProveedor, iEstatus, iEmbell].filter(i => i >= 0),
     rowFills: grupos.map(g => TONO_FILL[g.tono]),
-    ...(conFoto ? { imageCol: 1, rowImages: grupos.map(g => imagenes?.get(llaveFotoOc(g.sku, g.producto === '—' ? '' : g.producto)) ?? null) } : {}),
+    ...(conFoto ? { imageHeight: 28, imageCol: 1, rowImages: grupos.map(g => imagenes?.get(llaveFotoOc(g.sku, g.producto === '—' ? '' : g.producto)) ?? null) } : {}),
     headerFill: CMP_ORANGE,
     headerTextColor: '#ffffff',
     cellSize: 8,
@@ -147,7 +164,7 @@ export function buildEstatusProyectoBlocks(input: EstatusProyectoInput): Block[]
   const blocks: Block[] = [
     {
       kind: 'note',
-      text: `Un renglón por producto y color (las tallas van sumadas; los embellecimientos van en su columna, una línea por zona con su estado). Corte al ${input.fecha}. Verde = entregado al cliente · Azul = en proceso · Rojo = incidencia o retraso · Sin color = pendiente de surtir.`
+      text: `Corte al ${input.fecha}. Un renglón por producto y color (tallas sumadas); embellecimientos en su columna, una línea por zona. Verde = entregado · Azul = en proceso · Rojo = incidencia o retraso · Sin color = pendiente.`
         + (input.fotosOmitidas ? ` Fotos: se buscaron las de los primeros productos; ${input.fotosOmitidas} más salen sin foto en esta corrida — filtra a menos proyectos para verlas todas.` : ''),
     },
     { kind: 'spacer', height: 4 },
@@ -164,7 +181,7 @@ export function buildEstatusProyectoBlocks(input: EstatusProyectoInput): Block[]
       blocks.push({ kind: 'text', text: `Zona ${p.zona || 'sin asignar'}`, size: 14, bold: true, color: CMP_ORANGE });
       blocks.push({ kind: 'divider' });
     }
-    blocks.push(...bloquesDeProyecto(p, input.imagenes));
+    blocks.push(...bloquesDeProyecto(p, input.imagenes, input.hoy));
   }
   return blocks;
 }
@@ -183,6 +200,7 @@ export function buildEstatusProyectoPdf(input: EstatusProyectoInput): Uint8Array
     hideGeneratedByLine: true,
     // Siempre horizontal, carta (Efraín, 2026-09-29: "para ver más info").
     landscape: true,
+    compacto: true,
   };
   return renderDocument(meta, buildEstatusProyectoBlocks(input));
 }
