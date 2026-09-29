@@ -295,6 +295,7 @@ y `shared/estadoProductoBuckets.ts`.
 - [src/components/documents/SignaturePad.tsx](src/components/documents/SignaturePad.tsx) — Captura del trazo con pointer events; exporta JPEG (el writer solo embebe DCTDecode). Exports: SignaturePad, SignaturePadHandle.
 - [src/components/forms/ChipSelect.tsx](src/components/forms/ChipSelect.tsx) — Picker de pills one-click para opciones pequeñas. Exports: ChipSelect.
 - [src/components/forms/FilterBar.tsx](src/components/forms/FilterBar.tsx) — Fila de selects "Todos"-first para filtrar. Exports: FilterBar.
+- [src/components/forms/FiltrosMenu.tsx](src/components/forms/FiltrosMenu.tsx) — Botón "Filtros" (con contador) + panel con un select por filtro; los activos quedan como chips con × junto al botón. Lo usa el Reporte de Proyectos (Zona/Estado/Proveedor/Vendedor/Compras). Exports: FiltroDef, FiltrosMenu.
 - [src/components/forms/FormField.tsx](src/components/forms/FormField.tsx) — Campo editable genérico para create forms. Exports: FormField.
 - [src/components/forms/PickerRow.tsx](src/components/forms/PickerRow.tsx) — Componente picker row para forms. Exports: PickerRow.
 - [src/components/forms/ProductPicker.tsx](src/components/forms/ProductPicker.tsx) — Picker de producto del catálogo para líneas de cotización (busca por nombre o SKU), reemplaza al datalist nativo. Exports: ProductoChoice, ProductPicker.
