@@ -93,6 +93,8 @@ const TODOS = '';
 /** Opción del filtro Estado para proyectos sin etapa (o con un label que el
  * mirror no conoce): el Reporte los lista todos, así que también se filtran. */
 const SIN_ESTADO = '_sin';
+/** project_status "Proyecto Terminado" (shared/column-meta.gen.ts). */
+const TERMINADO = '1';
 const selectStyle: React.CSSProperties = {
   height: 36, font: 'var(--text-label)', color: 'var(--ink)',
   border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '0 10px',
@@ -216,7 +218,10 @@ export function ProyectoBoardList({ config, q, onSearch, onOpen, onReady, header
   // "por zona o vendedor". Como los demás filtros, no se guarda entre sesiones.
   const [zonaFiltro, setZonaFiltro] = useState(TODOS);
   // Filtro de Estado (Efraín, 2026-09-29): el Reporte lista TODAS las etapas.
-  const [estadoF, setEstadoF] = useState(TODOS);
+  // Multiselect; se guardan los estados QUITADOS (no los marcados) para que una
+  // etapa nueva aparezca sola. Por default el Reporte esconde los terminados
+  // (Efraín, 2026-09-29) — el chip queda a la vista, un × los regresa.
+  const [estadosOcultos, setEstadosOcultos] = useState<string[]>(() => (config.key === 'ejecucion' ? [TERMINADO] : []));
   const estadoDe = (it: ItemDTO) => {
     const idx = statusIndex(it.cols[STATUS_COL]);
     return statusCol?.labels?.[idx] ? idx : SIN_ESTADO;
@@ -250,7 +255,7 @@ export function ProyectoBoardList({ config, q, onSearch, onOpen, onReady, header
   const palabras = q.trim().split(/\s+/).filter(Boolean);
   const items = statusItems.filter((it) => {
     if (zonaFiltro !== TODOS && (it.cols[ZONA_COL]?.text?.trim() || '') !== zonaFiltro) return false;
-    if (estadoF !== TODOS && estadoDe(it) !== estadoF) return false;
+    if (estadosOcultos.includes(estadoDe(it))) return false;
     if (conFiltros) {
       if (proveedor !== TODOS && !extras[it.id]?.proveedores.includes(proveedor)) return false;
       if (vendedorF !== TODOS && !personas(it, VENDEDOR_COL).includes(vendedorF)) return false;
@@ -271,15 +276,21 @@ export function ProyectoBoardList({ config, q, onSearch, onOpen, onReady, header
     ].filter((t): t is string => !!t);
     return searchMatches(haystack, q);
   });
-  const hayFiltro = proveedor !== TODOS || vendedorF !== TODOS || comprasF !== TODOS || zonaFiltro !== TODOS || estadoF !== TODOS;
-  const quitarFiltros = () => { setProveedor(TODOS); setVendedorF(TODOS); setComprasF(TODOS); setZonaFiltro(TODOS); setEstadoF(TODOS); };
+  // Solo cuentan los quitados que de verdad hay en la lista.
+  const estadosQuitados = opciones.estados.filter((e) => estadosOcultos.includes(e.value));
+  const hayFiltro = proveedor !== TODOS || vendedorF !== TODOS || comprasF !== TODOS || zonaFiltro !== TODOS || estadosQuitados.length > 0;
+  const quitarFiltros = () => { setProveedor(TODOS); setVendedorF(TODOS); setComprasF(TODOS); setZonaFiltro(TODOS); setEstadosOcultos([]); };
   const aOpciones = (xs: string[]) => xs.map((x) => ({ value: x, label: x }));
   // Ya eran cinco selects sueltos en la barra (Efraín, 2026-09-29): van juntos
   // detrás de un botón "Filtros", y los activos quedan como chips a la vista.
   // Estado solo se ofrece si la lista trae más de uno (Logística es una sola etapa).
   const filtros: FiltroDef[] = [
     { key: 'zona', label: 'Zona', todos: 'Todas', value: zonaFiltro, onChange: setZonaFiltro, options: aOpciones(zonas) },
-    { key: 'estado', label: 'Estado', todos: 'Todos', value: estadoF, onChange: setEstadoF, options: opciones.estados.length > 1 ? opciones.estados : [] },
+    {
+      key: 'estado', label: 'Estado', todos: 'Todos', multi: true, options: opciones.estados.length > 1 ? opciones.estados : [],
+      values: opciones.estados.filter((e) => !estadosOcultos.includes(e.value)).map((e) => e.value),
+      onChange: (marcados) => setEstadosOcultos(opciones.estados.filter((e) => !marcados.includes(e.value)).map((e) => e.value)),
+    },
     { key: 'proveedor', label: 'Proveedor', todos: 'Todos', value: proveedor, onChange: setProveedor, options: aOpciones(opciones.proveedores) },
     { key: 'vendedor', label: 'Vendedor', todos: 'Todos', value: vendedorF, onChange: setVendedorF, options: aOpciones(opciones.vendedores) },
     { key: 'compras', label: 'Compras', todos: 'Todos', value: comprasF, onChange: setComprasF, options: aOpciones(opciones.compras) },
@@ -376,7 +387,8 @@ export function ProyectoBoardList({ config, q, onSearch, onOpen, onReady, header
               onClick={() => {
                 const alcance = [
                   zonaFiltro !== TODOS && `Zona ${zonaFiltro}`,
-                  estadoF !== TODOS && opciones.estados.find((e) => e.value === estadoF)?.label, vendedorF !== TODOS && vendedorF,
+                  estadosQuitados.length > 0 && opciones.estados.filter((e) => !estadosOcultos.includes(e.value)).map((e) => e.label).join(', '),
+                  vendedorF !== TODOS && vendedorF,
                   comprasF !== TODOS && comprasF, proveedor !== TODOS && proveedor, q.trim() && `"${q.trim()}"`,
                 ].filter(Boolean).join(' · ') || config.title;
                 const qs = new URLSearchParams({ ids: items.map((it) => it.id).join(','), alcance });

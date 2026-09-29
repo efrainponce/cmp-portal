@@ -1,5 +1,17 @@
 # Log de commits
 
+## 2026-09-29 (Reporte de Proyectos: filtro de Estado multiselect, sin terminados por default)
+
+- **Efraín**: "en filtros de reporte de proyecto, necesito poder elegir el
+  estado del proyecto en multiselect. Por defecto que se escondan los terminados".
+  - Estado ahora son casillas (una por etapa que hay en la lista) dentro del
+    botón "Filtros"; "Todos" las vuelve a marcar.
+  - El Reporte abre con "Proyecto Terminado" desmarcado: el chip
+    "Estado: sin Proyecto Terminado" queda a la vista y su × los regresa.
+    Se guardan las etapas QUITADAS, así una etapa nueva aparece sola.
+  - `FiltrosMenu` acepta filtros `multi` (checkboxes); el alcance del PDF de
+    estatus lista las etapas marcadas.
+
 ## 2026-09-29 (Ejecución: tabla tipo Monday — estado y comentario en línea, varias tallas a la vez)
 
 - **Efraín**: "En Monday es más fácil, tienes líneas y comentarios y estado por
