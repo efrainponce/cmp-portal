@@ -32,7 +32,10 @@ export function encodeColumnValue(type: string, raw: string): unknown {
       // Form sends "CC:number" (see FormField.tsx's phone country selector).
       const i = value.indexOf(':');
       const country = i === -1 ? 'MX' : value.slice(0, i);
-      const number = (i === -1 ? value : value.slice(i + 1)).trim();
+      // Solo dígitos: Monday rechaza "55 4830-1021" o "(55) 4830 1021" con
+      // ColumnValueException y tumba el create completo (5 intentos fallidos
+      // al dar de alta un proveedor, 2026-09-29).
+      const number = (i === -1 ? value : value.slice(i + 1)).replace(/\D/g, '');
       if (number === '') return '';
       return { phone: number, countryShortName: country || 'MX' };
     }
