@@ -138,6 +138,16 @@ describe('embellecimientos en la celda del producto', () => {
     expect(g.tono).toBe('incidencia');
   });
 
+  it('liga también por la columna de zona de la ✨ (Producto con descripción larga)', () => {
+    // PRO-0141 real: la ✨ trae la especificación en Producto y el texto corto
+    // del producto en su columna de zona.
+    const [g] = estatusDeLineas([
+      chaleco({ zonas: { [ESPALDA]: 'Texto bordado directo' } }),
+      emb('Espalda', 'Camisa tactica En la espalda parte superior, bordado…', { zonas: { [ESPALDA]: 'Texto bordado directo' } }),
+    ], {}).grupos;
+    expect(g.embellecimientos).toEqual([{ zona: 'Espalda', texto: 'Texto bordado directo', estado: 'En embellecimiento' }]);
+  });
+
   it('una ✨ que ningún producto reclama sale en sueltos, no se pierde', () => {
     const { sueltos } = estatusDeLineas([chaleco({}), emb('Otros', 'Código QR')], {});
     expect(sueltos).toEqual([{ zona: 'Otros', texto: 'Código QR', estado: 'En embellecimiento' }]);
