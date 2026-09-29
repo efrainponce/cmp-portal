@@ -1,5 +1,25 @@
 # Log de commits
 
+## 2026-09-29 (Ejecución: tabla tipo Monday — estado y comentario en línea, varias tallas a la vez)
+
+- **Efraín**: "En Monday es más fácil, tienes líneas y comentarios y estado por
+  producto; ahora tienes que darle click a cada talla, no es funcional".
+  - Cada producto+color es una tabla con un renglón por talla: **Estado**
+    (select del color del estado, guarda al elegir), **Comentario** y
+    **Entrega prov.** editables ahí mismo, y **Último cambio** (fecha · quién,
+    clic = historial de la talla). Adiós chips + popover.
+  - Varias tallas a la vez: casilla por talla y por producto + barra abajo
+    ("Cambiar estado a… + comentario para todas → Aplicar"), o **"Todas a…"**
+    en el encabezado del producto. Se guardan de 4 en 4.
+  - Incidencia/Retraso sigue pidiendo comentario: en el renglón abre el
+    comentario en rojo (vacío, para contar qué pasó ahora) y no guarda hasta
+    escribirlo; en la barra, no aplica sin él.
+  - Filtro por estado con conteos arriba (p. ej. solo las de Incidencia).
+  - Preview local mientras el espejo alcanza (se descarta en cuanto el espejo
+    cambia, sea a lo nuestro o a lo que alguien puso en Monday).
+  - Todo cambio de estado manda también el comentario: así queda en
+    `estado_producto_historial`. Mismos permisos (compras/admin escriben).
+
 ## 2026-09-29 (Estatus PDF: los embellecimientos también ligan por su columna de zona)
 
 - Probando con proyectos reales (PRO-0141, Penales Camp): varias líneas ✨
