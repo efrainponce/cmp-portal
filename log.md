@@ -1,5 +1,19 @@
 # Log de commits
 
+## 2026-09-28 ("Falta costo en Airtable" es un warning en la línea, no notificación)
+
+- **Efraín**: no se necesita notificación, solo un warning en la línea.
+  - Se quita la notificación "Sin costo en Airtable" (`worker/lib/costoSinAirtable.ts`
+    y su llamada en `outbox.ts`). La columna `notifications.link` se queda.
+  - El warning "Falta costo en Airtable" (ya existía, solo en Costeo) ahora sale
+    en CUALQUIER vista cuando la línea no tiene costo y el catálogo tampoco —
+    en la Zona Efrain se costea desde la vista de venta y Elisa no lo veía.
+    Trae link "Abrir en Airtable ↗" al registro del producto (desktop y móvil).
+    Vendedor no lo ve (no recibe el costo del catálogo). El catálogo del front
+    suma `text_mkzmgvc7` (id de Airtable, `vis: AC`).
+  - Las 2 notificaciones de "costo sin actualizar" que le llegaron a Elisa se
+    marcaron como leídas.
+
 ## 2026-09-28 (Se quita el aviso de costo con más de 30 días; se guarda el dato)
 
 - **Efraín confirmó con PAM**: el aviso "Costo sin actualizar hace N días" no

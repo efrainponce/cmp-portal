@@ -238,13 +238,21 @@ function MobileQuoteRowInner({
     return <div style={{ ...valueChipStyle, font: 'var(--text-label)', color: 'var(--ink-secondary)' }}>{cellValue(c, displayVal)}</div>;
   };
 
-  const { lineWarnings, bannerText } = computeLineBanner(p, state, variant, catalog, precioOnly);
+  const { lineWarnings, bannerText, airtableUrl } = computeLineBanner(p, state, variant, catalog, precioOnly);
 
   return (
     <div style={{ borderTop: '1px solid var(--border-subtle)', background: lineWarnings.length > 0 ? '#fdf1f2' : '#fff', padding: '14px' }}>
       {bannerText && (
         <div style={{ font: '600 11px var(--font-ui)', color: '#ce3048', marginBottom: 10 }}>
           ⚠ {bannerText}
+          {airtableUrl && (
+            <>
+              {' '}
+              <a href={airtableUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-blue)', textDecoration: 'underline' }}>
+                Abrir en Airtable ↗
+              </a>
+            </>
+          )}
         </div>
       )}
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>

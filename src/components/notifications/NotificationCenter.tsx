@@ -40,7 +40,8 @@ function KindBadge({ kind }: { kind: string }) {
     // Comentario de un compañero (dentro del portal o de monday.com), 2026-08-18.
     update_comment: { letter: '”', color: 'var(--accent)' },
     costeo_incompleto: { letter: '!', color: 'var(--status-esperando)' },
-    // Producto sin Costo Distribuidor en Airtable (worker/lib/costoSinAirtable.ts).
+    // Aviso retirado el 2026-09-28 (ahora es warning en la línea); se queda
+    // para pintar bien los que ya se mandaron.
     costo_sin_airtable: { letter: '$', color: 'var(--status-perdida)' },
     stage_change: { letter: '→', color: 'var(--status-confirmado)' },
     project_status_change: { letter: '→', color: 'var(--status-confirmado)' },
