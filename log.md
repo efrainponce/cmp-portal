@@ -1,5 +1,22 @@
 # Log de commits
 
+## 2026-09-29 (Documentación del Proyecto: se lee la columna "Subir documentacion" de Monday)
+
+- **Elisa** (PRO-0200): "no me aparecen los otros documentos" — en Monday tenía
+  3 archivos (propuesta firmada, OC y autorización de cambio de color) y el
+  portal decía "Sin documentos" + el aviso rojo de "Obligatorio".
+  - Causa: el equipo ahora sube la OC en la columna VISIBLE "Subir
+    documentacion (OC/cotizacion firmada)" (`file_mm3393nf`); el portal solo
+    leía "OC/contrato/cotización firmada (oculto)" (`file_mm33yv4p`) y la legado
+    `file_mm0hayh4`. 10 proyectos tenían su documento SOLO en la nueva.
+  - `file_mm3393nf` se suma como columna de SOLO LECTURA (igual que la legado):
+    `PROYECTO_DOCUMENTO_COLS_LECTURA` / `P_OC_CLIENTE_LECTURA`. Arrastra la lista
+    de Documentación, `/api/files`, el gate `checkOcCliente` de "Validar tallas"
+    y "Sincronizar documentos" a Drive (05. CONTRATO FIRMADO). Las subidas desde
+    el portal siguen yendo a `file_mm33yv4p`.
+  - Visibilidad: `file_mm3393nf` pasa de AC a `vis: V` (mismo documento que
+    `file_mm33yv4p`, que el vendedor ya veía).
+
 ## 2026-09-29 (PDF de Estatus de proyecto: solo Compras y Admin)
 
 - **Efraín**: "déjalo en solo compras y admin" (el PDF de estatus de proyectos

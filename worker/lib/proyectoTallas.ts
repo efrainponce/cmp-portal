@@ -21,7 +21,7 @@ import { emitNotification } from './notify';
 import { refetchItem, mirrorUpsertStatement, emitItemSideEffects } from '../sync';
 import { BOARDS } from '../../shared/boards';
 import { isNativeId } from '../../shared/nativeId';
-import { PROYECTO_DOCUMENTO_COL, PROYECTO_DOCUMENTO_COL_LEGADO } from './portalFiles';
+import { PROYECTO_DOCUMENTO_COL, PROYECTO_DOCUMENTO_COLS_LECTURA } from './portalFiles';
 import { renderDocument, type Block } from './pdf/layout';
 import { fechaLarga } from './pdf/templates';
 import { createDocuSealSubmission } from './docuseal';
@@ -121,10 +121,10 @@ function colsOf(row: MirrorItem): Map<string, RawCol> {
  * cliente". Solo lectura, mismo criterio que checkCosteo/checkValidacion
  * (worker/lib/costeo.ts): se valida ANTES de pegarle a cmp-tallas. */
 export function checkOcCliente(row: MirrorItem): { ok: true } | { ok: false; error: string } {
-  // Vale la columna vigente o la de antes: los proyectos que subieron el
-  // documento cuando el portal apuntaba a file_mm0hayh4 no se quedan trabados.
+  // Vale la columna vigente o cualquiera de solo lectura (la visible de Monday
+  // y la de antes): un documento subido en Monday no deja trabado el proyecto.
   const cols = colsOf(row);
-  const tiene = !!cols.get(PROYECTO_DOCUMENTO_COL)?.text || !!cols.get(PROYECTO_DOCUMENTO_COL_LEGADO)?.text;
+  const tiene = [PROYECTO_DOCUMENTO_COL, ...PROYECTO_DOCUMENTO_COLS_LECTURA].some(c => !!cols.get(c)?.text);
   return tiene ? { ok: true } : {
     ok: false,
     error: 'Falta subir la orden de compra / cotización firmada / contrato del cliente antes de validar tallas (pestaña Documentación).',

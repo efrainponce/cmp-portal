@@ -24,9 +24,11 @@ export const P_OC_PDF = 'file_mm0hj9pn';         // PDFs órdenes de compra (vis
 // titula "OC/contrato/cotización firmada (oculto)" — es donde el equipo lo sube
 // (ver worker/lib/portalFiles.ts PROYECTO_DOCUMENTO_COL, 2026-08-26).
 export const P_OC_CLIENTE = 'file_mm33yv4p';
-// A donde apuntaba el portal antes: solo lectura, para no esconder el documento
-// de los proyectos que lo tienen ahí ("Cotización Firmada Institucion").
-export const P_OC_CLIENTE_LEGADO = 'file_mm0hayh4';
+// Solo lectura, para no esconder el documento de los proyectos que lo tienen
+// ahí: "Subir documentacion (OC/cotizacion firmada)", la columna visible del
+// equipo en Monday, y "Cotización Firmada Institucion", a donde apuntaba el
+// portal antes (worker/lib/portalFiles.ts PROYECTO_DOCUMENTO_COLS_LECTURA).
+export const P_OC_CLIENTE_LECTURA = ['file_mm3393nf', 'file_mm0hayh4'];
 // Acta de entrega firmada por el cliente (sección propia en Documentación,
 // 2026-09-15). Es la "Acta de Entrega" que el equipo sí usa en Monday; la otra
 // columna con el mismo título (`project_file`) no se expone
@@ -228,8 +230,8 @@ export function ProyectoActionBar({ proyecto, reload, actions }: {
 
   const sheetUrl = linkUrl(proyecto, P_SHEET_LINK);
   // Mismo criterio que el server (worker/lib/proyectoTallas.ts checkOcCliente):
-  // cuenta la columna vigente o la de antes.
-  const ocCliente = !!proyecto.cols[P_OC_CLIENTE]?.text || !!proyecto.cols[P_OC_CLIENTE_LEGADO]?.text;
+  // cuenta la columna vigente o cualquiera de solo lectura.
+  const ocCliente = [P_OC_CLIENTE, ...P_OC_CLIENTE_LECTURA].some((c) => !!proyecto.cols[c]?.text);
   // Proyecto NATIVO (Zona Efrain): no existe en Monday, así que tampoco existe
   // el archivo de tallas de cmp-tallas — el desglose se captura por boxes desde
   // la Oportunidad. "Validar tallas" sí aplica (worker: confirmTallasNativeD1),

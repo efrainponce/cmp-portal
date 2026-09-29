@@ -563,6 +563,7 @@ export const COLUMNAS_SINCRONIZABLES: Record<CarpetaKind, ReadonlyArray<{ colId:
   ],
   proyecto: [
     { colId: 'file_mm33yv4p', categoria: 'documento' },
+    { colId: 'file_mm3393nf', categoria: 'documento' },       // "Subir documentacion" visible en Monday, solo lectura
     { colId: 'file_mm0hayh4', categoria: 'documento' },       // columna legado, solo lectura
     { colId: 'file_mm4pa2h8', categoria: 'acta-entrega' },
     { colId: 'file_mm0hcrtz', categoria: 'tallas' },
