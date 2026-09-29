@@ -1,5 +1,13 @@
 # Log de commits
 
+## 2026-09-29 (Estatus PDF: los embellecimientos también ligan por su columna de zona)
+
+- Probando con proyectos reales (PRO-0141, Penales Camp): varias líneas ✨
+  traen en Producto la especificación larga y el texto corto del producto en
+  su COLUMNA de zona, así que salían "sin línea en el proyecto". Ahora la liga
+  compara también la columna de zona de la ✨. El nombre que se imprime es el de
+  la columna del producto (el de la ✨ viene del Sheet y a veces no corresponde).
+
 ## 2026-09-29 (Estatus de proyecto en PDF: embellecimientos en su columna, hoja por zona, horizontal)
 
 - **Efraín**: "el REPORTE EN PDF de los estados del proyecto… un salto de LINEA

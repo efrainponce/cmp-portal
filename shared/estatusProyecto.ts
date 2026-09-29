@@ -163,7 +163,7 @@ export function agruparPorProductoColor(lineas: EstatusLinea[], resumenes: Recor
 
 /** Embellecimientos (Efraín, 2026-09-29): NO son renglones aparte. Cada línea
  * "✨ <zona>" se liga a los productos cuya columna de zona trae el mismo texto
- * (así las crea Importar tallas) y su estado sale en la celda del producto, una
+ * que la columna de zona (o el Producto) de la ✨ y su estado sale en la celda del producto, una
  * línea por zona. Si dos ✨ comparten texto, desempata el nombre de la zona.
  * Las ✨ con texto real que ningún producto reclama salen en `sueltos` para no
  * perderlas; las "N/A" no se muestran. */
@@ -178,7 +178,10 @@ export function estatusDeLineas(
     for (const z of ZONAS_EMBELL) {
       const texto = rows.map(r => (r.zonas?.[z.col] ?? '').trim()).find(t => t && !zonaVacia(t));
       if (!texto) continue;
-      let match = embells.filter(e => norm(e.producto) === norm(texto));
+      // La ✨ trae el texto en su MISMA columna de zona (Importar tallas y
+      // "Asignar proveedor") o, en las más viejas, en Producto.
+      const n = norm(texto);
+      let match = embells.filter(e => norm(e.zonas?.[z.col] ?? '') === n || norm(e.producto) === n);
       if (match.length > 1) {
         const porZona = match.filter(e => mismaZona(zonaDeNombre(e.nombre ?? ''), z.label));
         if (porZona.length) match = porZona;
@@ -186,7 +189,9 @@ export function estatusDeLineas(
       match.forEach(m => usadas.add(m));
       if (match.some(m => bucketDe(m.estado.trim()) === 'incidencia')) incidencia = true;
       out.push({
-        zona: match.length ? zonaDeNombre(match[0].nombre ?? '') || z.label : z.label,
+        // El nombre de la columna del producto, no el de la ✨: el de la ✨ viene
+        // del Sheet y a veces no corresponde a la posición.
+        zona: z.label,
         texto,
         estado: match.length ? textoEstados(match) : '',
       });
