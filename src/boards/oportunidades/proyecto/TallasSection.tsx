@@ -6,7 +6,7 @@ import { isNativeId } from '../../../../shared/nativeId';
 import { useEffect, useState } from 'react';
 import { type ItemDTO } from '../../../lib/api';
 import { patchItem, reportarTallasIncorrectas, getCotizacionVirtual, getItem, type QuoteLineSnapshot } from '../../../lib/apiClient';
-import { TallaBoxesCapture } from './TallaCapture';
+import { TallaBoxesCapture, productoDeLinea } from './TallaCapture';
 import { useMe } from '../../../lib/useMe';
 import { ConfirmButton } from '../../../components/core/ConfirmButton';
 import { MonoTag } from '../../../components/core/Badges';
@@ -20,7 +20,6 @@ import { numberCellKeyDown } from '../../../components/forms/NumberCellInput';
 interface CantidadEdit { draft?: string; saving?: boolean; error?: string }
 
 // Oportunidades subitems — mismos ids que TallaCapture.tsx.
-const OPP_SUB_SKU = 'lookup_mkzn7x9a';
 const OPP_SUB_COLOR = 'text_mm07s2mg';
 
 function norm(s: string): string {
@@ -372,8 +371,9 @@ export function ProyectoTallasSection({ state, oppId }: { state: ProyectoState; 
   }
   const yaTieneLineas = (l: ItemDTO): boolean => {
     const color = norm(l.cols[OPP_SUB_COLOR]?.text || '');
-    const sku = norm(l.cols[OPP_SUB_SKU]?.text || '');
-    return (!!sku && conLineas.has(`s|${sku}|${color}`)) || conLineas.has(`p|${norm(l.name)}|${color}`);
+    const { producto, sku: skuTexto } = productoDeLinea(l);
+    const sku = norm(skuTexto || '');
+    return (!!sku && conLineas.has(`s|${sku}|${color}`)) || conLineas.has(`p|${norm(producto)}|${color}`);
   };
   const sinLineas = oppLineas.filter(l => !yaTieneLineas(l));
   const productosCaptura = capturaAbierta ? oppLineas : sinLineas;

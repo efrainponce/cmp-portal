@@ -1,5 +1,25 @@
 # Log de commits
 
+## 2026-09-29 (Tallas: el portal escribe el mismo producto/SKU que el Sheet; el Sheet vuelve a la carpeta de la Oportunidad)
+
+- **Efraín** (PRO-0214 / OPP-1121, Ricardo no podía capturar el Sheet — "Solicitar
+  acceso" — y "las tallas del portal NO COINCIDEN con el Sheet"; "lo que pasa en
+  el portal debe ser IDÉNTICO a Monday").
+  - Cajitas de captura (`TallaCapture.tsx`, `productoDeLinea`): el título y el
+    Producto que se escribía en las líneas del Proyecto en Monday era el `name`
+    libre del subitem ("3", "Nueva línea", "BOMBEROS") y el SKU salía del espejo
+    del catálogo. Ahora usan las MISMAS columnas que el Sheet de cmp-tallas:
+    "Nombre del Producto" (`lookup_mm0x4kda`, respaldo Producto en texto) y el
+    SKU en texto (`text_mm0bxy39`, respaldo el espejo) — mismo orden que la
+    cotización virtual, así el "Cotizado" cruza. `TallasSection` usa la misma
+    llave para saber qué producto ya tiene líneas.
+  - Sheet en la carpeta equivocada (fix en cmp-tallas, `generate_sheet.py`):
+    desde el merge de `feat/drive-proyectos` (2026-09-21) `link_mm462saa` del
+    Proyecto apunta a su carpeta en "Proyectos Portal" y cmp-tallas creaba ahí
+    el Sheet, fuera del alcance del vendedor (PRO-0211 y PRO-0214). Ahora lo
+    crea en la carpeta de la Oportunidad (`link_mm468m26`), la del Proyecto de
+    respaldo. Los dos Sheets existentes NO se movieron (captura en curso).
+
 ## 2026-09-28 ("Falta costo en Airtable" es un warning en la línea, no notificación)
 
 - **Efraín**: no se necesita notificación, solo un warning en la línea.
