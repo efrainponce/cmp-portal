@@ -11,7 +11,7 @@ import { Button } from '../../../components/core/Button';
 import { FilePreviewModal } from '../../../components/core/FilePreviewModal';
 import { ProgressBattery } from '../../../components/board/ProgressBattery';
 import { batteryFromSubitems } from '../../../lib/estadoProductoBuckets';
-import { agruparPorProductoColor, fechaCorta, TONO_FILL, type EstatusLinea } from '../../../../shared/estatusProyecto';
+import { estatusDeLineas, fechaCorta, textoEmbellecimientos, TONO_FILL, ZONAS_EMBELL, type EstatusLinea } from '../../../../shared/estatusProyecto';
 import {
   type ProyectoState, Shell,
   S_PRODUCTO, S_SKU, S_COLOR, S_CANTIDAD, S_PROVEEDOR, S_PROVEEDOR_RAZON, S_ESTADO, S_ENTREGA_PROV,
@@ -42,6 +42,8 @@ function lineaDe(l: ItemDTO): EstatusLinea {
     estado: txt(l.cols, S_ESTADO),
     comentario: txt(l.cols, S_COMENTARIO),
     entrega: txt(l.cols, S_ENTREGA_PROV),
+    nombre: l.name ?? '',
+    zonas: Object.fromEntries(ZONAS_EMBELL.map((z) => [z.col, txt(l.cols, z.col)])),
   };
 }
 
@@ -60,7 +62,7 @@ export function ResumenSection({ state }: { state: ProyectoState }) {
   // que nunca se ha buscado, igual que en Órdenes de compra.
   const [fotos, setFotos] = useState<Record<string, OcImagenDTO>>({});
   const proyectoId = state.proyecto?.id;
-  const llaves = [...new Set((state.proyecto?.children ?? []).map((l) => llaveFotoOc(txt(l.cols, S_SKU), txt(l.cols, S_PRODUCTO))).filter(Boolean))].join('\n');
+  const llaves = [...new Set((state.proyecto?.children ?? []).filter((l) => !(l.name ?? '').trimStart().startsWith('✨')).map((l) => llaveFotoOc(txt(l.cols, S_SKU), txt(l.cols, S_PRODUCTO))).filter(Boolean))].join('\n');
 
   useEffect(() => {
     let vivo = true;
@@ -87,8 +89,9 @@ export function ResumenSection({ state }: { state: ProyectoState }) {
   }
   const p = state.proyecto;
   const lineas = (p.children ?? []).map(lineaDe);
-  const grupos = agruparPorProductoColor(lineas, resumenes);
+  const { grupos, sueltos } = estatusDeLineas(lineas, resumenes);
   const conProveedor = grupos.some((g) => g.proveedor);
+  const conEmbell = grupos.some((g) => g.embellecimientos.length > 0);
   const total = grupos.reduce((s, g) => s + g.cantidad, 0);
   const entregadas = grupos.reduce((s, g) => s + g.entregadas, 0);
   const battery = batteryFromSubitems((p.children ?? []).map((l) => ({
@@ -143,6 +146,7 @@ export function ResumenSection({ state }: { state: ProyectoState }) {
                 <th style={{ ...th, textAlign: 'right' }}>Cant.</th>
                 <th style={th}>Unidad</th>
                 <th style={th}>Estatus</th>
+                {conEmbell && <th style={th}>Embellecimientos</th>}
                 <th style={th}>Entrega</th>
               </tr>
             </thead>
@@ -156,6 +160,7 @@ export function ResumenSection({ state }: { state: ProyectoState }) {
                   <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>{g.cantidad.toLocaleString('es-MX')}</td>
                   <td style={td}>{g.unidad || '—'}</td>
                   <td style={td}>{g.estatus}</td>
+                  {conEmbell && <td style={{ ...td, whiteSpace: 'pre-line', minWidth: 220 }}>{textoEmbellecimientos(g.embellecimientos)}</td>}
                   <td style={{ ...td, whiteSpace: 'nowrap' }}>{g.entrega}</td>
                 </tr>
               ))}
@@ -163,8 +168,13 @@ export function ResumenSection({ state }: { state: ProyectoState }) {
           </table>
         </div>
       )}
+      {sueltos.length > 0 && (
+        <div style={{ marginTop: 8, font: 'var(--text-caption)', color: 'var(--ink-quiet)', whiteSpace: 'pre-line' }}>
+          {`Embellecimientos sin producto ligado:\n${textoEmbellecimientos(sueltos)}`}
+        </div>
+      )}
       <div style={{ marginTop: 8, font: 'var(--text-caption)', color: 'var(--ink-quiet)' }}>
-        Un renglón por producto y color (las tallas van sumadas). Verde = entregado al cliente · Azul = en proceso · Rojo = incidencia o retraso · Sin color = pendiente de surtir. Para cambiar un estado usa la pestaña Ejecución.
+        Un renglón por producto y color (las tallas van sumadas; los embellecimientos van en su columna, una línea por zona). Verde = entregado al cliente · Azul = en proceso · Rojo = incidencia o retraso · Sin color = pendiente de surtir. Para cambiar un estado usa la pestaña Ejecución.
       </div>
       {verPdf && (
         <FilePreviewModal url={`/api/proyectos/${p.id}/estatus/pdf`} name={`${p.name} - Estatus.pdf`} onClose={() => setVerPdf(false)} />

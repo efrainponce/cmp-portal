@@ -4,7 +4,8 @@
 // no salga para quien no lo recibe (ventas).
 import { describe, it, expect } from 'vitest';
 import {
-  agruparPorProductoColor, buildEstatusProyectoBlocks, buildEstatusProyectoPdf, fechaCorta,
+  agruparPorProductoColor, buildEstatusProyectoBlocks, buildEstatusProyectoPdf, estatusDeLineas, fechaCorta,
+  textoEmbellecimientos,
   type EstatusLinea, type EstatusProyecto,
 } from './estatusProyecto';
 
@@ -97,6 +98,65 @@ describe('buildEstatusProyectoBlocks', () => {
     expect(sin.columns.map(c => c.header)).not.toContain('Foto');
     expect(sin.imageCol).toBeUndefined();
     expect(sin.columns.reduce((s, c) => s + c.width, 0)).toBeCloseTo(1, 5);
+  });
+});
+
+describe('embellecimientos en la celda del producto', () => {
+  // Así vienen de Importar tallas (PRO real, 2026-09-29): el producto trae el
+  // texto en su columna de zona y la línea "✨ <zona>" repite ese texto en Producto.
+  const ESPALDA = 'long_text_mm1cqh8e';
+  const FRENTE = 'long_text_mm1cyqts';
+  const chaleco = (o: Partial<EstatusLinea>) => linea({
+    producto: 'Chaleco', sku: 'CH1', estado: 'Pendiente de Recolectar',
+    zonas: { [ESPALDA]: 'Parche POLICIA ESTATAL', [FRENTE]: 'N/A' }, ...o,
+  });
+  const casco = linea({ producto: 'Casco', sku: 'CA1', cantidad: 215, zonas: { [ESPALDA]: 'NA' } });
+  const emb = (zona: string, texto: string, o: Partial<EstatusLinea> = {}) => linea({
+    nombre: `✨ ${zona}`, producto: texto, sku: '', color: '', cantidad: 300, estado: 'En embellecimiento', ...o,
+  });
+
+  it('las líneas ✨ no son renglón: su estado va en la zona del producto', () => {
+    const { grupos, sueltos } = estatusDeLineas([
+      chaleco({ cantidad: 50 }), chaleco({ cantidad: 250 }), casco,
+      emb('Espalda', 'Parche POLICIA ESTATAL'), emb('Frente derecho', 'N/A'), emb('Espalda', 'NA', { cantidad: 215 }),
+    ], {});
+    expect(grupos.map(g => [g.producto, g.cantidad])).toEqual([['Chaleco', 300], ['Casco', 215]]);
+    expect(grupos[0].embellecimientos).toEqual([
+      { zona: 'Espalda', texto: 'Parche POLICIA ESTATAL', estado: 'En embellecimiento' },
+    ]);
+    expect(grupos[1].embellecimientos).toEqual([]);
+    expect(sueltos).toEqual([]);
+  });
+
+  it('una línea por zona; sin línea ✨ lo dice; incidencia del bordado pinta rojo', () => {
+    const [g] = estatusDeLineas([
+      chaleco({ zonas: { [ESPALDA]: 'Parche', [FRENTE]: 'Estrella' } }),
+      emb('Espalda', 'Parche', { estado: 'Incidencia/Retraso' }),
+    ], {}).grupos;
+    expect(textoEmbellecimientos(g.embellecimientos)).toBe(
+      '• Espalda: Parche — Incidencia/Retraso\n• Frente derecho: Estrella — sin línea en el proyecto');
+    expect(g.tono).toBe('incidencia');
+  });
+
+  it('una ✨ que ningún producto reclama sale en sueltos, no se pierde', () => {
+    const { sueltos } = estatusDeLineas([chaleco({}), emb('Otros', 'Código QR')], {});
+    expect(sueltos).toEqual([{ zona: 'Otros', texto: 'Código QR', estado: 'En embellecimiento' }]);
+  });
+
+  it('PDF: columna Embellecimientos, anchos que suman 1 y separador por zona de venta', () => {
+    const p = proyecto([chaleco({}), emb('Espalda', 'Parche POLICIA ESTATAL')]);
+    const blocks = buildEstatusProyectoBlocks({ proyectos: [p, { ...p, zona: 'Norte' }], fecha: '29/09/2026' });
+    const t = blocks.find(b => b.kind === 'wrapTable');
+    if (!t || t.kind !== 'wrapTable') throw new Error('sin tabla');
+    const iEmb = t.columns.findIndex(c => c.header === 'Embellecimientos');
+    expect(iEmb).toBeGreaterThan(0);
+    expect(t.wrapCols).toContain(iEmb);
+    expect(t.rows).toHaveLength(1);
+    expect(t.rows[0][iEmb]).toContain('Espalda: Parche POLICIA ESTATAL — En embellecimiento');
+    expect(t.columns.reduce((s, c) => s + c.width, 0)).toBeCloseTo(1, 5);
+    const zonas = blocks.filter(b => b.kind === 'text' && b.text.startsWith('Zona ')).map(b => b.kind === 'text' ? b.text : '');
+    expect(zonas).toEqual(['Zona Centro', 'Zona Norte']);
+    expect(blocks.filter(b => b.kind === 'pageBreak')).toHaveLength(1);
   });
 });
 

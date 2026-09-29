@@ -18,6 +18,34 @@ export interface EstatusLinea {
   comentario: string;
   /** Fecha estimada de entrega del proveedor, YYYY-MM-DD o ''. */
   entrega: string;
+  /** Nombre del subitem: "✨ <zona>" marca una línea de EMBELLECIMIENTO (su
+   * Producto trae el texto de la posición, no un producto). */
+  nombre?: string;
+  /** Texto de cada zona de embellecimiento de la línea de producto, llave =
+   * id de columna (ZONAS_EMBELL). Vacío en las líneas ✨. */
+  zonas?: Record<string, string>;
+}
+
+/** Columnas de zona de embellecimiento del subitem del Proyecto (título en
+ * Monday, shared/column-meta.gen.ts). Import de tallas copia el MISMO texto a la
+ * línea "✨ <zona>" que arma la OC al bordador — así se ligan. */
+export const ZONAS_EMBELL: readonly { col: string; label: string }[] = [
+  { col: 'long_text_mm1cqh8e', label: 'Espalda' },
+  { col: 'long_text_mm1cyqts', label: 'Frente derecho' },
+  { col: 'long_text_mm1c59cg', label: 'Frente izquierdo' },
+  { col: 'long_text_mm1c2eyf', label: 'Manga derecha' },
+  { col: 'long_text_mm1cyq91', label: 'Manga izquierda' },
+  { col: 'long_text_mm1c6ya0', label: 'Etiqueta del fabricante' },
+  { col: 'long_text_mm1cnbbr', label: 'Etiqueta de propiedad' },
+  { col: 'long_text_mm2077h1', label: 'Otros' },
+];
+
+/** Una zona de embellecimiento de un producto, con el estado de su línea ✨. */
+export interface EstatusEmbell {
+  zona: string;
+  texto: string;
+  /** Estado de la línea ✨ ligada; '' si el proyecto no tiene línea para ella. */
+  estado: string;
 }
 
 export interface EstatusProyecto {
@@ -50,6 +78,8 @@ export interface EstatusGrupo {
   entrega: string;
   tono: EstatusTono;
   entregadas: number;
+  /** Una por zona con texto, en el orden de ZONAS_EMBELL. */
+  embellecimientos: EstatusEmbell[];
 }
 
 // Mismo default que el chip del tab Ejecución: una línea sin estado todavía no
@@ -84,6 +114,41 @@ function unicos(valores: string[]): string[] {
   return [...new Set(valores.map(v => v.trim()).filter(Boolean))];
 }
 
+function norm(s: string): string {
+  return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+/** "N/A", "NA", "-", "no aplica" = la zona no lleva nada. */
+function zonaVacia(texto: string): boolean {
+  const n = norm(texto);
+  return !n || n === 'na' || n === 'n a' || n === 'no aplica' || n === 'ninguno' || n === 'sin';
+}
+
+export function esLineaEmbell(l: EstatusLinea): boolean {
+  return (l.nombre ?? '').trimStart().startsWith('✨');
+}
+
+function zonaDeNombre(nombre: string): string {
+  return nombre.trim().replace(/^✨\s*/, '').trim();
+}
+
+function mismaZona(a: string, b: string): boolean {
+  const x = norm(a), y = norm(b);
+  return x === y || (x.length > 3 && y.startsWith(x)) || (y.length > 3 && x.startsWith(y));
+}
+
+/** Estados de varias líneas en un texto: uno solo tal cual, mezclados con sus piezas. */
+function textoEstados(rows: EstatusLinea[]): string {
+  const piezas = new Map<string, number>();
+  for (const r of rows) {
+    const e = r.estado.trim() || ESTADO_DEFAULT;
+    piezas.set(e, (piezas.get(e) ?? 0) + r.cantidad);
+  }
+  const estados = [...piezas.entries()];
+  return estados.length === 1 ? estados[0][0] : estados.map(([e, n]) => `${e} ${n}`).join(' · ');
+}
+
 function bucketDe(estado: string): EstadoBucketKey | undefined {
   return LABEL_TO_BUCKET[estado];
 }
@@ -93,6 +158,42 @@ function bucketDe(estado: string): EstadoBucketKey | undefined {
  * van en pasos distintos ("Entregado 15 · En tránsito 5") y luego el resumen
  * del producto; sin resumen, los comentarios por talla. */
 export function agruparPorProductoColor(lineas: EstatusLinea[], resumenes: Record<string, string>): EstatusGrupo[] {
+  return estatusDeLineas(lineas, resumenes).grupos;
+}
+
+/** Embellecimientos (Efraín, 2026-09-29): NO son renglones aparte. Cada línea
+ * "✨ <zona>" se liga a los productos cuya columna de zona trae el mismo texto
+ * (así las crea Importar tallas) y su estado sale en la celda del producto, una
+ * línea por zona. Si dos ✨ comparten texto, desempata el nombre de la zona.
+ * Las ✨ con texto real que ningún producto reclama salen en `sueltos` para no
+ * perderlas; las "N/A" no se muestran. */
+export function estatusDeLineas(
+  lineas: EstatusLinea[], resumenes: Record<string, string>,
+): { grupos: EstatusGrupo[]; sueltos: EstatusEmbell[] } {
+  const embells = lineas.filter(esLineaEmbell);
+  const usadas = new Set<EstatusLinea>();
+  const embellDe = (rows: EstatusLinea[]) => {
+    const out: EstatusEmbell[] = [];
+    let incidencia = false;
+    for (const z of ZONAS_EMBELL) {
+      const texto = rows.map(r => (r.zonas?.[z.col] ?? '').trim()).find(t => t && !zonaVacia(t));
+      if (!texto) continue;
+      let match = embells.filter(e => norm(e.producto) === norm(texto));
+      if (match.length > 1) {
+        const porZona = match.filter(e => mismaZona(zonaDeNombre(e.nombre ?? ''), z.label));
+        if (porZona.length) match = porZona;
+      }
+      match.forEach(m => usadas.add(m));
+      if (match.some(m => bucketDe(m.estado.trim()) === 'incidencia')) incidencia = true;
+      out.push({
+        zona: match.length ? zonaDeNombre(match[0].nombre ?? '') || z.label : z.label,
+        texto,
+        estado: match.length ? textoEstados(match) : '',
+      });
+    }
+    return { out, incidencia };
+  };
+
   const resumenPorLlave = new Map<string, string>();
   for (const [k, v] of Object.entries(resumenes)) {
     const [producto, color = ''] = k.split('|');
@@ -101,25 +202,21 @@ export function agruparPorProductoColor(lineas: EstatusLinea[], resumenes: Recor
 
   const grupos = new Map<string, EstatusLinea[]>();
   for (const l of lineas) {
+    if (esLineaEmbell(l)) continue;
     const key = llaveGrupo(l.producto, l.color);
     if (!grupos.has(key)) grupos.set(key, []);
     grupos.get(key)!.push(l);
   }
 
-  return [...grupos.entries()].map(([key, rows]) => {
-    const piezasPorEstado = new Map<string, number>();
-    for (const r of rows) {
-      const estado = r.estado.trim() || ESTADO_DEFAULT;
-      piezasPorEstado.set(estado, (piezasPorEstado.get(estado) ?? 0) + r.cantidad);
-    }
-    const estados = [...piezasPorEstado.entries()];
-    const estadoTxt = estados.length === 1
-      ? estados[0][0]
-      : estados.map(([e, n]) => `${e} ${n}`).join(' · ');
+  const resultado = [...grupos.entries()].map(([key, rows]) => {
+    const estados = [...new Set(rows.map(r => r.estado.trim() || ESTADO_DEFAULT))];
+    const estadoTxt = textoEstados(rows);
+    const { out: embellecimientos, incidencia: incidenciaEmbell } = embellDe(rows);
     const detalle = resumenPorLlave.get(key) || unicos(rows.map(r => r.comentario)).join(' / ');
 
-    const buckets = estados.map(([e]) => bucketDe(e));
-    const tono: EstatusTono = buckets.includes('incidencia') ? 'incidencia'
+    const buckets = estados.map(e => bucketDe(e));
+    // Una incidencia en el bordado también pinta de rojo al producto.
+    const tono: EstatusTono = buckets.includes('incidencia') || incidenciaEmbell ? 'incidencia'
       : buckets.every(b => b === 'entregado') ? 'entregado'
       : buckets.every(b => b === 'por_surtir' || b === undefined) ? 'pendiente'
       : 'proceso';
@@ -144,7 +241,24 @@ export function agruparPorProductoColor(lineas: EstatusLinea[], resumenes: Recor
       entrega: fechas.length ? fechaCorta(fechas[fechas.length - 1]) : '',
       tono,
       entregadas,
+      embellecimientos,
     };
   });
+
+  const sueltos = embells
+    .filter(e => !usadas.has(e) && !zonaVacia(e.producto) && e.producto !== '—')
+    .map(e => ({ zona: zonaDeNombre(e.nombre ?? ''), texto: e.producto, estado: textoEstados([e]) }));
+  return { grupos: resultado, sueltos };
+}
+
+/** Celda de embellecimientos: UNA línea por zona, "• Zona: texto — estado".
+ * El texto se recorta: identifica la posición, el detalle vive en la OC. */
+export function textoEmbellecimientos(embs: EstatusEmbell[], max = 45): string {
+  if (embs.length === 0) return '—';
+  return embs.map(e => {
+    const t = e.texto.replace(/\s+/g, ' ').trim();
+    const corto = t.length > max ? `${t.slice(0, max - 1).trimEnd()}…` : t;
+    return `• ${e.zona}: ${corto} — ${e.estado || 'sin línea en el proyecto'}`;
+  }).join('\n');
 }
 

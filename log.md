@@ -1,5 +1,24 @@
 # Log de commits
 
+## 2026-09-29 (Estatus de proyecto en PDF: embellecimientos en su columna, hoja por zona, horizontal)
+
+- **Efraín**: "el REPORTE EN PDF de los estados del proyecto… un salto de LINEA
+  por zona y debe incluir los embellecimientos en una columna, no como un
+  producto aparte… es una celda del producto con su estado" + "hazlas en
+  HORIZONTAL, tamaño CARTA". Referencia: la hoja por zona que reparte Elisa.
+  - Las líneas "✨ <zona>" del Proyecto dejan de salir como renglón: se ligan al
+    producto cuya columna de zona (Espalda, Frente…, `ZONAS_EMBELL`) trae el
+    MISMO texto — así las crea Importar tallas (verificado en prod) — y su
+    estado va en la columna nueva **Embellecimientos**, una línea por zona
+    ("• Espalda: texto… — estado"). Zonas "N/A" no salen; una ✨ que ningún
+    producto reclama sale debajo de la tabla ("sin producto ligado"), no se
+    pierde. Incidencia en el bordado pinta rojo al producto. El avance ya no
+    suma las piezas de las ✨.
+  - PDF de varios proyectos: cada **zona de venta** arranca en hoja nueva con
+    su título. Siempre **carta horizontal**.
+  - Misma lógica en la tab Resumen (`estatusDeLineas` en
+    `shared/estatusProyecto.ts`), y las ✨ ya no gastan el tope de fotos.
+
 ## 2026-09-29 (Reporte de Proyectos: filtro por Estado y los filtros juntos en un botón "Filtros")
 
 - **Efraín**: "en reporte de proyectos necesitamos filtrar también por ESTADO
