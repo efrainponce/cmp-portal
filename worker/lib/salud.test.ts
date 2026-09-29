@@ -3,7 +3,7 @@
 // rutas. Nacen de OPP-0970 / PRO-0171 (2026-09-10): la cotización y las
 // tallas dejaron de cuadrar y nadie lo vio en dos semanas.
 import { describe, it, expect } from 'vitest';
-import { compararTallas, diferenciasOutbox, normalizarRuta } from './salud';
+import { compararTallas, diferenciasOutbox, normalizarRuta, zonasHabituales } from './salud';
 
 describe('compararTallas', () => {
   it('cuadra: misma cantidad por SKU y color (sin distinguir mayúsculas ni acentos)', () => {
@@ -77,5 +77,22 @@ describe('normalizarRuta', () => {
   it('cambia los ids largos por :id para agrupar', () => {
     expect(normalizarRuta('/api/oportunidades/lineas/12720269241/ajustar')).toBe('/api/oportunidades/lineas/:id/ajustar');
     expect(normalizarRuta('/api/boards/oportunidades_sub/items/13021725464')).toBe('/api/boards/oportunidades_sub/items/:id');
+  });
+});
+
+describe('zonasHabituales', () => {
+  it('toma la zona con 60 % o más de las filas de la persona (mínimo 3)', () => {
+    const filas = [
+      ...Array(4).fill({ personas: [1], zona: 'Sureste' }),
+      { personas: [1], zona: 'Sur' },
+      ...Array(2).fill({ personas: [2], zona: 'Centro' }), // solo 2: no alcanza
+      ...Array(3).fill({ personas: [3], zona: 'Centro' }),
+      ...Array(3).fill({ personas: [3], zona: 'Norte' }),  // 50/50: sin zona habitual
+      { personas: [1], zona: '' },
+    ];
+    const z = zonasHabituales(filas);
+    expect(z.get(1)).toBe('Sureste');
+    expect(z.has(2)).toBe(false);
+    expect(z.has(3)).toBe(false);
   });
 });

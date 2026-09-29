@@ -15,7 +15,7 @@ import { Button } from '../../components/core/Button';
 import { IconBack } from '../../components/icons';
 import { SyncIndicator } from '../../components/board/SyncIndicator';
 import { EditableItemName } from '../../components/board/EditableItemName';
-import { getItemDetail, refreshItem, getProyectoOportunidad, useBoards, colForBoard, type ItemDetailDTO } from '../../lib/api';
+import { getItemDetail, refreshItem, getProyectoOportunidad, patchItem, useBoards, colForBoard, type ItemDetailDTO } from '../../lib/api';
 import { useIsMobile } from '../../lib/useIsMobile';
 import { useMe } from '../../lib/useMe';
 import { ActualizacionesTab } from '../oportunidades/tabs/ActualizacionesTab';
@@ -39,6 +39,7 @@ const FOLIO_COL = 'pulse_id_mm1a12gy';
 const INSTITUCION_COL = 'lookup_mm1dwn6';
 const FECHA_ENTREGA_COL = 'date_mm0m1vfv';
 const VENDEDOR_COL = 'multiple_person_mm0hrnqq';
+const ZONA_COL = 'dropdown_mm0hnyv';
 
 // Orden y grupos de Efraín (2026-09-21): "Actualizaciones, Resumen | Cotización,
 // Costeo, Embellecimientos | Documentación, Tallas, Órdenes de Compra,
@@ -167,6 +168,8 @@ export function ProyectoDrawer({ id, boardKey, backLabel, defaultTab, openTab, o
   // Nombre del proyecto: mismo permiso que el de la oportunidad (Efraín, 2026-08-13).
   const { boards } = useBoards();
   const canEditNombre = !!colForBoard(boards, 'proyectos').find((c) => c.id === 'name')?.w;
+  const zonaCol = colForBoard(boards, 'proyectos').find((c) => c.id === ZONA_COL);
+  const [zonaError, setZonaError] = useState<string | null>(null);
 
   // Mismo patrón que OpportunityDrawer: loadSeq descarta respuestas viejas que
   // llegan tarde, y una lectura DE FONDO que se cruzó con un write se tira
@@ -205,6 +208,21 @@ export function ProyectoDrawer({ id, boardKey, backLabel, defaultTab, openTab, o
       .finally(() => setOppResuelta(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  // Zona (Efraín, 2026-09-29): se cambia aquí mismo, sin tab. Preview local
+  // mientras el espejo alcanza, como el nombre.
+  const cambiarZona = async (zona: string) => {
+    if (!item || !zona || zona === (item.cols[ZONA_COL]?.text ?? '')) return;
+    setZonaError(null);
+    const previo = item;
+    setItem({ ...item, cols: { ...item.cols, [ZONA_COL]: { ...item.cols[ZONA_COL], text: zona } } });
+    try {
+      await patchItem('proyectos', id, { [ZONA_COL]: zona });
+    } catch (e) {
+      setItem(previo);
+      setZonaError(e instanceof Error ? e.message : 'No se pudo guardar la zona.');
+    }
+  };
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -255,6 +273,13 @@ export function ProyectoDrawer({ id, boardKey, backLabel, defaultTab, openTab, o
             <div style={{ font: 'var(--text-label)', color: 'var(--ink-tertiary)', marginTop: 2 }}>
               Folio: {folio}{subtitle ? ` · ${subtitle}` : ''}
             </div>
+            <ZonaProyecto
+              zona={item.cols[ZONA_COL]?.text?.trim() ?? ''}
+              opciones={Object.values(zonaCol?.labels ?? {}).map((l) => l.label)}
+              editable={!!zonaCol?.w && item.ownedByViewer !== false}
+              onChange={(z) => void cambiarZona(z)}
+              error={zonaError}
+            />
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <SyncIndicator syncedAt={item.syncedAt} pending={item.pendingWrite ? 1 : 0} label="actualizado" />
@@ -390,6 +415,34 @@ export function ProyectoDrawer({ id, boardKey, backLabel, defaultTab, openTab, o
           <LogisticaSection state={proyectoState} oppId={oportunidadId} />
         </div>
       )}
+    </div>
+  );
+}
+
+/** Zona del proyecto en el encabezado: select si se puede editar; vacía, en
+ * rojo — no debe haber proyectos sin zona (Efraín, 2026-09-29). */
+function ZonaProyecto({ zona, opciones, editable, onChange, error }: {
+  zona: string; opciones: string[]; editable: boolean; onChange: (z: string) => void; error: string | null;
+}) {
+  const vacia = zona === '';
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, font: 'var(--text-label)', color: 'var(--ink-tertiary)', flexWrap: 'wrap' }}>
+      Zona:
+      {editable ? (
+        <select
+          aria-label="Zona" value={zona} onChange={(e) => onChange(e.target.value)}
+          style={{
+            height: 28, padding: '0 8px', font: 'var(--text-label)', color: 'var(--ink)', background: 'var(--bg-raised)', cursor: 'pointer',
+            border: `1px solid ${vacia ? 'var(--status-perdida)' : 'var(--border)'}`, borderRadius: 'var(--radius-lg)',
+          }}
+        >
+          {vacia && <option value="">Sin zona — elige una</option>}
+          {opciones.map((z) => <option key={z} value={z}>{z}</option>)}
+        </select>
+      ) : (
+        <span style={{ color: vacia ? 'var(--status-perdida)' : 'var(--ink-secondary)' }}>{vacia ? 'Sin zona' : zona}</span>
+      )}
+      {error && <span style={{ color: 'var(--status-perdida)' }}>{error}</span>}
     </div>
   );
 }

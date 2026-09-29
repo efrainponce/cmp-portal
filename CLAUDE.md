@@ -39,7 +39,8 @@ con el Worker (`/api/*`). Bot de WhatsApp + chat del portal comparten agente Cla
   15 min) y guarda en `salud_hallazgo`: divisiones cuya línea nueva se borró en
   Monday, SKU/Producto en texto vacío o de otro producto, líneas fantasma, outbox
   atorado/fallido/con un valor distinto en Monday, tallas del Proyecto que no cuadran
-  con la cotización, y errores de la última hora. Los graves nuevos le llegan a
+  con la cotización, proyectos sin Zona/Vendedor/Compras (se rellenan solos
+  desde la Oportunidad o la zona habitual del vendedor) y errores de la última hora. Los graves nuevos le llegan a
   Efraín como notificación del portal (sin WhatsApp). Admin: `GET /api/admin/salud`,
   `POST /api/admin/salud/revisar`. Si arreglas un bug que deja datos mal sin tirar
   error, agrega aquí la revisión que lo habría detectado.

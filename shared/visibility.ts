@@ -159,7 +159,7 @@ export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
       'link_mm1amwz8', 'file_mm0hwapr', 'lookup_mm1dwn6',
       'color_mm0mcrjq',                          // Estado Pago — recomendación aceptada
       'multiple_person_mm0hrnqq', 'board_relation_mm0hb0gy', 'lookup_mm1d1546',
-      'dropdown_mm0hnyv', 'lookup_mm1d56mp', 'board_relation_mm0hf0y3',
+      'lookup_mm1d56mp', 'board_relation_mm0hf0y3',
       'lookup_mm0pd55m', 'lookup_mm0mbkjk'], V),
     ...vis(['color_mm0md4z8', 'date_mm0mwqzw', 'project_owner', 'file_mm0hcrtz',
       'file_mm1dm11c', 'file_mm0hj9pn', 'file_mm1g7cqz',
@@ -174,6 +174,11 @@ export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
     // Fecha Entrega — obligatoria (tab Documentación del Proyecto). La captura
     // el vendedor; compras/admin también, desde el 2026-08-28 (antes solo la veían).
     date_mm0m1vfv: { vis: V, w: V },
+    // Zona — se cambia desde el encabezado del Proyecto (Efraín, 2026-09-29:
+    // "NO deben existir proyectos sin zona … que lo puedas cambiar cuando das
+    // click al proyecto"). Mismo trato que Fecha Entrega. La revisión de salud
+    // rellena las vacías (worker/lib/salud.ts proyectosSinDatos).
+    dropdown_mm0hnyv: { vis: V, w: V },
     // OC / cotización / contrato firmado por el cliente — sube el vendedor
     // (quien lo recibe) o compras/admin (Efraín, 2026-07-17). En Monday es
     // "OC/contrato/cotización firmada (oculto)": es donde el equipo lo sube de
