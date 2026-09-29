@@ -49,6 +49,11 @@ describe('encodeColumnValue', () => {
     expect(encodeColumnValue('phone', '9991234567'))
       .toEqual({ phone: '9991234567', countryShortName: 'MX' });
     expect(encodeColumnValue('phone', 'MX:')).toBe('');
+    expect(encodeColumnValue('phone', 'MX:(55) 4830-1021'))
+      .toEqual({ phone: '5548301021', countryShortName: 'MX' });
+    expect(encodeColumnValue('phone', '+52 55 4830 1021'))
+      .toEqual({ phone: '525548301021', countryShortName: 'MX' });
+    expect(encodeColumnValue('phone', 'MX: - ')).toBe('');
   });
 
   it('email manda email y text', () => {

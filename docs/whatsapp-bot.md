@@ -107,7 +107,10 @@ también reenvía por WhatsApp las notificaciones de severidad **`importante`**
   `WHATSAPP_PHONE_NUMBER_ID` ya dados de alta arriba — no hay secrets nuevos.
 - **Requiere un template pre-aprobado por Meta** (mensaje proactivo, fuera de la
   ventana de servicio de 24h del bot). Template dado de alta en Meta Business Manager:
-  - Nombre: `portal_notificacion` · Categoría: Utility · Idioma: `es_MX`
+  - Nombre: `portal_aviso` · Categoría: **Utility** · Idioma: `es_MX` (desde 2026-09-29).
+    `portal_notificacion` quedó aprobado como **Marketing** y Meta topa esos por
+    persona (131049): se usa solo de respaldo si `portal_aviso` no está disponible.
+    Revisa la categoría con `GET /{waba}/message_templates?fields=name,category,status`.
   - Body: `{{1}}` = título de la notificación (texto con contenido fijo antes/después,
     Meta rechaza variables pegadas al inicio/fin del mensaje)
   - Botón "Visit website" con URL dinámica: base `https://portal.mexicanadeproteccion.com/`

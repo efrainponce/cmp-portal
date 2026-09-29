@@ -1,5 +1,23 @@
 # Log de commits
 
+## 2026-09-29 (Urgentes de la revisión de salud: teléfono de proveedores y avisos de WhatsApp)
+
+- **Efraín**: "empieza a reparar los urgentes" (revisión diaria de `scripts/salud.mjs`).
+- **Alta de proveedor tronaba (5 × 502)**: Monday rechaza un teléfono con
+  espacios/guiones/paréntesis (`ColumnValueException` en `phone_mm21sp93`) y
+  tumba el create completo. cotizaciones4 lo logró al 6º intento escribiéndolo
+  solo con dígitos. `encodeColumnValue('phone')` ahora deja solo dígitos (el
+  canon del echo ya comparaba así).
+- **WhatsApp: 41 avisos fallidos vs 8 entregados en 24 h.**
+  - 131049: el template `portal_notificacion` está aprobado como **MARKETING**
+    y Meta topa el marketing por persona. Alta de `portal_aviso` como
+    **UTILITY** (mismo cuerpo {{1}} + botón URL); `sendTemplate` la usa y, si
+    Meta responde 132001/132000/132015/132016 (no aprobada/pausada), reintenta
+    UNA vez con la vieja sin dejar fila del primer intento.
+  - 131026: cotizaciones4 (`9994389464`) tiene 59 fallidos y 0 entregados
+    desde siempre — el número no recibe WhatsApp. No es de código: hay que
+    pedirle el número correcto.
+
 ## 2026-09-29 (Make "210. Mueve archivo a archivo oculto": arreglado + revisión de salud)
 
 - **Efraín**: "se debe mover al oculto … ¿es porque la actualización falló?".
