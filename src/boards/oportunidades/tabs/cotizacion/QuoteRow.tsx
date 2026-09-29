@@ -108,7 +108,7 @@ function QuoteRowInner({
   canDelete, deleting, onDeleteLine, canAjustar, onAjustarLinea, canVerActividad, onVerActividad, ajusteLabel,
   arrastre,
 }: QuoteRowProps) {
-  const { lineWarnings, bannerText } = computeLineBanner(p, state, variant, catalog, precioOnly);
+  const { lineWarnings, bannerText, airtableUrl } = computeLineBanner(p, state, variant, catalog, precioOnly);
 
   // Chevron + ajustar. Se renderizaban solo en la celda de Producto de solo
   // lectura, pero en Nueva oportunidad (justo donde canDelete es true) Producto
@@ -168,6 +168,14 @@ function QuoteRowInner({
       {bannerText && (
         <div style={{ padding: '8px 10px 0', font: '600 11px var(--font-ui)', color: '#ce3048' }}>
           ⚠ {bannerText}
+          {airtableUrl && (
+            <>
+              {' '}
+              <a href={airtableUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-blue)', textDecoration: 'underline' }}>
+                Abrir en Airtable ↗
+              </a>
+            </>
+          )}
         </div>
       )}
       <div style={{

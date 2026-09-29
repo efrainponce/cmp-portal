@@ -56,6 +56,11 @@ export const CATALOGO_TALLAS_COL = 'text_mm5v6jhj';
 // de "este producto nunca ha tenido costo" — 685 de 1335 productos no lo traen
 // (medido en el mirror, 2026-08-19).
 export const CATALOGO_COSTO_COL = 'numeric_mkzpx7eb';
+// Id del registro del producto en Airtable (rec…) y la base/tabla del catálogo
+// — mismos ids que cmp-tallas api/sync_producto.py.
+export const CATALOGO_AIRTABLE_ID_COL = 'text_mkzmgvc7';
+const AIRTABLE_PRODUCTOS = 'https://airtable.com/apprQnMOKPEBYt4AU/tblxZZLHRUAeJbGa2/';
+export const FALTA_COSTO_AIRTABLE = 'Falta costo en Airtable';
 // "Descripción y tallas confirmadas" — checkbox en Productos (18395657591), creada
 // 2026-07-18. Vive en el catálogo por SKU, no por línea (Efraín: la ficha es del
 // producto, no de la cotización) — Compras la marca y eso desbloquea "Mandar a
@@ -415,6 +420,15 @@ export function productoConfirmado(row: ItemDTO, catalog: ItemDTO[]): boolean {
   return !!catalogItem?.cols[PRODUCTO_CONFIRM_COL]?.text;
 }
 
+// Link al producto ligado en Airtable, para capturar ahí el costo. null si no
+// hay producto ligado o su id de Airtable no tiene forma de rec….
+export function productoAirtableUrl(row: ItemDTO, catalog: ItemDTO[]): string | null {
+  const id = linkedProductoId(row);
+  if (id == null) return null;
+  const rec = (catalogIndex(catalog).byId.get(id)?.cols[CATALOGO_AIRTABLE_ID_COL]?.text ?? '').trim();
+  return /^rec[A-Za-z0-9]{14}$/.test(rec) ? AIRTABLE_PRODUCTOS + rec : null;
+}
+
 // Espejo del check del server (worker/lib/costeo.ts checkValidacion): el campo
 // Tallas del producto de catálogo debe traer algo y no el literal "error" que
 // deja el llenado automático cuando no pudo determinar tallas del texto libre.
@@ -615,8 +629,15 @@ export function getLineWarnings(
   // aviso lo dice (Efraín, 2026-08-19: "Pendiente de costeo no es correcto,
   // es agregar precio en Airtable"). Se puede teclear el costo en la línea
   // igual; lo que cambia es el aviso, no lo que se puede hacer.
-  if (variant === 'costeo' && !product.cols[COSTO_DISTR_COL]?.text) {
-    warnings.push(productoSinCosto(product, catalog) ? 'Falta costo en Airtable' : 'Pendiente de costeo');
+  //
+  // "Falta costo en Airtable" sale en CUALQUIER vista, no solo en Costeo
+  // (Efraín, 2026-09-28): en la Zona Efrain se cotiza y costea desde la vista
+  // de venta y ahí Elisa no veía por qué el costo no salía solo. Es el único
+  // aviso de costo — nada de notificaciones. A un vendedor no le llega el
+  // costo del catálogo (`productoSinCosto` = undefined), así que no lo ve.
+  if (!product.cols[COSTO_DISTR_COL]?.text) {
+    if (productoSinCosto(product, catalog)) warnings.push(FALTA_COSTO_AIRTABLE);
+    else if (variant === 'costeo') warnings.push('Pendiente de costeo');
   }
 
   // En costeo: producto debe estar confirmado
@@ -657,8 +678,9 @@ export function getLineWarnings(
  * MobileQuoteRow — antes duplicado idéntico en los dos. */
 export function computeLineBanner(
   product: ItemDTO, state: RowEditState, variant: 'venta' | 'costeo', catalog: ItemDTO[], precioOnly: boolean,
-): { lineWarnings: string[]; bannerText: string } {
+): { lineWarnings: string[]; bannerText: string; airtableUrl: string | null } {
   const lineWarnings = getLineWarnings(product, state, variant, catalog, precioOnly);
+  const airtableUrl = lineWarnings.includes(FALTA_COSTO_AIRTABLE) ? productoAirtableUrl(product, catalog) : null;
   const needsTallas = !precioOnly && needsConfirmarTallas(product, variant, catalog);
   const needsProveedor = needsTallas && !productoProveedorOk(product, catalog);
   const otherWarnings = lineWarnings.filter((w) => w !== 'Sin confirmar' && w !== 'Sin tallas' && w !== 'Sin proveedor');
@@ -666,5 +688,5 @@ export function computeLineBanner(
     needsTallas ? `HAY QUE CONFIRMAR TALLAS${needsProveedor ? ' Y PROVEEDOR' : ''}` : null,
     ...otherWarnings,
   ].filter(Boolean).join(' • ');
-  return { lineWarnings, bannerText };
+  return { lineWarnings, bannerText, airtableUrl };
 }

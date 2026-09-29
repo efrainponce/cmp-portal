@@ -27,7 +27,7 @@ export interface NotifyInput {
   itemId?: number | null;
   actor?: string | null;
   dedupeKey: string;
-  /** Link EXTERNO (p.ej. el producto en Airtable, worker/lib/costoSinAirtable.ts):
+  /** Link EXTERNO (p.ej. un registro en Airtable):
    * el clic en la notificación lo abre en otra pestaña en vez del deep link. */
   link?: string | null;
   /** Solo para severidad 'importante': `false` la deja en la bandeja Importantes

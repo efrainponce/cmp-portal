@@ -6,7 +6,7 @@ import type { ColVal, ItemDTO } from '../../../../lib/api';
 import { COL } from '../../../../lib/costeoCalc';
 import {
   inlineEditableCols, GRID_COLS_ZONA, GRID_COLS_COSTEO, GRID_COLS_VENTA, EMB_STATUS_COL,
-  COLOR_COL, PRODUCTO_COL, getLineWarnings, EMPTY_ROW,
+  COLOR_COL, PRODUCTO_COL, getLineWarnings, computeLineBanner, EMPTY_ROW,
 } from './gridMeta';
 
 const CANTIDAD = 'numeric_mkzm6399';
@@ -92,5 +92,25 @@ describe('aviso de costo faltante', () => {
   it('si no se puede saber (rol sin esa columna, o sin producto ligado) no afirma nada', () => {
     expect(warn(linea(99), producto({}))).toContain('Pendiente de costeo');
     expect(warn(linea(null), producto({}))).toContain('Pendiente de costeo');
+  });
+  // Zona Efrain (Elisa, 2026-09-28): ahí se costea desde la vista de venta.
+  it('en la vista de venta también avisa "Falta costo en Airtable", con link', () => {
+    const catalogo = producto({
+      [CATALOGO_COSTO]: { text: '', type: 'numbers' },
+      text_mkzmgvc7: { text: 'recJIH3IgqpnJHylV', type: 'text' },
+    });
+    expect(getLineWarnings(linea(99), EMPTY_ROW, 'venta', catalogo)).toContain('Falta costo en Airtable');
+    expect(computeLineBanner(linea(99), EMPTY_ROW, 'venta', catalogo, false).airtableUrl)
+      .toBe('https://airtable.com/apprQnMOKPEBYt4AU/tblxZZLHRUAeJbGa2/recJIH3IgqpnJHylV');
+  });
+
+  it('en venta, con costo en el catálogo o sin poder saberlo (vendedor), no dice nada de costo', () => {
+    const conCosto = producto({ [CATALOGO_COSTO]: { text: '1530', type: 'numbers', value: 1530 } });
+    for (const cat of [conCosto, producto({})]) {
+      const avisos = getLineWarnings(linea(99), EMPTY_ROW, 'venta', cat);
+      expect(avisos).not.toContain('Falta costo en Airtable');
+      expect(avisos).not.toContain('Pendiente de costeo');
+    }
+    expect(computeLineBanner(linea(99), EMPTY_ROW, 'venta', conCosto, false).airtableUrl).toBeNull();
   });
 });

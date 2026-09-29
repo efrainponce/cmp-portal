@@ -45,6 +45,9 @@ export const CATALOGO_COLS = [
   // 2026-08-19). El server la filtra por rol (`vis: AC`): a un vendedor no le
   // llega y el aviso se queda en el genérico.
   'numeric_mkzpx7eb',
+  // Id del registro en Airtable (rec…) — el link "Abrir en Airtable" del aviso
+  // "Falta costo en Airtable" en la línea (2026-09-28). También `vis: AC`.
+  'text_mkzmgvc7',
 ] as const;
 
 /** Columnas del board Productos que el código SÍ lee, pero que a propósito NO
