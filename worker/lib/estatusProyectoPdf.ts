@@ -17,6 +17,7 @@ import { listProductoResumen, listProductoResumenMany, type ProductoResumenRow }
 import { buildEstatusProyectoPdf, type EstatusLinea, type EstatusProyecto } from './pdf/estatusProyecto';
 import { cargarImagenesParaPdf, skuKey, isSkuUsable } from './ocImagenes';
 import { llaveFotoOc } from '../../shared/ocFotoLlave';
+import { ZONAS_EMBELL, esLineaEmbell } from '../../shared/estatusProyecto';
 import type { PdfImageData } from './pdf/png';
 
 export class EstatusProyectoPdfError extends Error {
@@ -42,8 +43,9 @@ export const ESTATUS_MAX_FOTOS = 24;
  * válido, sin PDF no hay nada. */
 async function fotosDe(env: Env, proyectos: EstatusProyecto[]): Promise<{ imagenes: Map<string, PdfImageData>; omitidas: number }> {
   // Misma llave que la OC con imágenes (shared/ocFotoLlave.ts): SKU, o el
-  // nombre del producto cuando la línea no trae SKU.
-  const skus = [...new Set(proyectos.flatMap(p => p.lineas.map(l => llaveFotoOc(l.sku, l.producto === '—' ? '' : l.producto))).filter(isSkuUsable))];
+  // nombre del producto cuando la línea no trae SKU. Las líneas ✨ no llevan
+  // foto (van en la celda de su producto) y no gastan el tope.
+  const skus = [...new Set(proyectos.flatMap(p => p.lineas.filter(l => !esLineaEmbell(l)).map(l => llaveFotoOc(l.sku, l.producto === '—' ? '' : l.producto))).filter(isSkuUsable))];
   const buscar = skus.slice(0, ESTATUS_MAX_FOTOS);
   const imagenes = new Map<string, PdfImageData>();
   try {
@@ -103,6 +105,8 @@ function aProyecto(
       estado: txt(l.cols, S_ESTADO),
       comentario: txt(l.cols, S_COMENTARIO),
       entrega: txt(l.cols, S_ENTREGA_PROV),
+      nombre: l.name ?? '',
+      zonas: Object.fromEntries(ZONAS_EMBELL.map(z => [z.col, txt(l.cols, z.col)])),
     }));
   const resumenes: Record<string, string> = {};
   for (const r of resumen) resumenes[`${r.producto}|${r.color}`] = r.resumen;

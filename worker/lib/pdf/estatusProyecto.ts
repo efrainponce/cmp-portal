@@ -15,14 +15,14 @@ import type { PdfImageData } from './png';
 import { LOGO_JPG_BASE64, CMP_ORANGE } from './logo';
 import { llaveFotoOc } from '../../../shared/ocFotoLlave';
 import {
-  agruparPorProductoColor, fechaCorta, TONO_FILL,
-  type EstatusLinea, type EstatusProyecto,
+  estatusDeLineas, fechaCorta, textoEmbellecimientos, TONO_FILL,
+  type EstatusProyecto,
 } from '../../../shared/estatusProyecto';
 
 // La lógica de agrupado vive en shared/estatusProyecto.ts (la tab Resumen la
 // usa igual); se re-exporta para que el test y estatusProyectoPdf.ts no cambien.
 export {
-  agruparPorProductoColor, fechaCorta, llaveGrupo,
+  agruparPorProductoColor, estatusDeLineas, fechaCorta, llaveGrupo, textoEmbellecimientos,
   type EstatusLinea, type EstatusProyecto, type EstatusGrupo, type EstatusTono,
 } from '../../../shared/estatusProyecto';
 
@@ -41,8 +41,9 @@ export interface EstatusProyectoInput {
 }
 
 function bloquesDeProyecto(p: EstatusProyecto, imagenes?: Map<string, PdfImageData>): Block[] {
-  const grupos = agruparPorProductoColor(p.lineas, p.resumenes);
+  const { grupos, sueltos } = estatusDeLineas(p.lineas, p.resumenes);
   const conProveedor = grupos.some(g => g.proveedor);
+  const conEmbell = grupos.some(g => g.embellecimientos.length > 0);
   const conFoto = imagenes !== undefined;
   const total = grupos.reduce((s, g) => s + g.cantidad, 0);
   const entregadas = grupos.reduce((s, g) => s + g.entregadas, 0);
@@ -74,10 +75,11 @@ function bloquesDeProyecto(p: EstatusProyecto, imagenes?: Map<string, PdfImageDa
   }
 
   // Anchos que suman 1 en las 4 combinaciones (foto × proveedor); la foto se
-  // lleva un poco de Producto y de Estatus, nunca de Cant./Entrega.
+  // lleva un poco de Producto y de Estatus, nunca de Cant./Entrega. Con
+  // Embellecimientos (una línea por zona) se re-escalan para seguir sumando 1.
   const foto: TableColumn[] = conFoto ? [{ header: 'Foto', width: 0.09, align: 'center' }] : [];
   const extraTxt = conFoto ? 0 : 0.045;
-  const columns: TableColumn[] = conProveedor
+  const base: TableColumn[] = conProveedor
     ? [
         { header: '#', width: 0.04 },
         ...foto,
@@ -97,9 +99,13 @@ function bloquesDeProyecto(p: EstatusProyecto, imagenes?: Map<string, PdfImageDa
         { header: 'Estatus', width: 0.33 + extraTxt },
         { header: 'Entrega', width: 0.12, align: 'center' },
       ];
+  if (conEmbell) base.splice(base.length - 1, 0, { header: 'Embellecimientos', width: 0.42 });
+  const suma = base.reduce((s, c) => s + c.width, 0);
+  const columns = base.map(c => ({ ...c, width: c.width / suma }));
   const iProducto = conFoto ? 2 : 1;
   const iEstatus = columns.findIndex(c => c.header === 'Estatus');
   const iProveedor = columns.findIndex(c => c.header === 'Proveedor');
+  const iEmbell = columns.findIndex(c => c.header === 'Embellecimientos');
 
   const rows = grupos.map((g, i) => {
     const descripcion = [g.producto + (g.sku ? ` (${g.sku})` : ''), g.color].filter(Boolean).join(' · ');
@@ -107,7 +113,9 @@ function bloquesDeProyecto(p: EstatusProyecto, imagenes?: Map<string, PdfImageDa
     if (conFoto) base.push('');
     base.push(descripcion);
     if (conProveedor) base.push(g.proveedor || '—');
-    base.push(String(g.cantidad), g.unidad || '—', g.estatus, g.entrega);
+    base.push(String(g.cantidad), g.unidad || '—', g.estatus);
+    if (conEmbell) base.push(textoEmbellecimientos(g.embellecimientos));
+    base.push(g.entrega);
     return base;
   });
 
@@ -115,14 +123,22 @@ function bloquesDeProyecto(p: EstatusProyecto, imagenes?: Map<string, PdfImageDa
     kind: 'wrapTable',
     columns,
     rows,
-    // Producto, Proveedor y Estatus envuelven; lo demás es corto.
-    wrapCols: [iProducto, iProveedor, iEstatus].filter(i => i >= 0),
+    // Producto, Proveedor, Estatus y Embellecimientos envuelven; lo demás es corto.
+    wrapCols: [iProducto, iProveedor, iEstatus, iEmbell].filter(i => i >= 0),
     rowFills: grupos.map(g => TONO_FILL[g.tono]),
     ...(conFoto ? { imageCol: 1, rowImages: grupos.map(g => imagenes?.get(llaveFotoOc(g.sku, g.producto === '—' ? '' : g.producto)) ?? null) } : {}),
     headerFill: CMP_ORANGE,
     headerTextColor: '#ffffff',
     cellSize: 8,
   });
+  if (sueltos.length) {
+    blocks.push({
+      kind: 'text',
+      size: 8,
+      color: '#5b6472',
+      text: `Embellecimientos sin producto ligado:\n${textoEmbellecimientos(sueltos)}`,
+    });
+  }
   blocks.push({ kind: 'spacer', height: 8 });
   return blocks;
 }
@@ -131,12 +147,25 @@ export function buildEstatusProyectoBlocks(input: EstatusProyectoInput): Block[]
   const blocks: Block[] = [
     {
       kind: 'note',
-      text: `Un renglón por producto y color (las tallas van sumadas). Corte al ${input.fecha}. Verde = entregado al cliente · Azul = en proceso · Rojo = incidencia o retraso · Sin color = pendiente de surtir.`
+      text: `Un renglón por producto y color (las tallas van sumadas; los embellecimientos van en su columna, una línea por zona con su estado). Corte al ${input.fecha}. Verde = entregado al cliente · Azul = en proceso · Rojo = incidencia o retraso · Sin color = pendiente de surtir.`
         + (input.fotosOmitidas ? ` Fotos: se buscaron las de los primeros productos; ${input.fotosOmitidas} más salen sin foto en esta corrida — filtra a menos proyectos para verlas todas.` : ''),
     },
     { kind: 'spacer', height: 4 },
   ];
-  for (const p of input.proyectos) blocks.push(...bloquesDeProyecto(p, input.imagenes));
+  // Varios proyectos (ya vienen ordenados por zona): cada zona de venta
+  // arranca en hoja nueva con su título, como la hoja que reparte Elisa
+  // ("CENTRO & BAJÍO") (Efraín, 2026-09-29).
+  const porZona = input.proyectos.length > 1;
+  let zonaActual: string | null = null;
+  for (const p of input.proyectos) {
+    if (porZona && p.zona !== zonaActual) {
+      if (zonaActual !== null) blocks.push({ kind: 'pageBreak' });
+      zonaActual = p.zona;
+      blocks.push({ kind: 'text', text: `Zona ${p.zona || 'sin asignar'}`, size: 14, bold: true, color: CMP_ORANGE });
+      blocks.push({ kind: 'divider' });
+    }
+    blocks.push(...bloquesDeProyecto(p, input.imagenes));
+  }
   return blocks;
 }
 
@@ -152,6 +181,8 @@ export function buildEstatusProyectoPdf(input: EstatusProyectoInput): Uint8Array
     generatedAt: input.fecha,
     logo: base64ToBytes(LOGO_JPG_BASE64),
     hideGeneratedByLine: true,
+    // Siempre horizontal, carta (Efraín, 2026-09-29: "para ver más info").
+    landscape: true,
   };
   return renderDocument(meta, buildEstatusProyectoBlocks(input));
 }
