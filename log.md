@@ -1,5 +1,13 @@
 # Log de commits
 
+## 2026-09-29 (Estatus PDF todavía más compacto)
+
+- **Efraín**: "un poco más compacto y con menos margen". Modo `compacto` del
+  motor: márgenes de 12 pt, encabezado a ~60% (logo 61×24) y pie más bajo.
+  `wrapTable.denso` (interlineado y relleno mínimos) para la franja y la tabla
+  de productos, letra de 7 pt, foto de 22 pt, leyenda sin caja. Con los 6
+  proyectos del ejemplo: de 7 hojas a 6, dos proyectos por hoja.
+
 ## 2026-09-29 (Estatus PDF: línea de tiempo, historial de estados en D1, formato compacto)
 
 - **Efraín** reenvía lo que pide Elisa: fecha en que el vendedor confirmó

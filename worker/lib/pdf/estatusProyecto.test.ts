@@ -91,8 +91,8 @@ describe('buildEstatusProyectoBlocks', () => {
       expect(t.rows.every(r => r.length === t.columns.length)).toBe(true);
       expect(t.columns.reduce((s, c) => s + c.width, 0)).toBeCloseTo(1, 5);
       expect(t.wrapCols).toContain(2);
-      const nota = blocks.find(b => b.kind === 'note');
-      expect(nota && nota.kind === 'note' ? nota.text : '').toContain('3 más salen sin foto');
+      const nota = blocks.find(b => b.kind === 'text' && b.text.startsWith('Corte al'));
+      expect(nota && nota.kind === 'text' ? nota.text : '').toContain('3 más salen sin foto');
     }
     // Sin mapa de fotos (no se pidieron) la columna no existe y los anchos siguen sumando 1.
     const sin = tabla(p);

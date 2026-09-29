@@ -79,10 +79,10 @@ function bloquesDeProyecto(p: EstatusProyecto, imagenes?: Map<string, PdfImageDa
       wrapCols: franja.map((_, i) => i),
       headerFill: '#eef1f5',
       headerTextColor: '#5b6472',
-      cellSize: 8,
-      headerSize: 6.5,
+      cellSize: 7,
+      headerSize: 6,
+      denso: true,
     },
-    { kind: 'spacer', height: 4 },
   ];
 
   if (grupos.length === 0) {
@@ -94,7 +94,7 @@ function bloquesDeProyecto(p: EstatusProyecto, imagenes?: Map<string, PdfImageDa
   // Anchos que suman 1 en las 4 combinaciones (foto × proveedor); la foto se
   // lleva un poco de Producto y de Estatus, nunca de Cant./Entrega. Con
   // Embellecimientos (una línea por zona) se re-escalan para seguir sumando 1.
-  const foto: TableColumn[] = conFoto ? [{ header: 'Foto', width: 0.06, align: 'center' }] : [];
+  const foto: TableColumn[] = conFoto ? [{ header: 'Foto', width: 0.05, align: 'center' }] : [];
   const extraTxt = conFoto ? 0 : 0.03;
   const base: TableColumn[] = conProveedor
     ? [
@@ -143,31 +143,35 @@ function bloquesDeProyecto(p: EstatusProyecto, imagenes?: Map<string, PdfImageDa
     // Producto, Proveedor, Estatus y Embellecimientos envuelven; lo demás es corto.
     wrapCols: [iProducto, iProveedor, iEstatus, iEmbell].filter(i => i >= 0),
     rowFills: grupos.map(g => TONO_FILL[g.tono]),
-    ...(conFoto ? { imageHeight: 28, imageCol: 1, rowImages: grupos.map(g => imagenes?.get(llaveFotoOc(g.sku, g.producto === '—' ? '' : g.producto)) ?? null) } : {}),
+    ...(conFoto ? { imageHeight: 22, imageCol: 1, rowImages: grupos.map(g => imagenes?.get(llaveFotoOc(g.sku, g.producto === '—' ? '' : g.producto)) ?? null) } : {}),
     headerFill: CMP_ORANGE,
     headerTextColor: '#ffffff',
-    cellSize: 8,
+    cellSize: 7,
+    headerSize: 6.5,
+    denso: true,
   });
   if (sueltos.length) {
     blocks.push({
       kind: 'text',
-      size: 8,
+      size: 7,
       color: '#5b6472',
       text: `Embellecimientos sin producto ligado:\n${textoEmbellecimientos(sueltos)}`,
     });
   }
-  blocks.push({ kind: 'spacer', height: 8 });
+  blocks.push({ kind: 'spacer', height: 4 });
   return blocks;
 }
 
 export function buildEstatusProyectoBlocks(input: EstatusProyectoInput): Block[] {
   const blocks: Block[] = [
     {
-      kind: 'note',
+      // Texto chico sin caja: la leyenda no debe comerse espacio de la hoja.
+      kind: 'text',
+      size: 7,
+      color: '#5b6472',
       text: `Corte al ${input.fecha}. Un renglón por producto y color (tallas sumadas); embellecimientos en su columna, una línea por zona. Verde = entregado · Azul = en proceso · Rojo = incidencia o retraso · Sin color = pendiente.`
         + (input.fotosOmitidas ? ` Fotos: se buscaron las de los primeros productos; ${input.fotosOmitidas} más salen sin foto en esta corrida — filtra a menos proyectos para verlas todas.` : ''),
     },
-    { kind: 'spacer', height: 4 },
   ];
   // Varios proyectos (ya vienen ordenados por zona): cada zona de venta
   // arranca en hoja nueva con su título, como la hoja que reparte Elisa
@@ -177,8 +181,9 @@ export function buildEstatusProyectoBlocks(input: EstatusProyectoInput): Block[]
   for (const p of input.proyectos) {
     if (porZona && p.zona !== zonaActual) {
       if (zonaActual !== null) blocks.push({ kind: 'pageBreak' });
+      else blocks.push({ kind: 'spacer', height: 8 });
       zonaActual = p.zona;
-      blocks.push({ kind: 'text', text: `Zona ${p.zona || 'sin asignar'}`, size: 14, bold: true, color: CMP_ORANGE });
+      blocks.push({ kind: 'text', text: `Zona ${p.zona || 'sin asignar'}`, size: 12, bold: true, color: CMP_ORANGE });
       blocks.push({ kind: 'divider' });
     }
     blocks.push(...bloquesDeProyecto(p, input.imagenes, input.hoy));
