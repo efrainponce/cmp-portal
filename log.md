@@ -1,5 +1,21 @@
 # Log de commits
 
+## 2026-09-29 (Costeo: editar varias líneas a la vez)
+
+- **Josué y Elizabeth (WhatsApp)**: "seleccionar todos los productos 5.11 y
+  ponerles el descuento" / "los mismos gastos de importación". Efraín: nada de
+  elegir campos; si tienes varias marcadas y cambias una, cambian todas.
+  - Board Costeo, escritorio, compras/admin en oportunidad propia: casilla por
+    línea + "marcar todas" en el encabezado. Con varias marcadas, lo que se
+    captura en UNA (costo distr., desc. %, conversión, gastos %, costo embell.,
+    techo, IVA %, margen gob %, moneda, etapa costeo) se escribe igual en las
+    demás marcadas (`COLS_EN_BLOQUE`, `gridMeta.tsx`). Color y cantidad no:
+    dependen del producto / asientan mini versión por línea.
+  - "Marcar por proveedor…" marca todas las líneas cuyo producto trae ese
+    proveedor en el catálogo (p. ej. 5.11 Tactical).
+  - Cada línea sale por el mismo PATCH de siempre, de a 4, con preview local de
+    fórmulas; el drawer se refresca una sola vez al final. Sin endpoint nuevo
+    ni cambio de permisos. Solo Costeo (no Validación ni Zona Efrain).
 ## 2026-09-29 (Tallas: el portal escribe el mismo producto/SKU que el Sheet; el Sheet vuelve a la carpeta de la Oportunidad)
 
 - **Efraín** (PRO-0214 / OPP-1121, Ricardo no podía capturar el Sheet — "Solicitar

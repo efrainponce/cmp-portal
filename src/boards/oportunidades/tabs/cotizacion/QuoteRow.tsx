@@ -95,6 +95,11 @@ export interface QuoteRowProps {
     onMove: (e: React.PointerEvent) => void;
     onUp: () => void;
   };
+  /** Casilla de la edición en bloque (board Costeo, CotizacionTab). Ausente =
+   * la grid no tiene selección. Props planas y callback estable: un objeto
+   * nuevo por render rompería el memo de todas las filas. */
+  onToggleSeleccion?: (id: string) => void;
+  marcada?: boolean;
 }
 
 function QuoteRowInner({
@@ -106,7 +111,7 @@ function QuoteRowInner({
   generoMF, generoSaving, onToggleGenero,
   proveedorSaving, proveedorError, onEditProveedor,
   canDelete, deleting, onDeleteLine, canAjustar, onAjustarLinea, canVerActividad, onVerActividad, ajusteLabel,
-  arrastre,
+  arrastre, onToggleSeleccion, marcada = false,
 }: QuoteRowProps) {
   const { lineWarnings, bannerText, airtableUrl } = computeLineBanner(p, state, variant, catalog, precioOnly);
 
@@ -148,7 +153,7 @@ function QuoteRowInner({
     </div>
   );
 
-  const rowTint = lineWarnings.length > 0 ? '#fdf1f2' : '#fff';
+  const rowTint = marcada ? '#eaf3fb' : lineWarnings.length > 0 ? '#fdf1f2' : '#fff';
   return (
     // OUTER a propósito SIN gridWrapStyle (a diferencia del grid interno de abajo):
     // si hereda el fit-content de la grid de 16 columnas, LineDetailPanel (hijo de
@@ -180,7 +185,7 @@ function QuoteRowInner({
       )}
       <div style={{
         ...gridWrapStyle,
-        display: 'grid', gridTemplateColumns: `${anchoPartida(!!arrastre)}px ${colsTemplate(visibleCols)}${canDelete ? ' 32px' : ''}`,
+        display: 'grid', gridTemplateColumns: `${anchoPartida(!!arrastre, !!onToggleSeleccion)}px ${colsTemplate(visibleCols)}${canDelete ? ' 32px' : ''}`,
         gap: 6, alignItems: 'center', padding: '8px 10px', background: rowTint,
       }}>
         <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -201,6 +206,16 @@ function QuoteRowInner({
             >
               ⠿
             </span>
+          )}
+          {onToggleSeleccion && (
+            <input
+              type="checkbox"
+              checked={marcada}
+              onChange={() => onToggleSeleccion(p.id)}
+              title="Marcar para editar varias líneas a la vez"
+              aria-label={`Marcar la línea ${partida}`}
+              style={{ margin: 0, cursor: 'pointer' }}
+            />
           )}
           {partida}
         </div>

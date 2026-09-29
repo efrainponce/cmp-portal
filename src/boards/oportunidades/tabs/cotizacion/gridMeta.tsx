@@ -240,8 +240,26 @@ export const GRID_COLS_COSTEO: GridCol[] = [
 /** Ancho de la columna "#": con el asa ⠿ de reordenar (2026-09-28) lleva
  * "⠿ 1"; sin ella, solo el número. Encabezado, filas (QuoteRow) y totales usan
  * el mismo valor para que las columnas no se desfasen. */
-export function anchoPartida(conAsa: boolean): number {
-  return conAsa ? 40 : 28;
+export function anchoPartida(conAsa: boolean, conCasilla = false): number {
+  return (conAsa ? 40 : 28) + (conCasilla ? 20 : 0);
+}
+
+// Edición en bloque del board Costeo (Josué/Elizabeth, 2026-09-28): con varias
+// líneas marcadas, lo que Compras captura en UNA se escribe igual en todas las
+// marcadas (el descuento de todo lo de 5.11, los mismos gastos de importación).
+// Solo la captura de costeo: Color depende de la lista de cada producto y
+// Cantidad asienta una mini versión por línea — esos siguen uno por uno.
+export const COLS_EN_BLOQUE = new Set<string>([
+  COL.costoDistr, COL.descuentoPct, COL.conversion, COL.gastosPct, COL.margenGobPct,
+  COL.embellecimiento, ETAPA_COSTEO_COL, MONEDA_COL, IVA_PCT_COL, TECHO_COL,
+]);
+
+/** Nombre del proveedor de la línea según el catálogo ('' si no tiene) — lo
+ * usa "Seleccionar proveedor" de la edición en bloque. */
+export function proveedorDeLinea(row: ItemDTO, catalog: ItemDTO[]): string {
+  const id = linkedProductoId(row);
+  if (id == null) return '';
+  return catalogIndex(catalog).byId.get(id)?.cols[PRODUCTO_PROVEEDOR_COL]?.text?.trim() ?? '';
 }
 
 export function colsTemplate(cols: GridCol[]): string {
