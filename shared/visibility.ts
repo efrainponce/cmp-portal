@@ -166,7 +166,7 @@ export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
       'date_mm21c5ka', 'multiple_person_mm164em1', 'multiple_person_mm16qysk',
       'multiple_person_mm169k2f', 'file_mm478mkq', 'link_mm462saa',
       'text_mm4cct6a', 'text_mm4cdyjb', 'color_mm52csps',
-      'date_mm525k42', 'file_mm3393nf'], AC),
+      'date_mm525k42'], AC),
     // Comentarios — lo que cmp-tallas imprime en la OC. El portal lo escribe
     // como puente de la "nota al proveedor" del tab Órdenes de compra
     // (worker/lib/ocNotas.ts, Efraín 2026-08-19).
@@ -195,6 +195,11 @@ export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
     // 2026-08-26. Solo lectura: 4 proyectos viejos siguen mostrando su
     // documento, pero lo nuevo ya se escribe en file_mm33yv4p.
     file_mm0hayh4: { vis: V },
+    // "Subir documentacion (OC/cotizacion firmada)" — la columna visible donde
+    // el equipo sube la OC en Monday desde sep-2026. Mismo documento que
+    // file_mm33yv4p, así que misma visibilidad; solo lectura (Elisa, 2026-09-29:
+    // PRO-0200 tenía 3 documentos ahí y el portal decía "Sin documentos").
+    file_mm3393nf: { vis: V },
   },
 
   proyectos_sub: {

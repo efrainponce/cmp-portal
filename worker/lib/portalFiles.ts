@@ -16,9 +16,13 @@ import { fetchAssetPublicUrls } from './monday';
 // viejos: la pestaña Documentación salía vacía aunque el documento estuviera
 // cargado en Monday (Efraín, 2026-08-26).
 export const PROYECTO_DOCUMENTO_COL = 'file_mm33yv4p';
-// La columna de antes: se sigue LEYENDO (los 4 proyectos viejos no pierden su
-// documento) pero ya no se escribe — no está en la whitelist como writable.
-export const PROYECTO_DOCUMENTO_COL_LEGADO = 'file_mm0hayh4';
+// Columnas que se LEEN pero no se escriben (no están en la whitelist como
+// writable): "Subir documentacion (OC/cotizacion firmada)" (file_mm3393nf), la
+// columna visible que el equipo usa en Monday desde sep-2026 — 10 proyectos
+// tenían su OC SOLO ahí y el portal los mostraba "Sin documentos" (PRO-0200,
+// Elisa 2026-09-29) — y "Cotización Firmada Institucion" (file_mm0hayh4), a
+// donde apuntaba el portal antes del 2026-08-26 (4 proyectos viejos).
+export const PROYECTO_DOCUMENTO_COLS_LECTURA = ['file_mm3393nf', 'file_mm0hayh4'];
 // Acta de entrega firmada por el cliente (board Proyectos, 2026-09-15). Hay DOS
 // columnas tituladas "Acta de Entrega": esta es la que el equipo usa (8
 // proyectos al 2026-09-15); `project_file` tiene 3 con fotos de WhatsApp
@@ -136,10 +140,10 @@ async function resolveMondayAssetProyecto(env: Env, parts: string[], viewer: Ide
   return parseFiles(row.columns, colId).find(f => matchesName(f.name, filename))?.assetId ?? null;
 }
 
-/** Documento del cliente: la columna vigente primero y la de antes después —
- * un proyecto viejo sigue sirviendo su archivo por el mismo key de /api/files. */
+/** Documento del cliente: la columna vigente primero y las de solo lectura
+ * después — todas se sirven por el mismo key de /api/files. */
 function assetDocumento(columns: string, filename: string): number | null {
-  for (const colId of [PROYECTO_DOCUMENTO_COL, PROYECTO_DOCUMENTO_COL_LEGADO]) {
+  for (const colId of [PROYECTO_DOCUMENTO_COL, ...PROYECTO_DOCUMENTO_COLS_LECTURA]) {
     const hit = parseFiles(columns, colId).find(f => matchesName(f.name, filename));
     if (hit) return hit.assetId;
   }

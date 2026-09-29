@@ -16,7 +16,7 @@ import type { ItemDetailDTO } from '../../../lib/api';
 import { uploadProyectoDocumento, borrarProyectoDocumento, useBoards, colForBoard } from '../../../lib/api';
 import { patchItem, type ProyectoArchivoCategoria } from '../../../lib/apiClient';
 import { useMe } from '../../../lib/useMe';
-import { P_OC_CLIENTE, P_OC_CLIENTE_LEGADO, P_ACTA_ENTREGA, type ProyectoState } from '../ProyectoSection';
+import { P_OC_CLIENTE, P_OC_CLIENTE_LECTURA, P_ACTA_ENTREGA, type ProyectoState } from '../ProyectoSection';
 import { DocumentsPanel } from '../../../components/documents/DocumentsPanel';
 import { DriveCarpeta } from '../../../components/documents/DriveCarpeta';
 
@@ -294,8 +294,8 @@ export function FechaEntregaField({ proyecto }: { proyecto?: ProyectoState }) {
 interface ProyectoArchivoConfig {
   categoria: ProyectoArchivoCategoria;
   colId: string;
-  /** Columna vieja que solo se LEE (sin "Borrar"): proyectos anteriores al cambio. */
-  colLegado?: string;
+  /** Columnas que solo se LEEN (sin "Borrar"): la visible de Monday y la de antes. */
+  colsLectura?: string[];
   titulo: string;
   descripcion: string;
   placeholder: string;
@@ -306,7 +306,7 @@ interface ProyectoArchivoConfig {
 const OC_CONTRATO: ProyectoArchivoConfig = {
   categoria: 'documento',
   colId: P_OC_CLIENTE,
-  colLegado: P_OC_CLIENTE_LEGADO,
+  colsLectura: P_OC_CLIENTE_LECTURA,
   titulo: 'Órdenes de compra / contrato firmado',
   descripcion: 'Orden de compra, cotización firmada por el cliente o contrato firmado.',
   placeholder: 'Subir orden de compra o contrato',
@@ -380,13 +380,13 @@ function ProyectoArchivoSection({ config, proyecto, oppId }: {
   // Reconstruye el key de R2 (durable, sin expirar) en vez de usar la URL
   // firmada de Monday que trae el mirror — GET /api/files/... cae de vuelta
   // a Monday por sí solo si el archivo aún no se migró (ver worker/routes/oportunidades.ts).
-  // Si hay columna vieja se lista también: los proyectos anteriores al cambio
-  // siguen mostrando su documento (el key de /api/files es el mismo, el server
-  // resuelve en cuál de las dos vive). El borrado solo sabe de la columna
+  // Las columnas de solo lectura se listan también: lo subido directo en Monday
+  // o antes del cambio sigue apareciendo (el key de /api/files es el mismo, el
+  // server resuelve en cuál vive). El borrado solo sabe de la columna
   // vigente, así que esos no ofrecen "Borrar" — se quitan desde Monday si hiciera falta.
   const files = p && oppId ? [
     ...parseFiles(p.cols[config.colId]?.text),
-    ...(config.colLegado ? parseFiles(p.cols[config.colLegado]?.text).map((f) => ({ ...f, soloLectura: true })) : []),
+    ...(config.colsLectura ?? []).flatMap((c) => parseFiles(p.cols[c]?.text).map((f) => ({ ...f, soloLectura: true }))),
   ].map((f) => ({
     ...f, url: `/api/files/oportunidades/${oppId}/${config.categoria}/${encodeURIComponent(f.name)}`,
   })) : [];
