@@ -20,6 +20,9 @@ import { parsePegadoTallas } from '../../../lib/pegadoTallas';
 // Oportunidades subitems (oportunidades_sub, 18395657607) — líneas de la
 // cotización ganada, mismos ids que worker/lib/quoteVersions.ts.
 const SUB_SKU = 'lookup_mkzn7x9a';
+const SUB_SKU_TEXTO = 'text_mm0bxy39';
+const SUB_NOMBRE_PRODUCTO = 'lookup_mm0x4kda';
+const SUB_PRODUCTO_TEXTO = 'text_mm0bkm1j';
 const SUB_COLOR = 'text_mm07s2mg';
 const SUB_CANTIDAD = 'numeric_mkzm6399';
 
@@ -33,12 +36,22 @@ interface ProductoGroup {
   cantidad: number;
 }
 
+/** Producto y SKU de una línea de cotización, de las MISMAS columnas que usa
+ * el Sheet de tallas (cmp-tallas generate_sheet: "Nombre del Producto" y el
+ * SKU en texto). El `name` del subitem es libre ("3", "Nueva línea",
+ * "BOMBEROS" en OPP-1121) y se escribía como Producto de las líneas del
+ * Proyecto en Monday — el portal y el Sheet mostraban cosas distintas. */
+export function productoDeLinea(p: ItemDTO): { producto: string; sku?: string } {
+  const producto = p.cols[SUB_NOMBRE_PRODUCTO]?.text?.trim() || p.cols[SUB_PRODUCTO_TEXTO]?.text?.trim() || p.name;
+  const sku = p.cols[SUB_SKU_TEXTO]?.text?.trim() || p.cols[SUB_SKU]?.text?.trim() || undefined;
+  return { producto, sku };
+}
+
 function groupsFromProducts(products: ItemDTO[]): ProductoGroup[] {
   return products
     .map((p): ProductoGroup => ({
       subitemId: p.id,
-      producto: p.name,
-      sku: p.cols[SUB_SKU]?.text || undefined,
+      ...productoDeLinea(p),
       color: p.cols[SUB_COLOR]?.text || undefined,
       cantidad: Number((p.cols[SUB_CANTIDAD]?.text ?? '').replace(/,/g, '')) || 0,
     }))
