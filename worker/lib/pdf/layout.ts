@@ -54,6 +54,9 @@ export type Block =
        * Estatus de proyecto (Efraín, 2026-09-21: "tiene que salir la imagen
        * del producto"); la foto es la misma por SKU que usa la OC con imágenes. */
       imageCol?: number; rowImages?: (PdfImageData | null | undefined)[]; imageHeight?: number;
+      /** Renglones pegados (interlineado y relleno mínimos) — Estatus de
+       * proyectos, 2026-09-29: "más compacto". */
+      denso?: boolean;
     }
   | { kind: 'divider' }
   | { kind: 'spacer'; height: number }
@@ -116,6 +119,10 @@ export interface DocumentMeta {
    * que no caben en 516pt de contenido (hoja de costeo de Validación,
    * 2026-08-14: ~20 columnas). */
   landscape?: boolean;
+  /** Márgenes mínimos para meter la mayor información por hoja (Estatus de
+   * proyectos, 2026-09-29: "carta horizontal con poco margen, como la hoja de
+   * Elisa"). El encabezado/pie se dibujan igual, solo más pegados al borde. */
+  compacto?: boolean;
 }
 
 /** Medidas de página resueltas UNA vez por documento — todo lo que dibuja
@@ -131,18 +138,19 @@ interface Metrics {
   footerTop: number;
 }
 
-function metricsFor(landscape: boolean): Metrics {
+function metricsFor(landscape: boolean, compacto = false): Metrics {
   const size = landscape ? { width: LETTER.height, height: LETTER.width } : LETTER;
-  const contentLeft = MARGIN;
-  const contentRight = size.width - MARGIN;
+  const margin = compacto ? 12 : MARGIN;
+  const contentLeft = margin;
+  const contentRight = size.width - margin;
   return {
     pageWidth: size.width,
     pageHeight: size.height,
     contentLeft,
     contentRight,
     contentWidth: contentRight - contentLeft,
-    headerBottom: HEADER_BOTTOM,
-    footerTop: size.height - FOOTER_MARGIN,
+    headerBottom: compacto ? 50 : HEADER_BOTTOM,
+    footerTop: size.height - (compacto ? 24 : FOOTER_MARGIN),
   };
 }
 
@@ -229,7 +237,10 @@ class Cursor {
 }
 
 function drawHeading(pdf: PdfWriter, cur: Cursor, m: Metrics, text: string): void {
-  cur.ensure(30);
+  // 70 y no 30: un título pide espacio para al menos un renglón de lo que
+  // encabeza — si no, queda huérfano al pie de la hoja y su contenido en la
+  // siguiente.
+  cur.ensure(70);
   cur.y += 6;
   pdf.text(cur.page, m.contentLeft, cur.y, text.toUpperCase(), { size: 9, font: 'HB', color: ACCENT });
   cur.y += 5;
@@ -323,8 +334,8 @@ function drawWrapTable(pdf: PdfWriter, cur: Cursor, m: Metrics, block: Extract<B
   const wrapSet = new Set(block.wrapCols);
   const cellSize = block.cellSize ?? 9;
   const headerSize = block.headerSize ?? 7.5;
-  const lineHeight = cellSize + 2;
-  const baseRowHeight = Math.max(17, cellSize + 8);
+  const lineHeight = block.denso ? cellSize + 1.5 : cellSize + 2;
+  const baseRowHeight = block.denso ? cellSize + 7 : Math.max(17, cellSize + 8);
   cur.ensure(18 + baseRowHeight * 2);
   drawTableHeader(pdf, cur, m, block.columns, block.headerFill, block.headerTextColor, headerSize);
 
@@ -347,7 +358,7 @@ function drawWrapTable(pdf: PdfWriter, cur: Cursor, m: Metrics, block: Extract<B
     }
     const conFoto = block.imageCol !== undefined;
     const imageHeight = block.imageHeight ?? 40;
-    const rowHeight = Math.max(baseRowHeight, maxLines * lineHeight + 6, conFoto ? imageHeight + 6 : 0);
+    const rowHeight = Math.max(baseRowHeight, maxLines * lineHeight + (block.denso ? 5 : 6), conFoto ? imageHeight + (block.denso ? 3 : 6) : 0);
     if (cur.ensure(rowHeight)) drawTableHeader(pdf, cur, m, block.columns, block.headerFill, block.headerTextColor, headerSize);
     const fill = block.rowFills?.[r];
     if (fill) pdf.rect(cur.page, m.contentLeft, cur.y - 9, m.contentWidth, rowHeight, { fill });
@@ -355,7 +366,7 @@ function drawWrapTable(pdf: PdfWriter, cur: Cursor, m: Metrics, block: Extract<B
     block.columns.forEach((col, i) => {
       if (i === block.imageCol) {
         // Foto encajada sin deformar dentro de la celda; sin foto, recuadro gris.
-        const box = { x: boxes[i].left, y: cur.y - 6, w: boxes[i].right - boxes[i].left, h: imageHeight };
+        const box = { x: boxes[i].left, y: cur.y - (block.denso ? 7.5 : 6), w: boxes[i].right - boxes[i].left, h: imageHeight };
         const img = block.rowImages?.[r];
         const drawn = img ? (() => { const f = fitBox(img, box); return pdf.image(cur.page, img, f.x, f.y, f.w, f.h); })() : false;
         if (!drawn) {
@@ -393,7 +404,7 @@ function drawWrapTable(pdf: PdfWriter, cur: Cursor, m: Metrics, block: Extract<B
     });
     cur.y += baseRowHeight;
   }
-  cur.y += 10;
+  cur.y += block.denso ? 4 : 10;
 }
 
 function drawNote(pdf: PdfWriter, cur: Cursor, m: Metrics, text: string): void {
@@ -646,12 +657,14 @@ function drawChrome(pdf: PdfWriter, m: Metrics, meta: DocumentMeta): void {
   const total = pdf.pageCount;
   for (let page = 0; page < total; page++) {
     // Encabezado
-    if (meta.logo) pdf.image(page, meta.logo, m.contentLeft, 14, 101, 40);
-    else pdf.text(page, m.contentLeft, 44, 'MEXICANA DE PROTECCIÓN', { size: 11, font: 'HB', color: ACCENT });
-    pdf.textAligned(page, meta.title, 40, { left: m.contentLeft + 200, right: m.contentRight }, 'right', { size: 10, font: 'HB', color: INK });
+    // Compacto: el mismo encabezado a ~60% de alto (logo 61×24 en vez de 101×40).
+    const k = meta.compacto;
+    if (meta.logo) pdf.image(page, meta.logo, m.contentLeft, k ? 8 : 14, k ? 61 : 101, k ? 24 : 40);
+    else pdf.text(page, m.contentLeft, k ? 26 : 44, 'MEXICANA DE PROTECCIÓN', { size: k ? 9 : 11, font: 'HB', color: ACCENT });
+    pdf.textAligned(page, meta.title, k ? 20 : 40, { left: m.contentLeft + 200, right: m.contentRight }, 'right', { size: k ? 9 : 10, font: 'HB', color: INK });
     const sub = [meta.subtitle, meta.folio ? `Folio ${meta.folio}` : ''].filter(Boolean).join(' · ');
-    if (sub) pdf.textAligned(page, sub, 53, { left: m.contentLeft + 200, right: m.contentRight }, 'right', { size: 8.5, color: INK_SOFT });
-    pdf.line(page, m.contentLeft, 62, m.contentRight, 62, { color: RULE, width: 0.8 });
+    if (sub) pdf.textAligned(page, sub, k ? 30 : 53, { left: m.contentLeft + 200, right: m.contentRight }, 'right', { size: k ? 7.5 : 8.5, color: INK_SOFT });
+    pdf.line(page, m.contentLeft, k ? 36 : 62, m.contentRight, k ? 36 : 62, { color: RULE, width: 0.8 });
 
     // Pie
     pdf.line(page, m.contentLeft, m.footerTop + 8, m.contentRight, m.footerTop + 8, { color: RULE, width: 0.6 });
@@ -667,7 +680,7 @@ function drawChrome(pdf: PdfWriter, m: Metrics, meta: DocumentMeta): void {
 
 /** Renderiza los bloques a un PDF completo (encabezado/pie incluidos). */
 export function renderDocument(meta: DocumentMeta, blocks: Block[]): Uint8Array {
-  const m = metricsFor(!!meta.landscape);
+  const m = metricsFor(!!meta.landscape, !!meta.compacto);
   const pdf = new PdfWriter({ width: m.pageWidth, height: m.pageHeight });
   const cur = new Cursor(pdf, m);
 

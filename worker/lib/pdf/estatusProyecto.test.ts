@@ -3,6 +3,7 @@
 // de tallas, el texto de estatus, la fecha de lo que falta y que el Proveedor
 // no salga para quien no lo recibe (ventas).
 import { describe, it, expect } from 'vitest';
+import { diasParaEntregar } from '../../../shared/estatusProyecto';
 import {
   agruparPorProductoColor, buildEstatusProyectoBlocks, buildEstatusProyectoPdf, estatusDeLineas, fechaCorta,
   textoEmbellecimientos,
@@ -55,7 +56,7 @@ describe('agruparPorProductoColor', () => {
 
 describe('buildEstatusProyectoBlocks', () => {
   const tabla = (p: EstatusProyecto) => {
-    const t = buildEstatusProyectoBlocks({ proyectos: [p], fecha: '21/09/2026' }).find(b => b.kind === 'wrapTable');
+    const t = buildEstatusProyectoBlocks({ proyectos: [p], fecha: '21/09/2026' }).find(b => b.kind === 'wrapTable' && b.columns.some(c => c.header === 'Estatus'));
     if (!t || t.kind !== 'wrapTable') throw new Error('sin tabla');
     return t;
   };
@@ -82,7 +83,7 @@ describe('buildEstatusProyectoBlocks', () => {
       const blocks = buildEstatusProyectoBlocks({
         proyectos: [{ ...p, lineas }], fecha: '21/09/2026', imagenes: new Map([['74273', img]]), fotosOmitidas: 3,
       });
-      const t = blocks.find(b => b.kind === 'wrapTable');
+      const t = blocks.find(b => b.kind === 'wrapTable' && b.columns.some(c => c.header === 'Estatus'));
       if (!t || t.kind !== 'wrapTable') throw new Error('sin tabla');
       expect(t.columns[1].header).toBe('Foto');
       expect(t.imageCol).toBe(1);
@@ -90,8 +91,8 @@ describe('buildEstatusProyectoBlocks', () => {
       expect(t.rows.every(r => r.length === t.columns.length)).toBe(true);
       expect(t.columns.reduce((s, c) => s + c.width, 0)).toBeCloseTo(1, 5);
       expect(t.wrapCols).toContain(2);
-      const nota = blocks.find(b => b.kind === 'note');
-      expect(nota && nota.kind === 'note' ? nota.text : '').toContain('3 más salen sin foto');
+      const nota = blocks.find(b => b.kind === 'text' && b.text.startsWith('Corte al'));
+      expect(nota && nota.kind === 'text' ? nota.text : '').toContain('3 más salen sin foto');
     }
     // Sin mapa de fotos (no se pidieron) la columna no existe y los anchos siguen sumando 1.
     const sin = tabla(p);
@@ -156,7 +157,7 @@ describe('embellecimientos en la celda del producto', () => {
   it('PDF: columna Embellecimientos, anchos que suman 1 y separador por zona de venta', () => {
     const p = proyecto([chaleco({}), emb('Espalda', 'Parche POLICIA ESTATAL')]);
     const blocks = buildEstatusProyectoBlocks({ proyectos: [p, { ...p, zona: 'Norte' }], fecha: '29/09/2026' });
-    const t = blocks.find(b => b.kind === 'wrapTable');
+    const t = blocks.find(b => b.kind === 'wrapTable' && b.columns.some(c => c.header === 'Estatus'));
     if (!t || t.kind !== 'wrapTable') throw new Error('sin tabla');
     const iEmb = t.columns.findIndex(c => c.header === 'Embellecimientos');
     expect(iEmb).toBeGreaterThan(0);
@@ -167,6 +168,29 @@ describe('embellecimientos en la celda del producto', () => {
     const zonas = blocks.filter(b => b.kind === 'text' && b.text.startsWith('Zona ')).map(b => b.kind === 'text' ? b.text : '');
     expect(zonas).toEqual(['Zona Centro', 'Zona Norte']);
     expect(blocks.filter(b => b.kind === 'pageBreak')).toHaveLength(1);
+  });
+});
+
+describe('línea de tiempo del proyecto (Elisa, 2026-09-29)', () => {
+  it('días para entregar en palabras', () => {
+    expect(diasParaEntregar('2026-10-28', '2026-09-29')).toBe('Faltan 29 días');
+    expect(diasParaEntregar('2026-09-30', '2026-09-29')).toBe('Faltan 1 día');
+    expect(diasParaEntregar('2026-09-29', '2026-09-29')).toBe('Vence hoy');
+    expect(diasParaEntregar('2026-09-26', '2026-09-29')).toBe('Vencido hace 3 días');
+    expect(diasParaEntregar('', '2026-09-29')).toBe('Sin fecha de entrega');
+    expect(diasParaEntregar('2026-09-01', '2026-09-29', 'Proyecto Terminado')).toBe('Proyecto terminado');
+  });
+
+  it('el encabezado trae tallas confirmadas, OC listas, entrega y días', () => {
+    const p = { ...proyecto([linea({})]), tallasConfirmadas: '2026-09-25', ocListas: '' };
+    const franja = buildEstatusProyectoBlocks({ proyectos: [p], fecha: '29/09/2026', hoy: '2026-09-29' }).find(b => b.kind === 'wrapTable');
+    if (!franja || franja.kind !== 'wrapTable') throw new Error('sin franja');
+    const m = Object.fromEntries(franja.columns.map((c, i) => [c.header, franja.rows[0][i]]));
+    expect(franja.columns.reduce((s, c) => s + c.width, 0)).toBeCloseTo(1, 5);
+    expect(m['Tallas conf. (a Compras)']).toBe('25-sep-26');
+    expect(m['OC listas']).toBe('Todavía no');
+    expect(m['Entrega contrato']).toBe('28-oct-26');
+    expect(m['Días p/ entregar']).toBe('Faltan 29 días');
   });
 });
 

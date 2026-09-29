@@ -19,6 +19,7 @@ import { cargarImagenesParaPdf, skuKey, isSkuUsable } from './ocImagenes';
 import { llaveFotoOc } from '../../shared/ocFotoLlave';
 import { ZONAS_EMBELL, esLineaEmbell } from '../../shared/estatusProyecto';
 import type { PdfImageData } from './pdf/png';
+import { BOARDS } from '../../shared/boards';
 
 export class EstatusProyectoPdfError extends Error {
   status: number;
@@ -83,6 +84,41 @@ function txt(cols: ItemDTO['cols'], id: string): string {
   return (cols[id]?.text ?? '').trim();
 }
 
+/** Hoy en CDMX como YYYY-MM-DD (en-CA da ese formato). */
+function hoyCdmx(): string {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Mexico_City' });
+}
+
+/** Primera llegada de cada Proyecto a "Tallas Confirmadas" y a "Ordenes de
+ * compra listas", del historial de estados en D1 (`activity_log`, lo guarda el
+ * delta sync — WHITELIST.proyectos en activityLog.ts). Día en hora de CDMX.
+ * Nunca tira: sin historial, el PDF sale con "Todavía no". */
+async function hitosDe(env: Env, ids: number[]): Promise<Map<number, { tallas?: string; oc?: string }>> {
+  const out = new Map<number, { tallas?: string; oc?: string }>();
+  try {
+    // ≤ 90 binds por consulta (D1 corta en ~100).
+    for (let i = 0; i < ids.length; i += 90) {
+      const lote = ids.slice(i, i + 90);
+      const { results } = await env.DB.prepare(
+        `SELECT item_id, new_text, MIN(created_at) AS primera FROM activity_log
+          WHERE board_id = ${BOARDS.proyectos.id} AND column_id = 'project_status'
+            AND new_text IN ('Tallas Confirmadas', 'Ordenes de compra listas')
+            AND item_id IN (${lote.map(() => '?').join(',')})
+          GROUP BY item_id, new_text`,
+      ).bind(...lote).all<{ item_id: number; new_text: string; primera: string }>();
+      for (const r of results ?? []) {
+        const dia = new Date(r.primera).toLocaleDateString('en-CA', { timeZone: 'America/Mexico_City' });
+        const h = out.get(r.item_id) ?? {};
+        if (r.new_text === 'Tallas Confirmadas') h.tallas = dia; else h.oc = dia;
+        out.set(r.item_id, h);
+      }
+    }
+  } catch (err) {
+    console.error('estatus pdf: hitos', err);
+  }
+  return out;
+}
+
 function fechaHoy(): string {
   return new Date().toLocaleDateString('es-MX', {
     day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'America/Mexico_City',
@@ -91,6 +127,7 @@ function fechaHoy(): string {
 
 function aProyecto(
   row: MirrorItem, hijos: MirrorItem[], resumen: ProductoResumenRow[], viewer: Identity,
+  hitos?: { tallas?: string; oc?: string },
 ): EstatusProyecto {
   const p = toItemDTO(row, 'proyectos', viewer.role, false, undefined, viewer.email);
   const lineas: EstatusLinea[] = hijos
@@ -119,6 +156,8 @@ function aProyecto(
     estadoProyecto: txt(p.cols, P_ESTADO),
     fechaEntrega: txt(p.cols, P_FECHA_ENTREGA),
     documentacion: txt(p.cols, P_DOCUMENTACION),
+    tallasConfirmadas: hitos?.tallas ?? '',
+    ocListas: hitos?.oc ?? '',
     lineas,
     resumenes,
   };
@@ -130,13 +169,14 @@ export async function generarEstatusProyectoPdf(
 ): Promise<{ bytes: Uint8Array; nombre: string }> {
   const row = await getItem(env, 'proyectos', proyectoId, viewer);
   if (!row) throw new EstatusProyectoPdfError(404, 'proyecto no encontrado');
-  const [hijos, resumen] = await Promise.all([
+  const [hijos, resumen, hitos] = await Promise.all([
     childrenOf(env, 'proyectos', proyectoId, viewer),
     listProductoResumen(env, proyectoId),
+    hitosDe(env, [proyectoId]),
   ]);
-  const proyectos = [aProyecto(row, hijos, resumen, viewer)];
+  const proyectos = [aProyecto(row, hijos, resumen, viewer, hitos.get(proyectoId))];
   const { imagenes, omitidas } = await fotosDe(env, proyectos);
-  const bytes = buildEstatusProyectoPdf({ proyectos, fecha: fechaHoy(), imagenes, fotosOmitidas: omitidas });
+  const bytes = buildEstatusProyectoPdf({ proyectos, fecha: fechaHoy(), hoy: hoyCdmx(), imagenes, fotosOmitidas: omitidas });
   return { bytes, nombre: row.name };
 }
 
@@ -156,14 +196,15 @@ export async function generarEstatusProyectosPdf(
   if (rows.length === 0) throw new EstatusProyectoPdfError(404, 'ningún proyecto encontrado');
 
   const propios = rows.map(r => r.item_id);
-  const [hijos, resumenes] = await Promise.all([
+  const [hijos, resumenes, hitos] = await Promise.all([
     childrenOfMany(env, 'proyectos', propios, viewer),
     listProductoResumenMany(env, propios),
+    hitosDe(env, propios),
   ]);
   const proyectos = rows
-    .map(r => aProyecto(r, hijos.get(r.item_id) ?? [], resumenes.get(r.item_id) ?? [], viewer))
+    .map(r => aProyecto(r, hijos.get(r.item_id) ?? [], resumenes.get(r.item_id) ?? [], viewer, hitos.get(r.item_id)))
     .sort((a, b) =>
       a.zona.localeCompare(b.zona) || a.vendedor.localeCompare(b.vendedor) || a.folio.localeCompare(b.folio));
   const { imagenes, omitidas } = await fotosDe(env, proyectos);
-  return buildEstatusProyectoPdf({ proyectos, alcance, fecha: fechaHoy(), imagenes, fotosOmitidas: omitidas });
+  return buildEstatusProyectoPdf({ proyectos, alcance, fecha: fechaHoy(), hoy: hoyCdmx(), imagenes, fotosOmitidas: omitidas });
 }
