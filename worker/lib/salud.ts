@@ -19,6 +19,10 @@
 //    que no llegaron a Monday, o que Monday tiene distinto a lo que se mandó.
 //  - tallas_no_cuadran: las tallas del Proyecto no suman lo cotizado por
 //    producto y color.
+//  - proyecto_sin_datos: Proyecto sin Zona, Vendedor o Compras (Efraín,
+//    2026-09-29: "NO deben existir proyectos sin zona"). Se rellenan solos
+//    desde la Oportunidad ligada y, la Zona, de la zona habitual del vendedor;
+//    queda hallazgo solo lo que no se pudo deducir.
 //  - errores_servidor / http_500 / errores_front / sync_fallido: errores de la
 //    última hora (worker/lib/errores.ts, accion_log, sync_log).
 //
@@ -74,6 +78,18 @@ const PRO_ESTADO = 'project_status';
 const PS_SKU = 'text_mm0hyrfs';
 const PS_COLOR = 'text_mm0h4a1c';
 const PS_CANTIDAD = 'numeric_mm0hj2q4';
+// Zona / Vendedor / Compras del Proyecto y de la Oportunidad (mismos ids que
+// worker/lib/ganarOportunidad.ts, que los copia al ganar).
+const PRO_ZONA = 'dropdown_mm0hnyv';
+const PRO_VENDEDOR = 'multiple_person_mm0hrnqq';
+const PRO_COMPRAS = 'project_owner';
+const PRO_FOLIO_OPP = 'lookup_mm1d56mp';
+const OPP_ZONA = 'dropdown_mm03g067';
+const OPP_VENDEDOR = 'deal_owner';
+const OPP_COMPRAS = 'multiple_person_mm03qyw9';
+const OPP_FOLIO = 'pulse_id_mm0qcq0m';
+/** Items nativos (Zona Efrain) no existen en Monday: no se les escribe. */
+const NATIVO_DESDE = 900000000000;
 
 const ETAPAS_CERRADAS = new Set(['Perdida', 'Cancelada']);
 // Proyectos cuyas tallas ya deberían cuadrar con la cotización: en "Desglose de
@@ -95,6 +111,7 @@ const TIPOS_DE: Record<string, string[]> = {
   cartera: ['wa_sin_respuesta', 'wa_resumen_fallido', 'agente_costo'],
   outbox: ['outbox_atorado', 'outbox_fallido', 'outbox_conflicto'],
   tallas: ['tallas_no_cuadran'],
+  proyectos: ['proyecto_sin_datos'],
   errores: ['errores_servidor', 'http_500', 'errores_front', 'sync_fallido'],
 };
 
@@ -588,6 +605,102 @@ export interface ResultadoSalud {
   revisionesFallidas: string[];
 }
 
+/** personsAndTeams de una columna people del espejo, listo para escribirse
+ * tal cual en otra columna people. Null si viene vacía. */
+function personas(valor: string | null): { personsAndTeams: { id: number; kind: string }[] } | null {
+  try {
+    const v = JSON.parse(valor ?? '') as { personsAndTeams?: { id: number; kind: string }[] };
+    const pt = (v.personsAndTeams ?? []).filter(x => x && x.id != null).map(x => ({ id: Number(x.id), kind: x.kind || 'person' }));
+    return pt.length ? { personsAndTeams: pt } : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Zona habitual de cada persona: la que tiene en al menos 60 % de sus
+ * oportunidades y proyectos con zona (mínimo 3). Quien vende en varias zonas
+ * (Elisa, dirección) no tiene zona habitual y no se adivina. Puro. */
+export function zonasHabituales(filas: { personas: number[]; zona: string }[]): Map<number, string> {
+  const cuenta = new Map<number, Map<string, number>>();
+  for (const f of filas) {
+    if (!f.zona) continue;
+    for (const id of f.personas) {
+      const c = cuenta.get(id) ?? new Map<string, number>();
+      c.set(f.zona, (c.get(f.zona) ?? 0) + 1);
+      cuenta.set(id, c);
+    }
+  }
+  const out = new Map<number, string>();
+  for (const [id, c] of cuenta) {
+    const total = [...c.values()].reduce((a, b) => a + b, 0);
+    const [zona, n] = [...c.entries()].sort((a, b) => b[1] - a[1])[0];
+    if (total >= 3 && n / total >= 0.6) out.set(id, zona);
+  }
+  return out;
+}
+
+async function proyectosSinDatos(env: Env): Promise<Hallazgo[]> {
+  const { results: proys } = await env.DB.prepare(
+    `SELECT p.item_id, p.name, ${campo('p', PRO_ZONA)} AS zona, ${campo('p', PRO_VENDEDOR, 'value')} AS vend,
+            ${campo('p', PRO_COMPRAS, 'value')} AS comp, ${campo('p', PRO_OPP_REL, 'value')} AS opp,
+            ${campo('p', PRO_FOLIO_OPP)} AS folio_opp
+       FROM items p WHERE p.board_id = ? AND p.parent_item_id IS NULL`,
+  ).bind(PRO).all<{ item_id: number; name: string; zona: string | null; vend: string | null; comp: string | null; opp: string | null; folio_opp: string | null }>();
+  const { results: opps } = await env.DB.prepare(
+    `SELECT o.item_id, ${campo('o', OPP_FOLIO)} AS folio, ${campo('o', OPP_ZONA)} AS zona,
+            ${campo('o', OPP_VENDEDOR, 'value')} AS vend, ${campo('o', OPP_COMPRAS, 'value')} AS comp
+       FROM items o WHERE o.board_id = ? AND o.parent_item_id IS NULL`,
+  ).bind(OPP).all<{ item_id: number; folio: string | null; zona: string | null; vend: string | null; comp: string | null }>();
+  const oppPorId = new Map((opps ?? []).map(o => [Number(o.item_id), o]));
+  const oppPorFolio = new Map((opps ?? []).filter(o => o.folio).map(o => [o.folio!.trim(), o]));
+  const ids = (v: string | null) => personas(v)?.personsAndTeams.map(x => x.id) ?? [];
+  const habitual = zonasHabituales([
+    ...(opps ?? []).map(o => ({ personas: ids(o.vend), zona: (o.zona ?? '').trim() })),
+    ...(proys ?? []).map(p => ({ personas: ids(p.vend), zona: (p.zona ?? '').trim() })),
+  ]);
+
+  const out: Hallazgo[] = [];
+  let escritos = 0;
+  for (const p of proys ?? []) {
+    const zona = (p.zona ?? '').trim();
+    let vend = personas(p.vend);
+    const comp = personas(p.comp);
+    if (zona && vend && comp) continue;
+    const opp = idsLigados(p.opp).map(id => oppPorId.get(id)).find(Boolean)
+      ?? oppPorFolio.get((p.folio_opp ?? '').trim());
+    const cambios: Record<string, unknown> = {};
+    if (!vend && opp && personas(opp.vend)) cambios[PRO_VENDEDOR] = vend = personas(opp.vend);
+    if (!comp && opp && personas(opp.comp)) cambios[PRO_COMPRAS] = personas(opp.comp);
+    // Zona por LABEL (los ids de label difieren entre boards, ganarOportunidad.ts).
+    const zonaNueva = zona ? '' : (opp?.zona ?? '').trim() || (vend ? habitual.get(vend.personsAndTeams[0].id) ?? '' : '');
+    if (zonaNueva) cambios[PRO_ZONA] = { labels: [zonaNueva] };
+
+    if (Object.keys(cambios).length > 0 && p.item_id < NATIVO_DESDE && escritos < AUTO_RELLENO_MAX) {
+      escritos++;
+      try {
+        const item = await updateItemColumns(env, PRO, p.item_id, cambios);
+        if (item) {
+          try { await upsertItem(env, 'proyectos', item); } catch { /* lo trae el delta sync */ }
+        }
+        await logSync(env, 'manual', PRO, p.item_id, true, `salud: Proyecto rellenado ${JSON.stringify(cambios)}`);
+        if ((zona || zonaNueva) && vend && (comp || cambios[PRO_COMPRAS])) continue; // quedó completo
+      } catch (err) {
+        await registrarError(env, 'salud:rellenar-proyecto', err, { itemId: p.item_id });
+      }
+    }
+    const faltan = [
+      !zona && !zonaNueva && 'Zona', !vend && 'Vendedor', !comp && !cambios[PRO_COMPRAS] && 'Compras',
+    ].filter(Boolean);
+    if (faltan.length === 0) continue; // se rellena en la siguiente corrida (tope)
+    out.push({
+      clave: `proyecto_sin_datos:${p.item_id}`, tipo: 'proyecto_sin_datos', severidad: 'media',
+      titulo: `${p.name}: sin ${faltan.join(', ')} y no se pudo deducir (${opp ? 'la Oportunidad tampoco lo tiene' : 'sin Oportunidad ligada'})`.slice(0, 480),
+      detalle: { faltan, oportunidad: opp?.item_id ?? null }, boardId: PRO, itemId: p.item_id,
+    });
+  }
+  return out;
+}
+
 export async function revisarSalud(env: Env): Promise<ResultadoSalud> {
   const t0 = Date.now();
   const ahora = new Date();
@@ -601,6 +714,7 @@ export async function revisarSalud(env: Env): Promise<ResultadoSalud> {
     ['fantasmas', () => lineasFantasma(env)],
     ['outbox', () => outboxProblemas(env, ahora)],
     ['tallas', () => tallasNoCuadran(env)],
+    ['proyectos', () => proyectosSinDatos(env)],
     ['errores', () => erroresRecientes(env, desde)],
     ['whatsapp', () => whatsappFallidos(env, desde)],
     ['cartera', () => carteraWhatsapp(env, desde)],

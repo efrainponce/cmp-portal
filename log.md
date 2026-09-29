@@ -1,5 +1,27 @@
 # Log de commits
 
+## 2026-09-29 (Proyectos: nunca sin Zona, Vendedor ni Compras; Zona editable en el proyecto)
+
+- **Efraín**: "en reporte de proyectos NO DEBEN existir proyectos sin zona …
+  usando la info del vendedor lo pongas tú solo … que lo puedas cambiar cuando
+  das click al proyecto. No pueden haber SIN vendedores y sin compras, eso se
+  puede deducir de la oportunidad".
+  - Relleno de una vez (script directo a Monday, solo campos VACÍOS releídos en
+    vivo): 26 proyectos. Zona de la Oportunidad (ligada o por el folio OPP del
+    nombre) o, si no, la zona habitual del vendedor; Vendedor/Compras de la
+    Oportunidad en 4. Quedan 9 sin forma de deducir (sin vendedor ni
+    oportunidad): Zapato Charol Negro ×2, Chalecos Fiscalía Veracruz, Muestras
+    Tránsito Torreón, Fajo de piel Oaxaca, Botas 5323, Milfort, Muestras
+    Oaxaca, Pruebas lab. pantalones Querétaro FGR.
+  - Revisión de salud nueva `proyecto_sin_datos` (cada hora): rellena sola
+    Zona/Vendedor/Compras vacíos desde la Oportunidad ligada y la Zona, si no,
+    de la zona habitual del vendedor (≥ 60 % de sus registros, mínimo 3; quien
+    vende en varias zonas no se adivina). Lo que no se puede deducir queda
+    como hallazgo. Tope compartido de 25 escrituras por corrida.
+  - Zona editable en el encabezado del drawer del Proyecto (select; vacía en
+    rojo). `dropdown_mm0hnyv` pasa a `w: V`, igual que Fecha Entrega.
+  - "Nuevo proyecto" pide la Zona como obligatoria.
+
 ## 2026-09-29 (Reporte de Proyectos: filtro de Estado multiselect, sin terminados por default)
 
 - **Efraín**: "en filtros de reporte de proyecto, necesito poder elegir el

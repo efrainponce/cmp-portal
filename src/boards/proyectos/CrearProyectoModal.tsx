@@ -124,6 +124,8 @@ export default function CrearProyectoModal({
     if (!name.trim()) { setError('El nombre es obligatorio.'); return; }
     if (!(cols[COL_VENDEDOR] ?? '').trim()) { setError('Falta elegir el vendedor.'); return; }
     if (!(cols[COL_COMPRAS] ?? '').trim()) { setError('Falta elegir el responsable de compras.'); return; }
+    // Sin zona el proyecto cae en "Sin zona" del Reporte (Efraín, 2026-09-29: no debe haber).
+    if (!(cols[COL_ZONA] ?? '').trim()) { setError('Falta elegir la zona.'); return; }
     setSaving(true);
     setError(null);
     try {
@@ -191,7 +193,7 @@ export default function CrearProyectoModal({
             De aquí sale la Institución que se ve en la lista de proyectos.
           </div>
         </Field>
-        <Field label="Zona">
+        <Field label="Zona" required>
           <SearchableSelect
             value={cols[COL_ZONA] ?? ''} onChange={set(COL_ZONA)}
             options={labelOptions(proyectoCols, COL_ZONA)} placeholder="Buscar zona…"
