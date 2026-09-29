@@ -3,7 +3,7 @@
 // readableCols(). Un cambio accidental aquí no lo atrapa el typecheck (todo son
 // strings), así que estos tests anclan las reglas que importan.
 import { describe, it, expect } from 'vitest';
-import { VISIBILITY, canRead, canReadActivity, canReadBoard, canWrite, readableCols, puedeCapturarEnValidacion, puedeVerUtilidades, puedeVerEstadoCuenta, puedeConsultarDireccion } from './visibility';
+import { VISIBILITY, canRead, canReadActivity, canReadBoard, puedeGenerarEstatusPdf, canWrite, readableCols, puedeCapturarEnValidacion, puedeVerUtilidades, puedeVerEstadoCuenta, puedeConsultarDireccion } from './visibility';
 import { COLUMN_META } from './column-meta.gen';
 import type { BoardSlug } from './boards';
 import type { Role } from './types';
@@ -531,5 +531,17 @@ describe('utilidades: whitelist por correo', () => {
     }
     // Y no se llevó nada de paso: la diferencia son EXACTAMENTE las seis.
     expect(deEli.length - dePam.length).toBe(UTILIDAD.length);
+  });
+});
+
+describe('PDF de estatus de proyecto — solo Compras y Admin (Efraín, 2026-09-29)', () => {
+  it('vendedor y almacén no lo generan', () => {
+    expect(puedeGenerarEstatusPdf('vendedor')).toBe(false);
+    expect(puedeGenerarEstatusPdf('almacen')).toBe(false);
+  });
+
+  it('compras y admin sí', () => {
+    expect(puedeGenerarEstatusPdf('compras')).toBe(true);
+    expect(puedeGenerarEstatusPdf('admin')).toBe(true);
   });
 });

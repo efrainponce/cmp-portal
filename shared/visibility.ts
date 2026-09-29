@@ -450,6 +450,12 @@ export const readableCols = (b: BoardSlug, r: Role, email?: string | null): stri
  * y los accesos (📋/🕐) para no ofrecer algo que el server va a negar. */
 export const canReadActivity = (r: Role) => r === 'compras' || r === 'admin';
 
+/** ¿Este rol puede generar el PDF "Estatus de proyecto" (uno o la lista)?
+ * Solo compras y admin (Efraín, 2026-09-29: "déjalo en solo compras y admin").
+ * El gate vive en las dos rutas (worker/routes/oportunidades.ts → 403); la UI
+ * solo esconde los botones. La tab Resumen en pantalla sigue abierta al vendedor. */
+export const puedeGenerarEstatusPdf = (r: Role) => r === 'compras' || r === 'admin';
+
 /** ¿Esta persona CAPTURA en el board de VALIDACIÓN DE COSTEO — o sea, ve la
  * grid con sus inputs abiertos (costos, Techo, Margen Gob %, Moneda, IVA %,
  * Etapa Costeo, color y cantidad) en vez de solo el Precio de Venta? Por
