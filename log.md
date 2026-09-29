@@ -1,5 +1,28 @@
 # Log de commits
 
+## 2026-09-29 (Estatus PDF: línea de tiempo, historial de estados en D1, formato compacto)
+
+- **Efraín** reenvía lo que pide Elisa: fecha en que el vendedor confirmó
+  tallas, cuándo empieza Compras, fecha de entrega del contrato y días que
+  faltan. Más: "cada movimiento de estado se debe guardar, sobre todo en D1",
+  "un thumbnail chiquito" y "carta horizontal con poco margen, para tener toda
+  la info posible".
+  - **Historial de estados en D1**: `project_status` y Fecha Entrega
+    (`date_mm0m1vfv`) del Proyecto entran a la WHITELIST de `activity_log`
+    (el delta sync ya los guarda solos). Lo anterior se sembró desde el activity
+    log de Monday con `scripts/backfill-estado-proyecto.mjs --aplicar`: 899
+    cambios de estado de 201 proyectos + 94 de Fecha Entrega (feb–sep 2026),
+    INSERT OR IGNORE con la misma dedupe_key del sync. También aparecen en el
+    tab Actividad del Proyecto.
+  - **Línea de tiempo en el PDF**, en una franja de un renglón por proyecto
+    (antes un bloque de media hoja): Tallas conf. (a Compras) = primera vez en
+    "Tallas Confirmadas"; OC listas = primera vez en "Ordenes de compra
+    listas"; Entrega contrato; Días p/ entregar ("Faltan 29 días" / "Vence hoy"
+    / "Vencido hace 3 días", hoy en CDMX).
+  - **Compacto**: `DocumentMeta.compacto` (márgenes de 20 pt) solo para este
+    reporte; foto más chica (28 pt). Un título de sección ya no queda huérfano
+    al pie de la hoja (pide 70 pt, antes 30).
+
 ## 2026-09-29 (Estatus PDF: los embellecimientos también ligan por su columna de zona)
 
 - Probando con proyectos reales (PRO-0141, Penales Camp): varias líneas ✨

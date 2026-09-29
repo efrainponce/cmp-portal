@@ -46,6 +46,12 @@ const WHITELIST: Partial<Record<BoardSlug, Set<string>>> = {
     'numeric_mkznnm5s', 'color_mm5s709s', 'color_mm1r1052', 'board_relation_mkzmafgp',
     'file_mm5akjy5',
   ]),
+  // Estado del Proyecto y su Fecha Entrega (Efraín, 2026-09-29: "cada
+  // movimiento de estado se debe guardar, sobre todo en D1"). De aquí salen las
+  // fechas del Estatus PDF: cuándo se confirmaron tallas (pasa a Compras) y
+  // cuándo quedaron las OC — worker/lib/estatusProyectoPdf.ts. Historial
+  // anterior sembrado desde Monday con scripts/backfill-estado-proyecto.mjs.
+  proyectos: new Set(['project_status', 'date_mm0m1vfv']),
   productos: new Set([
     'product_and_service_sku', 'text_mm0wvga2', 'product_and_service_description',
     'dropdown_mkztty4b', 'text_mkzp9428', 'numeric_mkzpx7eb', 'text_mkzp59zf',
