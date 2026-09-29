@@ -1,5 +1,15 @@
 # Log de commits
 
+## 2026-09-29 (PDF de Estatus de proyecto: solo Compras y Admin)
+
+- **Efraín**: "déjalo en solo compras y admin" (el PDF de estatus de proyectos
+  lo podía sacar cualquiera que viera el board, vendedor incluido).
+  - `puedeGenerarEstatusPdf(rol)` en `shared/visibility.ts` (anclado en
+    `visibility.test.ts`). Las dos rutas (`/api/proyectos/:id/estatus/pdf` y
+    `/api/proyectos-estatus/pdf`) responden 403 al resto.
+  - La UI esconde "Estatus PDF (n)" de la lista de Proyectos y "Estatus en PDF"
+    de la tab Resumen. La tab Resumen en pantalla sigue visible para el vendedor.
+
 ## 2026-09-29 (Proyectos: nunca sin Zona, Vendedor ni Compras; Zona editable en el proyecto)
 
 - **Efraín**: "en reporte de proyectos NO DEBEN existir proyectos sin zona …

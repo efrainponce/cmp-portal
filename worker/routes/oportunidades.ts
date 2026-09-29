@@ -70,7 +70,7 @@ import { jsonStatus, contentDisposition, rejectUnknownQuery } from '../lib/http'
 import { errorInterno } from '../lib/errores';
 import { recordOcConcepto, listOcConceptos } from '../lib/ocConceptos';
 import { contentTypeFor, isGenericType } from '../lib/mime';
-import { canWrite } from '../../shared/visibility';
+import { canWrite, puedeGenerarEstatusPdf } from '../../shared/visibility';
 import { reserveNativeId } from '../lib/nativeSeq';
 import { canonValue, rawHash, type RawColumn } from '../lib/canon';
 import { emitNotification } from '../lib/notify';
@@ -1657,6 +1657,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
   app.get('/api/proyectos/:id/estatus/pdf', async c => {
     const bad = rejectUnknownQuery(c.req.url, []);
     if (bad) return bad;
+    if (!puedeGenerarEstatusPdf(c.get('viewer').role)) return jsonStatus({ error: 'solo compras y admin generan el PDF de estatus' }, 403);
     const itemId = Number(c.req.param('id'));
     if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
     try {
@@ -1674,6 +1675,7 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
   app.get('/api/proyectos-estatus/pdf', async c => {
     const bad = rejectUnknownQuery(c.req.url, ['ids', 'alcance']);
     if (bad) return bad;
+    if (!puedeGenerarEstatusPdf(c.get('viewer').role)) return jsonStatus({ error: 'solo compras y admin generan el PDF de estatus' }, 403);
     const crudos = (c.req.query('ids') ?? '').split(',').map(s => s.trim()).filter(Boolean);
     const ids = crudos.map(Number);
     if (ids.some(n => !Number.isSafeInteger(n) || n <= 0)) return jsonStatus({ error: 'ids inválidos' }, 400);

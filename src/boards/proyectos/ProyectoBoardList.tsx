@@ -30,6 +30,7 @@ import { useMe } from '../../lib/useMe';
 import { Button } from '../../components/core/Button';
 import { FilePreviewModal } from '../../components/core/FilePreviewModal';
 import type { TotalesDTO } from '../../../shared/dto';
+import { puedeGenerarEstatusPdf } from '../../../shared/visibility';
 import {
   TotalesCells, TotalesChips, TotalesGranTotal, TotalesGrupo, TotalesHeader,
   metricasVisibles, sumaTotales,
@@ -377,7 +378,7 @@ export function ProyectoBoardList({ config, q, onSearch, onOpen, onReady, header
             ))}
           </select>
           <FiltrosMenu filtros={filtros} onQuitarTodos={quitarFiltros} />
-          {items.length > 0 && (
+          {items.length > 0 && me && puedeGenerarEstatusPdf(me.role) && (
             <Button
               variant={items.length > ESTATUS_PDF_MAX ? 'disabled' : 'secondary'}
               style={{ height: 36, padding: '0 14px', font: 'var(--text-label)' }}

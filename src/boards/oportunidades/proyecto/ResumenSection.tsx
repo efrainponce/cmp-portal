@@ -8,6 +8,8 @@ import { useEffect, useState } from 'react';
 import { getProductoResumen, listOcImagenes, ocImagenUrl, type ItemDTO, type OcImagenDTO } from '../../../lib/api';
 import { llaveFotoOc } from '../../../../shared/ocFotoLlave';
 import { Button } from '../../../components/core/Button';
+import { useMe } from '../../../lib/useMe';
+import { puedeGenerarEstatusPdf } from '../../../../shared/visibility';
 import { FilePreviewModal } from '../../../components/core/FilePreviewModal';
 import { ProgressBattery } from '../../../components/board/ProgressBattery';
 import { batteryFromSubitems } from '../../../lib/estadoProductoBuckets';
@@ -56,6 +58,7 @@ const td: React.CSSProperties = { padding: '8px 10px', font: 'var(--text-label)'
 export function ResumenSection({ state }: { state: ProyectoState }) {
   const [resumenes, setResumenes] = useState<Record<string, string>>({});
   const [verPdf, setVerPdf] = useState(false);
+  const me = useMe();
   // Miniatura del producto (Efraín, 2026-09-21: "un thumbnail chico"): la misma
   // foto por SKU de la OC con imágenes, servida por /api/oc-imagenes y encogida
   // en pantalla — no se guarda una variante chica. `sync` jala del catálogo lo
@@ -122,7 +125,7 @@ export function ResumenSection({ state }: { state: ProyectoState }) {
             </div>
           ))}
         </div>
-        {grupos.length > 0 && (
+        {grupos.length > 0 && me && puedeGenerarEstatusPdf(me.role) && (
           <Button variant="secondary" style={{ padding: '6px 14px', font: 'var(--text-label)' }} onClick={() => setVerPdf(true)} title="La misma hoja, imprimible: con foto del producto">
             Estatus en PDF
           </Button>
