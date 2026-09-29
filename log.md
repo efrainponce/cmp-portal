@@ -1,5 +1,20 @@
 # Log de commits
 
+## 2026-09-29 (Reporte de Proyectos: filtro por Estado y los filtros juntos en un botón "Filtros")
+
+- **Efraín**: "en reporte de proyectos necesitamos filtrar también por ESTADO
+  del proyecto… ¿no deberíamos cambiar esto a FILTROS porque ya hay muchos?"
+  - Filtro nuevo **Estado** (`project_status`) en `ProyectoBoardList`, en el
+    orden del funnel (`PROJECT_STATUS_ORDER`) más "Sin estado" para los
+    proyectos sin etapa (el Reporte los lista todos). Solo se ofrece si la
+    lista trae más de un estado; entra también al alcance del Estatus PDF.
+  - Zona/Estado/Proveedor/Vendedor/Compras dejan de ser cinco selects sueltos:
+    van detrás de un botón **Filtros** (`src/components/forms/FiltrosMenu.tsx`)
+    con contador, y cada filtro activo queda como chip con × junto al botón —
+    un filtro escondido dejaría la lista en 0 sin que nadie sepa por qué.
+    "Agrupar", buscador, Estatus PDF y Excel siguen a la vista.
+
+
 ## 2026-09-29 (Costeo: editar varias líneas a la vez)
 
 - **Josué y Elizabeth (WhatsApp)**: "seleccionar todos los productos 5.11 y

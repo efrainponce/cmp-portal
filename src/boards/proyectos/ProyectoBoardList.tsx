@@ -12,6 +12,7 @@ import { MonoTag, StatusBadge } from '../../components/core/Badges';
 import { BoardStatus } from '../../components/board/BoardStatus';
 import { SyncIndicator } from '../../components/board/SyncIndicator';
 import { SearchInput } from '../../components/forms/SearchInput';
+import { FiltrosMenu, type FiltroDef } from '../../components/forms/FiltrosMenu';
 import { ExportExcelButton } from '../../components/board/ExportExcelButton';
 import { columnasDeCifras, columnasDeItems, type ColumnaExport } from '../../lib/exportXlsx';
 import { lastMondayUpdateFromItems } from '../../lib/syncStatus';
@@ -89,6 +90,9 @@ function personas(item: ItemDTO, col: string): string[] {
 }
 
 const TODOS = '';
+/** Opción del filtro Estado para proyectos sin etapa (o con un label que el
+ * mirror no conoce): el Reporte los lista todos, así que también se filtran. */
+const SIN_ESTADO = '_sin';
 const selectStyle: React.CSSProperties = {
   height: 36, font: 'var(--text-label)', color: 'var(--ink)',
   border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '0 10px',
@@ -211,6 +215,12 @@ export function ProyectoBoardList({ config, q, onSearch, onOpen, onReady, header
   // Filtro de Zona (Efraín, 2026-09-21): existe para sacar el PDF de estatus
   // "por zona o vendedor". Como los demás filtros, no se guarda entre sesiones.
   const [zonaFiltro, setZonaFiltro] = useState(TODOS);
+  // Filtro de Estado (Efraín, 2026-09-29): el Reporte lista TODAS las etapas.
+  const [estadoF, setEstadoF] = useState(TODOS);
+  const estadoDe = (it: ItemDTO) => {
+    const idx = statusIndex(it.cols[STATUS_COL]);
+    return statusCol?.labels?.[idx] ? idx : SIN_ESTADO;
+  };
   const [estatusPdf, setEstatusPdf] = useState<string | null>(null);
   const zonas = useMemo(
     () => [...new Set(statusItems.map((it) => it.cols[ZONA_COL]?.text?.trim() || '').filter(Boolean))].sort((a, b) => a.localeCompare(b)),
@@ -227,14 +237,20 @@ export function ProyectoBoardList({ config, q, onSearch, onOpen, onReady, header
       personas(it, VENDEDOR_COL).forEach((p) => vend.add(p));
       personas(it, COMPRAS_COL).forEach((p) => comp.add(p));
     }
-    return { proveedores: orden(prov), vendedores: orden(vend), compras: orden(comp) };
-  }, [conFiltros, statusItems, extras]); // eslint-disable-line react-hooks/exhaustive-deps
+    // Estado en el orden del funnel (PROJECT_STATUS_ORDER), "Sin estado" al final.
+    const est = new Set(statusItems.map(estadoDe));
+    const estados = [...PROJECT_STATUS_ORDER, ...Object.keys(statusCol?.labels ?? {}).filter((k) => !PROJECT_STATUS_ORDER.includes(k)), SIN_ESTADO]
+      .filter((k) => est.has(k))
+      .map((k) => ({ value: k, label: k === SIN_ESTADO ? 'Sin estado' : statusCol?.labels?.[k]?.label ?? k }));
+    return { proveedores: orden(prov), vendedores: orden(vend), compras: orden(comp), estados };
+  }, [conFiltros, statusItems, extras, statusCol]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Cada palabra del buscador tiene que aparecer, en cualquier campo y orden
   // (misma regla que el `q` del server, worker/lib/dal.ts searchTokens).
   const palabras = q.trim().split(/\s+/).filter(Boolean);
   const items = statusItems.filter((it) => {
     if (zonaFiltro !== TODOS && (it.cols[ZONA_COL]?.text?.trim() || '') !== zonaFiltro) return false;
+    if (estadoF !== TODOS && estadoDe(it) !== estadoF) return false;
     if (conFiltros) {
       if (proveedor !== TODOS && !extras[it.id]?.proveedores.includes(proveedor)) return false;
       if (vendedorF !== TODOS && !personas(it, VENDEDOR_COL).includes(vendedorF)) return false;
@@ -255,7 +271,19 @@ export function ProyectoBoardList({ config, q, onSearch, onOpen, onReady, header
     ].filter((t): t is string => !!t);
     return searchMatches(haystack, q);
   });
-  const hayFiltro = proveedor !== TODOS || vendedorF !== TODOS || comprasF !== TODOS || zonaFiltro !== TODOS;
+  const hayFiltro = proveedor !== TODOS || vendedorF !== TODOS || comprasF !== TODOS || zonaFiltro !== TODOS || estadoF !== TODOS;
+  const quitarFiltros = () => { setProveedor(TODOS); setVendedorF(TODOS); setComprasF(TODOS); setZonaFiltro(TODOS); setEstadoF(TODOS); };
+  const aOpciones = (xs: string[]) => xs.map((x) => ({ value: x, label: x }));
+  // Ya eran cinco selects sueltos en la barra (Efraín, 2026-09-29): van juntos
+  // detrás de un botón "Filtros", y los activos quedan como chips a la vista.
+  // Estado solo se ofrece si la lista trae más de uno (Logística es una sola etapa).
+  const filtros: FiltroDef[] = [
+    { key: 'zona', label: 'Zona', todos: 'Todas', value: zonaFiltro, onChange: setZonaFiltro, options: aOpciones(zonas) },
+    { key: 'estado', label: 'Estado', todos: 'Todos', value: estadoF, onChange: setEstadoF, options: opciones.estados.length > 1 ? opciones.estados : [] },
+    { key: 'proveedor', label: 'Proveedor', todos: 'Todos', value: proveedor, onChange: setProveedor, options: aOpciones(opciones.proveedores) },
+    { key: 'vendedor', label: 'Vendedor', todos: 'Todos', value: vendedorF, onChange: setVendedorF, options: aOpciones(opciones.vendedores) },
+    { key: 'compras', label: 'Compras', todos: 'Todos', value: comprasF, onChange: setComprasF, options: aOpciones(opciones.compras) },
+  ];
 
   const groups = groupBy === 'zona'
     ? groupByZona(items)
@@ -337,39 +365,7 @@ export function ProyectoBoardList({ config, q, onSearch, onOpen, onReady, header
               <option key={o.value} value={o.value}>Agrupar: {o.label}</option>
             ))}
           </select>
-          {zonas.length > 0 && (
-            <select aria-label="Zona" value={zonaFiltro} onChange={(e) => setZonaFiltro(e.target.value)} style={selectStyle}>
-              <option value={TODOS}>Zona: todas</option>
-              {zonas.map((z) => <option key={z} value={z}>{z}</option>)}
-            </select>
-          )}
-          {opciones.proveedores.length > 0 && (
-            <select aria-label="Proveedor" value={proveedor} onChange={(e) => setProveedor(e.target.value)} style={{ ...selectStyle, maxWidth: isMobile ? '100%' : 260 }}>
-              <option value={TODOS}>Proveedor: todos</option>
-              {opciones.proveedores.map((p) => <option key={p} value={p}>{p}</option>)}
-            </select>
-          )}
-          {opciones.vendedores.length > 0 && (
-            <select aria-label="Vendedor" value={vendedorF} onChange={(e) => setVendedorF(e.target.value)} style={selectStyle}>
-              <option value={TODOS}>Vendedor: todos</option>
-              {opciones.vendedores.map((p) => <option key={p} value={p}>{p}</option>)}
-            </select>
-          )}
-          {opciones.compras.length > 0 && (
-            <select aria-label="Compras" value={comprasF} onChange={(e) => setComprasF(e.target.value)} style={selectStyle}>
-              <option value={TODOS}>Compras: todos</option>
-              {opciones.compras.map((p) => <option key={p} value={p}>{p}</option>)}
-            </select>
-          )}
-          {hayFiltro && (
-            <button
-              type="button"
-              onClick={() => { setProveedor(TODOS); setVendedorF(TODOS); setComprasF(TODOS); setZonaFiltro(TODOS); }}
-              style={{ font: 'var(--text-label)', color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', padding: '0 4px' }}
-            >
-              Quitar filtros
-            </button>
-          )}
+          <FiltrosMenu filtros={filtros} onQuitarTodos={quitarFiltros} />
           {items.length > 0 && (
             <Button
               variant={items.length > ESTATUS_PDF_MAX ? 'disabled' : 'secondary'}
@@ -379,7 +375,8 @@ export function ProyectoBoardList({ config, q, onSearch, onOpen, onReady, header
                 : `Resumen imprimible de los ${items.length} proyectos en pantalla: un renglón por producto y color`}
               onClick={() => {
                 const alcance = [
-                  zonaFiltro !== TODOS && `Zona ${zonaFiltro}`, vendedorF !== TODOS && vendedorF,
+                  zonaFiltro !== TODOS && `Zona ${zonaFiltro}`,
+                  estadoF !== TODOS && opciones.estados.find((e) => e.value === estadoF)?.label, vendedorF !== TODOS && vendedorF,
                   comprasF !== TODOS && comprasF, proveedor !== TODOS && proveedor, q.trim() && `"${q.trim()}"`,
                 ].filter(Boolean).join(' · ') || config.title;
                 const qs = new URLSearchParams({ ids: items.map((it) => it.id).join(','), alcance });
