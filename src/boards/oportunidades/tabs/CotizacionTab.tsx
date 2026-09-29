@@ -44,7 +44,7 @@ import {
   PRODUCTO_COL, PRODUCTO_TXT_COL, PRODUCTO_REL_COL, COLOR_COL,
   EMB_STATUS_COL, EMB_LABEL_CON, EMB_LABEL_SIN,
   PRODUCTO_CONFIRM_COL, PRODUCTO_PROVEEDOR_COL, CATALOGO_TALLAS_COL, linkedProductoId, MONEY_COLS,
-  GRID_COLS_ZONA,
+  GRID_COLS_ZONA, COLS_EN_BLOQUE, proveedorDeLinea,
 } from './cotizacion/gridMeta';
 import type { ProductoChoice } from '../../../components/forms/ProductPicker';
 
@@ -210,6 +210,24 @@ export function CotizacionTab({
   const arrastreMove = useCallback((e: React.PointerEvent) => reordenRef.current.onPointerMove(e), []);
   const arrastreUp = useCallback(() => { void reordenRef.current.onPointerUp(); }, []);
 
+  // Edición en bloque (Josué y Elizabeth, 2026-09-28: "los productos 5.11
+  // tienen cierto descuento; en vez de ponerlo uno por uno, seleccionarlos
+  // todos"). Solo en el board Costeo, para quien captura ahí (compras/admin en
+  // una oportunidad propia), en escritorio: con varias líneas marcadas, lo que
+  // se captura en UNA de ellas se escribe igual en las demás marcadas
+  // (COLS_EN_BLOQUE — costos, %, moneda, etapa costeo). Cada línea sale por el
+  // mismo PATCH de siempre, de a 4, así que el server revisa permisos y scope
+  // igual que si se hubieran tecleado una por una.
+  const enBloque = variant === 'costeo' && readOnly && !precioOnly && !zonaPrivada && !soloLectura
+    && editable && ajusteLineEdits && !isMobile && products.length > 1;
+  const [seleccion, setSeleccion] = useState<ReadonlySet<string>>(() => new Set());
+  const marcadas = enBloque ? products.filter((p) => seleccion.has(p.id)) : [];
+  const onToggleSeleccion = useCallback((id: string) => setSeleccion((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  }), []);
+
   // "Ajustar línea" (Efraín, 2026-07-31): el complemento exacto de
   // `canAddLines` (edición inline libre) — es decir, siempre que la línea NO
   // esté ya en modo edición libre, incluida la Oportunidad Ganada. OJO: no
@@ -308,6 +326,22 @@ export function CotizacionTab({
       setCatalogLoading(false);
     }
   }, [canAddLines, variant, canAjustar]);
+
+  // "Seleccionar proveedor": marca todas las líneas cuyo producto trae ese
+  // proveedor en el catálogo (p. ej. todo lo de 5.11).
+  const proveedores = useMemo(() => {
+    if (!enBloque) return [];
+    const cuenta = new Map<string, number>();
+    for (const p of products) {
+      const nombre = proveedorDeLinea(p, catalog);
+      if (nombre) cuenta.set(nombre, (cuenta.get(nombre) ?? 0) + 1);
+    }
+    return [...cuenta.entries()].sort((a, b) => a[0].localeCompare(b[0], 'es'));
+  }, [enBloque, products, catalog]);
+  const seleccionarProveedor = (nombre: string) => {
+    if (!nombre) return;
+    setSeleccion(new Set(products.filter((p) => proveedorDeLinea(p, catalog) === nombre).map((p) => p.id)));
+  };
 
   // Chevron de detalle por línea — Descripción/Tallas completas + (en Costeo)
   // el checkbox de Compras que bloquea "Mandar a Validación de costeo".
@@ -478,6 +512,9 @@ export function CotizacionTab({
       // (ver fieldGen en gridMeta.tsx). Sin entrada para una key = sin gate,
       // se aplica igual que siempre (comportamiento previo intacto).
       alsoClearIfGen?: Record<string, number>;
+      // Edición en bloque: no refrescar el drawer por cada línea — quien
+      // dispara el lote llama onSaved una sola vez al final.
+      silencioso?: boolean;
     } = {},
   ) => {
     patchRow(productId, { saving: { ...rowState(productId).saving, [marker]: true }, error: undefined });
@@ -519,6 +556,50 @@ export function CotizacionTab({
       }
       return { ...r, [productId]: next };
     });
+    if (!opts.silencioso) onSaved?.();
+  };
+
+  /** Las OTRAS líneas marcadas a las que se propaga un cambio en `product`. */
+  const otrasMarcadas = (product: ItemDTO, colId: string): ItemDTO[] =>
+    (COLS_EN_BLOQUE.has(colId) && marcadas.some((m) => m.id === product.id)
+      ? marcadas.filter((m) => m.id !== product.id)
+      : []);
+
+  /** Escribe `raw` en `colId` de cada línea de `otras` (edición en bloque):
+   * preview local inmediato — mismas fórmulas que al teclear — y el PATCH de
+   * cada una de a 4. Se saltan las que ya tienen ese valor. */
+  const aplicarEnBloque = async (otras: ItemDTO[], colId: string, raw: string, status: boolean) => {
+    const pendientes = otras.filter((o) => {
+      const st = rowState(o.id);
+      return (st.editing[colId] ?? st.preview[colId]?.text ?? o.cols[colId]?.text ?? '') !== raw
+        || (!status && st.editing[colId] !== undefined);
+    });
+    if (pendientes.length === 0) return;
+    for (const o of pendientes) {
+      const st = rowState(o.id);
+      if (status) {
+        patchRow(o.id, { preview: { ...st.preview, [colId]: { text: raw, type: 'status' } }, error: undefined });
+      } else {
+        const editing = { ...st.editing, [colId]: raw };
+        const edited: Record<string, number> = {};
+        for (const [k, v] of Object.entries(editing)) {
+          const n = parseFloat(v);
+          if (Number.isFinite(n)) edited[k] = n;
+        }
+        patchRow(o.id, { editing, preview: { ...st.preview, ...previewRow(o, edited, nativo) }, error: undefined });
+      }
+    }
+    let i = 0;
+    const siguiente = async (): Promise<void> => {
+      while (i < pendientes.length) {
+        const o = pendientes[i++];
+        await saveCols(o.id, colId, { [colId]: raw }, status
+          ? { preview: { [colId]: { text: raw, type: 'status' } }, silencioso: true }
+          : { clearEditing: true, silencioso: true });
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(4, pendientes.length) }, siguiente));
+    toast(`Se aplicó también a ${pendientes.length} ${pendientes.length === 1 ? 'línea marcada' : 'líneas marcadas'}`);
     onSaved?.();
   };
 
@@ -548,7 +629,8 @@ export function CotizacionTab({
     const raw = state.editing[colId];
     if (raw === undefined) return;
     const current = product.cols[colId]?.text ?? '';
-    if (raw.trim() === '' || raw === current) {
+    const otras = otrasMarcadas(product, colId);
+    if (raw.trim() === '' || (raw === current && otras.length === 0)) {
       const editing = { ...state.editing };
       delete editing[colId];
       // El preview de fórmulas se calculó con lo tecleado; si no se guarda
@@ -566,7 +648,14 @@ export function CotizacionTab({
       patchRow(product.id, { error: 'Valor inválido.' });
       return;
     }
-    void saveCols(product.id, colId, { [colId]: raw }, { clearEditing: true });
+    if (raw === current) {
+      const editing = { ...state.editing };
+      delete editing[colId];
+      patchRow(product.id, { editing });
+    } else {
+      void saveCols(product.id, colId, { [colId]: raw }, { clearEditing: true });
+    }
+    if (otras.length > 0) void aplicarEnBloque(otras, colId, raw, false);
   };
 
   // Color es un <select> — se guarda al elegir (onChange), no al perder foco:
@@ -600,10 +689,13 @@ export function CotizacionTab({
   const onStatusChange = (product: ItemDTO, colId: string, label: string) => {
     if (!label) return;
     const current = product.cols[colId]?.text ?? '';
-    if (label === current) return;
-    void saveCols(product.id, colId, { [colId]: label }, {
-      preview: { [colId]: { text: label, type: 'status' } },
-    });
+    if (label !== current) {
+      void saveCols(product.id, colId, { [colId]: label }, {
+        preview: { [colId]: { text: label, type: 'status' } },
+      });
+    }
+    const otras = otrasMarcadas(product, colId);
+    if (otras.length > 0) void aplicarEnBloque(otras, colId, label, true);
   };
 
   // Producto elegido en el picker (src/components/forms/ProductPicker.tsx —
@@ -791,6 +883,40 @@ export function CotizacionTab({
         </div>
       )}
       {!soloLectura && <CotizacionPdfRow oppId={oppId} item={item} hasSolicitud={hasSolicitud} hasSinFirmar={hasSinFirmar} hasFirmada={hasFirmada} hasLineas={products.length > 0} onInventarioUploaded={onSaved} />}
+      {enBloque && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', margin: '0 0 10px',
+          font: 'var(--text-label)', color: 'var(--ink-secondary)',
+        }}>
+          {proveedores.length > 0 && (
+            <select
+              value=""
+              onChange={(e) => seleccionarProveedor(e.target.value)}
+              style={{ font: 'var(--text-label)', padding: '4px 8px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)', background: 'var(--bg-raised)' }}
+            >
+              <option value="">Marcar por proveedor…</option>
+              {proveedores.map(([nombre, n]) => <option key={nombre} value={nombre}>{nombre} ({n})</option>)}
+            </select>
+          )}
+          {marcadas.length > 0 ? (
+            <>
+              <span style={{ fontWeight: 600, color: 'var(--accent-blue)' }}>
+                {marcadas.length} {marcadas.length === 1 ? 'línea marcada' : 'líneas marcadas'}
+              </span>
+              <span style={{ color: 'var(--ink-tertiary)' }}>— lo que captures en una se aplica a todas</span>
+              <button
+                type="button"
+                onClick={() => setSeleccion(new Set())}
+                style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', font: 'inherit', color: 'var(--accent)', textDecoration: 'underline' }}
+              >
+                Quitar selección
+              </button>
+            </>
+          ) : (
+            <span style={{ color: 'var(--ink-tertiary)' }}>Marca varias líneas y lo que captures en una se aplica a todas.</span>
+          )}
+        </div>
+      )}
       {isMobile ? (
         <div {...NAV_GRID_ATTR} style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-xl)', overflow: 'hidden' }}>
           {products.map((p, lineIdx) => (
@@ -857,11 +983,24 @@ export function CotizacionTab({
         <div>
           <div style={{
             ...gridWrapStyle,
-            display: 'grid', gridTemplateColumns: `${anchoPartida(puedeReordenar)}px ${colsTemplate(visibleCols)}${canAddLines ? ' 32px' : ''}`,
+            display: 'grid', gridTemplateColumns: `${anchoPartida(puedeReordenar, enBloque)}px ${colsTemplate(visibleCols)}${canAddLines ? ' 32px' : ''}`,
             gap: 6, padding: '9px 10px', borderBottom: '1px solid var(--border)',
             font: '500 11px var(--font-ui)', color: 'var(--ink-tertiary)', background: 'var(--bg-raised)',
           }}>
-            <div title="Partida" style={{ textAlign: 'center' }}>#</div>
+            <div title="Partida" style={{ textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+              {enBloque && (
+                <input
+                  type="checkbox"
+                  checked={marcadas.length === products.length}
+                  ref={(el) => { if (el) el.indeterminate = marcadas.length > 0 && marcadas.length < products.length; }}
+                  onChange={() => setSeleccion(marcadas.length === products.length ? new Set() : new Set(products.map((p) => p.id)))}
+                  title="Marcar todas las líneas"
+                  aria-label="Marcar todas las líneas"
+                  style={{ margin: 0, cursor: 'pointer' }}
+                />
+              )}
+              #
+            </div>
             {visibleCols.map((c, idx) => (
               <div
                 key={c.id}
@@ -925,6 +1064,8 @@ export function CotizacionTab({
               canVerActividad={canVerActividad}
               onVerActividad={sVerActividad}
               ajusteLabel={ajusteLabels.get(Number(p.id))}
+              onToggleSeleccion={enBloque ? onToggleSeleccion : undefined}
+              marcada={enBloque && seleccion.has(p.id)}
             />
           ))}
           </div>
@@ -932,7 +1073,7 @@ export function CotizacionTab({
             <div style={{ padding: '6px 12px', font: 'var(--text-caption)', color: 'var(--status-perdida)' }}>{reorden.error}</div>
           )}
           {addingLineRow}
-          <TotalsRow variant={variant} visibleCols={visibleCols} products={products} rows={rowsView} showActionsCol={canAddLines} anchoPartida={anchoPartida(puedeReordenar)} />
+          <TotalsRow variant={variant} visibleCols={visibleCols} products={products} rows={rowsView} showActionsCol={canAddLines} anchoPartida={anchoPartida(puedeReordenar, enBloque)} />
         </div>
         {canAddLines && (
           <div style={{ padding: '16px', borderTop: '1px solid var(--border)', display: 'flex', gap: 8 }}>
