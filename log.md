@@ -1,5 +1,24 @@
 # Log de commits
 
+## 2026-09-29 (Make "210. Mueve archivo a archivo oculto": arreglado + revisión de salud)
+
+- **Efraín**: "se debe mover al oculto … ¿es porque la actualización falló?".
+  Sí: el escenario de Make que pasa lo subido en "Subir documentacion"
+  (`file_mm3393nf`) a "OC/contrato/cotización firmada (oculto)"
+  (`file_mm33yv4p`) se APAGÓ SOLO el 2026-09-10: alguien adjuntó un Monday Doc
+  (sin `assetId`) en OPP-0835, la descarga falló la validación y Make desactivó
+  el escenario. 19 días sin mover nada, sin aviso.
+  - Escenario rehecho: Iterator por archivo (antes mapeaba `files[].assetId`
+    completo y con 2+ archivos también tronaba), solo mueve archivos ASSET
+    nuevos (no en `previousValue`), vacía la visible solo si todo era archivo
+    (un Monday Doc se queda) y corre secuencial.
+  - Cola vieja del webhook (30 eventos) borrada — reprocesarla duplicaba
+    archivos. Los 12 proyectos atorados se pasaron a mano: 15 archivos
+    copiados a la oculta (verificados en vivo) antes de vaciar la visible.
+  - Revisión de salud nueva `documento_sin_mover` (alta): archivo en
+    `file_mm3393nf` con más de 1 h = el escenario está caído otra vez.
+  - La lectura de `file_mm3393nf` del commit anterior se queda como red.
+
 ## 2026-09-29 (Documentación del Proyecto: se lee la columna "Subir documentacion" de Monday)
 
 - **Elisa** (PRO-0200): "no me aparecen los otros documentos" — en Monday tenía

@@ -40,7 +40,9 @@ con el Worker (`/api/*`). Bot de WhatsApp + chat del portal comparten agente Cla
   Monday, SKU/Producto en texto vacío o de otro producto, líneas fantasma, outbox
   atorado/fallido/con un valor distinto en Monday, tallas del Proyecto que no cuadran
   con la cotización, proyectos sin Zona/Vendedor/Compras (se rellenan solos
-  desde la Oportunidad o la zona habitual del vendedor) y errores de la última hora. Los graves nuevos le llegan a
+  desde la Oportunidad o la zona habitual del vendedor), archivos que Make (escenario
+  "210. Mueve archivo a archivo oculto") no pasó de "Subir documentacion" a la columna
+  oculta en 1 h y errores de la última hora. Los graves nuevos le llegan a
   Efraín como notificación del portal (sin WhatsApp). Admin: `GET /api/admin/salud`,
   `POST /api/admin/salud/revisar`. Si arreglas un bug que deja datos mal sin tirar
   error, agrega aquí la revisión que lo habría detectado.

@@ -3,7 +3,7 @@
 // rutas. Nacen de OPP-0970 / PRO-0171 (2026-09-10): la cotización y las
 // tallas dejaron de cuadrar y nadie lo vio en dos semanas.
 import { describe, it, expect } from 'vitest';
-import { compararTallas, diferenciasOutbox, normalizarRuta, zonasHabituales } from './salud';
+import { archivosSinMover, compararTallas, diferenciasOutbox, normalizarRuta, zonasHabituales } from './salud';
 
 describe('compararTallas', () => {
   it('cuadra: misma cantidad por SKU y color (sin distinguir mayúsculas ni acentos)', () => {
@@ -94,5 +94,23 @@ describe('zonasHabituales', () => {
     expect(z.get(1)).toBe('Sureste');
     expect(z.has(2)).toBe(false);
     expect(z.has(3)).toBe(false);
+  });
+});
+
+describe('archivosSinMover', () => {
+  const ahora = Date.UTC(2026, 8, 29, 18);
+  const hace = (min: number) => ahora - min * 60_000;
+  it('solo archivos ASSET subidos hace más del tope', () => {
+    const valor = JSON.stringify({ files: [
+      { name: 'OC.pdf', fileType: 'ASSET', assetId: 1, createdAt: hace(120) },
+      { name: 'recien.pdf', fileType: 'ASSET', assetId: 2, createdAt: hace(5) },
+      { name: 'doc', fileType: 'MONDAY_DOC', createdAt: hace(500) },
+    ] });
+    expect(archivosSinMover(valor, ahora)).toEqual(['OC.pdf']);
+  });
+  it('columna vacía o inválida = nada', () => {
+    expect(archivosSinMover(null, ahora)).toEqual([]);
+    expect(archivosSinMover('{}', ahora)).toEqual([]);
+    expect(archivosSinMover('no json', ahora)).toEqual([]);
   });
 });

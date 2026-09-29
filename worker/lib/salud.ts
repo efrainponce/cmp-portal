@@ -96,6 +96,13 @@ const ETAPAS_CERRADAS = new Set(['Perdida', 'Cancelada']);
 // tallas" todavía se están capturando y "Proyecto Terminado" ya no se toca.
 const ESTADOS_CON_TALLAS = new Set(['En confirmacion de tallas', 'Tallas Confirmadas', 'Ordenes de compra listas', 'Ejecución']);
 const OUTBOX_ATORADO_MIN = 15;
+// "Subir documentacion (OC/cotizacion firmada)" — Make (escenario "210. Mueve
+// archivo a archivo oculto") pasa lo que se sube ahí a "OC/contrato/cotización
+// firmada (oculto)" y la vacía en segundos. Un archivo que sigue ahí después de
+// esto = el escenario está caído (se apagó solo el 2026-09-10 y nadie se enteró
+// hasta el 29: 12 proyectos con su OC "Sin documentos" en el portal).
+const PRO_DOC_VISIBLE = 'file_mm3393nf';
+const DOC_SIN_MOVER_MIN = 60;
 // Tope de líneas a las que la revisión les rellena SKU/Producto en texto por
 // corrida (cada una es una llamada a Monday).
 const AUTO_RELLENO_MAX = 25;
@@ -112,6 +119,7 @@ const TIPOS_DE: Record<string, string[]> = {
   outbox: ['outbox_atorado', 'outbox_fallido', 'outbox_conflicto'],
   tallas: ['tallas_no_cuadran'],
   proyectos: ['proyecto_sin_datos'],
+  documentos: ['documento_sin_mover'],
   errores: ['errores_servidor', 'http_500', 'errores_front', 'sync_fallido'],
 };
 
@@ -256,6 +264,35 @@ async function skuDesfasado(env: Env): Promise<Hallazgo[]> {
       titulo: `${v.opp}: la línea ${v.linea} tiene el SKU o el Producto en texto vacío y no se pudo rellenar solo (cmp-tallas imprime esos textos)`,
       detalle: { linea: v.linea, skuTexto: v.skuTxt, productoTexto: v.prodTxt, skuCatalogo: v.skuCat, producto: v.rel },
       boardId: OPP, itemId: v.padre,
+    });
+  }
+  return out;
+}
+
+/** Archivos de la columna visible que Make ya debió mover (subidos hace más de
+ * `minutos`). Los Monday Docs/links se quedan ahí a propósito: no se pueden
+ * descargar. Puro. */
+export function archivosSinMover(valor: string | null, ahoraMs: number, minutos = DOC_SIN_MOVER_MIN): string[] {
+  let files: { name?: string; fileType?: string; assetId?: number; createdAt?: number }[] = [];
+  try { files = (JSON.parse(valor || '{}') as { files?: typeof files }).files ?? []; } catch { return []; }
+  return files
+    .filter(f => f.fileType === 'ASSET' && f.assetId && (f.createdAt ?? 0) < ahoraMs - minutos * 60_000)
+    .map(f => f.name ?? String(f.assetId));
+}
+
+async function documentosSinMover(env: Env, ahora: Date): Promise<Hallazgo[]> {
+  const { results } = await env.DB.prepare(
+    `SELECT p.item_id, p.name, ${campo('p', PRO_DOC_VISIBLE, 'value')} AS docs
+       FROM items p WHERE p.board_id = ? AND p.parent_item_id IS NULL`,
+  ).bind(PRO).all<{ item_id: number; name: string; docs: string | null }>();
+  const out: Hallazgo[] = [];
+  for (const r of results ?? []) {
+    const nombres = archivosSinMover(r.docs, ahora.getTime());
+    if (nombres.length === 0) continue;
+    out.push({
+      clave: `documento_sin_mover:${r.item_id}`, tipo: 'documento_sin_mover', severidad: 'alta',
+      titulo: `${r.name}: ${nombres.length} archivo(s) en "Subir documentacion" sin pasar a la columna oculta — ¿escenario 210 de Make apagado?`.slice(0, 480),
+      detalle: { archivos: nombres }, boardId: PRO, itemId: r.item_id,
     });
   }
   return out;
@@ -715,6 +752,7 @@ export async function revisarSalud(env: Env): Promise<ResultadoSalud> {
     ['outbox', () => outboxProblemas(env, ahora)],
     ['tallas', () => tallasNoCuadran(env)],
     ['proyectos', () => proyectosSinDatos(env)],
+    ['documentos', () => documentosSinMover(env, ahora)],
     ['errores', () => erroresRecientes(env, desde)],
     ['whatsapp', () => whatsappFallidos(env, desde)],
     ['cartera', () => carteraWhatsapp(env, desde)],
