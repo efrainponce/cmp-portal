@@ -740,7 +740,16 @@ async function proyectosSinDatos(env: Env): Promise<Hallazgo[]> {
   return out;
 }
 
-export async function revisarSalud(env: Env): Promise<ResultadoSalud> {
+/** La revisión de SKU es la consulta más cara del portal: abre el JSON de
+ * columnas de cada línea de cotización (~4,500) y de su oportunidad — medido
+ * en D1 insights (2026-09-30), 428 mil filas leídas por corrida, el 21% de
+ * todo lo que lee la base en un día. En el cron corre cada 3 horas, no cada
+ * hora; a mano (POST /api/admin/salud/revisar) siempre. Lo que rellena
+ * (SKU/Producto en texto vacíos) puede esperar ese rato. */
+const SKU_CADA_HORAS = 3;
+
+export async function revisarSalud(env: Env, opts: { completa?: boolean } = {}): Promise<ResultadoSalud> {
+  const completa = opts.completa ?? true;
   const t0 = Date.now();
   const ahora = new Date();
   const inicio = ahora.toISOString();
@@ -764,9 +773,12 @@ export async function revisarSalud(env: Env): Promise<ResultadoSalud> {
     ['whatsapp', () => whatsappFallidos(env, desde)],
     ['cartera', () => carteraWhatsapp(env, desde)],
   ];
+  // Las que no corren en esta pasada no pueden dar por resueltos sus hallazgos
+  // (mismo trato que una revisión que falló, abajo).
+  const saltadas = completa ? [] : ['sku'];
   const hallazgos: Hallazgo[] = [];
   const fallidas: string[] = [];
-  for (const [nombre, fn] of revisiones) {
+  for (const [nombre, fn] of revisiones.filter(([n]) => !saltadas.includes(n))) {
     try {
       hallazgos.push(...await fn());
     } catch (err) {
@@ -796,7 +808,7 @@ export async function revisarSalud(env: Env): Promise<ResultadoSalud> {
   // Lo que no apareció en esta corrida ya no está: resuelto. Una revisión que
   // falló no resuelve sus propios hallazgos, y su propio "revision_fallida" se
   // resuelve solo cuando vuelve a correr bien.
-  const noResolver = [...fallidas.flatMap(f => TIPOS_DE[f] ?? [])];
+  const noResolver = [...fallidas, ...saltadas].flatMap(f => TIPOS_DE[f] ?? []);
   const excluir = noResolver.length > 0 ? ` AND tipo NOT IN (${noResolver.map(() => '?').join(',')})` : '';
   await env.DB.prepare(`UPDATE salud_hallazgo SET resuelto_at = ? WHERE resuelto_at IS NULL AND ultima_vez < ?${excluir}`)
     .bind(inicio, inicio, ...noResolver).run();
@@ -841,7 +853,7 @@ export async function revisarSalud(env: Env): Promise<ResultadoSalud> {
 export async function revisarSaludSiToca(env: Env, ahora = new Date()): Promise<void> {
   if (ahora.getUTCMinutes() >= 15) return;
   try {
-    await revisarSalud(env);
+    await revisarSalud(env, { completa: ahora.getUTCHours() % SKU_CADA_HORAS === 0 });
   } catch (err) {
     await registrarError(env, 'salud', err);
   }

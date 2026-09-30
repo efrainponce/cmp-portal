@@ -39,7 +39,7 @@ con el Worker (`/api/*`). Bot de WhatsApp + chat del portal comparten agente Cla
   separa "tardó el servidor" de "tardó la red". El plan vigente y lo ya medido y
   descartado: `docs/plan-performance.md` — léelo antes de proponer una optimización.
 - La revisión de salud (`worker/lib/salud.ts`) corre cada hora (dentro del cron de
-  15 min) y guarda en `salud_hallazgo`: divisiones cuya línea nueva se borró en
+  15 min; la de SKU, la más cara, cada 3 h — a mano siempre completa) y guarda en `salud_hallazgo`: divisiones cuya línea nueva se borró en
   Monday, SKU/Producto en texto vacío o de otro producto, líneas fantasma, outbox
   atorado/fallido/con un valor distinto en Monday, tallas del Proyecto que no cuadran
   con la cotización, proyectos sin Zona/Vendedor/Compras (se rellenan solos

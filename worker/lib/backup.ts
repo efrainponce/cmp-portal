@@ -1,5 +1,5 @@
-// worker/lib/backup.ts — export semanal del mirror D1 a R2 (cron sábado 3am
-// UTC — ver worker/index.ts: en Cloudflare "7" es sábado, no domingo). Esto NO es la red de seguridad para "borré algo por error hoy" —
+// worker/lib/backup.ts — export DIARIO del mirror D1 a R2 (cron nocturno, 3 am
+// hora de México — ver BACKUP_CRON en worker/index.ts). Esto NO es la red de seguridad para "borré algo por error hoy" —
 // eso ya lo cubre D1 Time Travel (restore a cualquier minuto de los últimos 30 días,
 // gratis, sin este archivo). Este dump es para retención más allá de esos 30 días:
 // el día que Monday deje de ser la fuente de verdad, o si D1 mismo se pierde.
@@ -52,7 +52,36 @@ async function buildDump(env: Env): Promise<string> {
   return lines.join('\n');
 }
 
+/** Página por `rowid` y no con OFFSET: SQLite no puede saltarse filas, así
+ * que cada `OFFSET n` volvía a leer las n anteriores — medido en D1 insights
+ * (2026-09-30), el respaldo de sync_log solo leía 11.8 M filas por corrida
+ * para una tabla de ~92 mil. Por rowid cada fila se lee una vez. Una tabla
+ * WITHOUT ROWID (no hay hoy) cae al OFFSET de antes. */
 async function dumpTableRows(env: Env, table: string): Promise<string[]> {
+  try {
+    return await dumpPorRowid(env, table);
+  } catch {
+    return dumpPorOffset(env, table);
+  }
+}
+
+async function dumpPorRowid(env: Env, table: string): Promise<string[]> {
+  const lines: string[] = [];
+  for (let desde = -Infinity; ;) {
+    const { results } = await env.DB.prepare(
+      `SELECT rowid AS "__rid", * FROM "${table}" WHERE rowid > ? ORDER BY rowid LIMIT ?`,
+    ).bind(Number.isFinite(desde) ? desde : -9007199254740991, PAGE_SIZE).all<Record<string, unknown>>();
+    const rows = results ?? [];
+    for (const { __rid, ...row } of rows) {
+      lines.push(toInsert(table, row));
+      desde = Number(__rid);
+    }
+    if (rows.length < PAGE_SIZE) break;
+  }
+  return lines;
+}
+
+async function dumpPorOffset(env: Env, table: string): Promise<string[]> {
   const lines: string[] = [];
   for (let offset = 0; ; offset += PAGE_SIZE) {
     const { results } = await env.DB.prepare(
