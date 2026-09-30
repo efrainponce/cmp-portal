@@ -80,13 +80,27 @@ Medición nueva: `Server-Timing` en todo `/api/*` (`auth`, `total`),
 6. Menores: admin baja la lista dos veces al cargar (la segunda con las
    columnas de fechas); notificaciones 200 en 628 ms; comentarios 1.2 s.
 
-## Hallazgo pendiente
+## Filas leídas de D1 — HECHO 2026-09-30 (noche)
 
-- `wrangler d1 info cmp-portal` (2026-09-30): **90.6 M filas leídas en 24 h**
-  con 68 k consultas de lectura. Casi todo es leer el board entero con
-  `columns` (lista en frío, Inicio) y el scope de compras en escritura
-  (`json_each` sobre `columns`). No truena hoy, pero es lo que crece con cada
-  usuario: el paso 4 (lista en frío) también es el que más lo baja.
+`wrangler d1 info cmp-portal`: 90.6 M filas leídas en 24 h. En el plan de pago
+eso cabe de sobra en lo incluido (~2,700 M/mes); el problema era de tiempo:
+D1 atiende una consulta a la vez y los recorridos grandes hacen esperar a
+todos. De dónde salían (`wrangler d1 insights cmp-portal --sort-by reads`):
+
+| Qué | Filas/día | Arreglo |
+|---|---|---|
+| Revisión de salud de SKU | 22.3 M (21%) | cada 3 h en el cron, no cada hora (`SKU_CADA_HORAS`) |
+| Alertas + limpieza de `sync_log` cada 15 min | 23.0 M (23%) | índices por fecha; el conteo ya ni corre con las alertas apagadas; la limpieza pasó a la noche |
+| Respaldo diario a R2 | 12.6 M (12%) | página por `rowid` en vez de OFFSET |
+| Líneas de un padre, línea por id, pendientes del outbox | 15.0 M (14%) | índices `idx_items_board_parent`, `idx_items_item`, `idx_outbox_board_status` |
+
+Medido en producción al crear los índices: líneas de un padre 4,547 → 3
+filas; línea por id 13,466 → 2; errores recientes 93,222 → 13. El respaldo y
+las limpiezas corren a las 3 am de México (`BACKUP_CRON = '0 9 * * *'`).
+
+Queda (~25 M/día): la versión de las listas (`COUNT`/`MAX(synced_at)` por
+board), los totales y la búsqueda con `json_each`. El paso 4 del plan es el
+que más los baja. Verificar mañana: `wrangler d1 info cmp-portal`.
 
 ## Medido y descartado (no volver a proponer sin datos nuevos)
 

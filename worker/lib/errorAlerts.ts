@@ -15,7 +15,13 @@ interface KindCount {
   n: number;
 }
 
+// Alertas por WhatsApp pausadas a pedido de Efraín (2026-08-15) — reactivar
+// cambiando esto a true cuando se confirme que ya no es ruido. Apagadas, ni
+// siquiera se cuenta: era un recorrido de sync_log cada 15 min para nada.
+const ALERTAS_WA_ACTIVAS = false;
+
 export async function checkErrorsAndAlert(env: Env): Promise<void> {
+  if (!ALERTAS_WA_ACTIVAS) return;
   // Las filas 'error-alert:' (el fallo del PROPIO envío de la alerta, logueado
   // abajo en sendAlert) se excluyen del conteo: contarlas convierte un envío
   // fallido en un loop infinito — el fallo de hoy dispara la alerta de mañana,
@@ -31,10 +37,13 @@ export async function checkErrorsAndAlert(env: Env): Promise<void> {
   const rows = results ?? [];
   const total = rows.reduce((sum, r) => sum + r.n, 0);
 
-  // Alertas por WhatsApp pausadas a pedido de Efraín (2026-08-15) — reactivar
-  // quitando este `false &&` cuando se confirme que ya no es ruido.
-  if (false && total > 0) await sendAlert(env, total, rows);
+  if (total > 0) await sendAlert(env, total, rows);
+}
 
+/** Retención de sync_log y de la bitácora de WhatsApp. Corría en el cron de
+ * 15 min; desde 2026-09-30 una vez por noche (BACKUP_CRON en worker/index.ts):
+ * borrar lo de hace 90 días no necesita pasar 96 veces al día. */
+export async function purgeSyncLog(env: Env): Promise<void> {
   await env.DB.prepare(
     `DELETE FROM sync_log WHERE at < datetime('now', ?)`,
   ).bind(`-${RETENTION_DAYS} days`).run();

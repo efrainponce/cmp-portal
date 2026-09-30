@@ -557,9 +557,12 @@ export async function mondayUserIdExists(env: Env, id: number): Promise<boolean>
   return !!row;
 }
 
+/** Sin DISTINCT a propósito (el Set deduplica): con DISTINCT SQLite prefiere
+ * recorrer todo el outbox del board por idx_outbox_item (~1,300 filas por
+ * llamada, en CADA lista); sin él busca directo por idx_outbox_board_status. */
 export async function pendingItemIds(env: Env, boardId: number): Promise<Set<number>> {
   const res = await env.DB
-    .prepare(`SELECT DISTINCT item_id FROM outbox WHERE board_id = ? AND status IN ('pending','sent')`)
+    .prepare(`SELECT item_id FROM outbox WHERE board_id = ? AND status IN ('pending','sent')`)
     .bind(boardId)
     .all<{ item_id: number }>();
   return new Set((res.results ?? []).map(r => r.item_id));

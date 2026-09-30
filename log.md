@@ -1,5 +1,26 @@
 # Log de commits
 
+## 2026-09-30 (D1: 90 millones de filas leídas al día)
+
+- **Efraín**: "90.6 millones de filas en 24 horas es demasiado, ¿cómo podemos
+  optimizarlo? … quizás hacer los respaldos y alertas más esporádicos, en la
+  noche". No costaba de más (cabe en lo incluido del plan), pero D1 atiende
+  una consulta a la vez: los recorridos grandes hacían esperar a todos.
+- Fuente (`wrangler d1 insights`): revisión de SKU 21%, alertas y limpieza de
+  `sync_log` cada 15 min 23%, respaldo con OFFSET 12%, índices faltantes 14%.
+- **5 índices** (`worker/schema.sql`, creados también en producción): líneas
+  de un padre 4,547 → 3 filas, línea por id 13,466 → 2, errores recientes
+  93,222 → 13, pendientes del outbox 303 → 2.
+- **Alertas**: con el WhatsApp de alertas apagado ya no se cuenta nada cada
+  15 min (`ALERTAS_WA_ACTIVAS`). La limpieza de `sync_log`/`wa_mensaje` pasó al
+  cron nocturno.
+- **Respaldo y limpiezas a las 3 am de México** (`0 9 * * *`, antes 9 pm), y
+  el respaldo pagina por `rowid` (con OFFSET releía todo lo anterior en cada
+  página: 11.8 M filas solo por `sync_log`).
+- **Revisión de SKU cada 3 horas** en el cron (sigue completa a mano); cuando
+  se salta no da por resueltos sus hallazgos.
+- `pendingItemIds` sin DISTINCT para que use el índice nuevo.
+
 ## 2026-09-30 (performance: servidor junto a la base e identidad en un viaje)
 
 - **Efraín** eligió, para bajar el piso de cada request, "servidor junto a la

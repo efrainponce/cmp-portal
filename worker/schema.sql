@@ -25,6 +25,12 @@ CREATE TABLE IF NOT EXISTS items (
 );
 CREATE INDEX IF NOT EXISTS idx_items_parent ON items(parent_item_id);
 CREATE INDEX IF NOT EXISTS idx_items_board  ON items(board_id);
+-- 2026-09-30 (D1 insights, docs/plan-performance.md): las líneas de UN padre
+-- (dal.ts childrenOf) recorrían todo el board de líneas por idx_items_board
+-- (~3,600 filas por apertura de drawer); y buscar una línea solo por item_id
+-- (sin board) recorría la tabla entera.
+CREATE INDEX IF NOT EXISTS idx_items_board_parent ON items(board_id, parent_item_id);
+CREATE INDEX IF NOT EXISTS idx_items_item ON items(item_id);
 
 -- Quién creó cada item desde el portal, por correo (2026-09-11,
 -- worker/lib/itemCreador.ts): desempata el aviso de "dueño" cuando el id del
@@ -58,6 +64,8 @@ CREATE TABLE IF NOT EXISTS outbox (   -- portal->Monday writes: optimistic D1 fi
   updated_at   TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_outbox_item ON outbox(board_id, item_id, status);
+-- Pendientes de un board (dal.ts pendingItemIds, en cada lista), 2026-09-30.
+CREATE INDEX IF NOT EXISTS idx_outbox_board_status ON outbox(board_id, status, item_id);
 
 CREATE TABLE IF NOT EXISTS wa_conversations (  -- WhatsApp bot: one row per phone
   phone      TEXT PRIMARY KEY,                 -- normalized (last 10 digits)
@@ -111,6 +119,10 @@ CREATE TABLE IF NOT EXISTS sync_log (
   board_id INTEGER, item_id INTEGER,
   ok INTEGER NOT NULL, detail TEXT, at TEXT NOT NULL
 );
+-- 2026-09-30: errores recientes (salud, alertas) y la limpieza por fecha
+-- recorrían las ~92 mil filas completas cada vez.
+CREATE INDEX IF NOT EXISTS idx_sync_log_at    ON sync_log(at);
+CREATE INDEX IF NOT EXISTS idx_sync_log_ok_at ON sync_log(ok, at);
 
 -- Checkpoint genérico key/value para procesos de sync. Hoy solo lo usa el delta
 -- sync (worker/sync/delta.ts) para `delta_last_polled_at`. Lazy en runtime,

@@ -29,7 +29,7 @@ import { telemetryRoutes } from './routes/telemetry';
 import { saludRoutes } from './routes/salud';
 import { limpiezaRoutes } from './routes/limpieza';
 import { flushOutbox } from './lib/outbox';
-import { checkErrorsAndAlert } from './lib/errorAlerts';
+import { checkErrorsAndAlert, purgeSyncLog } from './lib/errorAlerts';
 import { revisarSaludSiToca } from './lib/salud';
 import { procesarColaLimpieza } from './lib/limpieza';
 import { procesarSheetsPendientes } from './lib/tallasSheet';
@@ -159,17 +159,20 @@ app.onError(async (err, c) => {
 // seguridad y no la única fuente de verdad) y el de catálogos cada 10 min.
 // Otro cron (cada 15 min) hace dos cosas SIN ser un board group: revisa
 // sync_log y avisa por WhatsApp (worker/lib/errorAlerts.ts), y corre el delta sync
-// (worker/sync/delta.ts). El último (semanal, 3am UTC) exporta el mirror D1 completo
+// (worker/sync/delta.ts). El último (diario, 3 am de México) exporta el mirror D1 completo
 // a R2 (worker/lib/backup.ts) — retención larga más allá de los 30 días de D1 Time
 // Travel, no recovery del día a día. wrangler.jsonc debe declarar exactamente estos
 // cuatro strings de cron. OJO con el día-de-semana de Cloudflare: rechaza "0"
 // (con "0" el deploy sube el Worker pero el PUT de schedules falla en silencio,
 // el Action queda rojo y el cron no se registra — 2026-08-12/13) y su numeración
 // es 1=domingo…7=SÁBADO, no la de Unix: "0 3 * * 7" disparó en sábado
-// 2026-08-15T03:00 UTC (verificado en vivo). El backup corre sábados — da igual
-// el día mientras sea semanal.
+// 2026-08-15T03:00 UTC (verificado en vivo). Hoy es diario, sin día de semana.
 const ALERT_CRON = '*/15 * * * *';
-const BACKUP_CRON = '0 3 * * *';
+// 09:00 UTC = 3 am en México (UTC-6, sin horario de verano desde 2022): el
+// respaldo y las limpiezas leen tablas enteras y D1 atiende una consulta a la
+// vez — de noche no le hacen esperar a nadie. Hasta 2026-09-30 era '0 3 * * *'
+// (9 pm en México). Cambiar el string aquí Y en wrangler.jsonc.
+const BACKUP_CRON = '0 9 * * *';
 const CRON_GROUPS: Record<string, BoardSlug[]> = {
   '0 0,12 * * *': ['oportunidades', 'oportunidades_sub', 'proyectos', 'proyectos_sub'],
   // Este grupo corría cada 12h ('0 6,18 * * *') y pasó a cada 10 MINUTOS
@@ -213,7 +216,7 @@ export default {
       // Las podas de ux_event (90 días) y accion_log (400) se cuelgan aquí y
       // no del cron de 15 min: son DELETE por rango que no tienen por qué
       // correr 96 veces al día.
-      ctx.waitUntil(Promise.all([backupD1ToR2(env), purgeUxEvents(env), purgeAccionLog(env), purgeBitacora(env)]));
+      ctx.waitUntil(Promise.all([backupD1ToR2(env), purgeUxEvents(env), purgeAccionLog(env), purgeBitacora(env), purgeSyncLog(env)]));
       return;
     }
     const slugs = CRON_GROUPS[controller.cron] ?? (Object.keys(BOARDS) as BoardSlug[]);
