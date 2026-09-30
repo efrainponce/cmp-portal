@@ -1,5 +1,29 @@
 # Log de commits
 
+## 2026-09-29 (Zona Efrain: folio OPP-E####, duplicar nativo, totales y lista como Costeo)
+
+- **Efraín**: "checa por qué PAM no pudo completar la cotización en Zona Efrain
+  … ni siquiera sale el número de la OPP". Lo que pasó (accion_log): PAM creó
+  institución, contacto y "ESPOSAS CINCHOS" nativa, capturó costos pero NO el
+  Precio de Venta C/U → "Generar cotización" (único paso en la zona) quedó gris
+  y la razón solo salía en el tooltip. Intentó "Duplicar" → 502 (el clon iba a
+  Monday con un contacto nativo). La canceló y la rehízo en Monday (OPP-1138).
+- **Folio OPP-E#### para oportunidades nativas** (`worker/lib/nativeFolio.ts`,
+  Efraín eligió el prefijo E): secuencia propia en `opp_folio_nativo`, se
+  estampa en `pulse_id_mm0qcq0m` y adelante del nombre como hace Monday. Se
+  asigna al crear, al duplicar y antes de cotizar; la revisión de salud rellena
+  las nativas viejas. Antes TODAS las cotizaciones nativas (19) salieron con el
+  id sintético como folio ("900818133702 - 1").
+- **Duplicar una nativa crea el clon nativo** en D1 (cabecera + espejos + líneas
+  con costeo y precio, sin archivos), con su propio folio.
+- **Totales de líneas nativas** (`guardarTotalesLineaNativa`): las columnas
+  `t_*` nunca se llenaban para líneas nativas → la lista las sumaba en $0. Se
+  guardan en cada edición y salud rellena las que falten.
+- **Aviso visible** en el drawer de Zona Efrain cuando falta el Precio de Venta.
+- **Zona Efrain = lista de Costeo** (Efraín: "es lo mismo que costeo"): lista
+  extendida de admin (totales + fechas + "Columnas") y precarga del catálogo.
+  Las nativas ahora traen "Creada" (`pulse_log_mkzm4v99`).
+
 ## 2026-09-29 (Urgentes de la revisión de salud: teléfono de proveedores y avisos de WhatsApp)
 
 - **Efraín**: "empieza a reparar los urgentes" (revisión diaria de `scripts/salud.mjs`).

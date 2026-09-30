@@ -985,6 +985,24 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, openTab, onTabCha
         </div>
       )}
 
+      {/* Mismo problema en Zona Efrain: "Generar cotización" es el único paso
+          (no hay costeo) y sin Precio de Venta queda gris sin decir por qué —
+          PAM capturó los costos, no vio el motivo y rehízo la oportunidad en
+          Monday (2026-09-29). */}
+      {zonaPrivada && !ajena && products.length > 0 && !hasPrecio && puedeGenerarCotizacion(stage, zonaPrivada) && (
+        <div style={{
+          margin: isMobile ? '12px 14px 0' : '14px 32px 0', padding: '12px 16px',
+          border: '1px solid var(--status-perdida)', borderRadius: 'var(--radius-lg)', background: 'var(--bg-raised)',
+        }}>
+          <div style={{ font: 'var(--text-label-strong)', color: 'var(--status-perdida)', marginBottom: 6 }}>
+            Falta esto para "Generar cotización":
+          </div>
+          <div style={{ font: 'var(--text-label)', color: 'var(--ink-secondary)', marginTop: 2 }}>
+            • Captura el Precio de Venta C/U en al menos una línea (tab Cotización). En Zona Efrain no hay paso de costeo: el precio se pone aquí mismo.
+          </div>
+        </div>
+      )}
+
       {/* Sin este aviso, una oportunidad de la zona se ve idéntica a una propia
           pero sin botones — parecería que el portal se rompió. */}
       {ajena && (

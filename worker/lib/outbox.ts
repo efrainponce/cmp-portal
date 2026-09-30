@@ -21,6 +21,7 @@ import type { MondayItem, MondayCol } from './monday';
 import { logProductoStatusFromPortalWrite } from './estadoProducto';
 import { syncTallasPortal } from './airtable';
 import { recordDirectChanges, isPortalWriteColumn, type DirectChange } from './activityLog';
+import { guardarTotalesLineaNativa } from './lineaTotales';
 
 /** Shape REAL de lectura de Monday para board_relation ({linked_item_ids:[...]}
  * — distinto del shape de ESCRITURA que espera la mutación, {item_ids:[...]},
@@ -320,6 +321,9 @@ export async function submitWrite(
           });
       await recordDirectChanges(env, slug, changes);
     } catch { /* best-effort */ }
+    if (slug === 'oportunidades_sub') {
+      try { await guardarTotalesLineaNativa(env, itemId); } catch { /* best-effort: salud lo rellena */ }
+    }
     return { ok: true, pending: false };
   }
 

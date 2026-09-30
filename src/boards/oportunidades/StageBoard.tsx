@@ -62,7 +62,8 @@ export function StageBoard({ boardKey, openId, openTab, onTabChange, onOpenChang
   // Sólo en estos dos boards: son donde el catálogo se carga sí o sí y donde se
   // abren oportunidades todo el día. En el resto se seguiría bajando 89 KB que
   // quizá nadie use.
-  const usaCatalogo = boardKey === 'costeo' || boardKey === 'validacion';
+  // Zona Efrain usa la misma grid de costeo (GRID_COLS_ZONA).
+  const usaCatalogo = boardKey === 'costeo' || boardKey === 'validacion' || boardKey === 'zona_efrain';
   usePrefetchOnIdle(getCatalogoProductos, listaLista && usaCatalogo);
 
   return (

@@ -34,12 +34,20 @@ import type { Env } from '../env';
 import { registrarArchivo } from './archivoLog';
 import type { Identity, MirrorItem } from '../../shared/types';
 import { BOARDS } from '../../shared/boards';
-import { DEAL_STAGE_LABELS, DUPLICAR_ETAPAS_VALIDAS } from '../../shared/dealStages';
+import { DEAL_STAGE_LABELS, DUPLICAR_ETAPAS_VALIDAS, dealStageValue } from '../../shared/dealStages';
 import { createItem, createSubitem, addFileToColumn, fetchAssetPublicUrls } from './monday';
 import { getItem, childrenOf } from './dal';
 import { upsertItem, refetchItemTree } from '../sync';
 import { registrarCreador } from './itemCreador';
 import type { RawCol } from './serialize';
+import { isNativeId } from '../../shared/nativeId';
+import { rawHash, type RawColumn } from './canon';
+import { reserveNativeId } from './nativeSeq';
+import { insertNativeSubitem, creationLogColumn } from './nativeItems';
+import { asignarFolioNativo } from './nativeFolio';
+import { guardarTotalesLineaNativa } from './lineaTotales';
+import { alFinalDelOrdenManual } from './itemOrder';
+import { isZonaPrivadaAdminPermitido } from './zonas';
 
 export class DuplicateOportunidadError extends Error {
   status: number;
@@ -221,6 +229,11 @@ export async function duplicateOportunidad(
   if (!source) throw new DuplicateOportunidadError(404, 'not found');
   const srcCols = colsOf(source);
 
+  // Oportunidad NATIVA (Zona Efrain): el clon también nace nativo, en D1. Mandarlo
+  // a Monday tronaba ("There are items that are not in the connected boards")
+  // porque el Contacto nativo no existe allá — PAM, 2026-09-29.
+  if (isNativeId(itemId)) return duplicateOportunidadNativa(env, source, srcCols, viewer, etapaKey);
+
   const newCols: Record<string, unknown> = {
     [COL_ETAPA]: { label: DEAL_STAGE_LABELS[etapaKey] },
   };
@@ -332,5 +345,52 @@ export async function duplicateOportunidad(
   // (incluidas las imágenes recién subidas) en una llamada.
   ctx.waitUntil(refetchItemTree(env, BOARDS.oportunidades.id, newItemId));
 
+  return { id: newItemId };
+}
+
+/** Duplicado de una Oportunidad nativa, 100% en D1 — mismo criterio de "copia
+ * exacta de los DATOS" que arriba: cabecera COPY_ITEM_COLS (+ los espejos
+ * `lookup_*`, que en un item nativo resuelve el portal y nadie más) y las
+ * líneas vigentes enteras con su costeo y precio. No viajan archivos (PDFs ni
+ * imágenes: en nativo viven en R2 bajo el id de la original), versiones ni
+ * folio — el clon estrena su propio OPP-E#### (worker/lib/nativeFolio.ts). */
+async function duplicateOportunidadNativa(
+  env: Env, source: MirrorItem, srcCols: Map<string, RawCol>, viewer: Identity, etapaKey: string,
+): Promise<{ id: number }> {
+  if (!isZonaPrivadaAdminPermitido(viewer.email)) {
+    throw new DuplicateOportunidadError(403, 'no autorizado para crear en Zona Efrain');
+  }
+  const cabecera = new Set(COPY_ITEM_COLS.map(c => c.id));
+  const cols: RawColumn[] = [...srcCols.values()]
+    .filter(c => cabecera.has(c.id) || c.id.startsWith('lookup_'))
+    .map(c => ({ id: c.id, type: c.type, text: c.text ?? null, value: c.value ?? null }));
+  const etapa = DEAL_STAGE_LABELS[etapaKey];
+  cols.push({ id: COL_ETAPA, type: 'status', text: etapa, value: JSON.stringify(dealStageValue(etapa)) });
+  cols.push(creationLogColumn(viewer.monday_user_id));
+
+  const base = source.name.replace(/^OPP-E?\d+\s*-\s*/i, '').trim() || source.name;
+  const newItemId = await reserveNativeId(env);
+  const now = new Date().toISOString();
+  await env.DB
+    .prepare(
+      `INSERT INTO items (board_id, item_id, parent_item_id, name, group_id, vendedor_ids, monday_updated_at, synced_at, content_hash, columns)
+       VALUES (?, ?, NULL, ?, NULL, ?, ?, ?, ?, ?)`,
+    )
+    .bind(BOARDS.oportunidades.id, newItemId, `${base} (copia)`, source.vendedor_ids || '[]', now, now, rawHash(cols), JSON.stringify(cols))
+    .run();
+  await registrarCreador(env, newItemId, viewer.email);
+  await asignarFolioNativo(env, newItemId);
+
+  // En orden (childrenOf ya respeta item_order) y registrando el orden manual,
+  // igual que el alta de líneas nativas en routes/oportunidades.ts.
+  const lineas = await childrenOf(env, 'oportunidades', source.item_id, viewer);
+  for (const linea of lineas) {
+    const lc: RawColumn[] = [...colsOf(linea).values()]
+      .filter(c => c.type !== 'file')
+      .map(c => ({ id: c.id, type: c.type, text: c.text ?? null, value: c.value ?? null }));
+    const subId = await insertNativeSubitem(env, 'oportunidades_sub', newItemId, linea.name, lc);
+    await alFinalDelOrdenManual(env, BOARDS.oportunidades_sub.id, newItemId, subId);
+    await guardarTotalesLineaNativa(env, subId);
+  }
   return { id: newItemId };
 }
