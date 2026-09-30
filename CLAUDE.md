@@ -35,6 +35,9 @@ con el Worker (`/api/*`). Bot de WhatsApp + chat del portal comparten agente Cla
   por endpoint y % de 304. Para reproducir: `scripts/prod-waterfall.mjs /ruta
   [--sin-cache]` (cascada con red lenta contra prod) y `scripts/prod-304.mjs`
   (¿cada endpoint polleado contesta 304?); ambos usan el perfil de `prod-login.mjs`.
+  Todo `/api/*` contesta con `Server-Timing` (`auth` = identidad+zona, `total`):
+  separa "tardó el servidor" de "tardó la red". El plan vigente y lo ya medido y
+  descartado: `docs/plan-performance.md` — léelo antes de proponer una optimización.
 - La revisión de salud (`worker/lib/salud.ts`) corre cada hora (dentro del cron de
   15 min) y guarda en `salud_hallazgo`: divisiones cuya línea nueva se borró en
   Monday, SKU/Producto en texto vacío o de otro producto, líneas fantasma, outbox

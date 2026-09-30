@@ -28,10 +28,14 @@ const i = process.argv.indexOf('--horas');
 const horas = i > 0 ? Math.max(1, Number(process.argv[i + 1]) || 24) : 24;
 const desde = new Date(Date.now() - horas * 3_600_000).toISOString();
 
+// En un checkout sin la cuenta de wrangler en caché (p. ej. un workspace nuevo)
+// wrangler no sabe cuál de las dos cuentas usar y falla: se le dice aquí, igual
+// que scripts/limpiar-pruebas.mjs.
+const CUENTA_CF = process.env.CLOUDFLARE_ACCOUNT_ID ?? '40a5f9802bef8075fb322a54615bbcf6';
 function d1(sql) {
   try {
     const out = execFileSync('npx', ['wrangler', 'd1', 'execute', 'cmp-portal', '--remote', '--env-file=.dev.vars', '--json', '--command', sql],
-      { cwd: REPO, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 64 * 1024 * 1024 });
+      { cwd: REPO, env: { ...process.env, CLOUDFLARE_ACCOUNT_ID: CUENTA_CF }, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 64 * 1024 * 1024 });
     return JSON.parse(out)[0]?.results ?? [];
   } catch (err) {
     const msg = String(err?.stdout || err?.message || err);

@@ -185,11 +185,14 @@ export function searchTokens(q: string): string[] {
   return q.trim().split(/\s+/).filter(Boolean).slice(0, 6);
 }
 
-export async function listItems(env: Env, slug: BoardSlug, viewer: Identity, q?: string, mode: ScopeMode = 'read'): Promise<MirrorItem[]> {
+/** El FROM/WHERE de la lista de un board para este viewer (scope + búsqueda),
+ * sin el SELECT: lo comparten la lista completa y la incremental, que tienen
+ * que ver exactamente los mismos renglones. */
+function filtroLista(slug: BoardSlug, viewer: Identity, q: string | undefined, mode: ScopeMode): { sql: string; binds: unknown[] } {
   const board = BOARDS[slug];
   const scope = scopeFor(slug, viewer, mode);
   const binds: unknown[] = [board.id, ...scope.binds];
-  let sql = `SELECT * FROM items WHERE board_id = ? AND (${scope.where})`;
+  let sql = `FROM items WHERE board_id = ? AND (${scope.where})`;
   if (q) {
     // Una cláusula por palabra (AND entre ellas, OR entre campos dentro de
     // cada una): antes el query entero iba en un solo LIKE, así que "5.11
@@ -206,9 +209,44 @@ export async function listItems(env: Env, slug: BoardSlug, viewer: Identity, q?:
       binds.push(`%${token}%`, `%${token}%`);
     }
   }
-  sql += ' ORDER BY monday_updated_at DESC LIMIT 4000';
-  const res = await env.DB.prepare(sql).bind(...binds).all<MirrorItem>();
+  return { sql, binds };
+}
+
+const ORDEN_LISTA = ' ORDER BY monday_updated_at DESC LIMIT 4000';
+
+export async function listItems(env: Env, slug: BoardSlug, viewer: Identity, q?: string, mode: ScopeMode = 'read'): Promise<MirrorItem[]> {
+  const f = filtroLista(slug, viewer, q, mode);
+  const res = await env.DB.prepare(`SELECT * ${f.sql}${ORDEN_LISTA}`).bind(...f.binds).all<MirrorItem>();
   return res.results ?? [];
+}
+
+/**
+ * La lista para el poll INCREMENTAL (`?since=`, worker/routes/boards.ts): el
+ * orden completo de ids (barato: sin `columns`) y, aparte, las filas enteras
+ * SOLO de lo que se sincronizó desde la marca del cliente.
+ *
+ * Antes la ruta leía el board entero con `SELECT *` y descartaba en JS lo que
+ * no había cambiado. Medido en la D1 de producción (2026-09-30, Oportunidades,
+ * 945 items): 8.5 MB de `columns` y 250-320 ms de SQL por respuesta, para
+ * mandar 3 renglones; solo ids son 9 ms y las cambiadas 10 ms. Eso pasaba en
+ * cada poll que encontraba algo nuevo (~1,000 por semana).
+ *
+ * Las dos consultas van en un `batch`: un solo viaje a D1 y la misma foto del
+ * board. `cambiadas` se recorta a los ids de `orden` por el LIMIT: una fila
+ * fuera de la ventana de 4000 no está en la lista y no debe viajar.
+ */
+export async function listItemsDesde(
+  env: Env, slug: BoardSlug, viewer: Identity, since: string, q?: string,
+): Promise<{ orden: { item_id: number; synced_at: string }[]; cambiadas: MirrorItem[] }> {
+  const f = filtroLista(slug, viewer, q, 'read');
+  const [ids, filas] = await env.DB.batch([
+    env.DB.prepare(`SELECT item_id, synced_at ${f.sql}${ORDEN_LISTA}`).bind(...f.binds),
+    env.DB.prepare(`SELECT * ${f.sql} AND synced_at >= ? ORDER BY monday_updated_at DESC`).bind(...f.binds, since),
+  ]);
+  const orden = (ids.results ?? []) as { item_id: number; synced_at: string }[];
+  const enLista = new Set(orden.map(r => r.item_id));
+  const cambiadas = ((filas.results ?? []) as MirrorItem[]).filter(r => enLista.has(r.item_id));
+  return { orden, cambiadas };
 }
 
 // Returns null (never throws) when the item doesn't exist OR isn't owned by viewer —
@@ -224,6 +262,26 @@ export async function getItem(
   const sql = `SELECT * FROM items WHERE board_id = ? AND item_id = ? AND (${scope.where})`;
   const row = await env.DB.prepare(sql).bind(board.id, itemId, ...scope.binds).first<MirrorItem>();
   return row ?? null;
+}
+
+/** `getItem` para VARIOS ids a la vez, con el mismo scope: lo que el viewer no
+ * puede leer (o no existe) simplemente no viene en el mapa. De 40 en 40 por el
+ * tope de ~100 binds de D1 (el scope de un líder de zona ya trae varios). */
+export async function getItemsMany(
+  env: Env, slug: BoardSlug, itemIds: number[], viewer: Identity, mode: ScopeMode = 'read',
+): Promise<Map<number, MirrorItem>> {
+  const out = new Map<number, MirrorItem>();
+  const ids = [...new Set(itemIds)];
+  if (ids.length === 0) return out;
+  const board = BOARDS[slug];
+  const scope = scopeFor(slug, viewer, mode);
+  for (let i = 0; i < ids.length; i += 40) {
+    const lote = ids.slice(i, i + 40);
+    const sql = `SELECT * FROM items WHERE board_id = ? AND item_id IN (${lote.map(() => '?').join(',')}) AND (${scope.where})`;
+    const res = await env.DB.prepare(sql).bind(board.id, ...lote, ...scope.binds).all<MirrorItem>();
+    for (const row of res.results ?? []) out.set(row.item_id, row);
+  }
+  return out;
 }
 
 /** Guard de los endpoints que MUTAN pero no necesitan la fila (o la leen por otro
@@ -364,12 +422,25 @@ function fnv1a(s: string): string {
  * (hoy: la proyección ?cols=). Sin él, dos clientes que piden columnas
  * distintas comparten llave y el 304 le entrega a uno la forma del otro. */
 export async function etagFor(env: Env, slug: BoardSlug, viewer: Identity, variant?: string): Promise<string> {
+  return etagDe(slug, viewer, await versionBoard(env, slug), variant);
+}
+
+/** La única lectura de `etagFor`: cuántos items tiene el board y cuándo se
+ * sincronizó el último. Aparte para que la ruta de la lista la pida EN
+ * PARALELO con la versión de los totales (worker/lib/totales.ts) en vez de
+ * una después de la otra — es el camino del poll de 5 s, y cada consulta a
+ * D1 es un viaje de ida y vuelta. */
+export async function versionBoard(env: Env, slug: BoardSlug): Promise<{ c: number; m: string | null } | null> {
+  return env.DB
+    .prepare('SELECT COUNT(*) as c, MAX(synced_at) as m FROM items WHERE board_id = ?')
+    .bind(BOARDS[slug].id)
+    .first<{ c: number; m: string | null }>();
+}
+
+/** El ETag a partir de una `versionBoard` ya leída. Puro. */
+export function etagDe(slug: BoardSlug, viewer: Identity, row: { c: number; m: string | null } | null, variant?: string): string {
   const board = BOARDS[slug];
   const owningBoard = board.parent ? BOARDS[board.parent] : board;
-  const row = await env.DB
-    .prepare('SELECT COUNT(*) as c, MAX(synced_at) as m FROM items WHERE board_id = ?')
-    .bind(board.id)
-    .first<{ c: number; m: string | null }>();
   // La llave lleva el CONJUNTO de ids visibles, no solo el propio: si lleva nada
   // más el del viewer, mover a alguien de zona no invalida el ETag y el líder se
   // queda con la lista vieja (304) hasta que el board cambie por otra razón.

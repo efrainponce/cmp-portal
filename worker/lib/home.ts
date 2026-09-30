@@ -10,7 +10,7 @@ import type { RawCol } from './serialize';
 import { BOARDS } from '../../shared/boards';
 import { CLOSED_STAGES } from '../../shared/dealStages';
 import { listItems } from './dal';
-import { checkValidacion } from './costeo';
+import { checkValidacionMany } from './costeo';
 import { statusIndex } from './notify';
 
 const OPP_INSTITUCION = 'lookup_mm1bs976';   // mismo id que worker/lib/costeo.ts
@@ -43,21 +43,34 @@ function institucionOf(item: MirrorItem): string {
 const byOldestFirst = (a: MirrorItem, b: MirrorItem) =>
   (a.monday_updated_at ?? '').localeCompare(b.monday_updated_at ?? '');
 
+/** Las oportunidades que el viewer ESCRIBE ('own'): compras ya LEE lo de todo
+ * el equipo (dal.ts, 2026-09-21), pero sus pendientes siguen siendo solo donde
+ * es Responsable compras. Es el board entero con sus columnas (~8.5 MB en
+ * producción para un admin), así que quien arma varias secciones lo lee UNA
+ * vez y se lo pasa a las dos. */
+function propias(env: Env, viewer: Identity): Promise<MirrorItem[]> {
+  return listItems(env, 'oportunidades', viewer, undefined, 'own');
+}
+
 /** Compras: oportunidades en "En costeo" (15) que aún no pasan el chequeo de
  * validación (worker/lib/costeo.ts checkValidacion — el mismo que bloquea el
- * botón "Enviar a validación"), más viejas primero. */
-export async function comprasPendientes(env: Env, viewer: Identity): Promise<HomePendienteDTO[]> {
-  // 'own': compras ya LEE lo de todo el equipo (dal.ts, 2026-09-21), pero sus
-  // pendientes siguen siendo solo donde es Responsable compras.
-  const items = (await listItems(env, 'oportunidades', viewer, undefined, 'own'))
+ * botón "Enviar a validación"), más viejas primero.
+ *
+ * El chequeo va en lote (checkValidacionMany). Antes era uno por oportunidad
+ * y en serie — líneas + un producto por línea, cada uno su viaje a D1 — y
+ * como el ETag de /api/home sale del resultado, hasta el 304 del poll de 30 s
+ * lo pagaba: medido en producción 2026-09-30, 1.6 s por petición. */
+export async function comprasPendientes(env: Env, viewer: Identity, filas?: MirrorItem[]): Promise<HomePendienteDTO[]> {
+  const items = (filas ?? await propias(env, viewer))
     .filter(it => stageIndexOf(it) === '15')
     .sort(byOldestFirst);
+  const checks = await checkValidacionMany(env, items.map(it => it.item_id), viewer);
 
   const out: HomePendienteDTO[] = [];
   for (const item of items) {
     if (out.length >= MAX_ITEMS) break;
-    const result = await checkValidacion(env, item.item_id, viewer);
-    if (result.ok) continue;
+    const result = checks.get(item.item_id);
+    if (!result || result.ok) continue;
     out.push({
       itemId: String(item.item_id),
       boardKey: 'costeo',
@@ -73,8 +86,8 @@ export async function comprasPendientes(env: Env, viewer: Identity): Promise<Hom
  * sin movimiento hace ≥14 días, más viejas primero. Para el admin (que ve
  * "todos los vendedores") se llama con el mismo viewer admin — scopeFor ya
  * regresa todo para su rol sin importar el modo, así que sale org-wide gratis. */
-export async function vendedorPendientes(env: Env, viewer: Identity): Promise<HomePendienteDTO[]> {
-  const items = (await listItems(env, 'oportunidades', viewer, undefined, 'own'))
+export async function vendedorPendientes(env: Env, viewer: Identity, filas?: MirrorItem[]): Promise<HomePendienteDTO[]> {
+  const items = (filas ?? await propias(env, viewer))
     .filter(it => {
       const stage = stageIndexOf(it);
       if (stage && CLOSED_STAGES.has(stage)) return false;
@@ -96,9 +109,10 @@ export async function vendedorPendientes(env: Env, viewer: Identity): Promise<Ho
  * además lleva ≥14 días sin moverse (separa backlog normal de compras de lo
  * que realmente se atoró). */
 async function adminPendientes(env: Env, viewer: Identity): Promise<HomeSectionDTO[]> {
+  const filas = await propias(env, viewer);
   const [vendedores, costeo] = await Promise.all([
-    vendedorPendientes(env, viewer),
-    comprasPendientes(env, viewer),
+    vendedorPendientes(env, viewer, filas),
+    comprasPendientes(env, viewer, filas),
   ]);
   return [
     { key: 'vendedores', label: 'Vendedores — sin movimiento', items: vendedores },

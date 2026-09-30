@@ -45,11 +45,46 @@ let fcp = 0;
 let cls = nuevoCls();
 const interacciones = new Map<number, number>();
 let vitalsEnviados = '';
+/** El brinco de pantalla más grande de la ventana, con QUÉ se movió. El CLS
+ * solo dice cuánto; medido 2026-09-30, la mitad de las sesiones pasa de 0.25
+ * y en el laboratorio (scripts/perf-cls.mjs) la carga y el flujo de abrir
+ * oportunidades dan 0.002 — brinca algo que el laboratorio no ejercita. Esto
+ * dice dónde buscar: pantalla, si había drawer abierto, y el rectángulo que
+ * se movió. Solo geometría y el nombre de la etiqueta HTML: ningún texto. */
+let peorBrinco: { v: number; desdeInput: number; meta: Record<string, number | boolean | string> } | null = null;
+let ultimoInput = -1;
+const UMBRAL_BRINCO = 0.05;
+
+interface FuenteBrinco { node?: Node | null; previousRect: DOMRectReadOnly; currentRect: DOMRectReadOnly }
+
+function describirBrinco(e: PerformanceEntry & { value: number; sources?: FuenteBrinco[] }): typeof peorBrinco {
+  // La fuente más grande es la que explica el brinco (lo demás va arrastrado).
+  const f = [...(e.sources ?? [])].sort((a, b) =>
+    b.previousRect.width * b.previousRect.height - a.previousRect.width * a.previousRect.height)[0];
+  const seg = location.pathname.split('/');
+  const tag = f?.node && f.node.nodeType === 1 ? (f.node as Element).tagName.toLowerCase() : 'texto';
+  return {
+    v: e.value,
+    desdeInput: ultimoInput < 0 ? -1 : Math.round(e.startTime - ultimoInput),
+    meta: {
+      v: Math.round(e.value * 1000) / 1000,
+      ruta: seg[1] || 'inicio',
+      drawer: !!seg[2],
+      tag,
+      ...(f ? {
+        y: Math.round(f.previousRect.y), w: Math.round(f.previousRect.width), h: Math.round(f.previousRect.height),
+        dy: Math.round(f.currentRect.y - f.previousRect.y),
+      } : {}),
+    },
+  };
+}
 /** ¿La pestaña estuvo oculta en algún momento? Un "tiempo hasta ver datos"
  * medido con la pestaña en segundo plano no dice nada de la red (el navegador
  * frena timers y pintado). performance.now() de la última vez que se ocultó. */
 let ultimaOculta = -1;
 let listaMedida = false;
+/** Primer segmento de la ruta con la que cargó la página ('' = Inicio). */
+const rutaInicial = typeof location === 'undefined' ? '' : location.pathname.split('/')[1] ?? '';
 let primerDrawer = true;
 
 // Resource Timing no dice el MÉTODO de la petición, y `GET /items/:id` y
@@ -149,6 +184,11 @@ function enviarVentana(): void {
     const a = resumirAssets(assets, esFria);
     if (a) uxPerf('perf:assets', { meta: { ...a } });
 
+    if (peorBrinco) {
+      uxPerf('perf:brinco', { latencyMs: peorBrinco.desdeInput >= 0 ? peorBrinco.desdeInput : undefined, meta: peorBrinco.meta });
+      peorBrinco = null;
+    }
+
     // Vitals: solo si cambiaron desde el último envío. El reporte toma el
     // máximo por sesión (LCP, INP y CLS solo crecen).
     const inp = calcularInp([...interacciones.values()]);
@@ -174,6 +214,12 @@ export function instalarPerfReal(): void {
       if (document.visibilityState === 'hidden') ultimaOculta = performance.now();
     });
 
+    // Última interacción: un brinco 600 ms después de un clic casi siempre es
+    // la respuesta tardía a ese clic, no algo que pasó solo.
+    const notarInput = () => { ultimoInput = performance.now(); };
+    addEventListener('pointerdown', notarInput, { capture: true, passive: true });
+    addEventListener('keydown', notarInput, { capture: true, passive: true });
+
     observar('resource', (l) => { for (const e of l.getEntries()) alRecurso(e as PerformanceResourceTiming); });
     observar('largest-contentful-paint', (l) => {
       const es = l.getEntries();
@@ -184,8 +230,12 @@ export function instalarPerfReal(): void {
       for (const e of l.getEntries()) if (e.name === 'first-contentful-paint') fcp = e.startTime;
     });
     observar('layout-shift', (l) => {
-      for (const e of l.getEntries() as Array<PerformanceEntry & { value: number; hadRecentInput: boolean }>) {
-        if (!e.hadRecentInput) cls = acumularCls(cls, e.startTime, e.value);
+      for (const e of l.getEntries() as Array<PerformanceEntry & { value: number; hadRecentInput: boolean; sources?: FuenteBrinco[] }>) {
+        if (e.hadRecentInput) continue;
+        cls = acumularCls(cls, e.startTime, e.value);
+        if (e.value >= UMBRAL_BRINCO && (!peorBrinco || e.value > peorBrinco.v)) {
+          try { peorBrinco = describirBrinco(e); } catch { /* nada */ }
+        }
       }
     });
     // INP: la duración de cada interacción es la del peor evento que la
@@ -211,15 +261,29 @@ export function instalarPerfReal(): void {
   } catch { /* la medición jamás debe tumbar el portal */ }
 }
 
-/** Primera lista con datos en pantalla, en ms desde que arrancó la
- * navegación (incluye HTML, bundle, precarga y la respuesta). Solo la
- * primera de cada carga de página, y solo si la pestaña no se ocultó. */
-export function perfListaLista(board: string): void {
+/** Primera lista con datos en pantalla. Solo la primera de cada carga de
+ * página, y solo si la pestaña no se ocultó.
+ *
+ * `montada` = performance.now() cuando se montó la vista de la lista. Hace
+ * falta porque casi todos ATERRIZAN en Inicio y llegan a la lista con un
+ * clic: medir desde que arrancó la navegación contaba el rato que la persona
+ * pasó en Inicio (visto 2026-09-30: "listas" de 8 y 25 s con la petición
+ * contestada en 0.5 s). Ahora:
+ *  - aterrizaje directo en la lista (misma ruta con la que cargó la página):
+ *    ms desde la navegación — HTML, bundle, precarga y respuesta —, `directa`.
+ *  - llegó navegando dentro del portal: ms desde que se montó la vista. */
+export function perfListaLista(board: string, montada?: number): void {
   try {
     if (listaMedida) return;
     listaMedida = true;
     if (ultimaOculta >= 0) return;
-    uxPerf('perf:datos:lista', { latencyMs: Math.round(performance.now()), boardSlug: board });
+    const ahora = performance.now();
+    const directa = montada === undefined || location.pathname.split('/')[1] === rutaInicial;
+    uxPerf('perf:datos:lista', {
+      latencyMs: Math.round(directa ? ahora : ahora - (montada ?? 0)),
+      boardSlug: board,
+      meta: { directa },
+    });
   } catch { /* nada */ }
 }
 

@@ -41,13 +41,41 @@ import { purgeAccionLog } from './lib/accionLog';
 import { registrarError } from './lib/errores';
 import { jsonStatus } from './lib/http';
 
+declare module 'hono' {
+  interface ContextVariableMap {
+    /** Date.now() al entrar a /api y al terminar access+identity (Server-Timing). */
+    tInicio: number;
+    tIdentidad: number | undefined;
+  }
+}
+
 const app = new Hono<{ Bindings: Env }>();
 
 // Webhook routes registered first so they never pass through access/identity.
 syncRoutes(app);
 waRoutes(app);
 
-app.use('/api/*', access, identity);
+// Server-Timing (2026-09-30): cuánto tarda el worker en total y cuánto se va
+// en autenticar + resolver identidad y zona (viajes a D1 que paga TODO request
+// antes de llegar a su ruta). Se ve en la pestaña Network del navegador y en
+// `PerformanceResourceTiming.serverTiming`; sirve para separar "el servidor
+// tardó" de "la red tardó" sin adivinar. Solo duraciones, ningún dato.
+app.use('/api/*', async (c, next) => {
+  const t0 = Date.now();
+  c.set('tInicio', t0);
+  await next();
+  const auth = c.get('tIdentidad');
+  const partes = [`total;dur=${Date.now() - t0}`];
+  if (auth !== undefined) partes.unshift(`auth;dur=${auth - t0}`);
+  // Mismo `c.header` tras `next()` que el Cache-Control de abajo; el try es
+  // porque una medición jamás debe tumbar la respuesta.
+  try { c.header('Server-Timing', partes.join(', ')); } catch { /* respuesta con headers inmutables */ }
+});
+
+app.use('/api/*', access, identity, async (c, next) => {
+  c.set('tIdentidad', Date.now());
+  await next();
+});
 
 // Bitácora de intentos de escritura (worker/lib/accionLog.ts). Después de
 // identity porque necesita saber quién es, y antes de las rutas para que

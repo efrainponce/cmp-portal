@@ -11,7 +11,7 @@ import type { Identity, MirrorItem } from '../../shared/types';
 import { COSTEO_STAGE_BLOCKED } from '../../shared/dealStages';
 import { postUpdate } from './nativeUpdates';
 import { emitStageNotification } from './notify';
-import { getItem, childrenOf, linkedItemId, ownsItem } from './dal';
+import { getItem, getItemsMany, childrenOf, childrenOfMany, linkedItemId, ownsItem } from './dal';
 import { hydrateFichaLineas } from './ficha';
 import { validarCosteo } from './automations';
 import { submitWrite } from './outbox';
@@ -515,10 +515,37 @@ export async function enviarACosteo(
  * producto debe traer "Descripción y tallas confirmadas" marcado por Compras
  * (boolean_mm5cqtjs, Productos 18395657591) — Efraín 2026-07-18: la ficha
  * (descripción/tallas) vive en el catálogo por SKU, no por línea de cotización,
- * así que la confirmación también se guarda ahí. Dedupe por producto: un SKU
- * repetido en varias líneas solo dispara un `getItem` de Productos. */
+ * así que la confirmación también se guarda ahí. Los productos de todas las
+ * líneas se leen de UNA consulta (getItemsMany), no uno por uno. */
 export async function checkValidacion(env: Env, itemId: number, viewer: Identity): Promise<EnviarCosteoResult> {
   const lineas = await childrenOf(env, 'oportunidades', itemId, viewer);
+  if (lineas.length === 0) return evaluarValidacion(lineas, new Map());
+  return evaluarValidacion(lineas, await getItemsMany(env, 'productos', productoIdsDe(lineas), viewer));
+}
+
+/** `checkValidacion` para VARIAS oportunidades (pantalla Inicio): las líneas de
+ * todas y sus productos en un puñado de consultas, en vez de 1 + un producto
+ * por línea POR oportunidad, en serie. Mismo resultado que llamarla una por
+ * una: comparten `evaluarValidacion`. */
+export async function checkValidacionMany(
+  env: Env, itemIds: number[], viewer: Identity,
+): Promise<Map<number, EnviarCosteoResult>> {
+  const out = new Map<number, EnviarCosteoResult>();
+  if (itemIds.length === 0) return out;
+  const lineasPor = await childrenOfMany(env, 'oportunidades', itemIds, viewer);
+  const productos = await getItemsMany(env, 'productos', productoIdsDe([...lineasPor.values()].flat()), viewer);
+  for (const id of itemIds) out.set(id, evaluarValidacion(lineasPor.get(id) ?? [], productos));
+  return out;
+}
+
+function productoIdsDe(lineas: MirrorItem[]): number[] {
+  return lineas.map(l => linkedItemId(l, SUB_PRODUCTO_REL)).filter((id): id is number => id !== null);
+}
+
+/** La parte pura de `checkValidacion`. Un producto que no viene en `productos`
+ * (no existe o el viewer no lo lee) cuenta como sin confirmar, sin tallas y
+ * sin proveedor — igual que cuando `getItem` devolvía null. */
+function evaluarValidacion(lineas: MirrorItem[], productos: Map<number, MirrorItem>): EnviarCosteoResult {
   // Sin líneas el loop de abajo nunca corre y devolvía ok — una oportunidad
   // vacía podía pasar a "Costeo en validación" (Efraín, 2026-07-24).
   if (lineas.length === 0) {
@@ -536,7 +563,7 @@ export async function checkValidacion(env: Env, itemId: number, viewer: Identity
       continue;
     }
     if (!productoCache.has(productoId)) {
-      const producto = await getItem(env, 'productos', productoId, viewer);
+      const producto = productos.get(productoId);
       const pCols = producto ? colsOf(producto) : undefined;
       const confirmado = !!pCols?.get(PRODUCTO_CONFIRM_COL)?.text;
       const tallas = (pCols?.get(PRODUCTO_TALLAS_COL)?.text ?? '').trim();
