@@ -27,7 +27,7 @@ const labelStyle: React.CSSProperties = {
 };
 
 function MobileQuoteRowInner({
-  product: p, partida, state, visibleCols, variant, precioOnly = false, editable, editableCols, writableIds, catalog, catalogLoading,
+  product: p, partida, state, visibleCols, variant, precioOnly = false, pidePrecio = false, editable, editableCols, writableIds, catalog, catalogLoading,
   onEdit, onBlur, onColorChange, onEmbellecimientoChange, onStatusChange, onProductoPick,
   expanded, onToggleExpand, canConfirm, confirmSaving, confirmError, onToggleConfirm,
   tallasSaving, tallasError, onEditTallas,
@@ -43,6 +43,8 @@ function MobileQuoteRowInner({
   state: RowEditState; visibleCols: GridCol[]; variant: 'venta' | 'costeo';
   /** true en Validación de Costeo — el único warning posible es Precio de venta vacío. */
   precioOnly?: boolean;
+  /** Zona Efrain: avisa en la línea si falta el Precio de Venta. */
+  pidePrecio?: boolean;
   editable: boolean;
   editableCols: Set<string>; writableIds: Set<string>; catalog: ItemDTO[]; catalogLoading: boolean;
   onEdit: (product: ItemDTO, colId: string, raw: string) => void;
@@ -238,7 +240,7 @@ function MobileQuoteRowInner({
     return <div style={{ ...valueChipStyle, font: 'var(--text-label)', color: 'var(--ink-secondary)' }}>{cellValue(c, displayVal)}</div>;
   };
 
-  const { lineWarnings, bannerText, airtableUrl } = computeLineBanner(p, state, variant, catalog, precioOnly);
+  const { lineWarnings, bannerText, airtableUrl } = computeLineBanner(p, state, variant, catalog, precioOnly, pidePrecio);
 
   return (
     <div style={{ borderTop: '1px solid var(--border-subtle)', background: lineWarnings.length > 0 ? '#fdf1f2' : '#fff', padding: '14px' }}>

@@ -1,5 +1,15 @@
 # Log de commits
 
+## 2026-09-29 (Zona Efrain: aviso de Precio de Venta en cada línea)
+
+- **Efraín**: "pon un warning que tienen que agregar precio de venta, si no no
+  saben qué onda". En Zona Efrain cada línea sin Precio de Venta C/U ahora
+  trae el aviso rojo "Falta Precio de Venta C/U (sin él no se puede generar la
+  cotización)" arriba del producto, en escritorio y celular (`pidePrecio` de
+  `getLineWarnings`), además del aviso general del drawer.
+- Folios OPP-E y totales de las 3 nativas existentes rellenados en producción
+  al momento (`POST /api/admin/salud/revisar`), sin esperar la corrida horaria.
+
 ## 2026-09-29 (Zona Efrain: folio OPP-E####, duplicar nativo, totales y lista como Costeo)
 
 - **Efraín**: "checa por qué PAM no pudo completar la cotización en Zona Efrain

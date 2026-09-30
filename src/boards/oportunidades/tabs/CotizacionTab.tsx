@@ -928,6 +928,7 @@ export function CotizacionTab({
               visibleCols={visibleCols}
               variant={variant}
               precioOnly={precioOnly}
+              pidePrecio={zonaPrivada && !readOnly}
               editable={editable}
               editableCols={editableCols}
               writableIds={writableIds}
@@ -1030,6 +1031,7 @@ export function CotizacionTab({
               visibleCols={visibleCols}
               variant={variant}
               precioOnly={precioOnly}
+              pidePrecio={zonaPrivada && !readOnly}
               editable={editable}
               editableCols={editableCols}
               writableIds={writableIds}
