@@ -147,37 +147,48 @@ export interface ZonaScope {
   writeIds: number[];
 }
 
-export async function resolveZonaScope(env: Env, viewer: Identity): Promise<ZonaScope> {
-  const own = viewer.monday_user_id;
-  try {
-    const res = await env.DB
-      .prepare(`SELECT DISTINCT m.monday_user_id AS id, 'lider' AS via
+/** La consulta del alcance de zona. `own` es la expresión SQL del
+ * monday_user_id del viewer: `?1` cuando ya se tiene, o una subconsulta por
+ * correo cuando va en el mismo viaje que la identidad (identidadConZona). */
+function zonaScopeSql(own: string): string {
+  return `SELECT DISTINCT m.monday_user_id AS id, 'lider' AS via
                 FROM zonas z
                 JOIN identity lider ON lider.email = z.lider_email
                 JOIN zona_miembros zm ON zm.zona_id = z.id
                 JOIN identity m ON m.email = zm.email AND m.active = 1
-                WHERE lider.monday_user_id = ?1
+                WHERE lider.monday_user_id = ${own}
                 UNION
                 SELECT DISTINCT m.monday_user_id AS id, 'auxiliar' AS via
                 FROM zona_auxiliares za
                 JOIN identity aux ON aux.email = za.email
                 JOIN zona_miembros zm ON zm.zona_id = za.zona_id
                 JOIN identity m ON m.email = zm.email AND m.active = 1
-                WHERE aux.monday_user_id = ?1
+                WHERE aux.monday_user_id = ${own}
                 UNION
                 SELECT DISTINCT lider.monday_user_id AS id, 'auxiliar' AS via
                 FROM zona_auxiliares za
                 JOIN identity aux ON aux.email = za.email
                 JOIN zonas z ON z.id = za.zona_id
                 JOIN identity lider ON lider.email = z.lider_email AND lider.active = 1
-                WHERE aux.monday_user_id = ?1`)
+                WHERE aux.monday_user_id = ${own}`;
+}
+
+function scopeDeFilas(own: number, filas: { id: number }[] | undefined): ZonaScope {
+  const ids = (filas ?? []).map(r => r.id).filter(Number.isFinite);
+  return {
+    readIds: [...new Set([own, ...ids])],
+    writeIds: [...new Set([own, ...ids])],
+  };
+}
+
+export async function resolveZonaScope(env: Env, viewer: Identity): Promise<ZonaScope> {
+  const own = viewer.monday_user_id;
+  try {
+    const res = await env.DB
+      .prepare(zonaScopeSql('?1'))
       .bind(own)
       .all<{ id: number; via: 'lider' | 'auxiliar' }>();
-    const rows = (res.results ?? []).filter(r => Number.isFinite(r.id));
-    return {
-      readIds: [...new Set([own, ...rows.map(r => r.id)])],
-      writeIds: [...new Set([own, ...rows.map(r => r.id)])],
-    };
+    return scopeDeFilas(own, res.results);
   } catch {
     return { readIds: [own], writeIds: [own] };
   }
@@ -193,14 +204,16 @@ export async function zonaScopeFields(env: Env, viewer: Identity): Promise<Pick<
 /** monday_user_ids de los miembros de la zona privada 'Efrain' (sea cual sea el
  * viewer) — las personas cuyas oportunidades/proyectos se ocultan. Falla
  * cerrado: sin tablas todavía, no hay nadie que ocultar. */
-export async function zonaPrivadaMemberIds(env: Env): Promise<number[]> {
-  try {
-    const res = await env.DB
-      .prepare(`SELECT DISTINCT m.monday_user_id AS id
+const ZONA_PRIVADA_SQL = `SELECT DISTINCT m.monday_user_id AS id
                 FROM zonas z
                 JOIN zona_miembros zm ON zm.zona_id = z.id
                 JOIN identity m ON m.email = zm.email AND m.active = 1
-                WHERE z.nombre = ? COLLATE NOCASE`)
+                WHERE z.nombre = ? COLLATE NOCASE`;
+
+export async function zonaPrivadaMemberIds(env: Env): Promise<number[]> {
+  try {
+    const res = await env.DB
+      .prepare(ZONA_PRIVADA_SQL)
       .bind(ZONA_PRIVADA_NOMBRE)
       .all<{ id: number }>();
     return (res.results ?? []).map(r => r.id).filter(Number.isFinite);
@@ -214,8 +227,39 @@ export async function zonaPrivadaMemberIds(env: Env): Promise<number[]> {
  * lee a todo el equipo). [] para los demás roles y para la whitelist — la
  * mayoría de los requests, así que no le pega a D1 sin necesidad. */
 export async function hiddenOwnerIdsFor(env: Env, viewer: Identity): Promise<number[]> {
-  if ((viewer.role !== 'admin' && viewer.role !== 'compras') || isZonaPrivadaAdminPermitido(viewer.email)) return [];
+  if (!leOcultanZonaPrivada(viewer)) return [];
   return zonaPrivadaMemberIds(env);
+}
+
+function leOcultanZonaPrivada(viewer: Identity): boolean {
+  return (viewer.role === 'admin' || viewer.role === 'compras') && !isZonaPrivadaAdminPermitido(viewer.email);
+}
+
+/**
+ * La fila de identity del correo YA con sus campos de zona, en UN viaje a D1
+ * (batch) — lo mismo que `{ ...fila, ...zonaScopeFields(fila) }`, que eran dos
+ * viajes en serie: primero la identidad y luego, con su monday_user_id, la
+ * zona. Lo paga TODO request autenticado antes de llegar a su ruta
+ * (worker/mw/identity.ts); medido en producción 2026-09-30: 40-63 ms.
+ * La zona se resuelve con una subconsulta por correo en vez del id ya leído.
+ *
+ * null = no hay identidad activa con ese correo. Lanza si el batch falla (p.
+ * ej. las tablas de zonas no existen todavía): el llamador cae al camino de
+ * dos viajes, que sí falla cerrado consulta por consulta.
+ */
+export async function identidadConZona(env: Env, email: string): Promise<Identity | null> {
+  const [ident, zona, privada] = await env.DB.batch([
+    env.DB.prepare('SELECT * FROM identity WHERE email = ? AND active = 1').bind(email),
+    env.DB.prepare(zonaScopeSql('(SELECT monday_user_id FROM identity WHERE email = ?1 AND active = 1)')).bind(email),
+    env.DB.prepare(ZONA_PRIVADA_SQL).bind(ZONA_PRIVADA_NOMBRE),
+  ]);
+  const fila = (ident.results?.[0] ?? null) as Identity | null;
+  if (!fila) return null;
+  const scope = scopeDeFilas(fila.monday_user_id, zona.results as { id: number }[]);
+  const ocultos = leOcultanZonaPrivada(fila)
+    ? ((privada.results ?? []) as { id: number }[]).map(r => r.id).filter(Number.isFinite)
+    : [];
+  return { ...fila, scope_user_ids: scope.readIds, write_user_ids: scope.writeIds, hidden_owner_ids: ocultos };
 }
 
 export async function listZonas(env: Env): Promise<Zona[]> {

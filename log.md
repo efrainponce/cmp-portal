@@ -1,5 +1,23 @@
 # Log de commits
 
+## 2026-09-30 (performance: servidor junto a la base e identidad en un viaje)
+
+- **Efraín** eligió, para bajar el piso de cada request, "servidor junto a la
+  base" en vez de recordar la identidad 30 s (esa hacía tardar hasta 30 s un
+  cambio de permisos). Medido en producción con el `Server-Timing` de la
+  mañana: identidad+zona costaba 40–63 ms por request, dos viajes en serie a
+  una D1 que vive en WNAM (EE.UU. oeste), ~20 ms cada uno.
+- **Identidad + zona + zona privada en UN viaje** (`identidadConZona`,
+  `worker/lib/zonas.ts`, batch de D1). Si el batch falla, el camino de antes.
+  Test con SQLite real (`zonas.identidad.test.ts`): el viewer sale idéntico al
+  de antes para líder, auxiliar, miembro, admin dentro y fuera de la whitelist
+  de la zona privada, compras, inactivo y correo con id prestado.
+- **Smart Placement** (`wrangler.jsonc`): el worker corre junto a la D1; cada
+  consulta deja de cruzar de México/Texas a EE.UU. oeste. Los estáticos siguen
+  en el borde. Se regresa borrando el bloque `placement`.
+- Hallazgo anotado en `docs/plan-performance.md`: 90.6 M filas leídas de D1 en
+  24 h, casi todo leer el board entero con `columns`.
+
 ## 2026-09-30 (performance: Inicio, lista incremental y medición)
 
 - **Efraín**: "el tiempo me preocupa, puedes hacer un plan de acción ya y
