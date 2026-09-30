@@ -580,6 +580,8 @@ export function numFrom(state: RowEditState, product: ItemDTO, colId: string): n
   return Number.isFinite(n) ? n : 0;
 }
 
+export const FALTA_PRECIO_VENTA = 'Falta Precio de Venta C/U (sin él no se puede generar la cotización)';
+
 // Detecta problemas en una línea de cotización — retorna una lista de warnings
 // o array vacío si la línea está completa. Se usa para mostrar un indicador
 // visual (⚠️) al inicio de la fila.
@@ -594,6 +596,12 @@ export function getLineWarnings(
   // línea ya pasó por Costeo para llegar aquí (Efraín, 2026-07-21: "Sin
   // confirmar" es solo de Costeo, no de Validación).
   precioOnly = false,
+  // true en Zona Efrain: no hay paso de costeo ni validación, así que el
+  // Precio de Venta se captura en la misma línea y sin él no se puede cotizar.
+  // PAM capturó los costos, no supo que faltaba el precio y rehízo la
+  // oportunidad en Monday (Efraín, 2026-09-29: "pon un warning … si no no
+  // saben qué onda").
+  pidePrecio = false,
 ): string[] {
   if (precioOnly) {
     const precio = numFrom(state, product, PRECIO_VENTA_COL);
@@ -601,6 +609,9 @@ export function getLineWarnings(
   }
 
   const warnings: string[] = [];
+  if (pidePrecio && numFrom(state, product, PRECIO_VENTA_COL) <= 0) {
+    warnings.push(FALTA_PRECIO_VENTA);
+  }
   const displayProd = displayProducto(product, state.preview);
 
   // Siempre requerido: producto
@@ -696,8 +707,9 @@ export function getLineWarnings(
  * MobileQuoteRow — antes duplicado idéntico en los dos. */
 export function computeLineBanner(
   product: ItemDTO, state: RowEditState, variant: 'venta' | 'costeo', catalog: ItemDTO[], precioOnly: boolean,
+  pidePrecio = false,
 ): { lineWarnings: string[]; bannerText: string; airtableUrl: string | null } {
-  const lineWarnings = getLineWarnings(product, state, variant, catalog, precioOnly);
+  const lineWarnings = getLineWarnings(product, state, variant, catalog, precioOnly, pidePrecio);
   const airtableUrl = lineWarnings.includes(FALTA_COSTO_AIRTABLE) ? productoAirtableUrl(product, catalog) : null;
   const needsTallas = !precioOnly && needsConfirmarTallas(product, variant, catalog);
   const needsProveedor = needsTallas && !productoProveedorOk(product, catalog);

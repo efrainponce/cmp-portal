@@ -39,6 +39,8 @@ export interface QuoteRowProps {
   variant: 'venta' | 'costeo';
   /** true en Validación de Costeo — el único warning posible es Precio de venta vacío. */
   precioOnly?: boolean;
+  /** Zona Efrain: avisa en la línea si falta el Precio de Venta. */
+  pidePrecio?: boolean;
   editable: boolean;
   editableCols: Set<string>;
   writableIds: Set<string>;
@@ -103,7 +105,7 @@ export interface QuoteRowProps {
 }
 
 function QuoteRowInner({
-  product: p, partida, state, visibleCols, variant, precioOnly = false, editable,
+  product: p, partida, state, visibleCols, variant, precioOnly = false, pidePrecio = false, editable,
   editableCols, writableIds, catalog, catalogLoading,
   onEdit, onBlur, onColorChange, onEmbellecimientoChange, onStatusChange, onProductoPick,
   expanded, onToggleExpand, canConfirm, confirmSaving, confirmError, onToggleConfirm,
@@ -113,7 +115,7 @@ function QuoteRowInner({
   canDelete, deleting, onDeleteLine, canAjustar, onAjustarLinea, canVerActividad, onVerActividad, ajusteLabel,
   arrastre, onToggleSeleccion, marcada = false,
 }: QuoteRowProps) {
-  const { lineWarnings, bannerText, airtableUrl } = computeLineBanner(p, state, variant, catalog, precioOnly);
+  const { lineWarnings, bannerText, airtableUrl } = computeLineBanner(p, state, variant, catalog, precioOnly, pidePrecio);
 
   // Chevron + ajustar. Se renderizaban solo en la celda de Producto de solo
   // lectura, pero en Nueva oportunidad (justo donde canDelete es true) Producto

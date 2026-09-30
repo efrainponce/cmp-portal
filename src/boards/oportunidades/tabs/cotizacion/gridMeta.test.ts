@@ -5,7 +5,7 @@ import { describe, it, expect } from 'vitest';
 import type { ColVal, ItemDTO } from '../../../../lib/api';
 import { COL } from '../../../../lib/costeoCalc';
 import {
-  inlineEditableCols, GRID_COLS_ZONA, GRID_COLS_COSTEO, GRID_COLS_VENTA, EMB_STATUS_COL,
+  inlineEditableCols, GRID_COLS_ZONA, FALTA_PRECIO_VENTA, GRID_COLS_COSTEO, GRID_COLS_VENTA, EMB_STATUS_COL,
   COLOR_COL, PRODUCTO_COL, getLineWarnings, computeLineBanner, EMPTY_ROW,
 } from './gridMeta';
 
@@ -112,5 +112,14 @@ describe('aviso de costo faltante', () => {
       expect(avisos).not.toContain('Pendiente de costeo');
     }
     expect(computeLineBanner(linea(99), EMPTY_ROW, 'venta', conCosto, false).airtableUrl).toBeNull();
+  });
+
+  // Zona Efrain (PAM, 2026-09-29): sin Precio de Venta no se puede cotizar.
+  it('en Zona Efrain avisa en la línea que falta el Precio de Venta', () => {
+    const cat = producto({});
+    expect(computeLineBanner(linea(99), EMPTY_ROW, 'venta', cat, false, true).bannerText).toContain('Falta Precio de Venta C/U');
+    expect(getLineWarnings(linea(99), EMPTY_ROW, 'venta', cat)).not.toContain(FALTA_PRECIO_VENTA);
+    const conPrecio = { ...linea(99), cols: { ...linea(99).cols, numeric_mkzneg3d: { text: '150', type: 'numbers', value: 150 } } };
+    expect(getLineWarnings(conPrecio, EMPTY_ROW, 'venta', cat, false, true)).not.toContain(FALTA_PRECIO_VENTA);
   });
 });
