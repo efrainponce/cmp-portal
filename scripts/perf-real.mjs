@@ -17,7 +17,9 @@
 //    `down` Mbps, `rtt` ms. Safari/Firefox no lo dan.
 //  - carga: TTFB del HTML y fin del evento load de la página.
 //  - lista: ms desde que arrancó la navegación hasta la primera lista con
-//    datos en pantalla (lo que la persona espera al entrar).
+//    datos en pantalla, SOLO cuando la página cargó directo en esa lista.
+//  - vista: cuando se llegó a la lista desde otra pantalla (casi todos
+//    aterrizan en Inicio): ms desde que se montó la vista hasta sus datos.
 //  - drawer: abrir → detalle en pantalla, solo aperturas SIN caché (las que
 //    esperan a la red).
 //  - LCP / INP / CLS: Web Vitals (bien: LCP < 2.5 s, INP < 200 ms, CLS < 0.1).
@@ -46,9 +48,13 @@ const email = arg('--email')?.toLowerCase();
 const rol = arg('--rol');
 const desde = new Date(Date.now() - Math.max(1, horas || 24) * 3_600_000).toISOString();
 
+// En un checkout sin la cuenta de wrangler en caché (p. ej. un workspace nuevo)
+// wrangler no sabe cuál de las dos cuentas usar y falla: se le dice aquí, igual
+// que scripts/limpiar-pruebas.mjs.
+const CUENTA_CF = process.env.CLOUDFLARE_ACCOUNT_ID ?? '40a5f9802bef8075fb322a54615bbcf6';
 function d1(sql) {
   // .env trae un token de Cloudflare que secuestra a wrangler: fuera del entorno.
-  const env = { ...process.env };
+  const env = { ...process.env, CLOUDFLARE_ACCOUNT_ID: CUENTA_CF };
   delete env.CLOUDFLARE_API_TOKEN;
   try {
     const out = execFileSync('npx', ['wrangler', 'd1', 'execute', 'cmp-portal', local ? '--local' : '--remote', '--env-file=.dev.vars', '--json', '--command', sql],
@@ -133,6 +139,7 @@ for (const [k, fs] of porUsuario) {
   const nApi = api.reduce((a, f) => a + (f.m.n ?? 0), 0);
   const lista200 = api.filter(f => f.target === 'api:get:boards:slug:items' && !f.m.nm);
   const assets = fs.filter(f => f.target === 'perf:assets');
+  const listas = fs.filter(f => f.target === 'perf:datos:lista');
   const nAssets = assets.reduce((a, f) => a + (f.m.n ?? 0), 0);
   const cacheAssets = assets.reduce((a, f) => a + (f.m.cache ?? 0), 0);
   tabla.push({
@@ -145,8 +152,9 @@ for (const [k, fs] of porUsuario) {
     rtt: ms(pct(cargas.map(f => f.m.rtt), 0.5)),
     ttfb: ms(pct(cargas.map(f => f.m.ttfb), 0.5)),
     load: ms(pct(cargas.map(f => f.m.load), 0.5)),
-    lista_p50: ms(pct(fs.filter(f => f.target === 'perf:datos:lista').map(f => f.latency_ms), 0.5)),
-    lista_p75: ms(pct(fs.filter(f => f.target === 'perf:datos:lista').map(f => f.latency_ms), 0.75)),
+    lista_p50: ms(pct(listas.filter(f => f.m.directa !== false).map(f => f.latency_ms), 0.5)),
+    lista_p75: ms(pct(listas.filter(f => f.m.directa !== false).map(f => f.latency_ms), 0.75)),
+    vista_p50: ms(pct(listas.filter(f => f.m.directa === false).map(f => f.latency_ms), 0.5)),
     drawer_p50: ms(pct(fs.filter(f => f.target === 'perf:datos:drawer' && !f.m.cache).map(f => f.latency_ms), 0.5)),
     lista_200: ms(pctPond(lista200.map(f => [f.m.p50, f.m.n]), 0.5)),
     lcp_p75: ms(pct(vitals.map(v => v.lcp), 0.75)),
@@ -158,7 +166,8 @@ for (const [k, fs] of porUsuario) {
 }
 tabla.sort((a, b) => b.ses - a.ses);
 console.table(tabla);
-console.log('  lista = navegación → primera lista pintada · drawer = abrir → detalle (sin caché) · lista_200 = bajada completa de la lista cuando SÍ cambió');
+console.log('  OJO: las filas `lista` anteriores al 2026-09-30 no traen `directa` y cuentan el rato en Inicio (infladas).');
+console.log('  lista = navegación → primera lista pintada (aterrizaje directo) · vista = abrir la lista desde otra pantalla → datos · drawer = abrir → detalle (sin caché) · lista_200 = bajada completa de la lista cuando SÍ cambió');
 
 // ── 2. por endpoint ─────────────────────────────────────────────────────────
 titulo('2. Por endpoint (todas las personas del filtro)');
@@ -204,5 +213,25 @@ for (const [etq, fs] of [['carga fría (1ª ventana)', assets.filter(f => f.m.fr
     + ` el más lento p50 ${ms(pct(fs.map(f => f.m.max), 0.5))} ms`);
 }
 if (!assets.length) console.log('  sin datos');
+
+// ── 4. brincos de pantalla ──────────────────────────────────────────────────
+// El peor brinco de cada ventana de 10 min, con qué se movió (perf:brinco).
+titulo('4. Brincos de pantalla (el peor de cada ventana, ≥ 0.05)');
+const brincos = filas.filter(f => f.target === 'perf:brinco');
+if (!brincos.length) console.log('  sin datos (se mide desde 2026-09-30)');
+else {
+  const grupos = new Map();
+  for (const b of brincos) {
+    // Mismo lugar = misma pantalla, con/sin drawer, misma etiqueta y misma franja vertical (de 100 en 100 px).
+    const k = `${b.m.ruta}${b.m.drawer ? ' +drawer' : ''} <${b.m.tag}> y≈${Math.round((b.m.y ?? 0) / 100) * 100}`;
+    if (!grupos.has(k)) grupos.set(k, []);
+    grupos.get(k).push(b);
+  }
+  console.table([...grupos].map(([donde, bs]) => ({
+    donde, veces: bs.length, personas: new Set(bs.map(b => b.user_id)).size,
+    valor_p50: pct(bs.map(b => b.m.v), 0.5), alto_px: pct(bs.map(b => b.m.h), 0.5), se_movio_px: pct(bs.map(b => b.m.dy), 0.5),
+    ms_tras_clic: ms(pct(bs.map(b => b.latency_ms), 0.5)),
+  })).sort((a, b) => b.veces * b.valor_p50 - a.veces * a.valor_p50).slice(0, 15));
+}
 
 console.log('\nDetalle crudo: SELECT created_at, target, board_slug, latency_ms, meta FROM ux_event WHERE kind = \'perf\' AND user_id = … ORDER BY id DESC LIMIT 50');

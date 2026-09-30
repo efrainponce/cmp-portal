@@ -166,11 +166,12 @@ export function StageBoardList({ config, groupColId = 'deal_stage', q, onSearch,
   // Avisa UNA vez que ya hay datos en pantalla. El wrapper lo usa para
   // precargar el drawer: antes de esto la lista no compite con nada.
   const avisado = useRef(false);
+  const montada = useRef(performance.now());
   useEffect(() => {
     if (avisado.current || status !== 'ready') return;
     avisado.current = true;
     // Rendimiento real: primera lista pintada de la carga (src/lib/perfReal.ts).
-    perfListaLista(config.key);
+    perfListaLista(config.key, montada.current);
     onReady?.();
   }, [status, onReady, config.key]);
   // Memoizado sobre data.items: el poll de 5 s re-renderiza este componente y

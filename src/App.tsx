@@ -33,7 +33,7 @@ const AnalisisPage = lazy(() => import('./app/AnalisisPage').then((m) => ({ defa
 function App() {
   const sessionExpired = useSessionExpired();
   const me = useMe();
-  const { board: activeBoard, itemId, tab: openTab, navigate, setTab } = useRoute();
+  const { board: rutaBoard, itemId, tab: openTab, navigate, setTab } = useRoute();
   const [collapsed, setCollapsed] = useState(false);
   const isMobile = useIsMobile();
 
@@ -46,6 +46,24 @@ function App() {
     navigate(me.role === 'almacen' ? 'inventario' : 'home');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [me]);
+  // Mientras la URL sea "/" el board de la ruta es el fallback de parsePath
+  // (Oportunidades), NO a donde se va a aterrizar. Pintarlo esos instantes
+  // montaba la lista y pedía el board completo — ~130 KB y el request más
+  // caro del worker — para tirarlo en cuanto /api/me contestaba y se saltaba a
+  // Inicio (medido 2026-09-30: una lista completa en cada entrada por "/").
+  // En "/" se pinta directo el aterrizaje, y nada hasta saber el rol.
+  // Si /api/me no contesta (API caída), a los 8 s se pinta el board de la ruta
+  // como antes, que sí sabe mostrar su estado de error.
+  const [sinRol, setSinRol] = useState(false);
+  useEffect(() => {
+    if (me) return;
+    const t = window.setTimeout(() => setSinRol(true), 8000);
+    return () => window.clearTimeout(t);
+  }, [me]);
+  const enRaiz = window.location.pathname === '/';
+  const aterrizaje: BoardKey | null = !enRaiz || (!me && sinRol) ? rutaBoard
+    : me ? (me.role === 'almacen' ? 'inventario' : 'home') : null;
+  const activeBoard = aterrizaje ?? rutaBoard;
 
   if (sessionExpired) return <SessionExpiredScreen />;
   // impersonatedBy presente = un admin viendo "como" otra cuenta — ahí solo
@@ -64,7 +82,7 @@ function App() {
   // drawer si es una oportunidad, igual que cualquier otro link directo).
   const onOpenNotification = (board: string, id: string | null) => navigate(board as BoardKey, id);
 
-  const views = (
+  const views = aterrizaje === null ? <div style={{ padding: 32 }}>Cargando…</div> : (
     <Suspense fallback={<div style={{ padding: 32 }}>Cargando…</div>}>
       {activeBoard === 'oportunidades' && <OportunidadesBoard openId={itemId} openTab={openTab} onTabChange={setTab} onOpenChange={onOpenChange} onDuplicated={onDuplicated} />}
       {(activeBoard === 'oportunidades_web' || activeBoard === 'costeo' || activeBoard === 'validacion' || activeBoard === 'zona_efrain') && (

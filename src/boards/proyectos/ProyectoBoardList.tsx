@@ -199,11 +199,12 @@ export function ProyectoBoardList({ config, q, onSearch, onOpen, onReady, header
   // Igual que StageBoardList: avisa una sola vez que ya hay datos pintados,
   // para que el wrapper precargue el drawer sin estorbarle a esta carga.
   const avisado = useRef(false);
+  const montada = useRef(performance.now());
   useEffect(() => {
     if (avisado.current || status !== 'ready') return;
     avisado.current = true;
     // Rendimiento real: primera lista pintada de la carga (src/lib/perfReal.ts).
-    perfListaLista(config.key);
+    perfListaLista(config.key, montada.current);
     onReady?.();
   }, [status, onReady, config.key]);
   const allItems = data?.items ?? [];

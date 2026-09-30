@@ -6,7 +6,9 @@ import { execFileSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const env = { ...process.env }; delete env.CLOUDFLARE_API_TOKEN;
+// CLOUDFLARE_ACCOUNT_ID: un checkout sin la cuenta de wrangler en caché no sabe
+// cuál de las dos usar y falla (igual que scripts/limpiar-pruebas.mjs).
+const env = { ...process.env, CLOUDFLARE_ACCOUNT_ID: process.env.CLOUDFLARE_ACCOUNT_ID ?? '40a5f9802bef8075fb322a54615bbcf6' }; delete env.CLOUDFLARE_API_TOKEN;
 function d1(sql) {
   for (let i = 0; i < 3; i++) {
     try {

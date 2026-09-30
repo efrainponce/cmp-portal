@@ -1,5 +1,39 @@
 # Log de commits
 
+## 2026-09-30 (performance: Inicio, lista incremental y medición)
+
+- **Efraín**: "el tiempo me preocupa, puedes hacer un plan de acción ya y
+  mejorar la performance". Plan y línea base en `docs/plan-performance.md`.
+  Medido en producción (7 días de `ux_event` perf): lo que más espera le cuesta
+  a la gente es la lista de Oportunidades (811 ms por respuesta, 1,066/sem) y
+  `/api/home` (1.9 s, y 1.6 s hasta cuando contesta 304).
+- **Poll incremental de la lista**: `?since=` leía el board ENTERO de D1
+  (8.5 MB de `columns`, 250–320 ms de SQL) para mandar los 2–3 renglones que
+  cambiaron. `listItemsDesde` (dal.ts) pide el orden de ids (9 ms) y solo las
+  filas movidas, en un batch. Local con datos reales: 47 → 5 ms.
+- **Inicio**: `comprasPendientes` validaba cada oportunidad en serie (líneas +
+  un producto por línea, cada uno su viaje a D1) y el admin leía el board dos
+  veces; como el ETag sale del resultado, el poll de 30 s lo pagaba completo.
+  Ahora una lectura y `checkValidacionMany` en lote. `validacion-check` del
+  drawer también lee sus productos de una sola consulta.
+- **"/" montaba la lista de Oportunidades** (el fallback de `parsePath`)
+  mientras `/api/me` decidía el aterrizaje: pedía el board completo (~130 KB)
+  y lo tiraba al saltar a Inicio. Ya no; e `index.html` precarga `/api/home`.
+- ETag de la lista: versión del board y de los totales en paralelo (un viaje
+  a D1 menos en el request más frecuente).
+- **Medición**: `Server-Timing` (`auth`, `total`) en todo `/api/*`;
+  `perf:brinco` manda el peor brinco de pantalla de cada ventana con qué se
+  movió (el CLS real anda en ~0.5 y en local no se reproduce: 0.002); la
+  métrica "primera lista" contaba el rato que la gente pasa en Inicio — ahora
+  separa aterrizaje directo de llegar desde otra pantalla.
+- Descartado con datos: proyectar columnas en SQL con `json_each` (68,818
+  filas leídas por lista contra 1,891).
+- `salud.mjs`, `perf-real.mjs` y `adopcion.mjs` ya corren en un workspace
+  nuevo (le dicen a wrangler qué cuenta usar).
+- Verificado: respuestas idénticas antes/después por rol (admin, compras,
+  vendedor), test nuevo con SQLite real (`listaIncremental.test.ts`), y en
+  navegador la lista recibe un cambio por el camino incremental.
+
 ## 2026-09-29 (Zona Efrain: aviso de Precio de Venta en cada línea)
 
 - **Efraín**: "pon un warning que tienen que agregar precio de venta, si no no

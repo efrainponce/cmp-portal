@@ -67,6 +67,13 @@ describe('precarga de index.html', () => {
     expect(html).toContain("pedir('/api/boards')");
   });
 
+  it('en "/" e Inicio precarga los pendientes, con la URL que pide useHome', () => {
+    // useHome llama apiFetch('/home') → '/api/home', sin query.
+    expect(html).toContain("pedir('/api/home')");
+    const homeApi = readFileSync(join(RAIZ, 'src', 'lib', 'homeApi.ts'), 'utf8');
+    expect(homeApi).toContain("apiFetch('/home', { headers })");
+  });
+
   it('no precarga nada si hay suplantación activa', () => {
     // La precarga no puede mandar X-Impersonate-Email; si se usara bajo "ver
     // como", el admin vería SU propia data creyendo que es la del suplantado.

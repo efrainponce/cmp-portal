@@ -12,7 +12,7 @@ import type {
   MeDTO, MentionUserDTO, UpdateDTO, VendedorDTO, WriteRequest, WriteResponse,
 } from '../../shared/dto';
 import {
-  listItems, getItem, childrenOf, childSlugOf, etagFor, pendingItemIds, listVendedores,
+  listItems, listItemsDesde, getItem, childrenOf, childSlugOf, etagDe, versionBoard, pendingItemIds, listVendedores,
   ownsItem, leadsOthers, hasPendingWrites, upsertIdentity, PROYECTO_OPP_REL,
 } from '../lib/dal';
 import { toItemDTO, toColMeta, itemDetailEtag } from '../lib/serialize';
@@ -286,30 +286,58 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
       await deltaSyncIfStale(c.env, LATIDO_FORZADO_MS, { esperarEnCurso: LATIDO_ESPERA_MS });
     }
 
-    const tvServer = conTotales ? await totalesVersion(c.env) : null;
+    // Las dos versiones (líneas y board) en paralelo: es un viaje a D1 menos
+    // en el request más frecuente del portal.
+    const [tvServer, version] = await Promise.all([
+      conTotales ? totalesVersion(c.env) : null,
+      versionBoard(c.env, slug),
+    ]);
     const variante = conTotales ? `${colsParam ?? ''}|t${tvServer}` : colsParam;
-    const etag = await etagFor(c.env, slug, viewer, variante);
+    const etag = etagDe(slug, viewer, version, variante);
     c.header('ETag', etag);
     if (etagCoincide(c.req.header('If-None-Match'), etag)) return c.body(null, 304);
 
-    const [rows, pending] = await Promise.all([
-      listItems(c.env, slug, viewer, q),
-      pendingItemIds(c.env, BOARDS[slug].id),
-    ]);
     // ?since=<synced_at> — respuesta INCREMENTAL (2026-09-02): el cliente ya
     // tiene la lista y solo quiere lo que cambió desde su marca. Medido antes:
     // cada vez que CUALQUIER item del board se sincronizaba, cada usuario
     // re-bajaba los 86 KB (gz) de la lista y React re-pintaba los 628
-    // renglones (285 ms de hilo trabado con CPU 4×), ~45 veces al día. Aquí
-    // el costo de D1 es el mismo (se leen las mismas filas: el filtrado por
-    // renglón sigue siendo el de dal.ts); lo que se ahorra es serializar y
-    // transportar lo que no cambió. `>=` y no `>`: varias filas comparten el
-    // `synced_at` de un mismo batch, y repetir una es gratis. Los totales
-    // viajan completos (una línea BORRADA cambia los del padre sin mover
-    // ningún synced_at); el cliente los fusiona conservando identidad.
+    // renglones (285 ms de hilo trabado con CPU 4×), ~45 veces al día.
+    // Desde 2026-09-30 tampoco se LEEN de D1 las filas que no cambiaron
+    // (dal.ts listItemsDesde): solo el orden de ids y las filas movidas. El
+    // filtrado por renglón sigue siendo el de dal.ts, el mismo para las dos.
+    // `>=` y no `>`: varias filas comparten el `synced_at` de un mismo batch,
+    // y repetir una es gratis. Los totales viajan completos (una línea
+    // BORRADA cambia los del padre sin mover ningún synced_at); el cliente
+    // los fusiona conservando identidad.
     const since = c.req.query('since');
     const incremental = since !== undefined && Number.isFinite(Date.parse(since));
-    const enviar = incremental ? rows.filter(r => r.synced_at >= since) : rows;
+    // Los totales de Proyectos salen de la relación con la Oportunidad, que
+    // vive en `columns` de CADA proyecto (totalesPorProyecto): ahí sí hacen
+    // falta todas las filas. Son ~130, así que no vale otro camino.
+    const ligera = incremental && !(conTotales && slug === 'proyectos');
+    // `orden`: todos los renglones visibles, en el orden de la lista.
+    // `enviar`: las filas completas que viajan. `rows`: el board completo,
+    // solo cuando se leyó.
+    let orden: { item_id: number }[];
+    let enviar: MirrorItem[];
+    let rows: MirrorItem[] | null = null;
+    let pending: Set<number>;
+    if (ligera) {
+      const [desde, pend] = await Promise.all([
+        listItemsDesde(c.env, slug, viewer, since, q),
+        pendingItemIds(c.env, BOARDS[slug].id),
+      ]);
+      orden = desde.orden;
+      enviar = desde.cambiadas;
+      pending = pend;
+    } else {
+      [rows, pending] = await Promise.all([
+        listItems(c.env, slug, viewer, q),
+        pendingItemIds(c.env, BOARDS[slug].id),
+      ]);
+      orden = rows;
+      enviar = incremental ? rows.filter(r => r.synced_at >= since) : rows;
+    }
     const items = enviar.map(r => toItemDTO(r, slug, viewer.role, pending.has(r.item_id), only, viewer.email));
     // Proyectos: el folio de su Oportunidad ligada, que la lista pinta junto al
     // del proyecto (Efraín, 2026-09-10). Viaja DENTRO de cada item y no en un
@@ -325,12 +353,12 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
         if (opp) items[i].oportunidad = opp;
       });
     }
-    const body: ListResponse = { board: slug, items, total: rows.length, etag };
+    const body: ListResponse = { board: slug, items, total: orden.length, etag };
     if (incremental) {
       body.incremental = {
         since,
-        ids: rows.map(r => String(r.item_id)),
-        pendingIds: rows.filter(r => pending.has(r.item_id)).map(r => String(r.item_id)),
+        ids: orden.map(r => String(r.item_id)),
+        pendingIds: orden.filter(r => pending.has(r.item_id)).map(r => String(r.item_id)),
       };
     }
     // Después del 304: el agregado solo corre cuando de verdad hay respuesta
@@ -353,8 +381,9 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
           : 'completo';
       if (modo !== 'igual') {
         body.totales = slug === 'proyectos'
-          ? await totalesPorProyecto(c.env, viewer, rows)
-          : await totalesPorOportunidad(c.env, viewer.role, new Set(rows.map(r => r.item_id)), viewer.email,
+          // `rows` nunca es null aquí: con totales de Proyectos no hay camino ligero.
+          ? await totalesPorProyecto(c.env, viewer, rows ?? [])
+          : await totalesPorOportunidad(c.env, viewer.role, new Set(orden.map(r => r.item_id)), viewer.email,
               modo === 'parcial' ? since : undefined);
       }
       if (body.incremental) body.incremental.totales = modo;
