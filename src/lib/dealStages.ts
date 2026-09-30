@@ -25,7 +25,7 @@ export interface StageBoardConfig {
   vendedorNames?: string[];
   defaultTab: string;
   /** Admin ve la lista EXTENDIDA (más totales + fechas) con botón "Columnas"
-   * (Efraín, 2026-09-21). Oportunidades y Costeo. */
+   * (Efraín, 2026-09-21). Oportunidades, Costeo y Zona Efrain. */
   columnasAdmin?: boolean;
 }
 
@@ -66,5 +66,7 @@ export const STAGE_BOARDS: Record<StageBoardKey, StageBoardConfig> = {
   // solo tiene acceso de whitelist pero sus propias líneas no pertenecen a esta
   // zona). Sidebar solo la muestra a la whitelist (me.zonaEfrainAccess) — ver
   // src/app/Sidebar.tsx; whitelist en worker/lib/zonas.ts ZONA_PRIVADA_ADMINS_PERMITIDOS.
-  zona_efrain: { key: 'zona_efrain', title: 'Zona Efrain', subtitleSuffix: '', vendedorNames: ['Efrain Ponce'], defaultTab: 'cotizacion' },
+  // columnasAdmin: la misma lista que Costeo (totales + fechas + "Columnas") —
+  // Efraín, 2026-09-29: "es lo mismo que costeo".
+  zona_efrain: { key: 'zona_efrain', title: 'Zona Efrain', subtitleSuffix: '', vendedorNames: ['Efrain Ponce'], defaultTab: 'cotizacion', columnasAdmin: true },
 };

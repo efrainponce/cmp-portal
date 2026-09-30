@@ -140,3 +140,16 @@ export function assertNoNativeLink(type: string, colId: string, raw: string | un
     + 'Solo se puede ligar desde otro registro de la zona.',
   );
 }
+
+/** "Creación" (`pulse_log_mkzm4v99`, creation_log) de una Oportunidad nativa
+ * con el shape que manda Monday — sin ella la columna "Creada" de la lista
+ * extendida salía "—" en Zona Efrain (2026-09-29). */
+export const OPP_CREACION_COL = 'pulse_log_mkzm4v99';
+export function creationLogColumn(mondayUserId: number, now = new Date()): RawColumn {
+  const iso = now.toISOString().replace(/\.\d{3}Z$/, 'Z');
+  return {
+    id: OPP_CREACION_COL, type: 'creation_log',
+    text: `${iso.slice(0, 10)} ${iso.slice(11, 19)} UTC`,
+    value: JSON.stringify({ created_at: iso, creator_id: String(mondayUserId) }),
+  };
+}

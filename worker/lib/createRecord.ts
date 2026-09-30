@@ -12,7 +12,8 @@ import { createItem, fetchItem, firstPersonId, updateItemColumns } from './monda
 import { upsertItem, refetchItem } from '../sync';
 import { crearCarpetaProyectoAuto } from './drive';
 import { reserveNativeId } from './nativeSeq';
-import { assertNoNativeLink, NativeLinkError } from './nativeItems';
+import { asignarFolioNativo } from './nativeFolio';
+import { assertNoNativeLink, NativeLinkError, creationLogColumn } from './nativeItems';
 import { rawHash, type RawColumn } from './canon';
 import { cachedFetchUsers } from './rosterCache';
 import { catalogoNaceNativo, isZonaPrivadaAdminPermitido } from './zonas';
@@ -306,6 +307,8 @@ export async function submitCreateNative(
     });
   }
 
+  if (slug === 'oportunidades') rawColumns.push(creationLogColumn(viewer.monday_user_id));
+
   const itemId = await reserveNativeId(env);
   const now = new Date().toISOString();
   await env.DB
@@ -319,6 +322,11 @@ export async function submitCreateNative(
     )
     .run();
   await registrarCreador(env, itemId, viewer.email);
+  // Folio OPP-E#### (worker/lib/nativeFolio.ts): sin él la oportunidad nativa
+  // no tenía número en ningún lado. Si falla, la revisión de salud lo rellena.
+  if (slug === 'oportunidades') {
+    try { await asignarFolioNativo(env, itemId); } catch { /* best-effort */ }
+  }
 
   // La Institución de la Oportunidad es un ESPEJO del Contacto ligado: en un
   // item nativo nadie la calcula, y checkCosteo la exige (worker/lib/

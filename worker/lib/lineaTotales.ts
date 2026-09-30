@@ -13,7 +13,10 @@
 // por API siempre vienen vacíos). Para una línea NATIVA (Zona Efrain) nadie las
 // calculó: ahí se reconstruyen con shared/costeoFormulas.ts, la misma matemática
 // que usa la grid de cotización.
+import type { Env } from '../env';
 import type { RawColumn } from './canon';
+import { BOARDS } from '../../shared/boards';
+import { NATIVE_ID_FLOOR } from '../../shared/nativeId';
 import { computeCostChain, computePriceChain } from '../../shared/costeoFormulas';
 
 /** Fórmulas de Monday en el subitem (docs/monday-column-map.md). */
@@ -105,4 +108,37 @@ export function totalesDeLinea(columns: RawColumn[]): LineaTotales {
     margenGob: price.margenGobTotal,
     cantidad,
   };
+}
+
+/** Guarda los totales de UNA línea nativa en sus columnas t_*. Una línea de
+ * Monday los recibe en cada upsert (worker/sync/upsert.ts); una nativa nunca
+ * pasa por ahí, y quedaban en NULL: la lista extendida y los totales por
+ * oportunidad la sumaban como $0 (encontrado 2026-09-29, Zona Efrain). */
+export async function guardarTotalesLineaNativa(env: Env, lineaId: number): Promise<void> {
+  const row = await env.DB
+    .prepare(`SELECT columns FROM items WHERE board_id = ? AND item_id = ?`)
+    .bind(BOARDS.oportunidades_sub.id, lineaId)
+    .first<{ columns: string }>();
+  if (!row) return;
+  let cols: RawColumn[] = [];
+  try { cols = JSON.parse(row.columns || '[]'); } catch { return; }
+  const t = totalesDeLinea(cols);
+  await env.DB
+    .prepare(
+      `UPDATE items SET t_costo = ?, t_subtotal = ?, t_total = ?, t_utilidad = ?, t_margen_gob = ?, t_cantidad = ?
+       WHERE board_id = ? AND item_id = ?`,
+    )
+    .bind(t.costo, t.subtotal, t.total, t.utilidad, t.margenGob, t.cantidad, BOARDS.oportunidades_sub.id, lineaId)
+    .run();
+}
+
+/** Backfill: líneas nativas que se quedaron sin totales. Lo corre la revisión
+ * de salud; tope por corrida para no gastar el presupuesto de subrequests. */
+export async function rellenarTotalesNativos(env: Env): Promise<number> {
+  const { results } = await env.DB
+    .prepare(`SELECT item_id FROM items WHERE board_id = ? AND item_id >= ? AND t_subtotal IS NULL LIMIT 100`)
+    .bind(BOARDS.oportunidades_sub.id, NATIVE_ID_FLOOR)
+    .all<{ item_id: number }>();
+  for (const r of results) await guardarTotalesLineaNativa(env, r.item_id);
+  return results.length;
 }

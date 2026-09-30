@@ -7,6 +7,7 @@ import type { Env } from '../env';
 import type { Identity } from '../../shared/types';
 import { BOARDS, type BoardSlug } from '../../shared/boards';
 import { isNativeId } from '../../shared/nativeId';
+import { asignarFolioNativo } from '../lib/nativeFolio';
 import { stageAtOrAfter, stageKeyForLabel } from '../../shared/dealStages';
 import type { AjustarLineaRequest, AjustarLineaResponse, CotizacionVirtualDTO, DuplicarOportunidadRequest, DuplicarOportunidadResponse, DuplicarVersionResponse, ItemDetailDTO, QuoteVersionsResponse, TallaBoxInput, CapturarTallasResponse, CambiarProductoLineasRequest, CambiarProductoLineasResponse, CambiosProductoResponse, ProyectoImagenesResponse, OcAdjuntosResponse, EstadoHistorialResponse, ProductoResumenResponse, ProductoGeneroResponse, ProyectoOportunidadResponse } from '../../shared/dto';
 import { MAX_TALLAS_POR_REQUEST } from '../../shared/dto';
@@ -540,6 +541,9 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       // Un item nativo (Zona Efrain) no cabe en ninguna de las dos ramas de
       // arriba (ninguna sabe hablar con un id que no existe en Monday) —
       // siempre su propia rama D1-only, sin importar el flag.
+      // Nativas creadas antes del folio OPP-E#### (worker/lib/nativeFolio.ts):
+      // se les asigna aquí, antes de que el PDF al cliente lo imprima.
+      if (isNativeId(itemId)) await asignarFolioNativo(c.env, itemId);
       const result = isNativeId(itemId)
         ? await generarCotizacionNativeD1(c.env, c.executionCtx, itemId, viewer)
         : c.env.COTIZACION_NATIVE === '1'

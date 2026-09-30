@@ -41,6 +41,8 @@ import { emitNotification } from './notify';
 import { ensureAjustesTable, ensureDescartadasTable, textosDeProducto } from './lineaAjustes';
 import { ensureItemBorradoTable } from './itemBorrado';
 import { registrarError } from './errores';
+import { rellenarFoliosNativos } from './nativeFolio';
+import { rellenarTotalesNativos } from './lineaTotales';
 import { updateItemColumns } from './monday';
 import { upsertItem } from '../sync';
 import { logSync } from '../sync/log';
@@ -744,6 +746,11 @@ export async function revisarSalud(env: Env): Promise<ResultadoSalud> {
   const inicio = ahora.toISOString();
   await ensureSaludTable(env);
   const desde = new Date(ahora.getTime() - 3_600_000).toISOString();
+
+  // Auto-reparación, no hallazgo: Oportunidades nativas sin folio OPP-E#### y
+  // líneas nativas sin totales (worker/lib/nativeFolio.ts, lineaTotales.ts).
+  try { await rellenarFoliosNativos(env); } catch (err) { await registrarError(env, 'salud:folios_nativos', err); }
+  try { await rellenarTotalesNativos(env); } catch (err) { await registrarError(env, 'salud:totales_nativos', err); }
 
   const revisiones: [string, () => Promise<Hallazgo[]>][] = [
     ['divisiones', () => divisionesBorradas(env)],
