@@ -56,12 +56,19 @@ Medición nueva: `Server-Timing` en todo `/api/*` (`auth`, `total`),
 1. **Verificar en producción** (2–3 días de datos): `node scripts/perf-real.mjs
    --dias 3`. Metas: `/api/home` < 600 ms, lista 200 < 350 ms, `lista_p50`
    (directa) < 1.2 s.
-2. **El piso de ~200 ms por request.** Cada request paga dos viajes a D1 en
-   serie antes de su ruta (identidad, luego zona). `Server-Timing: auth` dirá
-   cuánto es. Opciones: (a) juntar las dos consultas en un batch — sin cambio
-   de comportamiento; (b) guardar identidad+zona 30 s en memoria del worker —
-   más rápido, pero un cambio de permisos tardaría hasta 30 s en aplicar:
-   **decisión de Efraín**.
+2. **El piso por request — HECHO 2026-09-30 (tarde).** Medido en producción
+   con `Server-Timing` (desde DFW): identidad+zona costaba 40–63 ms, dos viajes
+   en serie a una D1 que vive en **WNAM** (EE.UU. oeste), ~20 ms por viaje, y
+   cada ruta suma los suyos. Efraín eligió, de tres opciones, la que no toca
+   permisos:
+   - identidad + zona + zona privada en UN batch (`identidadConZona`,
+     anclado en `worker/lib/zonas.identidad.test.ts`: mismo viewer exacto);
+   - **Smart Placement** (`wrangler.jsonc`): el worker corre junto a la D1, así
+     cada consulta cuesta ~1-5 ms; la persona paga un solo salto más largo.
+   - Descartada: recordar identidad 30 s en memoria (un cambio de permisos
+     tardaría hasta 30 s en aplicar).
+   Verificar: header `cf-placement` (`remote-…` = ya se movió) y `auth`/`total`
+   de `Server-Timing` contra la línea base de arriba.
 3. **Carga en frío de la lista** (hoy lee 8.5 MB para mandar 45 KB). Camino:
    tabla chica con solo las columnas de la lista, mantenida al leer. Baja la
    primera lista ~400 ms.
@@ -72,6 +79,14 @@ Medición nueva: `Server-Timing` en todo `/api/*` (`auth`, `total`),
    peor y arreglarlo.
 6. Menores: admin baja la lista dos veces al cargar (la segunda con las
    columnas de fechas); notificaciones 200 en 628 ms; comentarios 1.2 s.
+
+## Hallazgo pendiente
+
+- `wrangler d1 info cmp-portal` (2026-09-30): **90.6 M filas leídas en 24 h**
+  con 68 k consultas de lectura. Casi todo es leer el board entero con
+  `columns` (lista en frío, Inicio) y el scope de compras en escritura
+  (`json_each` sobre `columns`). No truena hoy, pero es lo que crece con cada
+  usuario: el paso 4 (lista en frío) también es el que más lo baja.
 
 ## Medido y descartado (no volver a proponer sin datos nuevos)
 

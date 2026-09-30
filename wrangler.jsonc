@@ -34,6 +34,15 @@
     "DRIVE_PROYECTOS": "1"
   },
   "preview_urls": false,
+  // Smart Placement (2026-09-30, docs/plan-performance.md): el worker corre
+  // junto a la D1 (WNAM) en vez de junto al usuario — cada request hace varias
+  // consultas en serie y cada una cruzaba de México/Texas a EE.UU. oeste. Los
+  // estáticos (/assets) no pasan por el worker y se siguen sirviendo desde el
+  // borde. Cloudflare solo lo mueve si mide que conviene; el header
+  // `cf-placement` dice dónde corrió. Para regresarlo, borrar este bloque.
+  "placement": {
+    "mode": "smart"
+  },
   "observability": {
     "enabled": true
   }

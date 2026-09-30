@@ -6,7 +6,7 @@
 import type { MiddlewareHandler } from 'hono';
 import type { Env } from '../env';
 import type { Identity } from '../../shared/types';
-import { zonaScopeFields } from '../lib/zonas';
+import { zonaScopeFields, identidadConZona } from '../lib/zonas';
 import { puedeAdministrarIdentidad } from '../lib/identityAccess';
 
 declare module 'hono' {
@@ -21,7 +21,11 @@ export const identity: MiddlewareHandler<{ Bindings: Env }> = async (c, next) =>
   const fetchIdentity = (addr: string) =>
     c.env.DB.prepare('SELECT * FROM identity WHERE email = ? AND active = 1').bind(addr).first<Identity>();
 
-  const row = await fetchIdentity(email);
+  // Identidad + zona en un solo viaje a D1 (zonas.ts identidadConZona). Si el
+  // batch falla, el camino de antes: identidad y luego zona.
+  let conZona: Identity | null | undefined;
+  try { conZona = await identidadConZona(c.env, email); } catch { conZona = undefined; }
+  const row = conZona === undefined ? await fetchIdentity(email) : conZona;
   if (!row) return c.json({ error: 'pide acceso', email }, 403);
 
   // Zona: se resuelve UNA vez por request y viaja en el viewer, para que el DAL no
@@ -47,7 +51,7 @@ export const identity: MiddlewareHandler<{ Bindings: Env }> = async (c, next) =>
     return next();
   }
 
-  c.set('viewer', await withScope(row));
+  c.set('viewer', conZona ?? await withScope(row));
   c.set('impersonatedBy', null);
   return next();
 };
