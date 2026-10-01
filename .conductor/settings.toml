@@ -1,0 +1,32 @@
+"$schema" = "https://conductor.build/schemas/settings.repo.schema.json"
+
+# Keep the root checkout (~/Documents/dev/<repo>) on an up-to-date main.
+# Conductor fetches origin before creating a workspace, but never moves the
+# branch checked out in the root repo. These hooks fast-forward it.
+#  - setup   -> runs when a new workspace is created
+#  - archive -> runs when a workspace is closed/archived (incl. archive_on_merge)
+# Never fails the workspace: if main has local commits or is not fast-forwardable
+# it prints a warning and continues.
+
+[scripts]
+setup = '''
+R="$CONDUCTOR_ROOT_PATH"
+git -C "$R" fetch --prune origin || exit 0
+if [ "$(git -C "$R" branch --show-current)" = "main" ]; then
+  git -C "$R" merge --ff-only origin/main || echo "conductor: root main not fast-forwardable, skipped"
+else
+  git -C "$R" fetch origin main:main || echo "conductor: root main not fast-forwardable (another branch checked out), skipped"
+fi
+exit 0
+'''
+
+archive = '''
+R="$CONDUCTOR_ROOT_PATH"
+git -C "$R" fetch --prune origin || exit 0
+if [ "$(git -C "$R" branch --show-current)" = "main" ]; then
+  git -C "$R" merge --ff-only origin/main || echo "conductor: root main not fast-forwardable, skipped"
+else
+  git -C "$R" fetch origin main:main || echo "conductor: root main not fast-forwardable (another branch checked out), skipped"
+fi
+exit 0
+'''
