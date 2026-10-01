@@ -15,6 +15,7 @@ import { uploadOportunidadInventario } from '../../../../lib/api';
 import { inventarioFiles } from '../DocumentacionTab';
 import type { ItemDetailDTO } from '../../../../lib/api';
 import { listDocuments, documentPdfUrl, type DocumentDTO } from '../../../../lib/documentsApi';
+import { toast } from '../../../../components/core/Toaster';
 
 const PdfCanvasPreview = lazy(() =>
   import('../../../../components/core/PdfCanvasPreview').then((m) => ({ default: m.PdfCanvasPreview })),
@@ -40,6 +41,14 @@ export function PdfIcon({ color, size = 34 }: { color: string; size?: number }) 
 }
 
 type PdfKind = 'solicitud_costeo' | 'sin_firmar' | 'firmada';
+
+/** Cuándo aparece cada PDF. El cuadro vacío lo dice en vez de "Sin PDF": en
+ * Clarity la gente le daba clic esperando que hiciera algo (clic muerto). */
+const PDF_CUANDO: Record<PdfKind, string> = {
+  solicitud_costeo: 'Sale al mandar a costeo',
+  sin_firmar: 'Sale al generar la cotización',
+  firmada: 'Se firma en Documentación',
+};
 
 const PDF_LABEL: Record<PdfKind, string> = {
   solicitud_costeo: 'Cotización — solicitud de costeo',
@@ -80,11 +89,16 @@ function PdfThumb({ oppId, kind, available, label, accentColor, onPreview }: {
           </div>
         </>
       ) : (
-        <div style={{
-          width: 108, height: 92, border: '1px dashed var(--ink-faint)', borderRadius: 'var(--radius-lg)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: 8,
-        }}>
-          <span style={{ font: 'var(--text-caption)', color: 'var(--ink-faint)' }}>Sin PDF</span>
+        <div
+          onClick={() => toast(`Todavía no hay PDF. ${PDF_CUANDO[kind]}.`, 'info')}
+          style={{
+            width: 108, height: 92, border: '1px dashed var(--ink-faint)', borderRadius: 'var(--radius-lg)',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4,
+            textAlign: 'center', padding: 8, boxSizing: 'border-box',
+          }}
+        >
+          <span style={{ font: 'var(--text-caption-strong)', color: 'var(--ink-quiet)' }}>Aún no hay</span>
+          <span style={{ font: 'var(--text-caption)', color: 'var(--ink-faint)' }}>{PDF_CUANDO[kind]}</span>
         </div>
       )}
     </div>
