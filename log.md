@@ -1,5 +1,28 @@
 # Log de commits
 
+## 2026-10-01 (UX, paso 1 de Clarity: clics muertos)
+
+- **Efraín**: "necesitamos mejorar bastante en UX … ve poco a poco, no quiero
+  confundir más a los usuarios". Reporte de Clarity (~55 de 192 grabaciones):
+  lo que más se repite son clics en cosas que parecen botones y no hacen nada.
+  Este paso solo quita clics muertos, sin mover ni agregar flujos.
+- **Cuadros vacíos de PDF** (Costeo / Sin firmar / Firmada en Cotizaciones):
+  decían "Sin PDF" con borde punteado y la gente les daba clic. Ahora dicen
+  cuándo aparece cada uno ("Sale al mandar a costeo", "Sale al generar la
+  cotización", "Se firma en Documentación") y el clic lo repite como aviso.
+- **Clic en el menú lateral sobre el board donde ya estás** (p. ej. "Validación
+  Costeo" estando ahí, varias veces por sesión y luego F5): antes no hacía
+  nada; ahora actualiza la lista igual que "actualizar" (lee Monday) y avisa
+  "Lista al día". Con un drawer abierto sigue cerrándolo, como antes.
+  Evento `REFRESCAR_LISTA` (`src/lib/api.ts`), lo escuchan las listas, no los
+  pickers.
+- **Etiqueta "PROYECTO" en las pestañas del drawer**: se clica y abre la
+  primera pestaña del grupo (Documentación).
+- Ya estaba hecho antes de este reporte (por eso no se tocó): avisos al
+  guardar/fallar y botones ocupados (2026-09-22), pegar imagen en Inventario
+  (2026-09-22), alta de proveedor con teléfono (2026-09-29), Ejecución editable
+  en línea (2026-09-29), editar varias líneas de costeo a la vez (2026-09-29).
+
 ## 2026-09-30 (Productos: Tallas editable en la tabla)
 
 - **Efraín**: "en el board de productos necesitamos poder EDITAR las tallas,

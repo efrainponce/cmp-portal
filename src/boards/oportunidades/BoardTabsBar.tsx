@@ -57,6 +57,7 @@ export function BoardTabsBar({ active, onChange, updatesCount = 0, showPostventa
   // 2026-08-18). El server ya niega el endpoint con 403 — esto solo evita
   // ofrecerle al vendedor un tab que le va a salir en error.
   const verActividad = useCanVerActividad();
+  const proyectoTabs = PROYECTO_TABS.filter((t) => (t.grupo === 'postventa' ? showPostventa : showProyectos));
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: isMobile ? '0 14px' : '0 32px', borderBottom: '1px solid var(--border)', flex: 'none', overflowX: 'auto' }}>
       <UnderlineTab active={active === 'actualizaciones'} onClick={() => onChange('actualizaciones')}>
@@ -77,8 +78,10 @@ export function BoardTabsBar({ active, onChange, updatesCount = 0, showPostventa
       {(showPostventa || showProyectos) && (
         <>
           <VDivider />
-          <SectionLabel color="#7f8f78">Proyecto</SectionLabel>
-          {PROYECTO_TABS.filter((t) => (t.grupo === 'postventa' ? showPostventa : showProyectos)).map((t) => (
+          {/* La etiqueta también se clica (abre la primera píldora): en Clarity
+              la gente le daba clic como si fuera pestaña y no pasaba nada. */}
+          <SectionLabel color="#7f8f78" onClick={() => onChange(proyectoTabs[0].key)}>Proyecto</SectionLabel>
+          {proyectoTabs.map((t) => (
             <PillTab key={t.key} active={active === t.key} onClick={() => onChange(t.key)}>{t.label}</PillTab>
           ))}
         </>
@@ -119,9 +122,9 @@ function PillTab({ active, onClick, children }: { active: boolean; onClick: () =
   );
 }
 
-function SectionLabel({ children, color }: { children: React.ReactNode; color: string }) {
+function SectionLabel({ children, color, onClick }: { children: React.ReactNode; color: string; onClick: () => void }) {
   return (
-    <div style={{ font: '600 8.5px var(--font-ui)', color, letterSpacing: '.4px', textTransform: 'uppercase', marginRight: 8, flex: 'none', whiteSpace: 'nowrap' }}>
+    <div onClick={onClick} style={{ font: '600 8.5px var(--font-ui)', color, letterSpacing: '.4px', textTransform: 'uppercase', marginRight: 8, flex: 'none', whiteSpace: 'nowrap', cursor: 'pointer' }}>
       {children}
     </div>
   );

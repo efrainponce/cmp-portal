@@ -9,6 +9,7 @@ import { useRoute } from './lib/routing';
 import { useIsMobile } from './lib/useIsMobile';
 import { useSessionExpired } from './lib/sessionState';
 import { useMe } from './lib/useMe';
+import { REFRESCAR_LISTA } from './lib/api';
 import { Toaster } from './components/core/Toaster';
 
 // Cada vista es su propio chunk — el bundle inicial solo trae Sidebar + la vista
@@ -81,6 +82,12 @@ function App() {
   // Deep link de una notificación: navega al board+item indicados (abre el
   // drawer si es una oportunidad, igual que cualquier otro link directo).
   const onOpenNotification = (board: string, id: string | null) => navigate(board as BoardKey, id);
+  // Clic en el menú sobre el board en el que ya se está, sin drawer abierto:
+  // antes no pasaba nada (clic muerto en Clarity) — ahora actualiza la lista.
+  const onSelectBoard = (key: BoardKey) => {
+    if (key === activeBoard && !itemId) window.dispatchEvent(new Event(REFRESCAR_LISTA));
+    else navigate(key, null);
+  };
 
   const views = aterrizaje === null ? <div style={{ padding: 32 }}>Cargando…</div> : (
     <Suspense fallback={<div style={{ padding: 32 }}>Cargando…</div>}>
@@ -140,7 +147,7 @@ function App() {
     return (
       <div className="app-root" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--bg)' }}>
         <ImpersonationBanner />
-        <MobileTopBar activeBoard={activeBoard} onSelectBoard={(key) => navigate(key, null)} onOpenNotification={onOpenNotification} />
+        <MobileTopBar activeBoard={activeBoard} onSelectBoard={onSelectBoard} onOpenNotification={onOpenNotification} />
         <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
           {views}
         </div>
@@ -156,7 +163,7 @@ function App() {
       <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
         <Sidebar
           activeBoard={activeBoard}
-          onSelectBoard={(key) => navigate(key, null)}
+          onSelectBoard={onSelectBoard}
           collapsed={collapsed}
           onToggleCollapsed={() => setCollapsed((c) => !c)}
           onOpenNotification={onOpenNotification}

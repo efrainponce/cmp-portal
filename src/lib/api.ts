@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ItemDTO, ListResponse } from '../../shared/dto';
 import { mockList } from './mockFallback';
+import { toast } from '../components/core/Toaster';
 import {
   AccessError, apiFetch, getBoards, mockBoardMeta, type BoardMeta, type BoardSlug,
 } from './apiClient';
@@ -11,6 +12,13 @@ import {
 export * from './apiClient';
 
 export type PollStatus = 'loading' | 'ready' | 'denied' | 'offline';
+
+/** Evento de ventana: clic en el menú lateral sobre el board en el que ya se
+ * está. Clarity (sep-2026) mostró clics repetidos en "Validación Costeo"
+ * estando ahí, sin que pasara nada, y luego F5: la gente lo usa para
+ * actualizar. Lo escucha cada lista (no los pickers) y hace lo mismo que su
+ * "actualizar". */
+export const REFRESCAR_LISTA = 'cmp:refrescar-lista';
 
 /** Query string de la lista de items. Existe como función aparte (y con test)
  * porque la precarga de index.html tiene que armar EXACTAMENTE la misma URL
@@ -237,6 +245,13 @@ export function usePoll(slug: BoardSlug, q = '', cols?: readonly string[], total
     setRefrescando(true);
     try { await load(true); } finally { setRefrescando(false); }
   }, [load]);
+
+  useEffect(() => {
+    if (esPicker) return;
+    const onRefrescar = () => { void refrescar().then(() => toast('Lista al día', 'ok', 1800)); };
+    window.addEventListener(REFRESCAR_LISTA, onRefrescar);
+    return () => window.removeEventListener(REFRESCAR_LISTA, onRefrescar);
+  }, [refrescar, esPicker]);
 
   return { status, data, offlineMock, refetch: () => { void load(); }, refrescar, refrescando };
 }
