@@ -1,5 +1,18 @@
 # Log de commits
 
+## 2026-09-30 (Productos: Tallas editable en la tabla)
+
+- **Efraín**: "en el board de productos necesitamos poder EDITAR las tallas,
+  en una nueva columna, como lo hacemos cuando estamos dentro de la oportunidad".
+- La columna **Tallas** (`text_mm5v6jhj`) pasa junto al Nombre (antes iba al
+  final, de solo lectura) y quien la puede escribir (compras/admin, `w` de
+  `shared/visibility.ts`, sin cambios) la edita ahí mismo: Enter o salir del
+  campo guarda, Esc cancela. Mismo PATCH que el panel de la línea en la
+  Cotización, así que también empuja "Tallas Portal" a Airtable.
+- `BoardTable` acepta `renderCell` (celda propia por columna) sin perder el
+  memo de los renglones; `src/boards/generic/TallasCell.tsx`. El vendedor la
+  sigue viendo de solo lectura.
+
 ## 2026-09-30 (D1: 90 millones de filas leídas al día)
 
 - **Efraín**: "90.6 millones de filas en 24 horas es demasiado, ¿cómo podemos

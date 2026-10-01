@@ -1,5 +1,5 @@
 // Full-board table with search — powers Productos, Instituciones, Contactos.
-import { useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useBoards, usePoll, colForBoard, type BoardSlug } from '../../lib/api';
 import { BoardTable } from '../../components/board/BoardTable';
 import { BoardStatus } from '../../components/board/BoardStatus';
@@ -14,6 +14,7 @@ import { CreateRecordModal } from './CreateRecordModal';
 import { EditContactoModal } from './EditContactoModal';
 import { EditProveedorModal } from './EditProveedorModal';
 import { ProductoActividadDrawer } from './ProductoActividadDrawer';
+import { TallasCell, PRODUCTO_TALLAS_COL } from './TallasCell';
 import { useIsMobile } from '../../lib/useIsMobile';
 import { useCanVerActividad } from '../../lib/useMe';
 import type { ItemDTO } from '../../lib/api';
@@ -82,9 +83,25 @@ export function GenericBoardView({ slug, title }: Props) {
   const verActividad = useCanVerActividad();
   const onRowClick = canEditContacto ? setEditingContact : canEditProveedor ? setEditingProveedor : (slug === 'productos' && verActividad) ? setActivityProducto : undefined;
   const hidden = HIDDEN_LIST_COLS[slug];
-  const tableCols: ColMeta[] = listColIds
+  const baseCols: ColMeta[] = listColIds
     ? listColIds.map((id) => cols.find((c) => c.id === id)).filter((c): c is ColMeta => !!c)
     : hidden ? cols.filter((c) => !hidden.includes(c.id)) : cols;
+  // Productos: Tallas va junto al Nombre (venía hasta el final, de solo
+  // lectura) y quien la puede escribir (compras/admin, `w` de
+  // shared/visibility.ts) la edita ahí mismo — Efraín, 2026-09-30.
+  const tallasCol = slug === 'productos' ? baseCols.find((c) => c.id === PRODUCTO_TALLAS_COL) : undefined;
+  const tableCols = tallasCol ? [tallasCol, ...baseCols.filter((c) => c !== tallasCol)] : baseCols;
+  const tallasEditable = !!tallasCol?.w;
+  // `refetch` es nuevo en cada render: por ref, para que `renderCell` sea
+  // estable y el memo de los renglones de BoardTable no se pierda.
+  const refetchRef = useRef(refetch);
+  refetchRef.current = refetch;
+  const renderCell = useCallback(
+    (c: ColMeta, item: ItemDTO) => (c.id === PRODUCTO_TALLAS_COL
+      ? <TallasCell item={item} onSaved={() => refetchRef.current()} />
+      : undefined),
+    [],
+  );
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -115,7 +132,7 @@ export function GenericBoardView({ slug, title }: Props) {
 
       <div style={{ overflow: 'auto', flex: 1 }}>
         <BoardStatus status={status}>
-          <BoardTable cols={tableCols} items={items} onRowClick={onRowClick} />
+          <BoardTable cols={tableCols} items={items} onRowClick={onRowClick} renderCell={tallasEditable ? renderCell : undefined} />
         </BoardStatus>
       </div>
 

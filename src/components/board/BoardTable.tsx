@@ -13,7 +13,7 @@
 //    cuando el hilo está libre. El DOM final es idéntico — Ctrl+F sigue
 //    encontrando todo en cuanto termina, un par de segundos después — pero la
 //    pantalla responde desde el primer lote en vez de quedarse congelada.
-import { memo, useEffect, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { ColMeta, ItemDTO } from '../../lib/api';
 import { CellContent } from './cells';
 import { cellAlign, renderCellText } from './cellHelpers';
@@ -23,6 +23,10 @@ interface BoardTableProps {
   items: ItemDTO[];
   onRowClick?: (item: ItemDTO) => void;
   emptyLabel?: string;
+  /** Celda propia para una columna (p.ej. un input editable); `undefined` =
+   * la celda de solo lectura de siempre. Debe ser estable (useCallback) o el
+   * memo de `Row` se pierde y se re-pintan todos los renglones. */
+  renderCell?: (col: ColMeta, item: ItemDTO) => ReactNode | undefined;
 }
 
 const HIDDEN_TYPES = new Set(['subtasks', 'button']);
@@ -54,7 +58,7 @@ function useRenderProgresivo(total: number): number {
   return Math.min(limite, total);
 }
 
-export function BoardTable({ cols, items, onRowClick, emptyLabel = 'Sin elementos.' }: BoardTableProps) {
+export function BoardTable({ cols, items, onRowClick, emptyLabel = 'Sin elementos.', renderCell }: BoardTableProps) {
   const visibleCols = useMemo(() => cols.filter((c) => c.id !== 'name' && !HIDDEN_TYPES.has(c.type)), [cols]);
   const limite = useRenderProgresivo(items.length);
 
@@ -72,15 +76,16 @@ export function BoardTable({ cols, items, onRowClick, emptyLabel = 'Sin elemento
       </thead>
       <tbody>
         {(limite < items.length ? items.slice(0, limite) : items).map((item) => (
-          <Row key={item.id} item={item} visibleCols={visibleCols} onRowClick={onRowClick} />
+          <Row key={item.id} item={item} visibleCols={visibleCols} onRowClick={onRowClick} renderCell={renderCell} />
         ))}
       </tbody>
     </table>
   );
 }
 
-const Row = memo(function Row({ item, visibleCols, onRowClick }: {
+const Row = memo(function Row({ item, visibleCols, onRowClick, renderCell }: {
   item: ItemDTO; visibleCols: ColMeta[]; onRowClick?: (item: ItemDTO) => void;
+  renderCell?: (col: ColMeta, item: ItemDTO) => ReactNode | undefined;
 }) {
   return (
     <tr
@@ -92,15 +97,21 @@ const Row = memo(function Row({ item, visibleCols, onRowClick }: {
         <span style={{ font: '500 13px var(--font-ui)', color: 'var(--ink)' }}>{item.name}</span>
         {item.pendingWrite && <span title="guardado, sincronizando…" style={{ marginLeft: 6 }}>⏳</span>}
       </td>
-      {visibleCols.map((c) => (
-        <td
-          key={c.id}
-          style={{ ...tdStyle(cellAlign(c)), maxWidth: COL_MAX_WIDTH, overflow: 'hidden', textOverflow: 'ellipsis' }}
-          title={renderCellText(c, item.cols[c.id])}
-        >
-          <CellContent col={c} val={item.cols[c.id]} />
-        </td>
-      ))}
+      {visibleCols.map((c) => {
+        const propia = renderCell?.(c, item);
+        if (propia !== undefined) {
+          return <td key={c.id} style={{ ...tdStyle(cellAlign(c)), padding: '2px 8px' }}>{propia}</td>;
+        }
+        return (
+          <td
+            key={c.id}
+            style={{ ...tdStyle(cellAlign(c)), maxWidth: COL_MAX_WIDTH, overflow: 'hidden', textOverflow: 'ellipsis' }}
+            title={renderCellText(c, item.cols[c.id])}
+          >
+            <CellContent col={c} val={item.cols[c.id]} />
+          </td>
+        );
+      })}
     </tr>
   );
 });
