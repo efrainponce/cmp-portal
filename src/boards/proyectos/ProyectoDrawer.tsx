@@ -32,6 +32,7 @@ import type { ProjectBoardKey } from '../../lib/projectStages';
 import type { OportunidadLigadaDTO } from '../../../shared/dto';
 import { canReadActivity } from '../../../shared/visibility';
 import { usePerfDrawer } from '../../lib/perfReal';
+import { tabRoot, gridTarjetas } from '../oportunidades/tabs/tabLayout';
 
 type ProyectoTabKey = 'estadocuenta' | 'actualizaciones' | 'resumen' | 'actividad' | 'cotizacion' | 'costeo' | 'embellecimientos' | 'documentacion' | 'tallas' | 'ordenes' | 'muestras' | 'ejecucion' | 'logistica';
 
@@ -125,10 +126,8 @@ function Cargando() {
  * un error: estos dos tabs leen las líneas de la Oportunidad y aquí no hay. */
 function SinOportunidad({ que }: { que: string }) {
   return (
-    <div style={{ padding: 24, font: 'var(--text-label)', color: 'var(--ink-quiet)', maxWidth: 560 }}>
-      Este proyecto no tiene una Oportunidad ligada. {que} sale de la cotización de la Oportunidad,
-      así que aquí no hay nada que mostrar — los productos de la orden de compra se capturan en el
-      tab «Órdenes de compra», con «+ Agregar producto».
+    <div style={{ padding: 24, font: 'var(--text-label)', color: 'var(--ink-quiet)' }}>
+      Este proyecto no tiene Oportunidad ligada, así que no hay {que}. Los productos de la OC se capturan en «Órdenes de compra».
     </div>
   );
 }
@@ -246,9 +245,35 @@ export function ProyectoDrawer({ id, boardKey, backLabel, defaultTab, openTab, o
   const subtitle = [institucion, fechaEntrega ? `Entrega: ${fechaEntrega}` : null, vendedor ? `Vendedor: ${vendedor}` : null]
     .filter(Boolean).join(' · ');
 
+  const zonaProyecto = (
+    <ZonaProyecto
+      zona={item.cols[ZONA_COL]?.text?.trim() ?? ''}
+      opciones={Object.values(zonaCol?.labels ?? {}).map((l) => l.label)}
+      editable={!!zonaCol?.w && item.ownedByViewer !== false}
+      onChange={(z) => void cambiarZona(z)}
+      error={zonaError}
+      enLinea={!isMobile}
+    />
+  );
+  // Mientras no se sabe si hay oportunidad ligada se aparta su lugar (casi
+  // todos los proyectos la tienen): el link llegaba ~0.7 s después y brincaba
+  // pestañas y contenido 21 px (medido, perf-cls.mjs).
+  const linkOportunidad = (oportunidad || !oppResuelta) && (
+    <div
+      onClick={oportunidad ? () => onOpenOportunidad(oportunidad.id) : undefined}
+      title="La cotización y los embellecimientos se capturan en la Oportunidad"
+      style={{
+        marginTop: isMobile ? 8 : 0, font: 'var(--text-label-strong)', color: 'var(--accent)', cursor: 'pointer', width: 'fit-content',
+        whiteSpace: isMobile ? undefined : 'nowrap', visibility: oportunidad ? 'visible' : 'hidden',
+      }}
+    >
+      Ver Oportunidad {oportunidad?.folio || 'ligada'}{isMobile ? ' (cotización, embellecimientos)' : ''} ↗
+    </div>
+  );
+
   return (
     <div style={{ height: '100%', overflowY: 'auto' }}>
-      <div style={{ padding: isMobile ? '14px 14px 10px' : '20px 32px 12px', borderBottom: '1px solid var(--border)' }}>
+      <div style={{ padding: isMobile ? '14px 14px 10px' : '14px 32px 12px', borderBottom: '1px solid var(--border)' }}>
         <div
           onClick={onBack}
           style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', font: 'var(--text-label)', color: 'var(--ink-tertiary)', marginBottom: 10, width: 'fit-content' }}
@@ -256,7 +281,7 @@ export function ProyectoDrawer({ id, boardKey, backLabel, defaultTab, openTab, o
           <IconBack style={{ width: 14, height: 14 }} /> {backLabel}
         </div>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-          <div>
+          <div style={isMobile ? undefined : { flex: '1 1 320px', minWidth: 0 }}>
             <EditableItemName
               slug="proyectos"
               itemId={id}
@@ -270,16 +295,22 @@ export function ProyectoDrawer({ id, boardKey, backLabel, defaultTab, openTab, o
                 return next;
               })}
             />
-            <div style={{ font: 'var(--text-label)', color: 'var(--ink-tertiary)', marginTop: 2 }}>
-              Folio: {folio}{subtitle ? ` · ${subtitle}` : ''}
-            </div>
-            <ZonaProyecto
-              zona={item.cols[ZONA_COL]?.text?.trim() ?? ''}
-              opciones={Object.values(zonaCol?.labels ?? {}).map((l) => l.label)}
-              editable={!!zonaCol?.w && item.ownedByViewer !== false}
-              onChange={(z) => void cambiarZona(z)}
-              error={zonaError}
-            />
+            {isMobile ? (
+              <>
+                <div style={{ font: 'var(--text-label)', color: 'var(--ink-tertiary)', marginTop: 2 }}>
+                  Folio: {folio}{subtitle ? ` · ${subtitle}` : ''}
+                </div>
+                {zonaProyecto}
+              </>
+            ) : (
+              // 2026-10-01: en escritorio folio, entrega, vendedor, zona y el
+              // link a la Oportunidad van en UN renglón (antes eran cuatro).
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px 14px', flexWrap: 'wrap', marginTop: 4, font: 'var(--text-label)', color: 'var(--ink-tertiary)' }}>
+                <span>Folio: {folio}{subtitle ? ` · ${subtitle}` : ''}</span>
+                {zonaProyecto}
+                {linkOportunidad}
+              </div>
+            )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <SyncIndicator syncedAt={item.syncedAt} pending={item.pendingWrite ? 1 : 0} label="actualizado" />
@@ -288,20 +319,7 @@ export function ProyectoDrawer({ id, boardKey, backLabel, defaultTab, openTab, o
             </Button>
           </div>
         </div>
-        {/* Mientras no se sabe si hay oportunidad ligada se aparta el renglón
-            (casi todos los proyectos la tienen): el link llegaba ~0.7 s después
-            y brincaba pestañas y contenido 21 px (medido, perf-cls.mjs). */}
-        {(oportunidad || !oppResuelta) && (
-          <div
-            onClick={oportunidad ? () => onOpenOportunidad(oportunidad.id) : undefined}
-            style={{
-              marginTop: 8, font: 'var(--text-label-strong)', color: 'var(--accent)', cursor: 'pointer', width: 'fit-content',
-              visibility: oportunidad ? 'visible' : 'hidden',
-            }}
-          >
-            Ver Oportunidad {oportunidad?.folio || 'ligada'} (cotización, embellecimientos) ↗
-          </div>
-        )}
+        {isMobile && linkOportunidad}
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: isMobile ? '0 14px' : '0 32px', borderBottom: '1px solid var(--border)', flex: 'none', overflowX: 'auto' }}>
@@ -355,7 +373,7 @@ export function ProyectoDrawer({ id, boardKey, backLabel, defaultTab, openTab, o
       {tab === 'cotizacion' && (
         !oppResuelta ? <Cargando />
           : oportunidadId ? <CotizacionVirtualTab proyectoId={id} />
-            : <SinOportunidad que="La cotización" />
+            : <SinOportunidad que="cotización" />
       )}
       {tab === 'costeo' && (
         me == null ? <Cargando />
@@ -366,16 +384,17 @@ export function ProyectoDrawer({ id, boardKey, backLabel, defaultTab, openTab, o
           )
             : !oppResuelta ? <Cargando />
               : oportunidadId ? <CosteoProyectoTab oportunidadId={oportunidadId} />
-                : <SinOportunidad que="El costeo" />
+                : <SinOportunidad que="costeo" />
       )}
       {tab === 'embellecimientos' && (
         !oppResuelta ? <Cargando />
           : oportunidadId ? <EmbellecimientosVirtualTab proyectoId={id} proyecto={item} onChanged={load} />
-            : <SinOportunidad que="Los embellecimientos" />
+            : <SinOportunidad que="embellecimientos" />
       )}
       {tab === 'documentacion' && (
-        <div style={{ padding: '24px 32px 40px', maxWidth: 920, width: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 20 }}>
-          <FechaEntregaField proyecto={proyectoState} />
+        // 2026-10-01: las secciones se acomodan en columnas (la fecha, sola arriba).
+        <div style={{ ...tabRoot, ...gridTarjetas(420, 20) }}>
+          <div style={{ gridColumn: '1 / -1' }}><FechaEntregaField proyecto={proyectoState} /></div>
           <OcContratoSection proyecto={proyectoState} oppId={oportunidadId} />
           <ActaEntregaSection proyecto={proyectoState} oppId={oportunidadId} />
           {/* Carpeta de Drive propia del Proyecto y, si tiene Oportunidad
@@ -385,22 +404,22 @@ export function ProyectoDrawer({ id, boardKey, backLabel, defaultTab, openTab, o
         </div>
       )}
       {tab === 'tallas' && (
-        <div style={{ padding: '24px 32px 40px', maxWidth: 920, width: '100%', boxSizing: 'border-box' }}>
+        <div style={{ ...tabRoot }}>
           <ProyectoTallasSection state={proyectoState} oppId={oportunidadId} />
         </div>
       )}
       {tab === 'ordenes' && (
-        <div style={{ padding: '24px clamp(12px, 3vw, 32px) 40px', width: '100%', boxSizing: 'border-box' }}>
+        <div style={{ ...tabRoot }}>
           <ProyectoOrdenesSection state={proyectoState} oppId={oportunidadId} />
         </div>
       )}
       {tab === 'resumen' && (
-        <div style={{ padding: '24px 32px 40px', maxWidth: 1100, width: '100%', boxSizing: 'border-box' }}>
+        <div style={{ ...tabRoot }}>
           <ResumenSection state={proyectoState} />
         </div>
       )}
       {tab === 'ejecucion' && (
-        <div style={{ padding: '24px 32px 40px', maxWidth: 920, width: '100%', boxSizing: 'border-box' }}>
+        <div style={{ ...tabRoot }}>
           <EjecucionSection state={proyectoState} oppId={oportunidadId} />
         </div>
       )}
@@ -411,7 +430,7 @@ export function ProyectoDrawer({ id, boardKey, backLabel, defaultTab, openTab, o
           permisos (Compras/Admin editan; el server revalida), así que aquí solo
           se conecta (Efraín, 2026-08-17). */}
       {tab === 'logistica' && (
-        <div style={{ padding: '24px 32px 40px', maxWidth: 920, width: '100%', boxSizing: 'border-box' }}>
+        <div style={{ ...tabRoot }}>
           <LogisticaSection state={proyectoState} oppId={oportunidadId} />
         </div>
       )}
@@ -421,12 +440,14 @@ export function ProyectoDrawer({ id, boardKey, backLabel, defaultTab, openTab, o
 
 /** Zona del proyecto en el encabezado: select si se puede editar; vacía, en
  * rojo — no debe haber proyectos sin zona (Efraín, 2026-09-29). */
-function ZonaProyecto({ zona, opciones, editable, onChange, error }: {
+function ZonaProyecto({ zona, opciones, editable, onChange, error, enLinea }: {
   zona: string; opciones: string[]; editable: boolean; onChange: (z: string) => void; error: string | null;
+  /** Va dentro del renglón de datos del encabezado (escritorio): sin margen propio. */
+  enLinea?: boolean;
 }) {
   const vacia = zona === '';
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, font: 'var(--text-label)', color: 'var(--ink-tertiary)', flexWrap: 'wrap' }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: enLinea ? 0 : 6, font: 'var(--text-label)', color: 'var(--ink-tertiary)', flexWrap: 'wrap' }}>
       Zona:
       {editable ? (
         <select

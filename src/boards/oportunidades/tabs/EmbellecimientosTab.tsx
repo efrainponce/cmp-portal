@@ -25,6 +25,7 @@ import { Button } from '../../../components/core/Button';
 import { FilePreviewModal } from '../../../components/core/FilePreviewModal';
 import { EMBELL_TEMPLATE_KEYS, explodeEmbellecimiento, upsertEmbellZone } from '../../../lib/embellecimiento';
 import { VersionChips } from './cotizacion/VersionChips';
+import { tabRoot, gridTarjetas } from './tabLayout';
 
 const STATUS_COL = 'color_mm1b34bg';
 const EMB_LABEL_CON = 'Con Embellecimiento';
@@ -308,7 +309,7 @@ export function EmbellecimientosTab({
 
   if (selectedVersion) {
     return (
-      <div style={{ padding: '24px 32px 40px', maxWidth: 920, width: '100%', boxSizing: 'border-box' }}>
+      <div style={{ ...tabRoot }}>
         <VersionChips versions={versions} selected={selectedVersionId} onSelect={setSelectedVersionId} />
         <EmbellecimientoSnapshot version={selectedVersion} />
       </div>
@@ -317,7 +318,7 @@ export function EmbellecimientosTab({
 
   if (embProducts.length === 0) {
     return (
-      <div style={{ padding: '24px 32px 40px', maxWidth: 920, width: '100%', boxSizing: 'border-box' }}>
+      <div style={{ ...tabRoot }}>
         <VersionChips versions={versions} selected={selectedVersionId} onSelect={setSelectedVersionId} onNuevaVersion={onNuevaVersion} />
         <div style={{ font: 'var(--text-label)', color: 'var(--ink-quiet)' }}>
           {products.length === 0
@@ -329,8 +330,9 @@ export function EmbellecimientosTab({
   }
 
   return (
-    <div style={{ padding: '24px 32px 40px', maxWidth: 920, width: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 10 }}>
+    <div style={tabRoot}>
       <VersionChips versions={versions} selected={selectedVersionId} onSelect={setSelectedVersionId} onNuevaVersion={onNuevaVersion} />
+      <div style={gridTarjetas(440, 10)}>
       {embProducts.map((p) => {
         const rawDesc = descPreview[p.id] ?? p.cols[DESC_COL]?.text;
         const zones = explodeEmbellecimiento(rawDesc, true);
@@ -438,6 +440,7 @@ export function EmbellecimientosTab({
           </div>
         );
       })}
+      </div>
     </div>
   );
 }

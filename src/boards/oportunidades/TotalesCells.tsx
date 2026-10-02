@@ -121,10 +121,70 @@ function textoDe(m: Metrica, t: TotalesDTO | undefined, cols?: ItemDTO['cols']):
   return { texto: fmtMoneyShort(v), color };
 }
 
+/** Orden de la lista por una columna del encabezado. `actualizado` es la
+ * columna "hace X" (mondayUpdatedAt), que no es una métrica. */
+export interface OrdenLista { key: string; dir: 'asc' | 'desc' }
+export const ORDEN_ACTUALIZADO = 'actualizado';
+
+/** Clic en un título: primero de mayor a menor (lo que casi siempre se busca:
+ * el trato más grande, la utilidad más alta), luego al revés, y el tercero
+ * regresa al orden normal. */
+export function siguienteOrden(actual: OrdenLista | null, key: string): OrdenLista | null {
+  if (actual?.key !== key) return { key, dir: 'desc' };
+  return actual.dir === 'desc' ? { key, dir: 'asc' } : null;
+}
+
+/** Ordena SIN cambiar de grupo a nadie: la lista se agrupa después, así que
+ * cada etapa queda ordenada por dentro. Lo que no tiene valor va al final en
+ * los dos sentidos (un "—" arriba no le sirve a nadie). Estable y puro. */
+export function ordenarPorMetrica<T extends { id: string; cols: ItemDTO['cols']; mondayUpdatedAt?: string | null }>(
+  items: T[], orden: OrdenLista | null, metricas: Metrica[], totales: Record<string, TotalesDTO> | undefined,
+): T[] {
+  if (!orden) return items;
+  const m = metricas.find((x) => x.key === orden.key);
+  if (!m && orden.key !== ORDEN_ACTUALIZADO) return items;
+  const valor = (it: T): number | string | undefined => {
+    if (!m) return it.mondayUpdatedAt || undefined;
+    if (m.fechaCol) return /^\d{4}-\d{2}-\d{2}/.exec(it.cols[m.fechaCol]?.text ?? '')?.[0];
+    return (totales?.[it.id] as Record<string, number | undefined> | undefined)?.[m.key];
+  };
+  const signo = orden.dir === 'asc' ? 1 : -1;
+  return items.map((it, i) => ({ it, i, v: valor(it) })).sort((a, b) => {
+    if (a.v === undefined || b.v === undefined) return a.v === b.v ? a.i - b.i : a.v === undefined ? 1 : -1;
+    if (a.v === b.v) return a.i - b.i;
+    return (a.v < b.v ? -1 : 1) * signo;
+  }).map((x) => x.it);
+}
+
 /** Encabezado alineado con las celdas del renglón — sin él, seis números
- * pegados no se sabe qué son. Va sticky arriba del scroll de la lista. */
-export function TotalesHeader({ metricas, isMobile }: { metricas: Metrica[]; isMobile: boolean }) {
+ * pegados no se sabe qué son. Va sticky arriba del scroll de la lista. Con
+ * `onOrdenar`, cada título ordena la lista (2026-10-01: en Clarity la gente le
+ * daba clic a "Costo / Subtotal / Total / Util. %" esperando justo eso). */
+export function TotalesHeader({ metricas, isMobile, orden = null, onOrdenar }: {
+  metricas: Metrica[]; isMobile: boolean;
+  orden?: OrdenLista | null; onOrdenar?: (key: string) => void;
+}) {
   if (isMobile || metricas.length === 0) return null;
+  const flecha = (key: string) => (orden?.key === key ? (orden.dir === 'desc' ? ' ↓' : ' ↑') : '');
+  const celda = (key: string, label: string, titulo: string, width: number) => {
+    const activa = orden?.key === key;
+    const estilo: React.CSSProperties = {
+      width, textAlign: 'right', font: 'var(--text-caption)', letterSpacing: '.02em', whiteSpace: 'nowrap',
+      color: activa ? 'var(--ink)' : 'var(--ink-quiet)', fontWeight: activa ? 600 : 400,
+    };
+    if (!onOrdenar) return <div key={key} title={titulo} style={estilo}>{label}</div>;
+    return (
+      <button
+        key={key} type="button" className="lista-orden-btn"
+        title={`${titulo} — clic para ordenar`}
+        aria-sort={activa ? (orden!.dir === 'desc' ? 'descending' : 'ascending') : undefined}
+        onClick={() => onOrdenar(key)}
+        style={{ ...estilo, border: 'none', background: 'none', padding: 0, cursor: 'pointer', flex: 'none' }}
+      >
+        {label}{flecha(key)}
+      </button>
+    );
+  };
   return (
     <div
       style={{
@@ -149,22 +209,13 @@ export function TotalesHeader({ metricas, isMobile }: { metricas: Metrica[]; isM
       }}
     >
       <div style={{ display: 'flex', gap: GAP_METRICAS }}>
-        {metricas.map(m => (
-          <div
-            key={m.key}
-            title={m.titulo}
-            style={{
-              width: m.width, textAlign: 'right', font: 'var(--text-caption)',
-              color: 'var(--ink-quiet)', letterSpacing: '.02em',
-            }}
-          >
-            {m.label}
-          </div>
-        ))}
+        {metricas.map(m => celda(m.key, m.label, m.titulo, m.width))}
       </div>
       {/* Mismo hueco que la columna "actualizado hace X" del renglón, para que
           las etiquetas caigan exactamente sobre sus números. */}
-      <div style={{ width: 70, flex: 'none' }} />
+      {onOrdenar
+        ? celda(ORDEN_ACTUALIZADO, 'Movimiento', 'Último movimiento', 70)
+        : <div style={{ width: 70, flex: 'none' }} />}
     </div>
   );
 }

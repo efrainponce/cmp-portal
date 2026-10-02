@@ -3,6 +3,7 @@
 // per the design system's disabled-affordance convention.
 import type { BoardSlug } from '../../../lib/api';
 import { PaymentRequestButton } from '../../../components/board/PaymentRequestButton';
+import { tabRoot } from './tabLayout';
 
 interface Props {
   title: string;
@@ -15,7 +16,7 @@ interface Props {
 
 export function EmptyDocTab({ title, subtitle, uploadLabel, paymentRequest }: Props) {
   return (
-    <div style={{ padding: '24px 32px 40px', maxWidth: 920, width: '100%', boxSizing: 'border-box' }}>
+    <div style={{ ...tabRoot }}>
       <div style={{ font: 'var(--text-small-strong)', color: 'var(--ink)', marginBottom: 4 }}>{title}</div>
       <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)', marginBottom: 10 }}>{subtitle}</div>
       {paymentRequest && (

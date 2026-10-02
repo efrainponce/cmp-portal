@@ -245,8 +245,8 @@ function MobileQuoteRowInner({
   return (
     <div style={{ borderTop: '1px solid var(--border-subtle)', background: lineWarnings.length > 0 ? '#fdf1f2' : '#fff', padding: '14px' }}>
       {bannerText && (
-        <div style={{ font: '600 11px var(--font-ui)', color: '#ce3048', marginBottom: 10 }}>
-          ⚠ {bannerText}
+        <div style={{ font: '500 11px var(--font-ui)', color: '#ce3048', marginBottom: 10 }}>
+          {bannerText}
           {airtableUrl && (
             <>
               {' '}

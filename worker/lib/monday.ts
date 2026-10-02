@@ -108,13 +108,31 @@ async function trackApiCall(env: Env): Promise<void> {
   } catch { /* nunca bloquear la call real por esto */ }
 }
 
+/** ¿Todos los `errors[]` son de un CAMPO que el token no puede leer (y no de
+ * la consulta entera)? GraphQL devuelve entonces `data` completo con `null`
+ * solo en ese campo. Caso real (2026-10-01, OPP-1139 y dos Proyectos): el
+ * "me gusta" de una respuesta lo dio alguien cuyo perfil el token de servicio
+ * ya no puede ver → `UserUnauthorizedException` en
+ * `items.updates.5.replies.0.likes.0.creator`, y por ese nombre de más se caía
+ * TODO el feed: "No se pudieron cargar las actualizaciones" cada vez que
+ * alguien abría esa oportunidad, sin arreglo posible desde el portal. Puro. */
+export function erroresDeCampo(errors: unknown, data: unknown): boolean {
+  if (!Array.isArray(errors) || errors.length === 0 || data == null) return false;
+  return errors.every((e) => {
+    const err = e as { path?: unknown; extensions?: { code?: string } };
+    return Array.isArray(err.path) && err.path.length > 0 && err.extensions?.code === 'UserUnauthorizedException';
+  });
+}
+
 /** POST a GraphQL query to Monday. Retries on 429/5xx (transport or field-level
- * rate limit) with backoff; throws on any other errors[]. */
+ * rate limit) with backoff; throws on any other errors[]. Con `parcial`, un
+ * campo no autorizado no tumba la consulta: regresa `data` con ese campo en
+ * null (ver `erroresDeCampo`) — solo para LECTURAS cuyo tipo ya admite null. */
 export async function gql(
   env: Env,
   query: string,
   variables?: Record<string, unknown>,
-  opts?: { maxRetries?: number },
+  opts?: { maxRetries?: number; parcial?: boolean },
 ): Promise<any> {
   const maxRetries = opts?.maxRetries ?? 4;
   for (let attempt = 0; ; attempt++) {
@@ -145,6 +163,7 @@ export async function gql(
         await new Promise(r => setTimeout(r, wait));
         continue;
       }
+      if (opts?.parcial && erroresDeCampo(json.errors, json.data)) return json.data;
       throw new Error(`Monday GraphQL error: ${JSON.stringify(json.errors)}`);
     }
     return json.data;
@@ -352,7 +371,7 @@ const REPLY_FIELDS = `id text_body created_at creator{name} viewers{user{name}} 
  * (Monday keeps replies nested under their parent update, not as siblings). */
 export async function fetchUpdates(env: Env, itemId: number): Promise<MondayUpdate[]> {
   const query = `query($id:[ID!]){ items(ids:$id){ updates(limit:50){ ${UPDATE_FIELDS} replies{ ${REPLY_FIELDS} } } } }`;
-  const data = await gql(env, query, { id: [String(itemId)] });
+  const data = await gql(env, query, { id: [String(itemId)] }, { parcial: true });
   return data?.items?.[0]?.updates ?? [];
 }
 
@@ -364,7 +383,7 @@ export interface MondaySubitemUpdates { id: string; name: string; updates: Monda
  * línea: el proyecto más grande (150 líneas) cuesta ~15k de complejidad. */
 export async function fetchSubitemUpdates(env: Env, itemId: number): Promise<MondaySubitemUpdates[]> {
   const query = `query($id:[ID!]){ items(ids:$id){ subitems{ id name updates(limit:25){ ${UPDATE_FIELDS} replies{ ${REPLY_FIELDS} } } } } }`;
-  const data = await gql(env, query, { id: [String(itemId)] });
+  const data = await gql(env, query, { id: [String(itemId)] }, { parcial: true });
   return data?.items?.[0]?.subitems ?? [];
 }
 

@@ -89,9 +89,10 @@
         } else if (esProyecto) {
           pedir('/api/boards/proyectos/items');
         } else if (board === '' || board === 'home') {
-          // "/" aterriza en Inicio (src/App.tsx) para todos menos almacén,
-          // que paga un request barato de más (su respuesta va sin secciones).
-          pedir('/api/home');
+          // "/" aterriza en el primer board del menú (src/App.tsx): Oportunidades
+          // para Ventas y admin, Costeo para Compras — los dos leen ESTA lista.
+          // Almacén paga un request de más. ("/home" ya no existe: mismo trato.)
+          pedir('/api/boards/oportunidades/items?cols=' + COLS + '&totales=1');
         }
 
         window.__cmpPrecarga = P;

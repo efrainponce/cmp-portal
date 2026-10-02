@@ -9,6 +9,7 @@ import { Button } from '../../../components/core/Button';
 import { toast } from '../../../components/core/Toaster';
 import { catalogIndex, COLOR_COL, displayProducto, linkedProductoId, PRODUCTO_REL_COL } from './cotizacion/gridMeta';
 import { ProductPicker } from '../../../components/forms/ProductPicker';
+import { tabRoot, gridTarjetas } from './tabLayout';
 import { colorInventario, diaInventario, diasInventario, fechaInventario, inventarioAlDia, type InventarioVersionDTO } from '../../../../shared/inventarioCotizacion';
 
 const MARCA_COL = 'product_and_service_description';
@@ -198,11 +199,11 @@ export function InventarioCotizacionTab({ oppId, quoteLines, readOnly = false }:
   };
 
   return (
-    <div style={{ padding: '24px 32px 40px', width: '100%', boxSizing: 'border-box' }}>
+    <div style={tabRoot}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, marginBottom: 20 }}>
         <div>
           <div style={{ font: 'var(--text-body-strong)', color: 'var(--ink)', marginBottom: 4 }}>Inventario 5.11</div>
-          <div style={{ font: 'var(--text-label)', color: 'var(--ink-secondary)' }}>Los productos 5.11 de la cotización aparecen aquí automáticamente, uno por color. Pega (⌘V / Ctrl+V), arrastra o sube la captura del inventario en México y USA, más comentarios. Cada captura queda con su fecha: subir la de hoy no borra la anterior.</div>
+          <div title="Los productos 5.11 de la cotización aparecen aquí solos, uno por color. Cada captura queda con su fecha: subir la de hoy no borra la anterior." style={{ font: 'var(--text-label)', color: 'var(--ink-secondary)' }}>Pega (⌘V), arrastra o sube la captura de MEX y USA.</div>
         </div>
         <Button variant={loading || exporting || rows.length === 0 ? 'disabled' : 'secondary'} title={exporting ? 'Generando el PDF…' : !loading && rows.length === 0 ? 'No hay productos 5.11 para exportar' : undefined} onClick={() => void exportPdf()}>{exporting ? 'Generando…' : 'Exportar PDF'}</Button>
       </div>
@@ -258,7 +259,7 @@ export function InventarioCotizacionTab({ oppId, quoteLines, readOnly = false }:
       {error && <div style={{ color: 'var(--status-perdida)', font: 'var(--text-label)', marginBottom: 12 }}>{error}</div>}
       {loading ? <div style={{ color: 'var(--ink-tertiary)', font: 'var(--text-label)' }}>Cargando inventario…</div> : rows.length === 0 ? (
         <div style={{ padding: 24, border: '1px dashed var(--border)', borderRadius: 'var(--radius-xl)', color: 'var(--ink-tertiary)', font: 'var(--text-label)' }}>Esta cotización todavía no tiene productos 5.11. Puedes agregar uno del catálogo.</div>
-      ) : <div style={{ display: 'grid', gap: 10 }}>{rows.map((row) => (
+      ) : <div style={gridTarjetas(760, 10)}>{rows.map((row) => (
         <ProductCard key={`${pasado ?? 'vigente'}|${claveInv(row.productoId, row.color)}`} row={row} disabled={ro || !!saving[claveInv(row.productoId, row.color)]} subiendo={subiendo[claveInv(row.productoId, row.color)]} onImage={onImage} onComments={(comentarios) => void persist({ ...row, comentarios })} />
       ))}</div>}
     </div>
@@ -307,6 +308,10 @@ function imagenDe(data: DataTransfer | null): File | undefined {
 function PhotoBox({ title, url, fecha, disabled, uploading = false, onFile, onZoom }: { title: string; url?: string; fecha?: string; disabled: boolean; uploading?: boolean; onFile: (file: File) => void; onZoom: (z: { url: string; title: string }) => void }) {
   const isMobile = useIsMobile();
   const boxRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  // ¿Ya estaba armado ANTES de este clic? El foco del mousedown lo arma, y
+  // para cuando llega el click el estado ya dice "armado".
+  const armadoAlBajar = useRef(false);
   const [armed, setArmed] = useState(false);
   const [dragging, setDragging] = useState(false);
 
@@ -347,7 +352,7 @@ function PhotoBox({ title, url, fecha, disabled, uploading = false, onFile, onZo
     border: hot ? '2px dashed var(--accent)' : `1px ${url ? 'solid' : 'dashed'} var(--border)`, outline: 'none',
   };
   const hint = <span style={{ margin: 'auto', textAlign: 'center', color: 'var(--ink-tertiary)', font: 'var(--text-label)', padding: 8 }}>
-    {dragging ? 'Suelta la imagen aquí' : armed ? <>Pega la imagen con <b>⌘V</b> / <b>Ctrl+V</b><br />{fileLink('o elige un archivo')}</> : <>Clic aquí y pega la captura (⌘V)<br />o arrástrala · {fileLink('elegir archivo')}</>}
+    {dragging ? 'Suelta la imagen aquí' : armed ? <>Listo: pega con <b>⌘V</b> / <b>Ctrl+V</b><br />o clic otra vez para elegir archivo</> : <>Clic y pega la captura (⌘V)<br />o arrástrala · {fileLink('elegir archivo')}</>}
   </span>;
 
   return (
@@ -374,13 +379,20 @@ function PhotoBox({ title, url, fecha, disabled, uploading = false, onFile, onZo
           onFocus={() => { if (!disabled) setArmed(true); }}
           // Con foto, el clic es para verla en grande: no debe tomar el foco
           // (armaría el pegado y se comería el zoom). Se arma con "Cambiar imagen".
-          onMouseDown={(e) => { if (url && !armed) e.preventDefault(); }}
+          onMouseDown={(e) => { armadoAlBajar.current = armed; if (url && !armed) e.preventDefault(); }}
           onBlur={(e) => { if (!boxRef.current?.contains(e.relatedTarget as Node)) setArmed(false); }}
           onKeyDown={(e) => { if (e.key === 'Escape') boxRef.current?.blur(); }}
           {...dropProps}
           style={{ ...frame, cursor: url && !armed ? 'zoom-in' : disabled ? 'default' : 'pointer', padding: url ? 4 : 0 }}
-          onClick={() => { if (url && !armed) onZoom({ url, title }); }}
+          // Ya armado, un segundo clic abre el selector de archivo: Clarity
+          // (2026-10-01) mostró clics repetidos sobre "Pega la imagen con ⌘V"
+          // de quien esperaba que el clic abriera el archivo.
+          onClick={() => {
+            if (url && !armed) onZoom({ url, title });
+            else if (armadoAlBajar.current && !disabled) inputRef.current?.click();
+          }}
         >
+          <input ref={inputRef} aria-hidden tabIndex={-1} type="file" accept="image/*" disabled={disabled} onChange={pickFile} style={{ display: 'none' }} />
           {url && <img src={url} alt={title} style={{ display: 'block', width: '100%', height: '100%', objectFit: 'contain', opacity: hot ? 0.25 : 1 }} />}
           {!uploading && (!url || hot) && (url ? <div style={{ position: 'absolute', inset: 0, display: 'flex' }}>{hint}</div> : disabled ? <span style={{ margin: 'auto', color: 'var(--ink-tertiary)', font: 'var(--text-label)' }}>Sin imagen</span> : hint)}
           {uploading && subiendoOverlay}

@@ -8,7 +8,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { BoardKey } from '../app/Sidebar';
 
 const VALID_BOARDS = new Set<BoardKey>([
-  'home', 'anuncios',
+  'anuncios',
   'oportunidades', 'oportunidades_web', 'costeo', 'validacion', 'muestras', 'cot_lista', 'doctallas', 'ordenescompra', 'oc_lista', 'ejecucion', 'logistica',
   'productos', 'instituciones', 'contactos', 'proveedores', 'inventario', 'settings', 'zona_efrain',
   'analisis', 'zona_efrain_proy', 'estadocuenta',
@@ -20,6 +20,12 @@ interface Route {
   /** Tercer segmento: la pestaña del drawer. Sin validar aquí — cada drawer
    * conoce su propio set y cae a su defaultTab si no lo reconoce. */
   tab: string | null;
+}
+
+/** ¿La ruta nombra un board? "/" y rutas viejas ("/home", quitada 2026-10-01)
+ * no: ahí App aterriza por rol en vez de pintar el fallback de parsePath. */
+export function rutaSinBoard(pathname: string): boolean {
+  return !VALID_BOARDS.has(pathname.split('/')[1] as BoardKey);
 }
 
 export function parsePath(pathname: string): Route {

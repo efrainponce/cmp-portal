@@ -56,53 +56,64 @@ const PDF_LABEL: Record<PdfKind, string> = {
   firmada: 'Cotización — firmada',
 };
 
-/** Miniatura de un PDF de cotización — tarjeta de ícono clicable. "Ver" abre
- * la vista previa embebida (modal); "Descargar" fuerza la descarga del mismo
- * endpoint, sin depender del link crudo de Monday. */
+const chipBase = {
+  display: 'inline-flex', alignItems: 'center', gap: 7, height: 32, padding: '0 10px', boxSizing: 'border-box',
+  borderRadius: 'var(--radius-lg)', font: 'var(--text-label-strong)', whiteSpace: 'nowrap',
+} as const;
+
+/** Un documento de la cotización en UN renglón: ícono + nombre (clic = ver) y
+ * la flecha de descarga. Antes eran cuadros de 108×92 con "Ver · Descargar"
+ * debajo: ~130 px de alto en cada oportunidad, y los vacíos (punteados, "Aún no
+ * hay") se veían como botones — en Clarity eran el clic muerto más repetido
+ * (2026-10-01). Lo que todavía no existe ahora es texto gris, sin caja. */
+function DocChip({ label, color, onView, viewHref, downloadHref, title }: {
+  label: string; color: string; onView?: () => void; viewHref?: string; downloadHref?: string; title?: string;
+}) {
+  const nombre = (
+    <>
+      <PdfIcon color={color} size={18} />
+      <span>{label}</span>
+    </>
+  );
+  return (
+    <span style={{ ...chipBase, border: '1px solid var(--border)', background: '#fff', color: 'var(--ink)', padding: 0, overflow: 'hidden' }}>
+      {viewHref ? (
+        <a href={viewHref} target="_blank" rel="noreferrer" title={title ?? `Ver ${label}`} className="doc-chip-btn"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 7, height: '100%', padding: '0 10px', color: 'inherit', textDecoration: 'none' }}>
+          {nombre}
+        </a>
+      ) : (
+        <button type="button" onClick={onView} title={title ?? `Ver ${label}`} className="doc-chip-btn"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 7, height: '100%', padding: '0 10px', border: 'none', background: 'transparent', font: 'inherit', color: 'inherit', cursor: 'pointer' }}>
+          {nombre}
+        </button>
+      )}
+      {downloadHref && (
+        <a href={downloadHref} download title={`Descargar ${label}`} aria-label={`Descargar ${label}`} className="doc-chip-btn"
+          style={{ display: 'inline-flex', alignItems: 'center', height: '100%', padding: '0 9px', borderLeft: '1px solid var(--border)', color: 'var(--accent)', textDecoration: 'none' }}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 4v11M7 11l5 5 5-5M5 20h14" />
+          </svg>
+        </a>
+      )}
+    </span>
+  );
+}
+
+/** Documento que todavía no existe: texto, no caja. `cuando` va de tooltip. */
+function DocPendiente({ label, cuando }: { label: string; cuando?: string }) {
+  return (
+    <span title={cuando} style={{ ...chipBase, padding: '0 4px', font: 'var(--text-label)', color: 'var(--ink-faint)', cursor: 'default' }}>
+      {label}: aún no
+    </span>
+  );
+}
+
 function PdfThumb({ oppId, kind, available, label, accentColor, onPreview }: {
   oppId: string; kind: PdfKind; available: boolean; label: string; accentColor: string; onPreview: () => void;
 }) {
-  const href = `/api/oportunidades/${oppId}/cotizacion-pdf/${kind}`;
-  return (
-    <div style={{ width: 108 }}>
-      <div style={{
-        font: '500 10px var(--font-ui)', color: accentColor, textTransform: 'uppercase',
-        letterSpacing: '.3px', marginBottom: 6,
-      }}>
-        {label}
-      </div>
-      {available ? (
-        <>
-          <div
-            onClick={onPreview}
-            style={{
-              cursor: 'pointer', width: 108, height: 92, border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)',
-              background: 'var(--bg-sunken)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}
-          >
-            <PdfIcon color={accentColor} />
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'center', gap: 6, marginTop: 4 }}>
-            <span onClick={onPreview} style={{ cursor: 'pointer', font: 'var(--text-caption)', color: 'var(--accent)' }}>Ver</span>
-            <span style={{ font: 'var(--text-caption)', color: 'var(--ink-faint)' }}>·</span>
-            <a href={href} download style={{ font: 'var(--text-caption)', color: 'var(--accent)', textDecoration: 'none' }}>Descargar</a>
-          </div>
-        </>
-      ) : (
-        <div
-          onClick={() => toast(`Todavía no hay PDF. ${PDF_CUANDO[kind]}.`, 'info')}
-          style={{
-            width: 108, height: 92, border: '1px dashed var(--ink-faint)', borderRadius: 'var(--radius-lg)',
-            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4,
-            textAlign: 'center', padding: 8, boxSizing: 'border-box',
-          }}
-        >
-          <span style={{ font: 'var(--text-caption-strong)', color: 'var(--ink-quiet)' }}>Aún no hay</span>
-          <span style={{ font: 'var(--text-caption)', color: 'var(--ink-faint)' }}>{PDF_CUANDO[kind]}</span>
-        </div>
-      )}
-    </div>
-  );
+  if (!available) return <DocPendiente label={label} cuando={PDF_CUANDO[kind]} />;
+  return <DocChip label={label} color={accentColor} onView={onPreview} downloadHref={`/api/oportunidades/${oppId}/cotizacion-pdf/${kind}`} />;
 }
 
 /** Vista previa de la Cotización armada nativa por el portal (2026-08-13, mismo
@@ -114,38 +125,13 @@ function PdfThumb({ oppId, kind, available, label, accentColor, onPreview }: {
 function CotizacionPreviewThumb({ oppId, hasLineas }: { oppId: string; hasLineas: boolean }) {
   const [preview, setPreview] = useState(false);
   const url = `/api/oportunidades/${oppId}/cotizacion-preview/pdf`;
+  if (!hasLineas) return null;
   return (
-    <div style={{ width: 108 }}>
-      <div style={{
-        font: '500 10px var(--font-ui)', color: 'var(--accent)', textTransform: 'uppercase',
-        letterSpacing: '.3px', marginBottom: 6,
-      }}>
-        Vista previa
-      </div>
-      {hasLineas ? (
-        <>
-          <div
-            onClick={() => setPreview(true)}
-            title="Genera una vista previa de la cotización con el motor propio del portal — no es la cotización oficial (esa sigue saliendo de Eledo)"
-            style={{
-              cursor: 'pointer', width: 108, height: 92, border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)',
-              background: 'var(--bg-sunken)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}
-          >
-            <PdfIcon color="var(--accent)" />
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'center', marginTop: 4 }}>
-            <span onClick={() => setPreview(true)} style={{ cursor: 'pointer', font: 'var(--text-caption)', color: 'var(--accent)' }}>Ver</span>
-          </div>
-        </>
-      ) : (
-        <div style={{
-          width: 108, height: 92, border: '1px dashed var(--ink-faint)', borderRadius: 'var(--radius-lg)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: 8,
-        }}>
-          <span style={{ font: 'var(--text-caption)', color: 'var(--ink-faint)' }}>Sin líneas</span>
-        </div>
-      )}
+    <>
+      <DocChip
+        label="Vista previa" color="var(--accent)" onView={() => setPreview(true)}
+        title="Vista previa de la cotización armada por el portal — no es la oficial (esa sigue saliendo de Eledo)"
+      />
       {preview && (
         <Modal title="Cotización — vista previa (portal)" onClose={() => setPreview(false)} width={760}>
           <Suspense fallback={<div style={{ font: 'var(--text-label)', color: 'var(--ink-quiet)' }}>Generando…</div>}>
@@ -156,19 +142,19 @@ function CotizacionPreviewThumb({ oppId, hasLineas }: { oppId: string; hasLineas
           </a>
         </Modal>
       )}
-    </div>
+    </>
   );
 }
 
 /** Hoja de costeo en horizontal (todas las columnas de Costeo) que sale sola al
- * dar "Mandar a Validación de costeo" — ESTE cuadro solo lo monta compras/admin
+ * dar "Mandar a Validación de costeo" — ESTE chip solo lo monta compras/admin
  * (ver el filtro en CotizacionPdfRow más abajo), y el server la vuelve a filtrar
  * igual por rol (`DOC_TEMPLATES['validacion-costeo'].view`, worker/lib/documents.ts):
  * un vendedor nunca ve costos ni utilidad (Efraín, 2026-08-14).
- * `undefined` = todavía buscando el documento (cuadro vacío: evita parpadear
- * "Sin PDF" antes de saber si existe); la búsqueda es solo metadata (GET /api/documents), nunca
- * los bytes del PDF — esos se piden hasta dar clic en "Ver", mismo criterio que
- * el resto de la fila. */
+ * La búsqueda es solo metadata (GET /api/documents), nunca los bytes del PDF —
+ * esos se piden hasta dar clic, mismo criterio que el resto de la fila. Mientras
+ * busca (o si no existe) no pinta nada: va al final de la fila, así que no
+ * empuja a nadie al aparecer. */
 function ValidacionCosteoThumb({ oppId }: { oppId: string }) {
   const [doc, setDoc] = useState<DocumentDTO | null | undefined>(undefined);
   const [preview, setPreview] = useState(false);
@@ -181,46 +167,15 @@ function ValidacionCosteoThumb({ oppId }: { oppId: string }) {
     return () => { alive = false; };
   }, [oppId]);
 
-  const url = doc ? documentPdfUrl(doc, false) : '';
-
+  if (!doc) return null;
+  const url = documentPdfUrl(doc, false);
   return (
-    <div style={{ width: 108 }}>
-      <div style={{
-        font: '500 10px var(--font-ui)', color: 'var(--status-esperando)', textTransform: 'uppercase',
-        letterSpacing: '.3px', marginBottom: 6,
-      }}>
-        Validación
-      </div>
-      {doc ? (
-        <>
-          <div
-            onClick={() => setPreview(true)}
-            title="Hoja de costeo completa (todas las columnas), generada sola al mandar a validación"
-            style={{
-              cursor: 'pointer', width: 108, height: 92, border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)',
-              background: 'var(--bg-sunken)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}
-          >
-            <PdfIcon color="var(--status-esperando)" />
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'center', gap: 6, marginTop: 4 }}>
-            <span onClick={() => setPreview(true)} style={{ cursor: 'pointer', font: 'var(--text-caption)', color: 'var(--accent)' }}>Ver</span>
-            <span style={{ font: 'var(--text-caption)', color: 'var(--ink-faint)' }}>·</span>
-            <a href={url} download style={{ font: 'var(--text-caption)', color: 'var(--accent)', textDecoration: 'none' }}>Descargar</a>
-          </div>
-        </>
-      ) : (
-        <div style={{
-          width: 108, height: 92, border: '1px dashed var(--ink-faint)', borderRadius: 'var(--radius-lg)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: 8,
-        }}>
-          {/* Buscando todavía: el cuadro ya ocupa su lugar (sin él, al llegar la
-              respuesta empujaba a Inventario un lugar a la derecha — medido,
-              perf-cls.mjs), pero sin decir "Sin PDF" antes de saberlo. */}
-          {doc === null && <span style={{ font: 'var(--text-caption)', color: 'var(--ink-faint)' }}>Sin PDF</span>}
-        </div>
-      )}
-      {preview && doc && (
+    <>
+      <DocChip
+        label="Validación" color="var(--status-esperando)" onView={() => setPreview(true)} downloadHref={url}
+        title="Hoja de costeo completa (todas las columnas), generada sola al mandar a validación"
+      />
+      {preview && (
         <Modal title="Costeo — Validación" onClose={() => setPreview(false)} width={760}>
           <Suspense fallback={<div style={{ font: 'var(--text-label)', color: 'var(--ink-quiet)' }}>Cargando…</div>}>
             <PdfCanvasPreview url={url} maxWidth={712} />
@@ -230,14 +185,14 @@ function ValidacionCosteoThumb({ oppId }: { oppId: string }) {
           </a>
         </Modal>
       )}
-    </div>
+    </>
   );
 }
 
-/** "Inventario Actual (Imagen)" — mismo cuadro que los PdfThumb de al lado,
- * pero es un upload real (Compras/admin, `w: WAC` en shared/visibility.ts):
- * el cuadro vacío ES el dropzone; con archivo ya subido, se ve como link
- * directo (no siempre es PDF, así que sin el preview de pdf.js). */
+/** "Inventario Actual (Imagen)" — upload real (Compras/admin, `w: WAC` en
+ * shared/visibility.ts): sin archivo, el chip ES el botón de subir; con archivo
+ * ya subido, se ve como link directo (no siempre es PDF, así que sin el preview
+ * de pdf.js) y al lado queda "Reemplazar". */
 function InventarioThumb({ oppId, item, onUploaded }: { oppId: string; item: ItemDetailDTO; onUploaded?: () => void }) {
   const me = useMe();
   const [uploading, setUploading] = useState(false);
@@ -254,62 +209,34 @@ function InventarioThumb({ oppId, item, onUploaded }: { oppId: string; item: Ite
     setError(null);
     const res = await uploadOportunidadInventario(oppId, file);
     setUploading(false);
-    if (!res.ok) { setError(res.error ?? 'No se pudo subir.'); return; }
+    if (!res.ok) { setError(res.error ?? 'No se pudo subir.'); toast(res.error ?? 'No se pudo subir el inventario.', 'error'); return; }
+    toast('Inventario subido');
     onUploaded?.();
   };
 
-  return (
-    <div style={{ width: 108 }}>
-      <div style={{ font: '500 10px var(--font-ui)', color: 'var(--status-en-coste)', textTransform: 'uppercase', letterSpacing: '.3px', marginBottom: 6 }}>
-        Inventario
-      </div>
-      {latest ? (
-        <>
-          <a
-            href={latest.url}
-            target="_blank"
-            rel="noreferrer"
-            style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'center', width: 108, height: 92,
-              border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', background: 'var(--bg-sunken)',
-            }}
-          >
-            <PdfIcon color="var(--status-en-coste)" />
-          </a>
-          <div style={{ display: 'flex', justifyContent: 'center', gap: 6, marginTop: 4 }}>
-            <a href={latest.url} target="_blank" rel="noreferrer" style={{ font: 'var(--text-caption)', color: 'var(--accent)', textDecoration: 'none' }}>Ver</a>
-            {canUpload && (
-              <>
-                <span style={{ font: 'var(--text-caption)', color: 'var(--ink-faint)' }}>·</span>
-                <label style={{ font: 'var(--text-caption)', color: 'var(--accent)', cursor: uploading ? 'default' : 'pointer' }}>
-                  {uploading ? 'Subiendo…' : 'Reemplazar'}
-                  <input type="file" onChange={handleFile} style={{ display: 'none' }} disabled={uploading} />
-                </label>
-              </>
-            )}
-          </div>
-        </>
-      ) : canUpload ? (
-        <label style={{
-          cursor: uploading ? 'default' : 'pointer', width: 108, height: 92, display: 'flex', alignItems: 'center',
-          justifyContent: 'center', textAlign: 'center', padding: 8,
-          border: `1px dashed ${error ? 'var(--status-perdida)' : 'var(--ink-faint)'}`, borderRadius: 'var(--radius-lg)',
-        }}>
-          <span style={{ font: 'var(--text-caption)', color: error ? 'var(--status-perdida)' : 'var(--accent)' }}>
-            {uploading ? 'Subiendo…' : error ? `Error — reintentar` : '+ Subir inventario'}
-          </span>
-          <input type="file" onChange={handleFile} style={{ display: 'none' }} disabled={uploading} />
-        </label>
-      ) : (
-        <div style={{
-          width: 108, height: 92, border: '1px dashed var(--ink-faint)', borderRadius: 'var(--radius-lg)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: 8,
-        }}>
-          <span style={{ font: 'var(--text-caption)', color: 'var(--ink-faint)' }}>Sin archivo</span>
-        </div>
-      )}
-    </div>
+  const subir = (texto: string) => (
+    <label
+      title={error ?? undefined}
+      style={{
+        ...chipBase, cursor: uploading ? 'default' : 'pointer',
+        border: `1px dashed ${error ? 'var(--status-perdida)' : 'var(--accent)'}`,
+        color: error ? 'var(--status-perdida)' : 'var(--accent)',
+      }}
+    >
+      {uploading ? 'Subiendo…' : error ? 'No se subió — reintentar' : texto}
+      <input type="file" onChange={handleFile} style={{ display: 'none' }} disabled={uploading} />
+    </label>
   );
+
+  if (latest) {
+    return (
+      <>
+        <DocChip label="Inventario" color="var(--status-en-coste)" viewHref={latest.url} />
+        {canUpload && subir('Reemplazar inventario')}
+      </>
+    );
+  }
+  return canUpload ? subir('+ Subir inventario') : null;
 }
 
 /** Solicitud de costeo, y cotización sin firmar / firmada por el vendedor, lado a lado
@@ -353,11 +280,10 @@ export function CotizacionPdfRow({ oppId, item, hasSolicitud, hasSinFirmar, hasF
   if (!oppId || (!hasSolicitud && !hasSinFirmar && !hasFirmada && !hasLineas && !showInventario && !showValidacionCosteo)) return null;
   return (
     <>
-      {/* flexWrap: los cuadros son de ancho fijo (108px) y ya son 5-6 en fila —
-          sin wrap se desbordan del contenedor en mobile (390px) en vez de
-          bajar a una segunda línea, mismo criterio que el resto del board
-          (Efraín, 2026-08-14: "en mobil la barra de archivos esta un poco rota"). */}
-      <div style={{ display: 'flex', gap: 16, marginBottom: 16, flexWrap: 'wrap' }}>
+      {/* flexWrap: en mobile (390px) los chips bajan a una segunda línea en vez
+          de desbordarse (Efraín, 2026-08-14: "en mobil la barra de archivos
+          esta un poco rota"). */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
         <PdfThumb oppId={oppId} kind="solicitud_costeo" available={hasSolicitud} label="Costeo" accentColor="var(--status-en-coste)" onPreview={() => setPreview('solicitud_costeo')} />
         <PdfThumb oppId={oppId} kind="sin_firmar" available={hasSinFirmar} label="Sin firmar" accentColor="var(--status-esperando)" onPreview={() => setPreview('sin_firmar')} />
         <PdfThumb oppId={oppId} kind="firmada" available={hasFirmada} label="Firmada" accentColor="var(--status-ganada)" onPreview={() => setPreview('firmada')} />

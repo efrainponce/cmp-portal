@@ -16,6 +16,7 @@ import { enTandas, MAX_TALLAS_POR_REQUEST } from '../../../../shared/dto';
 import { Button } from '../../../components/core/Button';
 import { numberCellKeyDown } from '../../../components/forms/NumberCellInput';
 import { parsePegadoTallas } from '../../../lib/pegadoTallas';
+import { gridTarjetas } from '../tabs/tabLayout';
 
 // Oportunidades subitems (oportunidades_sub, 18395657607) — líneas de la
 // cotización ganada, mismos ids que worker/lib/quoteVersions.ts.
@@ -227,11 +228,14 @@ export function TallaBoxesCapture({ proyectoId, products, onSaved, titulo, hint 
       <div style={{ font: 'var(--text-small-strong)', color: 'var(--ink)', marginBottom: 2 }}>
         {titulo ?? 'Desglose de tallas'}
       </div>
-      <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)', marginBottom: 10 }}>
-        {hint ?? 'Cuántas piezas de cada talla por producto — se guardan directo como líneas del proyecto.'}
-        {' '}Puedes pegar desde Excel: una fila de cantidades, o tallas y cantidades.
+      <div
+        title={`${hint ?? 'Cuántas piezas de cada talla por producto — se guardan directo como líneas del proyecto.'} Desde Excel se pega una fila de cantidades, o tallas y cantidades.`}
+        style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)', marginBottom: 10, width: 'fit-content', cursor: 'help' }}
+      >
+        Puedes pegar desde Excel.
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {/* 2026-10-01: ancho completo — varias tarjetas por renglón. */}
+      <div style={gridTarjetas(480)}>
         {groups.map(g => (
           <ProductoTallaCard
             key={g.subitemId}

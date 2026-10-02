@@ -8,7 +8,7 @@ import { useNotifications } from '../../lib/notificationsApi';
 import { NotificationCenter } from './NotificationCenter';
 
 interface NotificationBellProps {
-  onNavigate: (boardKey: string, itemId: string | null) => void;
+  onNavigate: (boardKey: string, itemId: string | null, tab?: string | null) => void;
   collapsed?: boolean;
 }
 
@@ -21,7 +21,9 @@ function IconBell() {
   );
 }
 
-const PANEL_WIDTH = 360;
+// 440: con los avisos agrupados por oportunidad cada renglón lleva el nombre
+// completo del OPP + 2-3 líneas; a 360 casi todo salía cortado.
+const PANEL_WIDTH = 440;
 
 export function NotificationBell({ onNavigate }: NotificationBellProps) {
   const isMobile = useIsMobile();
@@ -31,7 +33,7 @@ export function NotificationBell({ onNavigate }: NotificationBellProps) {
   const [rect, setRect] = useState<{ top: number; left: number; maxHeight: number } | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
-  const { notifications, unread, markRead, markAllRead } = useNotifications();
+  const { notifications, unread, markRead, markItemRead, markAllRead } = useNotifications();
 
   useEffect(() => {
     if (!open || isMobile) return;
@@ -75,8 +77,8 @@ export function NotificationBell({ onNavigate }: NotificationBellProps) {
   const totalUnread = unread.importante + unread.actualizacion;
   const badgeCount = totalUnread > 0 ? (totalUnread > 9 ? '9+' : String(totalUnread)) : null;
 
-  const handleNavigate = (boardKey: string, itemId: string | null) => {
-    onNavigate(boardKey, itemId);
+  const handleNavigate = (boardKey: string, itemId: string | null, tab?: string | null) => {
+    onNavigate(boardKey, itemId, tab);
     setOpen(false);
   };
 
@@ -89,7 +91,7 @@ export function NotificationBell({ onNavigate }: NotificationBellProps) {
         title="Notificaciones"
         style={{
           // Sin `background` en línea: le ganaría al :hover de .notif-bell-btn (src/index.css).
-          width: 32, height: 32, border: 'none', color: 'var(--ink-secondary)',
+          width: 36, height: 36, border: 'none', color: 'var(--ink-secondary)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', position: 'relative',
           flex: 'none', padding: 0, borderRadius: 'var(--radius-md)',
         }}
@@ -99,7 +101,7 @@ export function NotificationBell({ onNavigate }: NotificationBellProps) {
         {badgeCount && (
           // El anillo del color del fondo despega el globo del trazo de la campana.
           <span style={{
-            position: 'absolute', top: -2, right: -3, minWidth: 18, height: 18, padding: '0 4px',
+            position: 'absolute', top: 1, right: 0, minWidth: 18, height: 18, padding: '0 4px',
             borderRadius: 'var(--radius-pill)', background: 'var(--status-perdida)', color: '#fff',
             border: '2px solid var(--surface-sidebar)',
             font: '700 9.5px var(--font-ui)', display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -116,7 +118,7 @@ export function NotificationBell({ onNavigate }: NotificationBellProps) {
           // empujaba el panel fuera del borde izquierdo. Abre hacia la derecha,
           // hacia el área de contenido.
           position: 'fixed', top: rect.top, left: rect.left, width: PANEL_WIDTH,
-          maxHeight: Math.min(rect.maxHeight, window.innerHeight * 0.7),
+          maxHeight: Math.min(rect.maxHeight, window.innerHeight * 0.85),
           background: 'var(--bg-raised)', border: '1px solid var(--border)', borderRadius: 'var(--radius-2xl)',
           boxShadow: 'var(--shadow-modal)', display: 'flex', flexDirection: 'column', overflow: 'hidden', zIndex: 1000,
         }}>
@@ -126,6 +128,7 @@ export function NotificationBell({ onNavigate }: NotificationBellProps) {
             onNavigate={handleNavigate}
             onClose={() => setOpen(false)}
             markRead={markRead}
+            markItemRead={markItemRead}
             markAllRead={markAllRead}
           />
         </div>,
@@ -143,6 +146,7 @@ export function NotificationBell({ onNavigate }: NotificationBellProps) {
             onNavigate={handleNavigate}
             onClose={() => setOpen(false)}
             markRead={markRead}
+            markItemRead={markItemRead}
             markAllRead={markAllRead}
             mobileHeader
           />

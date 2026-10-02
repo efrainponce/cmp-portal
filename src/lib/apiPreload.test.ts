@@ -67,11 +67,9 @@ describe('precarga de index.html', () => {
     expect(html).toContain("pedir('/api/boards')");
   });
 
-  it('en "/" e Inicio precarga los pendientes, con la URL que pide useHome', () => {
-    // useHome llama apiFetch('/home') → '/api/home', sin query.
-    expect(html).toContain("pedir('/api/home')");
-    const homeApi = readFileSync(join(RAIZ, 'src', 'lib', 'homeApi.ts'), 'utf8');
-    expect(homeApi).toContain("apiFetch('/home', { headers })");
+  it('en "/" precarga la lista del aterrizaje, no Inicio (quitada 2026-10-01)', () => {
+    expect(html).not.toContain("pedir('/api/home')");
+    expect(html.match(/pedir\('\/api\/boards\/oportunidades\/items\?cols=' \+ COLS \+ '&totales=1'\)/g)?.length).toBe(2);
   });
 
   it('no precarga nada si hay suplantación activa', () => {

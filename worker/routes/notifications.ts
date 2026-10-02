@@ -24,6 +24,7 @@ interface NotificationRow {
   dedupe_key: string;
   read_at: string | null;
   created_at: string;
+  item_name?: string | null;    // del JOIN con items (nombre de la oportunidad/proyecto)
 }
 
 function toDTO(row: NotificationRow): NotificationDTO {
@@ -35,6 +36,7 @@ function toDTO(row: NotificationRow): NotificationDTO {
     body: row.body ?? null,
     boardKey: row.board_key ?? null,
     itemId: row.item_id != null ? String(row.item_id) : null,
+    itemName: row.item_name ?? null,
     link: row.link ?? null,
     actor: row.actor ?? null,
     read: row.read_at != null,
@@ -48,9 +50,16 @@ export function notificationRoutes(app: Hono<{ Bindings: Env }>) {
     const filter = c.req.query('filter');
     const validFilter = filter === 'importante' || filter === 'actualizacion' ? filter : undefined;
 
+    // 120 y con el nombre del item: la campana las AGRUPA por oportunidad
+    // (2026-10-01 — en 7 días salieron 659 avisos sobre 298 oportunidades, y
+    // solo se leyó el 7%: una persona tenía 31 "Nuevo comentario" del mismo
+    // OPP, uno debajo del otro). Con 50 sueltas no alcanzaba ni para un día.
+    const base = `SELECT n.*, i.name AS item_name FROM notifications n
+                    LEFT JOIN items i ON i.board_id = n.board_id AND i.item_id = n.item_id
+                   WHERE n.recipient_email = ?`;
     const query = validFilter
-      ? `SELECT * FROM notifications WHERE recipient_email = ? AND severity = ? ORDER BY id DESC LIMIT 50`
-      : `SELECT * FROM notifications WHERE recipient_email = ? ORDER BY id DESC LIMIT 50`;
+      ? `${base} AND n.severity = ? ORDER BY n.id DESC LIMIT 120`
+      : `${base} ORDER BY n.id DESC LIMIT 120`;
     const binds = validFilter ? [viewer.email, validFilter] : [viewer.email];
     const { results } = await c.env.DB.prepare(query).bind(...binds).all<NotificationRow>();
     const rows = results ?? [];
@@ -81,6 +90,21 @@ export function notificationRoutes(app: Hono<{ Bindings: Env }>) {
     await c.env.DB.prepare(
       `UPDATE notifications SET read_at = ? WHERE id = ? AND recipient_email = ? AND read_at IS NULL`,
     ).bind(new Date().toISOString(), id, viewer.email).run();
+    return c.json({ ok: true });
+  });
+
+  // Marcar como leído TODO lo de un item (oportunidad/proyecto) de una bandeja:
+  // es lo que hace el clic sobre un grupo de la campana. `itemId` va en el body.
+  app.post('/api/notifications/read-item', async c => {
+    const viewer = c.get('viewer');
+    const body = await c.req.json<{ itemId?: unknown; severity?: unknown }>().catch(() => null);
+    const itemId = Number(body?.itemId);
+    if (!body || !Number.isSafeInteger(itemId) || itemId <= 0) return c.json({ error: 'itemId inválido' }, 400);
+    const severity = body.severity === 'importante' || body.severity === 'actualizacion' ? body.severity : undefined;
+    const sql = `UPDATE notifications SET read_at = ? WHERE recipient_email = ? AND item_id = ? AND read_at IS NULL`
+      + (severity ? ' AND severity = ?' : '');
+    const binds = [new Date().toISOString(), viewer.email, itemId, ...(severity ? [severity] : [])];
+    await c.env.DB.prepare(sql).bind(...binds).run();
     return c.json({ ok: true });
   });
 

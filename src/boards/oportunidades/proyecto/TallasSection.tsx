@@ -16,6 +16,7 @@ import {
   S_PRODUCTO, S_SKU, S_COLOR, S_TALLA, S_CANTIDAD,
 } from './shared';
 import { numberCellKeyDown } from '../../../components/forms/NumberCellInput';
+import { gridTarjetas } from '../tabs/tabLayout';
 
 interface CantidadEdit { draft?: string; saving?: boolean; error?: string }
 
@@ -147,6 +148,11 @@ const boxInputStyle = {
   padding: '6px 4px', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border)', background: '#fff',
 } as const;
 
+const boxReadStyle = {
+  minWidth: 36, textAlign: 'center' as const, font: 'var(--text-label-strong)', color: 'var(--ink)',
+  padding: '2px 4px', border: 'none', background: 'transparent', cursor: 'default',
+} as const;
+
 type CardTone = 'empty' | 'unknown' | 'ok' | 'muestras' | 'mismatch';
 
 /** Sobran hasta MUESTRAS_MAX piezas sobre lo cotizado = muestras a propósito
@@ -271,7 +277,9 @@ function TallaBoxCard({ group, cotizado, sinCotizadoPorque, canEditCantidad, can
                   style={{ ...boxInputStyle, border: `1px solid ${st?.error ? 'var(--status-perdida)' : 'var(--border)'}` }}
                 />
               ) : (
-                <div style={boxInputStyle}>{cantidadOf(r)}</div>
+                // Solo lectura: se ve como texto, no como input (Clarity: clics
+                // repetidos sobre cajitas que parecían editables).
+                <div style={boxReadStyle}>{cantidadOf(r)}</div>
               )}
             </label>
           );
@@ -300,7 +308,7 @@ function TallasGrid({ lineas, cotizadoMaps, canEditCantidad, canReport, proyecto
       <div style={{ marginTop: 14, font: 'var(--text-label)', color: 'var(--ink-quiet)' }}>
         {native
           ? 'Aún no hay tallas capturadas — captúralas aquí abajo, producto por producto.'
-          : 'Aún no hay tallas importadas en Monday — captúralas aquí abajo, o hazlo en el archivo de tallas y pide a Compras importarlo.'}
+          : 'Aún no hay tallas.'}
       </div>
     );
   }
@@ -308,7 +316,8 @@ function TallasGrid({ lineas, cotizadoMaps, canEditCantidad, canReport, proyecto
   const grupos = groupByProductoColor(lineas);
 
   return (
-    <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
+    // 2026-10-01: ancho completo — 2-3 tarjetas por renglón en pantalla ancha.
+    <div style={{ marginTop: 14, ...gridTarjetas(480) }}>
       {grupos.map(g => (
         <TallaBoxCard
           key={`${g.producto}|${g.color}`}
@@ -385,17 +394,22 @@ export function ProyectoTallasSection({ state, oppId }: { state: ProyectoState; 
   const p = state.proyecto;
   return (
     <div style={{ marginTop: 20 }}>
-      <ProyectoLinks proyecto={p} />
       {/* Proyecto NATIVO (Zona Efrain): las dos acciones del Google Sheet
           ("Crear archivo de tallas" / "Importar tallas a Monday") no aplican —
           ese proyecto no existe en Monday y el desglose se captura por boxes
           desde la Oportunidad. Se esconden para no mandar a nadie a un camino
           muerto (Efraín, 2026-08-18, hallazgo de la prueba de UI). */}
-      <ProyectoActionBar
-        proyecto={p}
-        reload={state.reload}
-        actions={isNativeId(Number(p.id)) || me?.tallasSinSheet ? ['tallas-confirmar'] : ['tallas-regenerar', 'tallas-confirmar', 'tallas-traer']}
-      />
+      {/* Links del archivo/Drive en el mismo renglón que los botones. */}
+      <div style={{ display: 'flex', gap: '8px 20px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+        <div style={{ flex: '1 1 auto', minWidth: 0 }}>
+          <ProyectoActionBar
+            proyecto={p}
+            reload={state.reload}
+            actions={isNativeId(Number(p.id)) || me?.tallasSinSheet ? ['tallas-confirmar'] : ['tallas-regenerar', 'tallas-confirmar', 'tallas-traer']}
+          />
+        </div>
+        <ProyectoLinks proyecto={p} />
+      </div>
       <TallasGrid
         native={isNativeId(Number(p.id)) || !!me?.tallasSinSheet}
         lineas={p.children ?? []}

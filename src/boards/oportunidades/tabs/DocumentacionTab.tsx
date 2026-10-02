@@ -19,6 +19,7 @@ import { useMe } from '../../../lib/useMe';
 import { P_OC_CLIENTE, P_OC_CLIENTE_LECTURA, P_ACTA_ENTREGA, type ProyectoState } from '../ProyectoSection';
 import { DocumentsPanel } from '../../../components/documents/DocumentsPanel';
 import { DriveCarpeta } from '../../../components/documents/DriveCarpeta';
+import { tabRoot } from './tabLayout';
 
 export const SOLICITUDES_COL = 'file_mm0z6rze'; // Cotizaciones sin precio
 export const NO_FIRMADAS_COL = 'file_mm0fgrzq'; // Cotizaciones generadas
@@ -78,7 +79,7 @@ function toR2Files(files: DocFile[], oppId: string, categoria: string): DocFile[
 
 export function DocumentacionTab({ item, proyecto }: { item: ItemDetailDTO; proyecto?: ProyectoState }) {
   return (
-    <div style={{ padding: '24px 32px 40px', maxWidth: 920, width: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div style={{ ...tabRoot, display: 'flex', flexDirection: 'column', gap: 20 }}>
       <DocSection title="Solicitudes de costeo" signable files={toR2Files(parseFiles(item.cols[SOLICITUDES_COL]?.text), item.id, 'solicitud-costeo')} />
 
       <div>

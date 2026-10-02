@@ -13,6 +13,7 @@ import {
 import { Button } from '../../../components/core/Button';
 import { ConfirmButton } from '../../../components/core/ConfirmButton';
 import { FilePreviewModal } from '../../../components/core/FilePreviewModal';
+import { tabRoot } from './tabLayout';
 
 const fieldStyle: React.CSSProperties = {
   width: '100%', font: 'var(--text-body)', color: 'var(--ink)', border: '1px solid var(--border)',
@@ -75,7 +76,7 @@ export function NuevosProductosTab({ oppId, readOnly = false }: { oppId: string;
   };
 
   return (
-    <div style={{ padding: '24px 32px 40px', maxWidth: 920, width: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div style={{ ...tabRoot, display: 'flex', flexDirection: 'column', gap: 20 }}>
       {!readOnly && (
         <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-2xl)', background: 'var(--bg-raised)', padding: 20 }}>
           <div style={{ font: 'var(--text-body-strong)', color: 'var(--ink)', marginBottom: 16 }}>Proponer nuevo producto</div>

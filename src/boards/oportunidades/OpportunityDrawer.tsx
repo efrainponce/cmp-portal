@@ -47,6 +47,7 @@ import { EditInstitucionModal } from './EditInstitucionModal';
 import { EditPersonaModal } from './EditPersonaModal';
 import { DuplicarOportunidadModal } from './DuplicarOportunidadModal';
 import { usePerfDrawer } from '../../lib/perfReal';
+import { TAB_PAD } from './tabs/tabLayout';
 
 interface Props {
   id: string;
@@ -772,7 +773,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, openTab, onTabCha
 
   return (
     <div style={{ position: 'absolute', inset: 0, background: 'var(--bg)', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
-      <div style={{ padding: isMobile ? '14px 14px 0' : '20px 32px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div style={{ padding: isMobile ? '14px 14px 0' : '14px 32px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div onClick={onBack} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, cursor: 'pointer', color: 'var(--ink-secondary)', font: 'var(--text-label-strong)' }}>
           <IconBack /> {backLabel}
         </div>
@@ -785,7 +786,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, openTab, onTabCha
       <div style={{
         display: 'flex', alignItems: isMobile ? 'stretch' : 'center', justifyContent: 'space-between',
         flexDirection: isMobile ? 'column' : 'row', gap: isMobile ? 12 : 0,
-        padding: isMobile ? '12px 14px 16px' : '16px 32px 20px', borderBottom: '1px solid var(--border)',
+        padding: isMobile ? '12px 14px 16px' : '10px 32px 12px', borderBottom: '1px solid var(--border)',
       }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
@@ -813,6 +814,9 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, openTab, onTabCha
                 : <StatusBadge label={item.cols.deal_stage.text} color={color} tint={tint} />;
             })()}
           </div>
+          {/* Escritorio: Institución · Cliente · Vendedor · Comprador en UN renglón
+              (eran dos, más el de "sincronizado"). En cel siguen apilados. */}
+          <div style={isMobile ? undefined : { display: 'flex', alignItems: 'center', flexWrap: 'wrap', columnGap: 10 }}>
           <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginTop: 4, font: 'var(--text-label)', color: 'var(--ink-tertiary)' }}>
             <span>Institución: <span style={{ color: 'var(--ink-secondary)' }}>{item.cols[INSTITUCION_COL]?.text || '—'}</span></span>
             {canEditInstitucion && !ajena && <ChangeIconButton label="Cambiar institución" onClick={() => setShowEditInstitucion(true)} />}
@@ -822,28 +826,40 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, openTab, onTabCha
             </span>
             {canEditCliente && !ajena && <ChangeIconButton label="Cambiar cliente" onClick={() => setShowEditCliente(true)} />}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginTop: 4, font: 'var(--text-caption)', color: 'var(--ink-faint)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginTop: 4, font: isMobile ? 'var(--text-caption)' : 'var(--text-label)', color: isMobile ? 'var(--ink-faint)' : 'var(--ink-tertiary)' }}>
             {/* Mientras corre la relectura contra Monday el "sincronizado hace X"
                 mentiría — se muestra el estado real de la verificación. */}
             {/* En cel va en su propio renglón: "verificando…" y "sincronizado hace
                 X" miden distinto, y compartiendo renglón con Vendedor/Comprador
                 el cambio de uno a otro re-acomodaba el wrap y brincaba todo el
-                drawer ~22 px a los 4 s de abrirlo (medido, perf-cls.mjs). */}
-            <span style={isMobile ? { flexBasis: '100%' } : undefined}>
-              {syncing
-                ? <span style={{ color: 'var(--accent)' }}>⟳ verificando con Monday…</span>
-                : <SyncIndicator syncedAt={item.syncedAt} pending={item.pendingWrite ? 1 : 0} />}
-            </span>
+                drawer ~22 px a los 4 s de abrirlo (medido, perf-cls.mjs). En
+                escritorio va AL FINAL del renglón por lo mismo: lo que cambia de
+                ancho no empuja a nadie. */}
+            {isMobile && (
+              <span style={{ flexBasis: '100%' }}>
+                {syncing
+                  ? <span style={{ color: 'var(--accent)' }}>⟳ verificando con Monday…</span>
+                  : <SyncIndicator syncedAt={item.syncedAt} pending={item.pendingWrite ? 1 : 0} />}
+              </span>
+            )}
             {!isMobile && <span>·</span>}
             <span>
-              Vendedor: <span style={{ color: 'var(--ink-tertiary)' }}>{item.cols[VENDEDOR_COL]?.text || '—'}</span>
+              Vendedor: <span style={{ color: isMobile ? 'var(--ink-tertiary)' : 'var(--ink-secondary)' }}>{item.cols[VENDEDOR_COL]?.text || '—'}</span>
             </span>
             {canEditVendedor && !ajena && <ChangeIconButton label="Cambiar vendedor" onClick={() => setShowEditVendedor(true)} />}
             <span>·</span>
             <span>
-              Comprador: <span style={{ color: 'var(--ink-tertiary)' }}>{item.cols[COMPRAS_COL]?.text || '—'}</span>
+              Comprador: <span style={{ color: isMobile ? 'var(--ink-tertiary)' : 'var(--ink-secondary)' }}>{item.cols[COMPRAS_COL]?.text || '—'}</span>
             </span>
             {canEditComprador && !ajena && <ChangeIconButton label="Cambiar comprador" onClick={() => setShowEditComprador(true)} />}
+            {!isMobile && (
+              <span style={{ font: 'var(--text-caption)', color: 'var(--ink-faint)' }}>
+                {syncing
+                  ? <span style={{ color: 'var(--accent)' }}>⟳ verificando…</span>
+                  : <SyncIndicator syncedAt={item.syncedAt} pending={item.pendingWrite ? 1 : 0} />}
+              </span>
+            )}
+          </div>
           </div>
         </div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
@@ -1027,7 +1043,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, openTab, onTabCha
           : <ActualizacionesTab slug="oportunidades" itemId={id} />
       )}
       {activeTab === 'resumen' && (
-        <div style={{ padding: '24px 32px 40px', maxWidth: 1100, width: '100%', boxSizing: 'border-box' }}>
+        <div style={{ padding: TAB_PAD, width: '100%', boxSizing: 'border-box' }}>
           <ResumenSection state={proyecto} />
         </div>
       )}
@@ -1089,12 +1105,12 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, openTab, onTabCha
         </div>
       )}
       {activeTab === 'ejecucion' && (
-        <div style={{ padding: '24px 32px 40px', maxWidth: 920, width: '100%', boxSizing: 'border-box' }}>
+        <div style={{ padding: TAB_PAD, width: '100%', boxSizing: 'border-box' }}>
           <EjecucionSection state={proyecto} oppId={id} />
         </div>
       )}
       {activeTab === 'logistica' && (
-        <div style={{ padding: '24px 32px 40px', maxWidth: 920, width: '100%', boxSizing: 'border-box' }}>
+        <div style={{ padding: TAB_PAD, width: '100%', boxSizing: 'border-box' }}>
           <LogisticaSection state={proyecto} oppId={id} />
         </div>
       )}
