@@ -1,5 +1,27 @@
 # Log de commits
 
+## 2026-10-02 (Costeo: elegir producto ya jala el costo del catálogo)
+
+- **PAM** (WhatsApp): "de plano no me jala los costos del airtable". El sync
+  Airtable→Monday (Make 001 → cmp-tallas `sync_producto`) estaba bien
+  (1,433 de 1,439 productos idénticos). Lo que fallaba era el portal: el
+  snapshot de costeo solo se estampa al "Mandar a costeo", así que una línea
+  que Compras agrega o cambia de producto con la oportunidad YA en costeo
+  se quedaba vacía. Ese día PAM tecleó a mano en ~25 líneas costo 1050/915/
+  1650, desc. 18, gastos 5, TC 1, IVA 16 — idénticos al catálogo.
+  - `costeoDesdeCatalogo` (`worker/lib/costeoSnapshot.ts`, + test): el mismo
+    snapshot de `validar_costeo`, leído del renglón del catálogo (no de los
+    espejos de la línea, que traen el producto anterior hasta que Monday los
+    recalcula). Sin costo en el catálogo → nada (sigue el aviso "Falta costo
+    en Airtable"; nunca se rellena con el último costeo).
+  - `costeoDerivadoDeProducto` (`worker/lib/lineaAjustes.ts`): solo si el
+    PATCH de la grid CAMBIA el producto de una línea de Monday (re-elegir el
+    mismo no pisa un costo negociado; nativas ya se costean solas). Va como
+    `derived` en `PATCH /api/boards/oportunidades_sub/items/:id`, así que
+    nunca pisa una columna que el cliente mandó.
+  - Pendiente, sin tocar: la Moneda propia de la línea y el Techo los sigue
+    poniendo Compras; "Ajustar línea → Cambiar producto" tampoco estampa.
+
 ## 2026-10-02 (Condiciones de la cotización: el texto por defecto se pone solo)
 
 - **Efraín** (captura): "Quita lo de usar texto por defecto y solo ponlo,

@@ -6,8 +6,8 @@
 // venía vacío).
 import { describe, it, expect } from 'vitest';
 import {
-  debeEstamparSnapshot, snapshotColumnValues, computeSnapshot,
-  SNAP_COSTO, SNAP_SKU, SNAP_NOMBRE, SCOL_SKU, SCOL_PRODUCTO_NOMBRE, SCOL_COSTO,
+  debeEstamparSnapshot, snapshotColumnValues, computeSnapshot, costeoDesdeCatalogo,
+  SNAP_COSTO, SNAP_SKU, SNAP_NOMBRE, SNAP_DESC_PCT, SNAP_GAST_PCT, SNAP_IVA, SNAP_TC, SNAP_PRECIO, IVA_DEFAULT, SCOL_SKU, SCOL_PRODUCTO_NOMBRE, SCOL_COSTO,
 } from './costeoSnapshot';
 import type { MondayCol } from './monday';
 
@@ -60,5 +60,36 @@ describe('el snapshot nunca toca el Precio de Venta C/U', () => {
     const escritas = Object.keys(snapshotColumnValues(computeSnapshot([col(SCOL_COSTO, '100')])));
     expect(escritas).not.toContain('numeric_mkzneg3d');
     expect(escritas).toContain('numeric_mm2qzzbe');
+  });
+});
+
+// PAM, 2026-10-02: "no me jala los costos del airtable" — elegir producto con
+// la oportunidad ya en costeo dejaba el costo vacío aunque el catálogo lo trajera.
+describe('costeoDesdeCatalogo', () => {
+  const producto = (over: Record<string, string> = {}): MondayCol[] => Object.entries({
+    numeric_mkzpx7eb: '1050', numeric_mm0bgd2f: '0', numeric_mm0bnkch: '0.05', text_mkzp59zf: 'MXN',
+    text_mm0wvga2: 'Fast-Tac Cargo Pant', product_and_service_sku: '74439', ...over,
+  }).map(([id, text]) => col(id, text));
+
+  it('estampa costo, descuento, gastos, IVA, TC y precio sugerido del catálogo', () => {
+    expect(costeoDesdeCatalogo(producto())).toEqual({
+      [SNAP_COSTO]: '1050', [SNAP_DESC_PCT]: '0', [SNAP_GAST_PCT]: '5', [SNAP_IVA]: IVA_DEFAULT,
+      [SNAP_TC]: '1', [SNAP_PRECIO]: String(Math.round(1.05 * 1050 * 1.3 * 100) / 100),
+    });
+  });
+
+  it('USD → TC 18', () => {
+    expect(costeoDesdeCatalogo(producto({ text_mkzp59zf: 'USD' }))[SNAP_TC]).toBe('18');
+  });
+
+  it('no toca nombre ni SKU (los pone textosDerivadosDeProducto)', () => {
+    const out = costeoDesdeCatalogo(producto());
+    expect(out).not.toHaveProperty(SNAP_NOMBRE);
+    expect(out).not.toHaveProperty(SNAP_SKU);
+  });
+
+  it('sin costo en el catálogo no inventa nada (queda el aviso "Falta costo en Airtable")', () => {
+    expect(costeoDesdeCatalogo(producto({ numeric_mkzpx7eb: '' }))).toEqual({});
+    expect(costeoDesdeCatalogo(producto({ numeric_mkzpx7eb: '0' }))).toEqual({});
   });
 });

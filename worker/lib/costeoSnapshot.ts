@@ -139,3 +139,38 @@ export function snapshotEmptyCols(): RawColumn[] {
   return [SNAP_COSTO, SNAP_DESC_PCT, SNAP_GAST_PCT, SNAP_IVA, SNAP_TC, SNAP_PRECIO]
     .map(id => ({ id, type: tipoDe(id), text: '', value: null }));
 }
+
+// Columnas del board Productos de las que salen los espejos SCOL_* de la línea
+// (mismo mapeo que worker/lib/nativeMirrors.ts LINEA_DESDE_PRODUCTO).
+const SCOL_DESDE_PRODUCTO: [string, string][] = [
+  [SCOL_COSTO, 'numeric_mkzpx7eb'],           // Costo Distribuidor
+  [SCOL_DESCUENTO, 'numeric_mm0bgd2f'],       // Descuento Distribuidor
+  [SCOL_GASTOS, 'numeric_mm0bnkch'],          // Gastos de envío e importación
+  [SCOL_MONEDA, 'text_mkzp59zf'],             // Moneda
+  [SCOL_PRODUCTO_NOMBRE, 'text_mm0wvga2'],    // Nombre del producto
+  [SCOL_SKU, 'product_and_service_sku'],      // SKU
+];
+
+/** El costeo que una línea de Monday toma del catálogo al ELEGIR producto en
+ * el portal (2026-10-02). PAM, en costeo: "no me jala los costos del
+ * airtable" — y así era: el snapshot solo se estampa al "Mandar a costeo", así
+ * que una línea que Compras agrega o cambia de producto con la oportunidad ya
+ * en costeo se quedaba con el costo vacío aunque el catálogo lo tuviera (ese
+ * día tecleó a mano 1050, 915, 1650… idénticos a los de Airtable). Se lee
+ * directo del renglón del catálogo, no de los espejos de la línea: esos
+ * todavía traen el producto anterior hasta que Monday los recalcula.
+ *
+ * Solo columnas numéricas (nombre/SKU los pone textosDerivadosDeProducto).
+ * Sin costo en el catálogo → {}: no se inventa nada, y queda el aviso "Falta
+ * costo en Airtable" (nunca se rellena con el último costeo). */
+export function costeoDesdeCatalogo(productoCols: MondayCol[]): Record<string, string> {
+  const cols = SCOL_DESDE_PRODUCTO.map(([scol, prod]): MondayCol => ({
+    id: scol, type: 'text', text: productoCols.find(c => c.id === prod)?.text ?? '', value: null,
+  }));
+  const snap = computeSnapshot(cols);
+  if (!(snap.costo > 0)) return {};
+  const numericas = snapshotColumnValues(snap);
+  delete numericas[SNAP_NOMBRE];
+  delete numericas[SNAP_SKU];
+  return numericas;
+}
