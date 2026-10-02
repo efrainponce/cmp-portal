@@ -220,8 +220,13 @@ export function CotizacionTab({
   // (COLS_EN_BLOQUE — costos, %, moneda, etapa costeo). Cada línea sale por el
   // mismo PATCH de siempre, de a 4, así que el server revisa permisos y scope
   // igual que si se hubieran tecleado una por una.
-  const enBloque = variant === 'costeo' && readOnly && !precioOnly && !zonaPrivada && !soloLectura
-    && editable && ajusteLineEdits && !isMobile && products.length > 1;
+  // Desde 2026-10-02 también donde la línea entera se edita (Zona Efrain y
+  // Costeo en Nueva oportunidad): Efraín no veía las casillas ahí. Solo los
+  // costos de COLS_EN_BLOQUE se propagan, así que producto/color/cantidad
+  // siguen yendo de a una línea.
+  const enBloque = variant === 'costeo' && !precioOnly && !soloLectura && editable
+    && (me?.role === 'compras' || me?.role === 'admin') && item?.ownedByViewer !== false
+    && !isMobile && products.length > 1;
   const [seleccion, setSeleccion] = useState<ReadonlySet<string>>(() => new Set());
   const marcadas = enBloque ? products.filter((p) => seleccion.has(p.id)) : [];
   const onToggleSeleccion = useCallback((id: string) => setSeleccion((prev) => {

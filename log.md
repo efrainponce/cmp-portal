@@ -1,5 +1,19 @@
 # Log de commits
 
+## 2026-10-02 (Costeo: casillas de edición en bloque también donde la línea se edita entera)
+
+- **Efraín** (captura): "¿quitaste los cuadros para seleccionar varios
+  elementos? Es súper importante dejarlos". No se quitaron: desde que existen
+  (2026-09-29) solo salían si la grid estaba en solo lectura (board Costeo
+  fuera de Nueva oportunidad), así que en Zona Efrain y en Costeo con la
+  oportunidad en etapa 4 —donde producto/cantidad se editan inline— nunca
+  aparecían.
+  - `CotizacionTab.tsx` `enBloque`: ya no pide `readOnly` ni excluye la zona
+    privada; basta grid de costeo (no Validación, no solo lectura), compras o
+    admin en oportunidad propia, escritorio y 2+ líneas. Lo que se propaga
+    sigue siendo solo `COLS_EN_BLOQUE` (costos, %, moneda, IVA, techo, etapa
+    costeo) — producto, color y cantidad siguen de a una línea.
+
 ## 2026-10-02 (Burbuja de sincronización)
 
 - **Efraín**: "agrega una burbuja de sincronización, a veces hacen algo y
