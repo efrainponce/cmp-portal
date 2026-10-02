@@ -59,6 +59,7 @@ import { productoIdDeWrite } from './ficha';
 import { isNativeId } from '../../shared/nativeId';
 import type { RawCol } from './serialize';
 import { checkCostoDivergente } from './costoDivergencia';
+import { costeoDesdeCatalogo } from './costeoSnapshot';
 import { COLUMN_META } from '../../shared/column-meta.gen';
 
 export class AjusteLineaError extends Error {
@@ -210,6 +211,24 @@ export async function textosDerivadosDeProducto(env: Env, cols: Record<string, u
   if (!producto) return {};
   const t = textosDeProducto(producto);
   return { [SUB_PRODUCTO_TXT]: t.nombre, [SUB_SKU_TXT]: t.sku };
+}
+
+/** Costo/descuento/gastos/IVA/TC/precio sugerido que una línea de Monday toma
+ * del catálogo cuando el PATCH de la grid le CAMBIA el producto
+ * (worker/lib/costeoSnapshot.ts costeoDesdeCatalogo). Mismo producto que ya
+ * tenía → {}: re-elegirlo no debe pisar un costo negociado. Línea nativa → {}:
+ * esas ya se costean al elegir producto (worker/lib/nativeMirrors.ts). */
+export async function costeoDerivadoDeProducto(env: Env, lineaId: number, cols: Record<string, unknown>): Promise<Record<string, string>> {
+  if (!(SUB_PRODUCTO_REL in cols) || isNativeId(lineaId)) return {};
+  const productoId = productoIdDeWrite(cols[SUB_PRODUCTO_REL]);
+  if (productoId == null) return {};
+  const linea = await getItemTrusted(env, 'oportunidades_sub', lineaId);
+  if (!linea) return {};
+  const actuales: RawCol[] = JSON.parse(linea.columns || '[]');
+  if (linkedProductoId(actuales.find(c => c.id === SUB_PRODUCTO_REL)) === productoId) return {};
+  const producto = await getItemTrusted(env, 'productos', productoId);
+  if (!producto) return {};
+  return costeoDesdeCatalogo(JSON.parse(producto.columns || '[]'));
 }
 
 /** Cantidad tal como llega de un PATCH de la grid: sin comas de miles y un

@@ -22,7 +22,7 @@ import { submitCreate, submitCreateNative, isNativeCreatable, CreateError } from
 import { esDraftVigente, LINE_DEFINING_COLS, autoVersionSiCosteada, borrarLineaCotizacion, QuoteVersionError } from '../lib/quoteVersions';
 import { addFileToUpdate, fetchAssetPublicUrls } from '../lib/monday';
 import { BorradoError } from '../lib/itemBorrado';
-import { esAjusteInline, registrarAjusteInline, normalizarCantidad, textosDerivadosDeProducto } from '../lib/lineaAjustes';
+import { esAjusteInline, registrarAjusteInline, normalizarCantidad, textosDerivadosDeProducto, costeoDerivadoDeProducto } from '../lib/lineaAjustes';
 import { regenerarSheetTrasCambio } from '../lib/tallasSheet';
 // Los updates de un item nativo (Zona Efrain) viven en D1, no en Monday — estas
 // dos funciones eligen el lado por el id, así que la ruta no lo decide.
@@ -533,8 +533,12 @@ export function boardRoutes(app: Hono<{ Bindings: Env }>) {
     try {
       // Elegir producto en la grid manda solo la relación; SKU y Producto en
       // texto los deriva el server del catálogo (cmp-tallas los lee de ahí y la
-      // automatización de Monday no corre con los writes del portal).
-      const derived = slug === 'oportunidades_sub' ? await textosDerivadosDeProducto(c.env, body.cols) : undefined;
+      // automatización de Monday no corre con los writes del portal). Si el
+      // producto CAMBIA, también el costo del catálogo — antes solo llegaba al
+      // "Mandar a costeo" y Compras lo tecleaba a mano (PAM, 2026-10-02).
+      const derived = slug === 'oportunidades_sub'
+        ? { ...await costeoDerivadoDeProducto(c.env, itemId, body.cols), ...await textosDerivadosDeProducto(c.env, body.cols) }
+        : undefined;
       const result = await submitWrite(c.env, c.executionCtx, slug, itemId, body.cols, viewer, { derived });
       if (ajusteCompras && result.ok) {
         // Best-effort: la mini versión es trazabilidad, no debe convertir un
