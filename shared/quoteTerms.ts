@@ -5,16 +5,16 @@
 // docs/monday-column-map.md; no se inventa ninguna.
 //
 // **PARA CAMBIAR LOS TEXTOS POR DEFECTO: EDITA `fallback` AQUÍ ABAJO.** Es el
-// único lugar. Ese texto NO se escribe solo a Monday: se muestra en gris como
-// placeholder mientras el campo está vacío, y el botón "Usar texto por defecto"
-// del portal lo inserta tal cual para que el vendedor/compras lo ajuste.
+// único lugar. Si el campo está vacío, el portal lo escribe solo a Monday al
+// abrir la cotización (CondicionesCotizacion.tsx) y el vendedor/compras lo
+// ajusta si hace falta (Efraín, 2026-10-02; antes era un botón).
 export interface QuoteTermField {
   /** Columna de Monday en `oportunidades` (docs/monday-column-map.md). */
   id: string;
   label: string;
   /** Renderiza <textarea> en vez de <input>. */
   multiline?: boolean;
-  /** Texto por defecto — placeholder + "Usar texto por defecto". */
+  /** Texto por defecto — se escribe solo cuando el campo está vacío. */
   fallback: string;
 }
 

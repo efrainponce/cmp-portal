@@ -1,5 +1,15 @@
 # Log de commits
 
+## 2026-10-02 (Condiciones de la cotización: el texto por defecto se pone solo)
+
+- **Efraín** (captura): "Quita lo de usar texto por defecto y solo ponlo,
+  ellos lo cambiarán si es necesario".
+  - `CondicionesCotizacion.tsx`: se quitó el botón "Usar texto por defecto".
+    Al abrir la cotización, cada campo vacío (condiciones comerciales, tiempo
+    de entrega, vigencia) que el viewer puede escribir se guarda solo en Monday
+    con el texto de `shared/quoteTerms.ts` — una vez por campo y oportunidad;
+    nada en solo lectura (Ganada/Perdida, versión superada).
+
 ## 2026-10-02 (Costeo: casillas de edición en bloque también donde la línea se edita entera)
 
 - **Efraín** (captura): "¿quitaste los cuadros para seleccionar varios
