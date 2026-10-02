@@ -3,10 +3,10 @@
 // columnas de `oportunidades` (shared/quoteTerms.ts, que también trae los
 // textos por defecto — ese es el único archivo a tocar para cambiarlos).
 //
-// Los textos por defecto NO se escriben solos a Monday: se ven como placeholder
-// mientras el campo está vacío y "Usar texto por defecto" los inserta para que
-// se puedan ajustar antes de guardar (Efraín, 2026-07-30).
-import { useState } from 'react';
+// Si un campo está vacío y quien lo ve puede escribirlo, el texto por defecto
+// se escribe SOLO a Monday al abrir — ya no hay botón "Usar texto por defecto";
+// el vendedor/compras lo cambia si hace falta (Efraín, 2026-10-02).
+import { useEffect, useRef, useState } from 'react';
 import { QUOTE_TERMS } from '../../../../../shared/quoteTerms';
 import type { ColMeta, ItemDetailDTO } from '../../../../lib/api';
 import { patchItem } from '../../../../lib/apiClient';
@@ -32,9 +32,26 @@ export function CondicionesCotizacion({
   const fields = QUOTE_TERMS
     .map((f) => ({ ...f, meta: oppCols.find((c) => c.id === f.id) }))
     .filter((f) => f.meta);        // fail-closed: sin ColMeta el rol no la ve
+
+  // Rellena con el texto por defecto lo que venga vacío — una vez por campo
+  // y oportunidad (el mirror tarda en traer el valor guardado).
+  const autollenado = useRef(new Set<string>());
+  useEffect(() => {
+    if (!item || !oppId || locked) return;
+    for (const f of fields) {
+      const key = `${oppId}:${f.id}`;
+      if (!f.meta?.w || autollenado.current.has(key)) continue;
+      if ((item.cols[f.id]?.text ?? '').trim() !== '' || (edits[f.id] ?? '').trim() !== '') continue;
+      autollenado.current.add(key);
+      setEdits((e) => ({ ...e, [f.id]: f.fallback }));
+      void save(f.id, f.fallback);
+    }
+  });
+
   if (!item || fields.length === 0) return null;
 
-  const save = async (id: string, raw: string) => {
+  async function save(id: string, raw: string) {
+    if (!item) return;
     const current = item.cols[id]?.text ?? '';
     if (raw === current) { setEdits((e) => ({ ...e, [id]: raw })); return; }
     if (!oppId) return;
@@ -48,7 +65,7 @@ export function CondicionesCotizacion({
     } finally {
       setSaving((s) => ({ ...s, [id]: false }));
     }
-  };
+  }
 
   const inputStyle = {
     width: '100%', boxSizing: 'border-box' as const, padding: '8px 10px',
@@ -88,14 +105,6 @@ export function CondicionesCotizacion({
                 <label style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)' }}>
                   {f.label}
                 </label>
-                {editable && isEmpty && (
-                  <span
-                    onClick={() => { setEdits((e) => ({ ...e, [f.id]: f.fallback })); void save(f.id, f.fallback); }}
-                    style={{ font: 'var(--text-caption)', color: 'var(--accent)', cursor: 'pointer' }}
-                  >
-                    Usar texto por defecto
-                  </span>
-                )}
                 {saving[f.id] && (
                   <span style={{ font: 'var(--text-caption)', color: 'var(--ink-faint)' }}>guardando…</span>
                 )}
