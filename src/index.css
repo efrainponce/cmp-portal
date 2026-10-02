@@ -146,3 +146,8 @@ input, textarea, select, button {
     display: none !important;
   }
 }
+
+/* Burbuja de sincronización (SyncBurbuja.tsx) */
+@keyframes sync-burbuja-giro { to { transform: rotate(360deg); } }
+.sync-burbuja-giro { animation: sync-burbuja-giro .8s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .sync-burbuja-giro { animation-duration: 2.4s; } }

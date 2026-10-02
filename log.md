@@ -1,5 +1,20 @@
 # Log de commits
 
+## 2026-10-02 (Burbuja de sincronización)
+
+- **Efraín**: "agrega una burbuja de sincronización, a veces hacen algo y
+  piensan que simplemente está fallando y hacen refresh súper seguido".
+- Burbuja abajo a la derecha (`SyncBurbuja.tsx`, estado en `syncEstado.ts`),
+  alimentada por `apiFetch` — cubre TODA escritura del portal sin tocar cada
+  pantalla: "Guardando…" → a los 4 s "Guardando… N s · no recargues" →
+  "✓ Guardado" (2.5 s) / "! No se guardó" (6 s) / "Sin conexión · reintentando"
+  (cuando un fetch no llega o el navegador avisa `offline`; se quita con la
+  siguiente respuesta). Sin nada que decir, no se ve.
+- Con una escritura en vuelo, F5 o cerrar la pestaña hace que el navegador
+  pregunte antes (`beforeunload`): un refresh a media escritura la cortaba.
+- No cuentan las escrituras de fondo (telemetría, "visto" de Actualizaciones,
+  campana). Tests en `syncEstado.test.ts`.
+
 ## 2026-10-02 (UX, paso 2: pantalla completa, menos texto, quitar lo que no se usa)
 
 - **Efraín**: "necesitamos MEJORAR mucho el UX y UI … todo es DIFICIL de hacer …
