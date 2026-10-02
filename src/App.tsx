@@ -10,6 +10,7 @@ import { useSessionExpired } from './lib/sessionState';
 import { useMe } from './lib/useMe';
 import { REFRESCAR_LISTA } from './lib/api';
 import { Toaster } from './components/core/Toaster';
+import { SyncBurbuja } from './components/core/SyncBurbuja';
 
 // Cada vista es su propio chunk — el bundle inicial solo trae Sidebar + la vista
 // activa; las demás se cargan al navegar (misma UI, solo carga diferida).
@@ -148,6 +149,7 @@ function App() {
           {views}
         </div>
         <Toaster />
+        <SyncBurbuja />
       </div>
     );
   }
@@ -168,6 +170,7 @@ function App() {
         </div>
       </div>
       <Toaster />
+      <SyncBurbuja />
     </div>
   );
 }

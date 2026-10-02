@@ -25,6 +25,7 @@ import { markSessionExpired } from './sessionState';
 import { uxApiLatency, uxEdit } from './telemetry';
 import { perfNotarMetodo } from './perfReal';
 import { beginWrite } from './readConsistency';
+import { esEscrituraDeFondo, inicioEscritura, marcarRed } from './syncEstado';
 import { CATALOGO_COLS } from './productSearch';
 
 export type {
@@ -113,6 +114,8 @@ export async function apiFetch(path: string, init?: RequestInit): Promise<Respon
   // el espejo D1 traería el snapshot viejo y "regresaría" el cambio en pantalla.
   const method = (init?.method ?? 'GET').toUpperCase();
   const finishWrite = method !== 'GET' && method !== 'HEAD' && !path.startsWith('/telemetry/') ? beginWrite() : null;
+  // Burbuja de sincronización (src/lib/syncEstado.ts): solo lo que hizo la persona.
+  const finSync = finishWrite && !esEscrituraDeFondo(path) ? inicioEscritura() : null;
   // Resource Timing no trae el método: sin esto un PATCH a /items/:id se
   // contaría como la lectura del detalle (src/lib/perfReal.ts).
   perfNotarMetodo(url, method);
@@ -121,7 +124,14 @@ export async function apiFetch(path: string, init?: RequestInit): Promise<Respon
     res = precargada
       ? await precargada.catch(() => fetch(url, { credentials: 'same-origin', ...init, headers }))
       : await fetch(url, { credentials: 'same-origin', ...init, headers });
+  } catch (e) {
+    // fetch solo lanza si la petición no llegó (red caída, Wi-Fi que se fue).
+    marcarRed(false);
+    finSync?.(false);
+    throw e;
   } finally { finishWrite?.(); }
+  marcarRed(true);
+  finSync?.(res.ok || res.status === 304);
   // La petición precargada arrancó antes que este cronómetro (script inline de
   // index.html), así que su latencia saldría absurdamente corta — no se mide.
   // `res.ok` NO alcanza para decidir si salió bien: es false para 304 Not
