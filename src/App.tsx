@@ -1,11 +1,10 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
-import { Sidebar, type BoardKey } from './app/Sidebar';
+import { Sidebar, boardDeEntrada, type BoardKey } from './app/Sidebar';
 import { MobileTopBar } from './app/MobileTopBar';
 import { ImpersonationBanner } from './app/ImpersonationBanner';
 import { SessionExpiredScreen } from './app/SessionExpiredScreen';
 import { PhoneGateScreen } from './app/PhoneGateScreen';
-import { ChatBubble } from './components/assistant/ChatBubble';
-import { useRoute } from './lib/routing';
+import { useRoute, rutaSinBoard } from './lib/routing';
 import { useIsMobile } from './lib/useIsMobile';
 import { useSessionExpired } from './lib/sessionState';
 import { useMe } from './lib/useMe';
@@ -27,7 +26,6 @@ const MuestrasBoard = lazy(() => import('./boards/muestras/MuestrasBoard'));
 const GenericBoardView = lazy(() => import('./boards/generic/GenericBoardView').then((m) => ({ default: m.GenericBoardView })));
 const InventarioBoard = lazy(() => import('./boards/inventario/InventarioBoard').then((m) => ({ default: m.InventarioBoard })));
 const SettingsPage = lazy(() => import('./app/SettingsPage').then((m) => ({ default: m.SettingsPage })));
-const HomeView = lazy(() => import('./app/HomeView').then((m) => ({ default: m.HomeView })));
 const AnunciosView = lazy(() => import('./app/AnunciosView').then((m) => ({ default: m.AnunciosView })));
 const AnalisisPage = lazy(() => import('./app/AnalisisPage').then((m) => ({ default: m.AnalisisPage })));
 
@@ -38,21 +36,21 @@ function App() {
   const [collapsed, setCollapsed] = useState(false);
   const isMobile = useIsMobile();
 
-  // Landing por rol: la ruta raíz sin filo del fallback de parsePath ("/")
-  // aterriza en Inicio para vendedor/compras/admin — almacén sigue yendo a
-  // Inventario (su trabajo es reactivo, sin pendientes que listar). Deep
-  // links explícitos (/costeo/123, etc.) nunca pasan por aquí.
+  // Landing por rol: "/" (o una ruta que ya no existe, como "/home") aterriza
+  // en el primer board del menú de cada quien — Compras en Costeo, Ventas en
+  // Oportunidades, almacén en Inventario. Deep links explícitos (/costeo/123,
+  // etc.) nunca pasan por aquí.
+  const enRaiz = rutaSinBoard(window.location.pathname);
   useEffect(() => {
-    if (!me || window.location.pathname !== '/') return;
-    navigate(me.role === 'almacen' ? 'inventario' : 'home');
+    if (!me || !enRaiz) return;
+    navigate(boardDeEntrada(me));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [me]);
   // Mientras la URL sea "/" el board de la ruta es el fallback de parsePath
   // (Oportunidades), NO a donde se va a aterrizar. Pintarlo esos instantes
   // montaba la lista y pedía el board completo — ~130 KB y el request más
-  // caro del worker — para tirarlo en cuanto /api/me contestaba y se saltaba a
-  // Inicio (medido 2026-09-30: una lista completa en cada entrada por "/").
-  // En "/" se pinta directo el aterrizaje, y nada hasta saber el rol.
+  // caro del worker — para tirarlo en cuanto /api/me contestaba (medido
+  // 2026-09-30). En "/" se pinta directo el aterrizaje, y nada hasta saber el rol.
   // Si /api/me no contesta (API caída), a los 8 s se pinta el board de la ruta
   // como antes, que sí sabe mostrar su estado de error.
   const [sinRol, setSinRol] = useState(false);
@@ -61,9 +59,8 @@ function App() {
     const t = window.setTimeout(() => setSinRol(true), 8000);
     return () => window.clearTimeout(t);
   }, [me]);
-  const enRaiz = window.location.pathname === '/';
   const aterrizaje: BoardKey | null = !enRaiz || (!me && sinRol) ? rutaBoard
-    : me ? (me.role === 'almacen' ? 'inventario' : 'home') : null;
+    : me ? boardDeEntrada(me) : null;
   const activeBoard = aterrizaje ?? rutaBoard;
 
   if (sessionExpired) return <SessionExpiredScreen />;
@@ -81,7 +78,7 @@ function App() {
   const onDuplicated = (newId: string) => navigate('oportunidades', newId);
   // Deep link de una notificación: navega al board+item indicados (abre el
   // drawer si es una oportunidad, igual que cualquier otro link directo).
-  const onOpenNotification = (board: string, id: string | null) => navigate(board as BoardKey, id);
+  const onOpenNotification = (board: string, id: string | null, tab?: string | null) => navigate(board as BoardKey, id, tab ?? null);
   // Clic en el menú sobre el board en el que ya se está, sin drawer abierto:
   // antes no pasaba nada (clic muerto en Clarity) — ahora actualiza la lista.
   const onSelectBoard = (key: BoardKey) => {
@@ -135,7 +132,6 @@ function App() {
       {activeBoard === 'proveedores' && <GenericBoardView slug="proveedores" title="Proveedores" />}
       {activeBoard === 'inventario' && <InventarioBoard />}
       {activeBoard === 'settings' && <SettingsPage />}
-      {activeBoard === 'home' && <HomeView onOpenPendiente={onOpenNotification} />}
       {activeBoard === 'anuncios' && <AnunciosView />}
       {activeBoard === 'analisis' && <AnalisisPage onOpenOportunidad={(id) => navigate('oportunidades', id)} />}
     </Suspense>
@@ -151,7 +147,6 @@ function App() {
         <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
           {views}
         </div>
-        <ChatBubble variant="dock" />
         <Toaster />
       </div>
     );
@@ -171,7 +166,6 @@ function App() {
         <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
           {views}
         </div>
-        <ChatBubble />
       </div>
       <Toaster />
     </div>

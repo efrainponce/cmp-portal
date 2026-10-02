@@ -173,8 +173,8 @@ function QuoteRowInner({
       } : {}),
     }}>
       {bannerText && (
-        <div style={{ padding: '8px 10px 0', font: '600 11px var(--font-ui)', color: '#ce3048' }}>
-          ⚠ {bannerText}
+        <div style={{ padding: '6px 10px 0', font: '500 10.5px var(--font-ui)', color: '#ce3048' }}>
+          {bannerText}
           {airtableUrl && (
             <>
               {' '}

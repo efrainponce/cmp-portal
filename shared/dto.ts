@@ -638,6 +638,8 @@ export interface NotificationDTO {
   body: string | null;
   boardKey: string | null;
   itemId: string | null;
+  /** Nombre del item (oportunidad/proyecto) — la campana agrupa por él. */
+  itemName?: string | null;
   /** Link externo (Airtable): el clic lo abre en otra pestaña en vez del deep link. */
   link: string | null;
   actor: string | null;

@@ -9,7 +9,7 @@ import logo from '../assets/logo-64.webp';
 interface MobileTopBarProps {
   activeBoard: BoardKey;
   onSelectBoard: (key: BoardKey) => void;
-  onOpenNotification?: (boardKey: string, itemId: string | null) => void;
+  onOpenNotification?: (boardKey: string, itemId: string | null, tab?: string | null) => void;
 }
 
 function IconMenu() {

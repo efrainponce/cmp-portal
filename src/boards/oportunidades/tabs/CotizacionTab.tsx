@@ -23,6 +23,7 @@ import { DivisionesBorradas } from './cotizacion/DivisionesBorradas';
 import { previewRow, COL } from '../../../lib/costeoCalc';
 import { isNativeId } from '../../../../shared/nativeId';
 import { useIsMobile } from '../../../lib/useIsMobile';
+import { useAncho } from '../../../lib/useAncho';
 import { useMe } from '../../../lib/useMe';
 import { canReadActivity, puedeCapturarEnValidacion } from '../../../../shared/visibility';
 import { latestFileUrl, NO_FIRMADAS_COL, FIRMADAS_COL, SOLICITUDES_COL } from './DocumentacionTab';
@@ -40,7 +41,7 @@ import { ColumnVisibilityPicker } from './cotizacion/ColumnVisibilityPicker';
 import {
   type RowEditState, EMPTY_ROW, inlineEditableCols,
   GRID_COLS_COSTEO, GRID_COLS_VENTA, colsTemplate, anchoPartida, displayProducto,
-  loadHiddenCols, saveHiddenCols, gridWrapStyle, STICKY_PRODUCTO_STYLE,
+  loadHiddenCols, saveHiddenCols, gridWrapStyle, estirarGrid, STICKY_PRODUCTO_STYLE,
   PRODUCTO_COL, PRODUCTO_TXT_COL, PRODUCTO_REL_COL, COLOR_COL,
   EMB_STATUS_COL, EMB_LABEL_CON, EMB_LABEL_SIN,
   PRODUCTO_CONFIRM_COL, PRODUCTO_PROVEEDOR_COL, CATALOGO_TALLAS_COL, linkedProductoId, MONEY_COLS,
@@ -103,7 +104,8 @@ export function CotizacionTab({
   soloLectura?: boolean;
 }) {
   const isMobile = useIsMobile();
-  const tabPadding = isMobile ? '14px 14px 24px' : '24px 32px 40px';
+  const tabPadding = isMobile ? '14px 14px 24px' : '20px 32px 40px';
+  const [raizRef, anchoTab] = useAncho<HTMLDivElement>();
   const [selectedVersionId, setSelectedVersionId] = useState<number | null>(null);
   const selectedVersion = selectedVersionId != null ? versions.find((v) => v.id === selectedVersionId) : undefined;
   const hasSolicitud = !!(item && latestFileUrl(item.cols[SOLICITUDES_COL]?.text));
@@ -821,8 +823,10 @@ export function CotizacionTab({
   if (products.length === 0) {
     return (
       <div style={{ padding: tabPadding, width: '100%', boxSizing: 'border-box' }}>
-        <VersionChips versions={versions} selected={selectedVersionId} onSelect={setSelectedVersionId} onNuevaVersion={onNuevaVersion} />
-        {!soloLectura && <CotizacionPdfRow oppId={oppId} item={item} hasSolicitud={hasSolicitud} hasSinFirmar={hasSinFirmar} hasFirmada={hasFirmada} hasLineas={products.length > 0} onInventarioUploaded={onSaved} />}
+        <div style={{ display: 'flex', alignItems: 'center', columnGap: 18, flexWrap: 'wrap' }}>
+          <VersionChips versions={versions} selected={selectedVersionId} onSelect={setSelectedVersionId} onNuevaVersion={onNuevaVersion} />
+          {!soloLectura && <CotizacionPdfRow oppId={oppId} item={item} hasSolicitud={hasSolicitud} hasSinFirmar={hasSinFirmar} hasFirmada={hasFirmada} hasLineas={products.length > 0} onInventarioUploaded={onSaved} />}
+        </div>
         <div style={{ font: 'var(--text-label)', color: 'var(--ink-quiet)', marginBottom: 16 }}>
           Sin líneas de producto registradas.
         </div>
@@ -843,12 +847,26 @@ export function CotizacionTab({
     );
   }
 
+  // La tabla ocupa todo el ancho del tab cuando cabe (estirarGrid). `fijo` =
+  // lo que no es columna de datos: "#", 🗑, el padding del grid (10+10), los
+  // gaps de 6 entre pistas y el borde del contenedor.
+  const pistas = 1 + visibleCols.length + (canAddLines ? 1 : 0);
+  const estirado = isMobile ? undefined : estirarGrid(
+    visibleCols, anchoTab,
+    anchoPartida(puedeReordenar, enBloque) + (canAddLines ? 32 : 0) + 20 + 6 * (pistas - 1) + 2,
+  );
+
   return (
-    <div style={{ padding: tabPadding, width: '100%', boxSizing: 'border-box' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+    <div ref={raizRef} style={{ padding: tabPadding, width: '100%', boxSizing: 'border-box' }}>
+      {/* Una sola barra: versiones, documentos y "Columnas" en el mismo renglón
+          (antes eran tres bloques apilados que empujaban la tabla ~200 px). */}
+      <div style={{ display: 'flex', alignItems: 'center', columnGap: 18, flexWrap: 'wrap' }}>
         <VersionChips versions={versions} selected={selectedVersionId} onSelect={setSelectedVersionId} onNuevaVersion={onNuevaVersion} />
+        {!soloLectura && <CotizacionPdfRow oppId={oppId} item={item} hasSolicitud={hasSolicitud} hasSinFirmar={hasSinFirmar} hasFirmada={hasFirmada} hasLineas={products.length > 0} onInventarioUploaded={onSaved} />}
         {variant === 'costeo' && (
-          <ColumnVisibilityPicker columns={gridCols.slice(1)} hidden={hiddenCols} onToggle={onToggleColumn} />
+          <div style={{ marginLeft: 'auto', marginBottom: 14 }}>
+            <ColumnVisibilityPicker columns={gridCols.slice(1)} hidden={hiddenCols} onToggle={onToggleColumn} />
+          </div>
         )}
       </div>
       {/* Una división cuya línea nueva se borró (directo en Monday) deja la
@@ -882,8 +900,7 @@ export function CotizacionTab({
           {divergenciaNotice}
         </div>
       )}
-      {!soloLectura && <CotizacionPdfRow oppId={oppId} item={item} hasSolicitud={hasSolicitud} hasSinFirmar={hasSinFirmar} hasFirmada={hasFirmada} hasLineas={products.length > 0} onInventarioUploaded={onSaved} />}
-      {enBloque && (
+      {enBloque && (proveedores.length > 0 || marcadas.length > 0) && (
         <div style={{
           display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', margin: '0 0 10px',
           font: 'var(--text-label)', color: 'var(--ink-secondary)',
@@ -892,6 +909,7 @@ export function CotizacionTab({
             <select
               value=""
               onChange={(e) => seleccionarProveedor(e.target.value)}
+              title="Marca varias líneas (aquí por proveedor, o con la casilla de cada una) y lo que captures en una se aplica a todas"
               style={{ font: 'var(--text-label)', padding: '4px 8px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)', background: 'var(--bg-raised)' }}
             >
               <option value="">Marcar por proveedor…</option>
@@ -912,9 +930,7 @@ export function CotizacionTab({
                 Quitar selección
               </button>
             </>
-          ) : (
-            <span style={{ color: 'var(--ink-tertiary)' }}>Marca varias líneas y lo que captures en una se aplica a todas.</span>
-          )}
+          ) : null}
         </div>
       )}
       {isMobile ? (
@@ -980,7 +996,7 @@ export function CotizacionTab({
           )}
         </div>
       ) : (
-      <div {...NAV_GRID_ATTR} style={{ ...gridWrapStyle, maxWidth: '100%', overflowX: 'auto', border: '1px solid var(--border)', borderRadius: 'var(--radius-xl)' }}>
+      <div {...NAV_GRID_ATTR} style={{ ...gridWrapStyle, ...estirado, maxWidth: '100%', overflowX: 'auto', border: '1px solid var(--border)', borderRadius: 'var(--radius-xl)' }}>
         <div>
           <div style={{
             ...gridWrapStyle,

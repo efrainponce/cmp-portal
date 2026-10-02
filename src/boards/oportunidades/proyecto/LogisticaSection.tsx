@@ -21,6 +21,7 @@ import {
   S_ESTADO, S_TALLA, S_CANTIDAD,
 } from './shared';
 import { groupByProductoColor, type TallaGroup } from './TallasSection';
+import { gridTarjetas } from '../tabs/tabLayout';
 
 const S_PRODUCCION = 'text_mm52x1bx';       // solo lectura (vis V, sin w)
 const S_UNIDAD = 'text_mm56dbkm';           // solo lectura (vis V, sin w)
@@ -417,8 +418,11 @@ export function LogisticaSection({ state, oppId }: { state: ProyectoState; oppId
   return (
     <div style={{ marginTop: 16 }}>
       {canEdit && lineas.length > 0 && (
-        <div style={{ marginBottom: 10, font: 'var(--text-caption)', color: 'var(--ink-quiet)' }}>
-          Toca una línea para capturar encargado, guías, evidencia y confirmación de la recolección.
+        <div
+          title="Encargado, guías, evidencia y confirmación de la recolección"
+          style={{ marginBottom: 10, font: 'var(--text-caption)', color: 'var(--ink-quiet)', width: 'fit-content' }}
+        >
+          Toca una línea para capturar la recolección.
         </div>
       )}
       {lineas.length === 0 ? (
@@ -426,7 +430,8 @@ export function LogisticaSection({ state, oppId }: { state: ProyectoState; oppId
           Aún no hay líneas en el proyecto — importa las tallas primero.
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        // 2026-10-01: ancho completo — tarjetas de producto en columnas.
+        <div style={gridTarjetas(560)}>
           {grupos.map((g) => (
             <LogisticaCard
               key={`${g.producto}|${g.color}`} group={g} canEdit={canEdit} oppId={oppId}

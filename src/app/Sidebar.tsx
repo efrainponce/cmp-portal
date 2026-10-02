@@ -3,20 +3,19 @@ import { NavGroup } from '../components/navigation/NavGroup';
 import { NotificationBell } from '../components/notifications/NotificationBell';
 import { UserChip } from './UserChip';
 import { useMe } from '../lib/useMe';
-import { useAnuncios } from '../lib/anunciosApi';
 // 64x64, no el de 256: se pinta a 28 px y el grande eran 15.8 KB en la ventana
 // crítica de carga. Al pesar <4 KB, Vite lo mete inline como data URI y
 // además desaparece el request. El de 256 se queda para favicon/apple-touch
 // (index.html), donde sí se necesita grande.
 import logo from '../assets/logo-64.webp';
 import {
-  IconHome, IconOportunidades, IconGlobe, IconCosteo, IconValidacion, IconDocTallas, IconOrdenesCompra, IconEjecucion, IconLogistica,
+  IconOportunidades, IconGlobe, IconCosteo, IconValidacion, IconDocTallas, IconOrdenesCompra, IconEjecucion, IconLogistica,
   IconProductos, IconCuentas, IconClientes, IconInventario, IconChevronLeft, IconChevronRight, IconSettings, IconLock,
-  IconAnuncios, IconAnalisis, IconMuestras,
+  IconAnalisis, IconMuestras,
 } from '../components/icons';
 
 export type BoardKey =
-  | 'home' | 'anuncios'
+  | 'anuncios'
   | 'oportunidades' | 'oportunidades_web' | 'costeo' | 'validacion' | 'muestras' | 'cot_lista' | 'doctallas' | 'ordenescompra' | 'oc_lista' | 'ejecucion' | 'logistica'
   | 'productos' | 'instituciones' | 'contactos' | 'proveedores' | 'inventario' | 'settings' | 'analisis'
   | 'zona_efrain' | 'zona_efrain_proy' | 'estadocuenta';
@@ -83,11 +82,20 @@ export const BOARD_LABELS: Record<BoardKey, string> = {
     [...VENTAS_ITEMS, ...PROYECTOS_ITEMS, ...CATALOG_ITEMS, ...INVENTARIO_ITEMS, ZONA_EFRAIN_ITEM, ZONA_EFRAIN_PROYECTOS_ITEM, ESTADO_CUENTA_ITEM]
       .map((i) => [i.key, i.label]),
   ),
-  home: 'Inicio',
   anuncios: 'Anuncios',
   settings: 'Configuración',
   analisis: 'Análisis',
 } as Record<BoardKey, string>;
+
+/** A dónde aterriza cada quien al entrar por "/": el primer board de su menú,
+ * en el orden en que lo ve. La pantalla "Inicio" se quitó (Efraín, 2026-10-01):
+ * en 30 días nadie mandó un seguimiento desde ahí y Compras la abría para
+ * salirse de inmediato — era un paso de más antes de llegar al trabajo. */
+export function boardDeEntrada(me: { role: string; boardAccess: string[]; zonaEfrainAccess?: boolean }): BoardKey {
+  if (me.role === 'almacen') return 'inventario';
+  const orden = [...VENTAS_ITEMS, ...PROYECTOS_ITEMS, ...INVENTARIO_ITEMS, ...CATALOG_ITEMS];
+  return orden.find((i) => me.boardAccess.includes(i.key))?.key ?? (me.zonaEfrainAccess ? 'zona_efrain' : 'oportunidades');
+}
 
 interface SidebarProps {
   activeBoard: BoardKey;
@@ -98,15 +106,11 @@ interface SidebarProps {
   hideCollapse?: boolean;
   /** Campana de notificaciones en el header — omitido dentro del Sidebar interno
    * del menú deslizante móvil (MobileTopBar ya trae su propia campana). */
-  onOpenNotification?: (boardKey: string, itemId: string | null) => void;
+  onOpenNotification?: (boardKey: string, itemId: string | null, tab?: string | null) => void;
 }
 
 export function Sidebar({ activeBoard, onSelectBoard, collapsed, onToggleCollapsed, hideCollapse, onOpenNotification }: SidebarProps) {
   const me = useMe();
-  // Badge de comunicados sin leer. Anuncios no es un board de Monday (como
-  // Inicio/Configuración): lo ven TODOS los roles, almacén incluido — un
-  // comunicado de dirección es justo lo que ese rol no se puede perder.
-  const { noLeidos } = useAnuncios();
   const visible = (items: NavItemConfig[]) => items.filter((item) => me?.boardAccess.includes(item.key));
   const ventasItems = me?.zonaEfrainAccess ? [...visible(VENTAS_ITEMS), ZONA_EFRAIN_ITEM] : visible(VENTAS_ITEMS);
   const proyectosItems = [
@@ -193,40 +197,13 @@ export function Sidebar({ activeBoard, onSelectBoard, collapsed, onToggleCollaps
           )}
         </div>
 
-        {/* "Inicio" no es un board de Monday — no vive en boardAccess/role_board_access
-            (mismo trato que Configuración abajo). Visible para todos salvo almacén,
-            cuyo trabajo es reactivo y no tiene pendientes que listar (Efraín, 2026-08-10). */}
-        {me?.role && me.role !== 'almacen' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 18 }}>
-            <NavItem
-              icon={<IconHome />}
-              label="Inicio"
-              active={activeBoard === 'home'}
-              collapsed={collapsed}
-              onClick={() => onSelectBoard('home')}
-            />
-          </div>
-        )}
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: me?.role && me.role !== 'almacen' ? 2 : 18 }}>
-          <NavItem
-            icon={<IconAnuncios />}
-            label="Anuncios"
-            active={activeBoard === 'anuncios'}
-            collapsed={collapsed}
-            onClick={() => onSelectBoard('anuncios')}
-            badge={noLeidos}
-          />
-        </div>
-
         {collapsed ? (
           // Colapsado: una sección = un ícono con panel flotante (NavGroup), en
           // vez de ~20 íconos sueltos (Jorge, 2026-09-24). Una sección con una
           // sola opción visible (Inventario, o lo que deje el rol) va suelta.
           (ventasItems.length + proyectosItems.length + inventarioItems.length + catalogItems.length) > 0 && (
             <>
-              <Divider />
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 18 }}>
                 {renderSection('Ventas', <IconOportunidades />, ventasItems)}
                 {renderSection('Proyectos', <IconDocTallas />, proyectosItems)}
                 {renderSection('Inventario', <IconInventario />, inventarioItems)}
@@ -237,7 +214,7 @@ export function Sidebar({ activeBoard, onSelectBoard, collapsed, onToggleCollaps
         ) : (
           <>
             {ventasItems.length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 26 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 22 }}>
                 {renderSection('Ventas', <IconOportunidades />, ventasItems)}
               </div>
             )}

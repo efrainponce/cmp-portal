@@ -821,9 +821,11 @@ function FotosProducto({ productos, proyectoId }: {
 
   return (
     <div style={{ flex: '1 1 100%' }}>
-      <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)', marginBottom: 6 }}>
-        Fotos de la OC con imágenes — la principal sale del catálogo; con “+ Imagen” agregas renders o
-        muestras de ESTE proyecto, y cada una lleva su propia ficha en el PDF
+      <div
+        title="Para la OC con imágenes: la principal sale del catálogo; con “+ Imagen” agregas renders o muestras de ESTE proyecto, y cada una lleva su propia ficha en el PDF."
+        style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)', marginBottom: 6 }}
+      >
+        Fotos de la OC
         {msg ? <span style={{ marginLeft: 8, color: 'var(--status-perdida)' }}>{msg}</span> : null}
       </div>
       <div style={{ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 4 }}>
@@ -1032,8 +1034,11 @@ function AdjuntosOc({ proyectoId, proveedorId, adjuntos, canEdit, onChanged }: {
   const fmtKb = (b: number) => b >= 1024 * 1024 ? `${(b / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`;
   return (
     <div style={{ flex: '1 1 100%', display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)' }}>
-        Adjuntos de la OC — PDFs que acompañan a la orden (ficha técnica, plano, cotización del proveedor). No se pegan al PDF de la OC.
+      <div
+        title="PDFs que acompañan a la orden (ficha técnica, plano, cotización del proveedor). No se pegan al PDF de la OC."
+        style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)', width: 'fit-content' }}
+      >
+        Adjuntos (PDF)
       </div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
         {adjuntos.map(a => (
@@ -1398,17 +1403,15 @@ export function ProyectoOrdenesSection({ state, oppId }: { state: ProyectoState;
   const lineas = p.children ?? [];
   return (
     <div style={{ marginTop: 16 }}>
-      <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)', marginBottom: 10 }}>
-        Proyecto {p.name} — una OC por proveedor, con firmas Elaborado → Revisado → Autorizado (DocuSeal).
-        {canCompras && ' Producto, SKU/modelo, color, cantidad, costo, moneda, descuento y entrega se editan aquí mismo (clic en la celda) y se guardan en Monday. Lo que no venía en la cotización (aplicación, maquila, flete) se agrega con el "+ Agregar línea" de la tarjeta del proveedor.'}
-      </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <ProyectoActionBar proyecto={p} reload={state.reload} actions={['generar-oc']} />
         {canCompras && (
           <Button
             variant="primary"
             onClick={() => setCrearOc(true)}
-            title="Una orden a mano: eliges el proveedor y capturas todos sus productos de una vez, en texto libre"
+            title={'Una orden a mano: eliges el proveedor y capturas todos sus productos de una vez, en texto libre.\n'
+              + 'Una OC por proveedor, con firmas Elaborado → Revisado → Autorizado (DocuSeal). Las celdas de la tabla se editan con clic y se guardan en Monday; '
+              + 'lo que no venía en la cotización (aplicación, maquila, flete) va con "+ Agregar línea" en la tarjeta del proveedor.'}
           >
             + Crear orden de compra
           </Button>

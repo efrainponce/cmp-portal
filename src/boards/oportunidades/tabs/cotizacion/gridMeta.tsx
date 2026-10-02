@@ -265,7 +265,33 @@ export function proveedorDeLinea(row: ItemDTO, catalog: ItemDTO[]): string {
 export function colsTemplate(cols: GridCol[]): string {
   const [first, ...rest] = cols;
   const firstW = first?.width ?? 160;
-  return `minmax(${firstW}px, ${Math.max(firstW, 340)}px) ${rest.map((c) => `${c.width}px`).join(' ')}`;
+  // Las dos variables las pone `estirarGrid` cuando sobra pantalla; sin ellas
+  // (pantalla angosta, cel) quedan los anchos fijos de siempre.
+  return `var(--cot-producto, minmax(${firstW}px, ${Math.max(firstW, PRODUCTO_MAX)}px)) ${rest.map((c) => `calc(${c.width}px * var(--cot-escala, 1))`).join(' ')}`;
+}
+
+const PRODUCTO_MAX = 340;
+/** Cuánto pueden crecer las columnas que no son Producto: de ahí en adelante
+ * lo que sobre se lo queda Producto (el nombre es lo que más se corta). */
+const ESCALA_MAX = 1.35;
+
+/** Cuando la pantalla es más ancha que la tabla, la estira para ocuparla
+ * entera (Efraín, 2026-10-01: "usa TODA la pantalla"): antes medía solo lo de
+ * sus columnas y en un monitor ancho dejaba la mitad derecha vacía mientras el
+ * nombre del producto salía cortado. Devuelve las variables CSS que lee
+ * `colsTemplate` — en px exactos, no `1fr`: encabezado, filas y totales son
+ * grids SEPARADOS y con `fr` cada uno resolvería su propio ancho (el
+ * desalineado de 2026-07-21). `undefined` = no cabe, se queda con scroll.
+ * `fijo` = todo lo que no es columna de datos (#, 🗑, padding y gaps). Puro. */
+export function estirarGrid(cols: GridCol[], disponible: number, fijo: number): Record<string, string> | undefined {
+  const [first, ...rest] = cols;
+  if (!first || !(disponible > 0)) return undefined;
+  const otros = rest.reduce((a, c) => a + c.width, 0);
+  const libre = disponible - fijo;
+  if (libre <= PRODUCTO_MAX + otros) return undefined;
+  const escala = otros > 0 ? Math.min(ESCALA_MAX, (libre - PRODUCTO_MAX) / otros) : 1;
+  const producto = Math.floor(libre - otros * escala);
+  return { '--cot-producto': `${producto}px`, '--cot-escala': escala.toFixed(4) };
 }
 
 // Puesto directo en el elemento `display:grid` (header, cada fila, TotalsRow)
@@ -715,7 +741,7 @@ export function computeLineBanner(
   const needsProveedor = needsTallas && !productoProveedorOk(product, catalog);
   const otherWarnings = lineWarnings.filter((w) => w !== 'Sin confirmar' && w !== 'Sin tallas' && w !== 'Sin proveedor');
   const bannerText = [
-    needsTallas ? `HAY QUE CONFIRMAR TALLAS${needsProveedor ? ' Y PROVEEDOR' : ''}` : null,
+    needsTallas ? `Confirma tallas${needsProveedor ? ' y proveedor' : ''}` : null,
     ...otherWarnings,
   ].filter(Boolean).join(' • ');
   return { lineWarnings, bannerText, airtableUrl };

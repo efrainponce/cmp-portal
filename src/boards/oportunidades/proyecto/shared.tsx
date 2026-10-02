@@ -259,16 +259,17 @@ export function ProyectoActionBar({ proyecto, reload, actions }: {
             confirmLabel="¿Regenerar? (conserva cantidades)"
             busyLabel="Generando archivo…"
             variant="secondary"
+            title="Paso 1: crea el archivo y captura ahí las tallas. Si cambia una línea de la cotización se regenera solo; esto es por si quieres forzarlo."
             onConfirm={run('tallas-regenerar')}
           />
         )}
         {actions.includes('tallas-confirmar') && canVendedor && (
           <ConfirmButton
-            label="Validar tallas (vendedor)"
+            label="Validar tallas"
             confirmLabel="¿Validar y mandar a firma?"
             busyLabel="Validando… puede tardar unos minutos, no cierres esta pantalla"
             disabled={!ocCliente || (!native && !sheetUrl)}
-            title={!ocCliente ? 'Falta subir la orden de compra / cotización firmada / contrato del cliente (pestaña Documentación)' : (!native && !sheetUrl) ? 'Primero crea el archivo de tallas' : 'Valida el desglose y genera el PDF a firma'}
+            title={!ocCliente ? 'Falta subir la orden de compra / cotización firmada / contrato del cliente (pestaña Documentación)' : (!native && !sheetUrl) ? 'Primero crea el archivo de tallas' : native ? 'Valida el desglose y genera el PDF a firma' : 'Paso 2: con las tallas ya capturadas en el archivo, valida el desglose y genera el PDF a firma'}
             onConfirm={run('tallas-confirmar')}
           />
         )}
@@ -280,17 +281,17 @@ export function ProyectoActionBar({ proyecto, reload, actions }: {
             ESO era lo que llenaba el portal. Sigue siendo de Compras/admin. */}
         {actions.includes('tallas-traer') && canCompras && (
           <ConfirmButton
-            label="Traer tallas del archivo al portal (compras)"
+            label="Traer tallas del archivo"
             confirmLabel="¿Traer? Crea o actualiza líneas, no borra nada"
             busyLabel="Trayendo tallas del archivo…"
             disabled={!sheetUrl}
-            title={!sheetUrl ? 'Primero crea el archivo de tallas' : 'Lee el archivo de tallas y crea o actualiza las líneas del proyecto (aquí y en Monday). No borra ninguna.'}
+            title={!sheetUrl ? 'Primero crea el archivo de tallas' : 'Paso 3 (después de validar): lee el archivo de tallas y crea o actualiza las líneas del proyecto (aquí y en Monday). No borra ninguna.'}
             onConfirm={run('tallas-traer')}
           />
         )}
         {actions.includes('tallas-importar') && canCompras && (
           <ConfirmButton
-            label="Importar tallas a Monday (compras)"
+            label="Importar tallas a Monday"
             confirmLabel="¿Importar? Reemplaza las líneas del proyecto"
             busyLabel="Importando…"
             variant="secondary"
@@ -301,7 +302,7 @@ export function ProyectoActionBar({ proyecto, reload, actions }: {
         )}
         {actions.includes('generar-oc') && canCompras && (
           <ConfirmButton
-            label="Generar todas las OC pendientes (Monday)"
+            label="Generar todas las OC pendientes"
             confirmLabel="¿Generar? Se manda a firmas"
             busyLabel="Generando órdenes… puede tardar unos minutos, no cierres esta pantalla"
             variant="secondary"
@@ -310,12 +311,6 @@ export function ProyectoActionBar({ proyecto, reload, actions }: {
           />
         )}
       </div>
-      {actions.includes('tallas-traer') && !native && (
-        <div style={{ marginTop: 8, font: 'var(--text-label)', color: 'var(--ink-secondary)' }}>
-          Orden: 1) capturar las tallas en el archivo → 2) Validar tallas (vendedor) → 3) Traer tallas del archivo al portal (compras).
-          Si cambió una línea de la cotización, el archivo se regenera solo; "Regenerar" es por si quieres forzarlo.
-        </div>
-      )}
       {outcome && (
         <div style={{
           marginTop: 10, padding: '10px 14px', borderRadius: 'var(--radius-lg)',
@@ -335,7 +330,7 @@ export function ProyectoLinks({ proyecto }: { proyecto: ItemDetailDTO }) {
   if (!sheetUrl && !driveUrl) return null;
   const style = { font: 'var(--text-label-strong)', color: 'var(--accent)', textDecoration: 'none' } as const;
   return (
-    <div style={{ display: 'flex', gap: 16, marginBottom: 12 }}>
+    <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center', minHeight: 32 }}>
       {sheetUrl && <a href={sheetUrl} target="_blank" rel="noreferrer" style={style}>Abrir archivo de tallas ↗</a>}
       {driveUrl && <a href={driveUrl} target="_blank" rel="noreferrer" style={style}>Carpeta Drive ↗</a>}
     </div>

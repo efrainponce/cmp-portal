@@ -73,6 +73,9 @@ input, textarea, select, button {
 .reaccion-pildora, .reaccion-agregar, .reaccion-opcion { background: transparent; }
 .reaccion-pildora[aria-pressed="false"] { background: #fff; }
 .sidebar-collapse-btn { background: var(--surface-sidebar); }
+/* Campana agrupada y chips de documentos (2026-10-01). */
+.notif-check-btn { background: var(--accent); }
+.doc-chip-btn { transition: background .12s; }
 
 /* Solo con puntero real — en touch el :hover se "pega" tras el tap. */
 @media (hover: hover) {
@@ -84,6 +87,11 @@ input, textarea, select, button {
   .notif-bell-btn:hover {
     background: var(--fill-hover);
   }
+
+  .notif-row:hover { background: var(--bg-sunken) !important; }
+  .lista-orden-btn:hover { color: var(--ink) !important; text-decoration: underline; }
+  .notif-check-btn:hover { filter: brightness(1.15); }
+  .doc-chip-btn:hover { background: var(--bg-sunken) !important; }
 
   /* Reacciones del feed de Actualizaciones (2026-09-25). */
   .reaccion-pildora[aria-pressed="false"]:hover,

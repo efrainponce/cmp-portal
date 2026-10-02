@@ -23,6 +23,7 @@ import {
   ESTADO_LABEL, abonoVencido, diasParaPago, etiquetaMes, flujoPorMes, hoyISO,
   resumenConcepto, resumenEstadoCuenta, type EstadoConcepto, type MesFlujo,
 } from '../../../shared/estadoCuenta';
+import { tabRoot, gridTarjetas } from '../oportunidades/tabs/tabLayout';
 
 interface Props {
   proyectoId: string;
@@ -138,7 +139,7 @@ export function EstadoCuentaTab({ proyectoId, editable }: Props) {
   const hayAlgo = (conceptos ?? []).length > 0;
 
   return (
-    <div style={{ padding: isMobile ? '16px 14px 40px' : '24px 32px 40px', maxWidth: 920, width: '100%', boxSizing: 'border-box' }}>
+    <div style={{ ...tabRoot }}>
       {hayAlgo && (
         <>
           <FlujoMensual meses={meses} isMobile={isMobile} />
@@ -165,20 +166,31 @@ export function EstadoCuentaTab({ proyectoId, editable }: Props) {
       {conceptos === null && !error ? (
         <div style={{ font: 'var(--text-label)', color: 'var(--ink-quiet)' }}>Cargando…</div>
       ) : conceptos !== null && !hayAlgo ? (
-        <div style={{ font: 'var(--text-label)', color: 'var(--ink-quiet)', maxWidth: 560 }}>
-          Sin movimientos todavía. Captura la primera factura (ingreso) o el primer compromiso con un
-          proveedor (egreso) con «+ Agregar concepto»; los cobros y pagos se van colgando de cada uno.
+        <div
+          title="Captura la primera factura (ingreso) o el primer compromiso con un proveedor (egreso); los cobros y pagos se van colgando de cada uno."
+          style={{ font: 'var(--text-label)', color: 'var(--ink-quiet)', width: 'fit-content' }}
+        >
+          Sin movimientos todavía.
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {pendientes.length > 0 && <Encabezado texto={`Pendientes (${pendientes.length})`} />}
-          {pendientes.map(c => (
-            <ConceptoCard key={c.id} concepto={c} editable={editable} proyectoId={proyectoId} onRemove={() => onRemove(c.id)} onSaved={reload} />
-          ))}
+          {/* 2026-10-01: ancho completo — conceptos en columnas. */}
+          {pendientes.length > 0 && (
+            <div style={gridTarjetas(520, 10)}>
+              {pendientes.map(c => (
+                <ConceptoCard key={c.id} concepto={c} editable={editable} proyectoId={proyectoId} onRemove={() => onRemove(c.id)} onSaved={reload} />
+              ))}
+            </div>
+          )}
           {liquidados.length > 0 && <Encabezado texto={`Liquidados (${liquidados.length})`} />}
-          {liquidados.map(c => (
-            <ConceptoCard key={c.id} concepto={c} editable={editable} proyectoId={proyectoId} onRemove={() => onRemove(c.id)} onSaved={reload} />
-          ))}
+          {liquidados.length > 0 && (
+            <div style={gridTarjetas(520, 10)}>
+              {liquidados.map(c => (
+                <ConceptoCard key={c.id} concepto={c} editable={editable} proyectoId={proyectoId} onRemove={() => onRemove(c.id)} onSaved={reload} />
+              ))}
+            </div>
+          )}
         </div>
       )}
 

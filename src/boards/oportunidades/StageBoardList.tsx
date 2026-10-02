@@ -2,7 +2,7 @@
 // (Oportunidades, Costeo, Validación Costeo, Documentación y Tallas, Órdenes
 // de Compra, Logística) — same row template as Board Costeo/Validacion in the
 // design, just a different deal_stage filter + grouping column per board.
-import { memo, useEffect, useMemo, useRef } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { useBoards, usePoll, colForBoard, type ItemDTO } from '../../lib/api';
 import { useMe } from '../../lib/useMe';
 import { groupByColumn } from '../../lib/groupBy';
@@ -23,7 +23,7 @@ import { PersonPair } from '../../components/core/PersonAvatar';
 import { DEAL_STAGE_LABELS, DEAL_STAGE_ORDER, type StageBoardConfig } from '../../lib/dealStages';
 import { useSavedView } from '../../lib/useSavedView';
 import { useIsMobile } from '../../lib/useIsMobile';
-import { TotalesCells, TotalesChips, TotalesHeader, metricasVisibles, FECHAS_ADMIN, METRICAS_EXTENDIDAS } from './TotalesCells';
+import { TotalesCells, TotalesChips, TotalesHeader, metricasVisibles, ordenarPorMetrica, siguienteOrden, FECHAS_ADMIN, METRICAS_EXTENDIDAS, type OrdenLista } from './TotalesCells';
 import { ColumnPicker } from '../../components/board/ColumnPicker';
 import { useColumnasVisibles, type ColumnaDef } from '../../lib/useColumnasVisibles';
 import type { TotalesDTO } from '../../../shared/dto';
@@ -266,10 +266,12 @@ export function StageBoardList({ config, groupColId = 'deal_stage', q, onSearch,
     ];
   }, [cols, totales]);
 
+  // Clic en un título del encabezado: ordena DENTRO de cada etapa.
+  const [orden, setOrden] = useState<OrdenLista | null>(null);
   const groups = useMemo(() => {
     const order = groupColId === 'deal_stage' ? DEAL_STAGE_ORDER : undefined;
-    return groupByColumn(items, groupCol, undefined, undefined, order);
-  }, [items, groupCol, groupColId]);
+    return groupByColumn(ordenarPorMetrica(items, orden, metricas, totales), groupCol, undefined, undefined, order);
+  }, [items, groupCol, groupColId, orden, metricas, totales]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -347,7 +349,7 @@ export function StageBoardList({ config, groupColId = 'deal_stage', q, onSearch,
               ancho de la pantalla y deja de caer sobre sus columnas al hacer
               scroll horizontal. */}
           <div style={extendida ? { width: 'max-content', minWidth: '100%' } : undefined}>
-          <TotalesHeader metricas={metricas} isMobile={isMobile} />
+          <TotalesHeader metricas={metricas} isMobile={isMobile} orden={orden} onOrdenar={(key) => setOrden((o) => siguienteOrden(o, key))} />
           {groups.length === 0 && (
             <div style={{ padding: 24, font: 'var(--text-label)', color: 'var(--ink-quiet)' }}>Sin oportunidades.</div>
           )}

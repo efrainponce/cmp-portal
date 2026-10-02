@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import type { ActivityEntryDTO, BoardSlug } from '../../../lib/apiClient';
 import { getActivity } from '../../../lib/api';
 import { useCanVerActividad } from '../../../lib/useMe';
+import { tabRoot } from './tabLayout';
 
 interface Props {
   slug: BoardSlug;
@@ -55,7 +56,7 @@ export function ActividadTab({ slug, itemId }: Props) {
   }
 
   return (
-    <div style={{ padding: '24px 32px 40px', maxWidth: 640, width: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 4 }}>
+    <div style={{ ...tabRoot, display: 'flex', flexDirection: 'column', gap: 4 }}>
       {error && (
         <div style={{ font: 'var(--text-caption)', color: 'var(--status-perdida)', padding: '12px 2px' }}>
           No se pudo cargar la actividad.

@@ -8,8 +8,11 @@ import { getMentionUsers, getUpdates, markUpdatesSeen, postUpdate, postUpdateAtt
 import { useMe } from '../../../lib/useMe';
 import { REACCIONES, alternarReaccion, emojiDe, type ReaccionDTO } from '../../../../shared/reacciones';
 import { Modal } from '../../../components/core/Modal';
+import { Button } from '../../../components/core/Button';
 import { initials } from '../../../lib/initials';
 import { separarFirma } from '../../../../shared/firmaPortal';
+import { tabRoot } from './tabLayout';
+import { useAncho } from '../../../lib/useAncho';
 
 const PdfCanvasPreview = lazy(() =>
   import('../../../components/core/PdfCanvasPreview').then((m) => ({ default: m.PdfCanvasPreview })),
@@ -491,6 +494,7 @@ export function ActualizacionesTab({ slug, itemId }: Props) {
   // Comentario cuyo cuadro de respuesta está abierto (uno a la vez).
   const [replyTo, setReplyTo] = useState<string | null>(null);
   const me = useMe();
+  const [raizRef, ancho] = useAncho<HTMLDivElement>();
   // Mismo nombre que guarda el server (viewer.nombre || viewer.email).
   const miNombre = me?.nombre || me?.email || '';
 
@@ -550,8 +554,17 @@ export function ActualizacionesTab({ slug, itemId }: Props) {
   const notas = useMemo(() => updates?.filter((u) => u.tipo === 'nota') ?? [], [updates]);
   const feed = useMemo(() => updates?.filter((u) => u.tipo !== 'nota') ?? null, [updates]);
 
+  // Pantalla ancha: el cuadro para escribir (y las notas por producto) quedan
+  // fijos a la izquierda y la conversación ocupa el resto. Antes todo iba en
+  // una columna de 640 px con más de media pantalla vacía (2026-10-01).
+  const dosColumnas = ancho >= 900;
+
   return (
-    <div style={{ padding: '24px 32px 40px', maxWidth: 640, width: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 14 }}>
+    <div ref={raizRef} style={{ ...tabRoot, display: 'flex', flexDirection: dosColumnas ? 'row' : 'column', alignItems: dosColumnas ? 'flex-start' : undefined, gap: dosColumnas ? 20 : 14 }}>
+      <div style={{
+        display: 'flex', flexDirection: 'column', gap: 14,
+        ...(dosColumnas ? { flex: '0 0 clamp(320px, 30%, 440px)', position: 'sticky', top: 12 } : {}),
+      }}>
       <Composer
         users={users}
         placeholder="Escribe una actualización para el equipo… usa @ para etiquetar a alguien"
@@ -571,14 +584,6 @@ export function ActualizacionesTab({ slug, itemId }: Props) {
         }}
       />
 
-      {error && (
-        <div style={{ font: 'var(--text-caption)', color: 'var(--status-perdida)', padding: '12px 2px' }}>
-          No se pudieron cargar las actualizaciones.
-        </div>
-      )}
-      {!error && updates === null && (
-        <div style={{ font: 'var(--text-caption)', color: 'var(--ink-faint)', padding: '12px 2px' }}>Cargando…</div>
-      )}
       {notas.length > 0 && (
         <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-xl)', padding: '12px 14px', background: 'var(--bg-sunken)' }}>
           <div style={{ font: 'var(--text-label-strong)', color: 'var(--ink)', marginBottom: 6 }}>Notas por producto</div>
@@ -589,6 +594,24 @@ export function ActualizacionesTab({ slug, itemId }: Props) {
             </div>
           ))}
         </div>
+      )}
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14, flex: 1, minWidth: 0 }}>
+      {/* Con "Reintentar": antes el único remedio era recargar la página
+          entera (Clarity, 2026-10-01: error + F5 varias veces en una sesión). */}
+      {error && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '12px 14px',
+          border: '1px solid var(--status-perdida)', borderRadius: 'var(--radius-lg)', background: 'var(--bg-raised)',
+          font: 'var(--text-label)', color: 'var(--status-perdida)',
+        }}>
+          No se pudieron cargar las actualizaciones.
+          <Button variant="secondary" onClick={load}>Reintentar</Button>
+        </div>
+      )}
+      {!error && updates === null && (
+        <div style={{ font: 'var(--text-caption)', color: 'var(--ink-faint)', padding: '12px 2px' }}>Cargando…</div>
       )}
       {feed !== null && feed.length === 0 && notas.length === 0 && (
         <div style={{ font: 'var(--text-caption)', color: 'var(--ink-faint)', padding: '12px 2px' }}>
@@ -685,6 +708,7 @@ export function ActualizacionesTab({ slug, itemId }: Props) {
           )}
         </div>
       ))}
+      </div>
 
       {preview && (
         <Modal title={preview.name} onClose={() => setPreview(null)} width={760}>

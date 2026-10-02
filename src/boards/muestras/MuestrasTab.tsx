@@ -8,6 +8,7 @@ import { Button } from '../../components/core/Button';
 import { MuestraModal } from './MuestraModal';
 import { SolicitudGrupo } from './SolicitudCard';
 import type { MuestraPadre, MuestraSolicitudDTO } from '../../../shared/muestras';
+import { tabRoot } from '../oportunidades/tabs/tabLayout';
 
 interface Props {
   padre: MuestraPadre;
@@ -40,7 +41,7 @@ export function MuestrasTab({ padre, itemId, readOnly = false }: Props) {
   }, [data]);
 
   return (
-    <div style={{ padding: '24px clamp(12px, 3vw, 32px) 40px', width: '100%', maxWidth: 1100, boxSizing: 'border-box' }}>
+    <div style={{ ...tabRoot }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
         <div>
           <div style={{ font: 'var(--text-small-strong)', color: 'var(--ink)', marginBottom: 4 }}>Solicitudes de muestra</div>

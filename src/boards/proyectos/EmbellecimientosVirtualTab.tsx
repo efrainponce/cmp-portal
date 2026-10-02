@@ -36,6 +36,7 @@ import {
   emparejarEmbell, claveZona, esLineaEmbellecimiento, zonaDeNombre,
   type EmbLinea,
 } from './embellLineas';
+import { tabRoot, gridTarjetas } from '../oportunidades/tabs/tabLayout';
 
 /** Línea ✨ del Proyecto con lo que la tab necesita pintar. */
 interface LineaEmb extends EmbLinea {
@@ -142,7 +143,7 @@ export function EmbellecimientosVirtualTab({ proyectoId, proyecto, onChanged }: 
 
   if (embProducts.length === 0 && lineasEmb.length === 0) {
     return (
-      <div style={{ padding: '24px 32px 40px', maxWidth: 920, width: '100%', boxSizing: 'border-box' }}>
+      <div style={{ ...tabRoot }}>
         <div style={{ font: 'var(--text-label)', color: 'var(--ink-quiet)' }}>
           {lines.length === 0
             ? 'Sin líneas de cotización.'
@@ -153,11 +154,15 @@ export function EmbellecimientosVirtualTab({ proyectoId, proyecto, onChanged }: 
   }
 
   return (
-    <div style={{ padding: '24px 32px 40px', maxWidth: 920, width: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)', marginBottom: 6 }}>
-        Embellecimiento de la Oportunidad ligada. El texto de las posiciones y las imágenes de referencia se capturan
-        allá{canProveedor ? '; el proveedor de cada posición se asigna aquí y es el que arma su OC' : ''}.
+    <div style={{ ...tabRoot }}>
+      <div
+        title={`El texto de las posiciones y las imágenes de referencia se capturan en la Oportunidad${canProveedor ? '; el proveedor de cada posición se asigna aquí y es el que arma su OC' : ''}.`}
+        style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)', marginBottom: 12, width: 'fit-content' }}
+      >
+        Viene de la Oportunidad ligada.
       </div>
+      {/* 2026-10-01: ancho completo — tarjetas de producto en columnas. */}
+      <div style={gridTarjetas(440, 10)}>
       {embProducts.map((p, i) => {
         const zones = explodeEmbellecimiento(p.descripcionEmbellecimiento, true);
         const subtotal = (p.precioUnitario ?? 0) * p.cantidad;
@@ -250,6 +255,7 @@ export function EmbellecimientosVirtualTab({ proyectoId, proyecto, onChanged }: 
           </div>
         </div>
       )}
+      </div>
 
       {destino && (
         <SeleccionarProveedorModal

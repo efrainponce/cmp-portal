@@ -18,11 +18,20 @@ export async function markAllNotificationsRead(filter?: 'importante' | 'actualiz
   if (!res.ok) throw new Error('mark all read failed: ' + res.status);
 }
 
+export async function markItemNotificationsRead(itemId: string, severity: 'importante' | 'actualizacion'): Promise<void> {
+  const res = await apiFetch('/notifications/read-item', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ itemId, severity }),
+  });
+  if (!res.ok) throw new Error('mark item read failed: ' + res.status);
+}
+
 export interface UseNotificationsResult {
   notifications: NotificationDTO[];
   unread: { importante: number; actualizacion: number };
   refetch: () => void;
   markRead: (id: number) => Promise<void>;
+  /** Todo lo de un item en una bandeja (el clic sobre un grupo de la campana). */
+  markItemRead: (itemId: string, severity: 'importante' | 'actualizacion') => Promise<void>;
   markAllRead: (filter?: 'importante' | 'actualizacion') => Promise<void>;
 }
 
@@ -76,6 +85,21 @@ export function useNotifications(): UseNotificationsResult {
     load();
   }, [load]);
 
+  const markItemRead = useCallback(async (itemId: string, severity: 'importante' | 'actualizacion') => {
+    await markItemNotificationsRead(itemId, severity);
+    setData((prev) => {
+      if (!prev) return prev;
+      const toca = (n: NotificationDTO) => n.itemId === itemId && n.severity === severity && !n.read;
+      const cuantas = prev.notifications.filter(toca).length;
+      if (cuantas === 0) return prev;
+      return {
+        notifications: prev.notifications.map((n) => (toca(n) ? { ...n, read: true } : n)),
+        unread: { ...prev.unread, [severity]: Math.max(0, prev.unread[severity] - cuantas) },
+      };
+    });
+    load();
+  }, [load]);
+
   const markAllRead = useCallback(async (filter?: 'importante' | 'actualizacion') => {
     await markAllNotificationsRead(filter);
     setData((prev) => {
@@ -93,6 +117,7 @@ export function useNotifications(): UseNotificationsResult {
     unread: data?.unread ?? EMPTY_UNREAD,
     refetch: load,
     markRead,
+    markItemRead,
     markAllRead,
   };
 }

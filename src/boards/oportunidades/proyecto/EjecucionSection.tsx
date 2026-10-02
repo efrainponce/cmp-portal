@@ -15,6 +15,7 @@ import { ProgressBattery } from '../../../components/board/ProgressBattery';
 import { batteryFromSubitems, ESTADO_PRODUCTO_ORDER } from '../../../lib/estadoProductoBuckets';
 import { type ProyectoState, Shell, ESTADO_PRODUCTO_COLORS, S_ESTADO, S_CANTIDAD, S_TALLA, S_ENTREGA_PROV } from './shared';
 import { groupByProductoColor, type TallaGroup } from './TallasSection';
+import { gridTarjetas } from '../tabs/tabLayout';
 
 // Comentario de Estado (proyectos_sub) — junto con S_ESTADO, editables solo por
 // compras/admin (shared/visibility.ts, grupo AC) desde el tab Ejecución.
@@ -319,7 +320,8 @@ function LineaRow({ l, canEdit, isMobile, selected, onToggle, saving, error, his
   );
 }
 
-const GRID = (canEdit: boolean) => `${canEdit ? '20px ' : ''}64px 56px minmax(170px, 1.1fr) minmax(160px, 1.6fr) 130px 120px`;
+// El comentario se lleva el ancho sobrante (2026-10-01: ancho completo).
+const GRID = (canEdit: boolean) => `${canEdit ? '20px ' : ''}64px 56px minmax(170px, 1fr) minmax(160px, 2fr) 130px 120px`;
 
 /** Tabla de un producto+color: encabezado con batería, piezas, casilla de todo
  * el grupo y "Todas a…"; resumen libre; un renglón por talla. */
@@ -605,7 +607,9 @@ export function EjecucionSection({ state, oppId: _oppId }: { state: ProyectoStat
               />
             ))}
           </div>
-          <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {/* 2026-10-01: en pantalla muy ancha caben dos productos por renglón;
+              800 px = lo que pide la tabla de un producto sin apretarse. */}
+          <div style={{ marginTop: 12, ...(isMobile ? { display: 'flex', flexDirection: 'column', gap: 12 } : gridTarjetas(800)) }}>
             {grupos.map((g) => {
               const groupKey = `${g.producto}|${g.color}`;
               const ls = g.rows.map((r) => porId.get(r.id)!).filter((l) => !filtro || l.estado === filtro);

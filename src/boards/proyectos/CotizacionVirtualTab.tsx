@@ -13,6 +13,7 @@ import { fmtMoney2 } from '../../lib/format';
 import { AjusteLabelBadge } from '../../components/core/Badges';
 import { DivisionesBorradas } from '../oportunidades/tabs/cotizacion/DivisionesBorradas';
 import { AjustarLineaVirtualModal } from './AjustarLineaVirtualModal';
+import { tabRoot } from '../oportunidades/tabs/tabLayout';
 
 function rowStyle(kind: 'header' | 'body' | 'footer'): React.CSSProperties {
   return {
@@ -57,11 +58,12 @@ export function CotizacionVirtualTab({ proyectoId }: { proyectoId: string }) {
   const total = lines.reduce((sum, l) => sum + (l.precioUnitario ?? 0) * l.cantidad, 0);
 
   return (
-    <div style={{ padding: '24px 32px 40px', maxWidth: 920, width: '100%', boxSizing: 'border-box' }}>
-      <div style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)', marginBottom: 16 }}>
-        Cotización de la Oportunidad ligada. Dividir o editar una línea aquí
-        escribe en Monday — Ventas también lo ve en la cotización de la
-        Oportunidad.
+    <div style={{ ...tabRoot }}>
+      <div
+        title="Dividir o editar una línea aquí escribe en Monday — Ventas también lo ve en la cotización de la Oportunidad."
+        style={{ font: 'var(--text-caption)', color: 'var(--ink-tertiary)', marginBottom: 16, width: 'fit-content' }}
+      >
+        Cotización de la Oportunidad ligada.
       </div>
 
       {notice && (

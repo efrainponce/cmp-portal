@@ -50,9 +50,11 @@ export function CosteoProyectoTab({ oportunidadId }: { oportunidadId: string }) 
 
   return (
     <div>
-      <div style={{ padding: '20px 32px 0', font: 'var(--text-caption)', color: 'var(--ink-tertiary)' }}>
-        Costeo de la Oportunidad ligada, tal cual se ve en Validación de Costeo.
-        Solo lectura: para cambiar un costo o un precio se hace en su board.
+      <div
+        title="Costeo de la Oportunidad ligada, tal cual se ve en Validación de Costeo. Para cambiar un costo o un precio se hace en su board."
+        style={{ padding: '20px clamp(14px, 3vw, 32px) 0', font: 'var(--text-caption)', color: 'var(--ink-tertiary)' }}
+      >
+        Costeo de la Oportunidad ligada · solo lectura.
       </div>
       <CotizacionTab
         subCols={subCols}

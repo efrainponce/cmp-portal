@@ -1,5 +1,44 @@
 # Log de commits
 
+## 2026-10-02 (UX, paso 2: pantalla completa, menos texto, quitar lo que no se usa)
+
+- **Efraín**: "necesitamos MEJORAR mucho el UX y UI … todo es DIFICIL de hacer …
+  sin tanto texto … quitamos anuncios, todo lo superfluo lo quitamos" y "usa
+  TODA LA PANTALLA en todos lados". Base: reporte de Clarity + recorrido propio
+  en prod como Compras/Ventas/admin + uso real en D1.
+- **Se quitó lo que no se usa**: pantalla **Inicio** (nadie mandó un
+  seguimiento desde ahí en 30 días; Compras la abría para salirse), **Anuncios**
+  del menú (2 anuncios en total y ~4,300 polls en 8 días; la ruta sigue viva) y
+  la **burbuja del chat** (una conversación desde el 13-ago y tapaba contenido).
+  "/" (y "/home") aterriza en el primer board del menú de cada quien
+  (`boardDeEntrada`); la precarga de index.html pide esa lista.
+- **Actualizaciones ya no se cae entera**: Monday contestaba
+  `UserUnauthorizedException` por el `creator` de UN "me gusta" en una respuesta
+  y el portal tiraba todo el feed ("No se pudieron cargar…", OPP-1139 y dos
+  Proyectos). `gql(..., { parcial: true })` tolera errores de CAMPO no
+  autorizado (`erroresDeCampo`, test en `monday.parcial.test.ts`); la pestaña
+  trae botón **Reintentar**.
+- **Notificaciones agrupadas por oportunidad** (659 avisos/semana sobre 298
+  OPPs, 7% leídos): un renglón por item con sus últimos avisos; el clic abre el
+  item (directo en Actualizaciones si es comentario) y marca el grupo leído
+  (`POST /api/notifications/read-item`); botón "N ✓" para marcar sin abrir. La
+  bandeja "Actualizaciones" se llama "Cambios de etapa". `agrupar.ts` + tests.
+- **Encabezados Costo / Subtotal / Total / Util. % … ordenan** la lista (eran
+  clic muerto en Clarity): mayor→menor, menor→mayor, normal; dentro de cada etapa.
+- **Ancho completo en todo el drawer** (`tabs/tabLayout.ts`: `tabRoot`,
+  `gridTarjetas`): se fueron los topes de 640/920/1100 px; tarjetas en columnas
+  (Tallas, Embellecimientos, Logística, Inventario, Documentación, Estado de
+  cuenta). La grid de cotización se estira en px exactos (`estirarGrid` +
+  `useAncho`), Producto se queda lo que sobra. Encabezados del drawer de
+  Oportunidad y de Proyecto en un renglón.
+- **Menos texto**: PDFs de la cotización como chips de un renglón; párrafos de
+  instrucciones (Tallas, Órdenes, Resumen, Inventario, Costeo/Cotización del
+  proyecto) pasan a `title`; botones sin sufijo de rol ("Validar tallas",
+  "Traer tallas del archivo"); "HAY QUE CONFIRMAR TALLAS" → "Confirma tallas".
+- **Clics muertos**: las cantidades de solo lectura en Tallas ya no parecen
+  inputs; en Inventario, un segundo clic sobre la caja ya armada abre el
+  selector de archivo (antes no hacía nada).
+
 ## 2026-10-01 (UX, paso 1 de Clarity: clics muertos)
 
 - **Efraín**: "necesitamos mejorar bastante en UX … ve poco a poco, no quiero

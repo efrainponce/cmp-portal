@@ -176,8 +176,11 @@ export function ResumenSection({ state }: { state: ProyectoState }) {
           {`Embellecimientos sin producto ligado:\n${textoEmbellecimientos(sueltos)}`}
         </div>
       )}
-      <div style={{ marginTop: 8, font: 'var(--text-caption)', color: 'var(--ink-quiet)' }}>
-        Un renglón por producto y color (las tallas van sumadas; los embellecimientos van en su columna, una línea por zona). Verde = entregado al cliente · Azul = en proceso · Rojo = incidencia o retraso · Sin color = pendiente de surtir. Para cambiar un estado usa la pestaña Ejecución.
+      <div
+        title="Un renglón por producto y color (tallas sumadas). El estado se cambia en la pestaña Ejecución."
+        style={{ marginTop: 8, font: 'var(--text-caption)', color: 'var(--ink-quiet)', width: 'fit-content' }}
+      >
+        Verde = entregado · Azul = en proceso · Rojo = incidencia · Sin color = por surtir
       </div>
       {verPdf && (
         <FilePreviewModal url={`/api/proyectos/${p.id}/estatus/pdf`} name={`${p.name} - Estatus.pdf`} onClose={() => setVerPdf(false)} />
