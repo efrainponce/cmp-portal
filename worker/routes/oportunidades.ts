@@ -1238,13 +1238,18 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     // `sinCostos=1` = la copia sin precios de la MISMA orden (para surtido o
     // recepción). Los dos se declaran aquí para que un parámetro mal escrito NO
     // caiga en silencio a la OC con costos (worker/lib/http.ts).
-    const badQuery = rejectUnknownQuery(c.req.url, ['imagenes', 'sinCostos']);
+    // `metodoPago`/`condPago` = lo capturado en la tarjeta del proveedor, que
+    // NO se guarda en el Proyecto: sin pasarlos, la vista previa salía con "—"
+    // aunque los campos estuvieran llenos (Elisa, OPP-1121, 2026-10-05).
+    const badQuery = rejectUnknownQuery(c.req.url, ['imagenes', 'sinCostos', 'metodoPago', 'condPago']);
     if (badQuery) return badQuery;
     const conImagenes = c.req.query('imagenes') === '1';
     const sinCostos = c.req.query('sinCostos') === '1';
+    const metodoPago = c.req.query('metodoPago')?.trim() || undefined;
+    const condPago = c.req.query('condPago')?.trim() || undefined;
 
     try {
-      const bytes = await generarOcProveedorPdf(c.env, itemId, proveedorId, viewer, { conImagenes, sinCostos });
+      const bytes = await generarOcProveedorPdf(c.env, itemId, proveedorId, viewer, { conImagenes, sinCostos, metodoPago, condPago });
       // El `name` del Proyecto también empieza con el folio de la Oportunidad
       // ("OPP-0906 - …"), así que la descarga queda identificada igual que las
       // de la Oportunidad. Las OC OFICIALES no pasan por aquí: viven en Monday

@@ -680,7 +680,11 @@ function OcVersiones({ versiones, vigente }: {
  * (worker/lib/ocProveedorPdf.ts) en vez de disparar Eledo/cmp-tallas. Es SOLO
  * vista previa: no consume folio ni guarda nada. Para emitirla de verdad está
  * "Generar OC (portal)", al lado. */
-function NativeOcButton({ proyectoId, proveedorId }: { proyectoId: string; proveedorId: string | null }) {
+function NativeOcButton({ proyectoId, proveedorId, metodoPago, condPago }: {
+  proyectoId: string; proveedorId: string | null;
+  /** Lo capturado en la tarjeta — sin esto la vista previa salía con "—". */
+  metodoPago: string; condPago: string;
+}) {
   const [preview, setPreview] = useState(false);
   // La vista previa alterna entre las dos formas del MISMO documento. Importa
   // que se pueda ver antes de emitir: "Generar OC" consume folio, y darse
@@ -690,7 +694,12 @@ function NativeOcButton({ proyectoId, proveedorId }: { proyectoId: string; prove
   // surte, o a quien recibe la mercancía (Efraín, 2026-08-24).
   const [sinCostos, setSinCostos] = useState(false);
   if (!proveedorId) return null;
-  const query = [conImagenes ? 'imagenes=1' : '', sinCostos ? 'sinCostos=1' : ''].filter(Boolean).join('&');
+  const params = new URLSearchParams();
+  if (conImagenes) params.set('imagenes', '1');
+  if (sinCostos) params.set('sinCostos', '1');
+  if (metodoPago.trim()) params.set('metodoPago', metodoPago.trim());
+  if (condPago.trim()) params.set('condPago', condPago.trim());
+  const query = params.toString();
   const url = `/api/proyectos/${proyectoId}/oc-nativa/${proveedorId}/pdf${query ? `?${query}` : ''}`;
   return (
     <>
@@ -1207,7 +1216,7 @@ function ProveedorCard({ group, proyecto, oppId, reload, canEdit, activity, nota
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-          <NativeOcButton proyectoId={proyecto.id} proveedorId={group.proveedorId} />
+          <NativeOcButton proyectoId={proyecto.id} proveedorId={group.proveedorId} metodoPago={metodoPago} condPago={condPago} />
           {/* Un solo "Generar OC ▾" con las tres variantes (2026-09-02: eran
               tres botones seguidos por tarjeta). Misma confirmación en dos
               pasos y mismos endpoints. En la tarjeta "Sin proveedor" no se
