@@ -1,5 +1,17 @@
 # Log de commits
 
+## 2026-10-05 (OC: la vista previa respeta método y condiciones de pago)
+
+- **Elisa** (WhatsApp, OPP-1121 / GDL TACTICAL): "no salieron las condiciones
+  de pago y método, pero se lo puse". No se emitió ninguna OC ese día
+  (`oc_emitida`): lo que vio fue "Ver OC". Los campos de la tarjeta son de
+  esa OC (no se guardan en el Proyecto) y "Generar OC" sí los manda, pero la
+  vista previa no — leía la columna del Proyecto, vacía, y pintaba "—".
+  - `NativeOcButton` (`OrdenesSection.tsx`) recibe lo capturado en la tarjeta
+    y lo pasa como `metodoPago`/`condPago` en el query de
+    `GET /api/proyectos/:id/oc-nativa/:proveedorId/pdf`, que ahora los
+    declara en `rejectUnknownQuery` y los entrega a `generarOcProveedorPdf`.
+
 ## 2026-10-02 (Costeo: elegir producto ya jala el costo del catálogo)
 
 - **PAM** (WhatsApp): "de plano no me jala los costos del airtable". El sync

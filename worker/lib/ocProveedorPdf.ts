@@ -65,7 +65,8 @@ function fechaHoy(): string {
 
 /** Overrides de la orden que se está EMITIENDO: el folio que le tocó y los
  * términos capturados en su tarjeta (que son de esa OC, no del Proyecto — ver
- * ProveedorCard). La vista previa no manda ninguno y todo sale del espejo. */
+ * ProveedorCard). La vista previa manda los términos (no el folio); lo que
+ * falte sale del espejo. */
 export interface OcProveedorPdfOpts {
   folioOrden?: string;
   metodoPago?: string;
