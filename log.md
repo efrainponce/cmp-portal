@@ -1,5 +1,28 @@
 # Log de commits
 
+## 2026-10-08 (Rendimiento real: cascada completa de cada carga + métricas sin ruido)
+
+- **Efraín**: "necesitamos cascada entera porque en Mérida el internet es
+  súper lento". Los resúmenes de `ux_event` decían cuánto tardaba cada
+  endpoint, pero no en qué ORDEN bajó todo ni qué esperó a qué.
+  - Cada carga de página manda su cascada recurso por recurso (inicio, espera
+    al primer byte, duración, bytes por la red, método) con los hitos
+    (ttfb/fcp/lcp/dcl/load/primera lista) y la red estimada. En TODAS las
+    cargas (sin muestreo), en su propio POST a `/api/telemetry` (campo
+    `cascada`). Espera a la primera lista (hasta 3 min) para no cortar la
+    carga lenta de Mérida. Rutas con ids colapsados, otros orígenes solo host
+    (`shared/perfCascada.ts`, validado de nuevo en el worker).
+  - Tabla nueva `perf_cascada` (con el CORREO del servidor: el
+    monday_user_id se presta), poda a 90 días en el cron semanal.
+  - `scripts/perf-cascada.mjs`: lista las cargas (`--lentas`, `--email`),
+    dibuja una (`--id N`) y arma la carga típica (`--tipica`).
+- Tres filtros de ruido traídos de tratto-design-system (`uso/perf.ts`):
+  FCP/LCP solo pintados con la pestaña a la vista (los LCP de 10 y 30 s eran
+  cargas en segundo plano); INP sin las interacciones que abrieron un
+  `confirm`/`alert`/`prompt`; latencia `/api` sin las peticiones que
+  corrieron con la pestaña oculta o la laptop dormida. **Los vitals de antes
+  y después de este deploy no son comparables.**
+
 ## 2026-10-08 (Costeo: Compras ya captura el Precio de Venta)
 
 - **Efraín**: "vamos a abrirle ese field en COSTEO para que lo puedan editar".

@@ -37,6 +37,7 @@ import { enviarResumenSiToca } from './wa/resumen';
 import { purgeBitacora } from './wa/bitacora';
 import { backupD1ToR2 } from './lib/backup';
 import { purgeUxEvents } from './lib/telemetry';
+import { purgeCascadas } from './lib/perfCascada';
 import { purgeAccionLog } from './lib/accionLog';
 import { registrarError } from './lib/errores';
 import { jsonStatus } from './lib/http';
@@ -216,7 +217,7 @@ export default {
       // Las podas de ux_event (90 días) y accion_log (400) se cuelgan aquí y
       // no del cron de 15 min: son DELETE por rango que no tienen por qué
       // correr 96 veces al día.
-      ctx.waitUntil(Promise.all([backupD1ToR2(env), purgeUxEvents(env), purgeAccionLog(env), purgeBitacora(env), purgeSyncLog(env)]));
+      ctx.waitUntil(Promise.all([backupD1ToR2(env), purgeUxEvents(env), purgeCascadas(env), purgeAccionLog(env), purgeBitacora(env), purgeSyncLog(env)]));
       return;
     }
     const slugs = CRON_GROUPS[controller.cron] ?? (Object.keys(BOARDS) as BoardSlug[]);

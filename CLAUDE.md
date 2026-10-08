@@ -32,7 +32,9 @@ con el Worker (`/api/*`). Bot de WhatsApp + chat del portal comparten agente Cla
 - **"Está lento"**: `node scripts/perf-real.mjs [--rol compras] [--email …] [--dias 7]`
   resume lo que VIVE cada usuario en su red (ux_event kind `perf`, de
   `src/lib/perfReal.ts`): conexión, primera lista, drawer, LCP/INP, bajada completa
-  por endpoint y % de 304. Para reproducir: `scripts/prod-waterfall.mjs /ruta
+  por endpoint y % de 304. **Qué bajó y en qué orden** en una carga real (Mérida):
+  `scripts/perf-cascada.mjs [--lentas] [--id N] [--tipica]` (tabla `perf_cascada`,
+  todas las cargas desde 2026-10-08). Para reproducir: `scripts/prod-waterfall.mjs /ruta
   [--sin-cache]` (cascada con red lenta contra prod) y `scripts/prod-304.mjs`
   (¿cada endpoint polleado contesta 304?); ambos usan el perfil de `prod-login.mjs`.
   Todo `/api/*` contesta con `Server-Timing` (`auth` = identidad+zona, `total`):
