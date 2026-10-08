@@ -13,6 +13,7 @@
 //     Worker.
 import { getImpersonateTarget } from './impersonation';
 import { routeSlug, type UxEventInput, type UxKind } from '../../shared/telemetry';
+import { CASCADA_MAX_BYTES, type CascadaCarga } from '../../shared/perfCascada';
 
 const FLUSH_MS = 5000;
 const FLUSH_AT = 20;
@@ -29,6 +30,9 @@ const GET_SAMPLE_RATE = 0.02;
 interface Pendiente extends Omit<UxEventInput, 'dt'> { at: number }
 
 let buffer: Pendiente[] = [];
+/** La cascada de la carga (src/lib/perfReal.ts): una por carga de página, al
+ * mismo endpoint que los lotes (POST /api/telemetry, campo `cascada`). */
+let cascadaPendiente: CascadaCarga | null = null;
 let timer: number | null = null;
 let listenersReady = false;
 
@@ -66,29 +70,49 @@ function ahora(): number {
   try { return performance.now(); } catch { return Date.now(); }
 }
 
+/** La cascada en JSON, recortando recursos del final si pasa del tope (el
+ * beacon corta en 64 KB y la cascada no debe tirar el lote de eventos). */
+function cascadaJson(c: CascadaCarga): CascadaCarga {
+  let out = c;
+  while (out.recursos.length > 1 && JSON.stringify(out).length > CASCADA_MAX_BYTES) {
+    out = { ...out, recursos: out.recursos.slice(0, Math.floor(out.recursos.length * 0.8)) };
+  }
+  return out;
+}
+
+function postear(payload: string): void {
+  const url = '/api/telemetry';
+  // sendBeacon sobrevive al cierre de la pestaña, que es justo cuando más
+  // importa (el último clic antes de irse es el más frustrado).
+  const beacon = navigator.sendBeacon?.(url, new Blob([payload], { type: 'application/json' }));
+  if (!beacon) {
+    void fetch(url, {
+      method: 'POST', body: payload, keepalive: true,
+      credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+    }).catch(() => { /* telemetría caída — se pierde el lote, no pasa nada */ });
+  }
+}
+
 function enviar(): void {
-  if (buffer.length === 0) return;
+  if (buffer.length === 0 && !cascadaPendiente) return;
   const lote = buffer;
   buffer = [];
+  const cascada = cascadaPendiente;
+  cascadaPendiente = null;
   try {
-    const flushedAt = ahora();
-    const payload = JSON.stringify({
-      sessionId: sessionId(),
-      // Se manda `dt` (ms ANTES del flush), no una fecha: el servidor ancla con
-      // su propio reloj. Así el orden intra-sesión queda exacto al milisegundo
-      // sin depender del reloj del navegador.
-      events: lote.map(({ at, ...resto }): UxEventInput => ({ ...resto, dt: Math.max(0, Math.round(flushedAt - at)) })),
-    });
-    const url = '/api/telemetry';
-    // sendBeacon sobrevive al cierre de la pestaña, que es justo cuando más
-    // importa (el último clic antes de irse es el más frustrado).
-    const beacon = navigator.sendBeacon?.(url, new Blob([payload], { type: 'application/json' }));
-    if (!beacon) {
-      void fetch(url, {
-        method: 'POST', body: payload, keepalive: true,
-        credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
-      }).catch(() => { /* telemetría caída — se pierde el lote, no pasa nada */ });
+    if (lote.length) {
+      const flushedAt = ahora();
+      postear(JSON.stringify({
+        sessionId: sessionId(),
+        // Se manda `dt` (ms ANTES del flush), no una fecha: el servidor ancla con
+        // su propio reloj. Así el orden intra-sesión queda exacto al milisegundo
+        // sin depender del reloj del navegador.
+        events: lote.map(({ at, ...resto }): UxEventInput => ({ ...resto, dt: Math.max(0, Math.round(flushedAt - at)) })),
+      }));
     }
+    // La cascada va en su propio POST (uno por carga de página): junto con un
+    // lote lleno pasaría de los 64 KB del beacon y se perderían los dos.
+    if (cascada) postear(JSON.stringify({ sessionId: sessionId(), events: [], cascada: cascadaJson(cascada) }));
   } catch { /* nunca debe verse desde el portal */ }
 }
 
@@ -228,6 +252,16 @@ export function uxApiLatency(method: string, path: string, latencyMs: number, ok
  * agregado: un renglón por ventana y endpoint, no uno por petición. */
 export function uxPerf(target: string, extra: Partial<UxEventInput> = {}): void {
   registrar('perf', target, extra);
+}
+
+/** Cascada completa de la carga (shared/perfCascada.ts). Sale en el
+ * siguiente lote. */
+export function uxCascada(c: CascadaCarga): void {
+  try {
+    if (apagada()) return;
+    cascadaPendiente = c;
+    programar();
+  } catch { /* jamás propagar a la UI */ }
 }
 
 // Errores de JavaScript (2026-09-10, Efraín: "telemetría o algo que puedas ver

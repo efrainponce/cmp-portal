@@ -20,11 +20,14 @@
 //    lo tira y el worker también. La red medida sería la del admin, no la de
 //    la persona suplantada.
 import { useEffect, useRef } from 'react';
-import { alSalir, uxPerf } from './telemetry';
+import { alSalir, uxCascada, uxPerf } from './telemetry';
 import {
   acumularCls, calcularInp, clasificarRecurso, nuevoCls, resumirApi, resumirAssets,
   type ClaseAsset, type RecursoMedido,
 } from './perfResumen';
+import {
+  CASCADA_MAX_MS, CASCADA_MAX_RECURSOS, encima, nombreRecurso, type HitosCarga, type RecursoCascada,
+} from '../../shared/perfCascada';
 
 /** La primera ventana cubre la carga fría. 60 s y no menos: en una conexión
  * lenta la lista tarda decenas de segundos, y una entrada de Resource Timing
@@ -82,7 +85,24 @@ function describirBrinco(e: PerformanceEntry & { value: number; sources?: Fuente
  * medido con la pestaña en segundo plano no dice nada de la red (el navegador
  * frena timers y pintado). performance.now() de la última vez que se ocultó. */
 let ultimaOculta = -1;
+/** Desde cuándo la pestaña dejó de verse por PRIMERA vez (Infinity = nunca).
+ * Como web-vitals: FCP/LCP solo cuentan pintados con la pestaña a la vista.
+ * Una carga en segundo plano (abrir en pestaña nueva, recargar y cambiarse)
+ * pinta hasta que la vuelven a ver — medía LCP de 10 y 30 s (2026-10-08). */
+let ocultaDesde = Infinity;
+/** Periodos con la pestaña oculta ([inicio, Infinity] si sigue oculta). Una
+ * petición que corrió ahí —o con la laptop dormida— mide 5–7 s de nada. */
+const ocultos: Array<[number, number]> = [];
+/** Periodos con un confirm/alert/prompt abierto: la interacción que lo abrió
+ * dura lo que la persona tarda en leerlo, no lo que tarda la página. */
+const dialogos: Array<[number, number]> = [];
 let listaMedida = false;
+/** Hito `lista` de la cascada: solo en aterrizaje directo (ms desde la
+ * navegación); si llegó navegando no es un hito de la carga. */
+let listaDirectaMs = 0;
+/** Recursos de la carga para la cascada (shared/perfCascada.ts), hasta que
+ * se manda. */
+let cascada: RecursoCascada[] | null = [];
 /** Primer segmento de la ruta con la que cargó la página ('' = Inicio). */
 const rutaInicial = typeof location === 'undefined' ? '' : location.pathname.split('/')[1] ?? '';
 let primerDrawer = true;
@@ -116,14 +136,49 @@ function copiar(e: PerformanceResourceTiming): RecursoMedido {
   };
 }
 
+function alCascada(e: PerformanceResourceTiming, metodo: string | undefined): void {
+  if (!cascada || cascada.length >= CASCADA_MAX_RECURSOS || e.startTime > CASCADA_MAX_MS) return;
+  if (e.name.includes('/api/telemetry')) return;
+  const n = nombreRecurso(e.name, location.origin);
+  if (!n) return;
+  cascada.push({
+    n, i: e.initiatorType || 'other',
+    s: Math.round(e.startTime),
+    w: Math.round(Math.max(0, (e.responseStart || e.startTime) - e.startTime)),
+    d: Math.round(e.duration),
+    b: Math.round(e.transferSize || 0),
+    e: Math.round(e.encodedBodySize || 0),
+    ...(metodo ? { m: metodo } : {}),
+  });
+}
+
 function alRecurso(e: PerformanceResourceTiming): void {
-  if (pendientesApi.length + pendientesAssets.length >= MAX_PENDIENTES) return;
   const metodo = metodos.get(e.name);
   if (metodo) metodos.delete(e.name);
+  try { alCascada(e, metodo); } catch { /* nada */ }
+  if (pendientesApi.length + pendientesAssets.length >= MAX_PENDIENTES) return;
   const c = clasificarRecurso(e.name, location.origin, metodo ?? 'GET');
   if (!c) return;
-  if (c.tipo === 'api') pendientesApi.push({ target: c.target, board: c.board, r: copiar(e) });
+  if (c.tipo === 'api') {
+    if (encima(e.startTime, e.responseEnd || e.startTime + e.duration, ocultos)) return;
+    pendientesApi.push({ target: c.target, board: c.board, r: copiar(e) });
+  }
   else pendientesAssets.push({ clase: c.clase, r: copiar(e) });
+}
+
+/** Envuelve confirm/alert/prompt para anotar cuándo estuvo abierto cada uno. */
+function anotarDialogos(): void {
+  for (const k of ['confirm', 'alert', 'prompt'] as const) {
+    const orig = window[k] as (...a: unknown[]) => unknown;
+    if (typeof orig !== 'function') continue;
+    (window as unknown as Record<string, unknown>)[k] = function (this: unknown, ...a: unknown[]) {
+      const t0 = performance.now();
+      try { return orig.apply(this ?? window, a); } finally {
+        if (dialogos.length >= 200) dialogos.shift();
+        dialogos.push([t0, performance.now()]);
+      }
+    };
+  }
 }
 
 function observar(type: string, fn: (list: PerformanceObserverEntryList) => void, extra: Record<string, unknown> = {}): void {
@@ -170,6 +225,42 @@ function enviarCarga(): void {
   } catch { /* nada */ }
 }
 
+function hitosCarga(): HitosCarga {
+  const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
+  const h: HitosCarga = {};
+  const poner = (k: keyof HitosCarga, v: number | undefined) => { if (v && v > 0) h[k] = Math.round(v); };
+  poner('ttfb', nav?.responseStart);
+  poner('fcp', fcp);
+  poner('lcp', lcp);
+  poner('dcl', nav?.domContentLoadedEventEnd);
+  poner('load', nav?.loadEventEnd);
+  poner('lista', listaDirectaMs);
+  return h;
+}
+
+/** Una vez por carga: la cascada completa (todas las cargas, sin muestreo).
+ * Corta en lo que empezó hasta la primera lista (o el load) + 5 s; si nada de
+ * eso pasó, hasta el momento del envío. */
+function enviarCascada(): void {
+  try {
+    const recursos = cascada;
+    cascada = null;
+    if (!recursos?.length) return;
+    const hitos = hitosCarga();
+    const corte = Math.max(hitos.lista ?? 0, hitos.load ?? 0) + 5000;
+    const usar = listaDirectaMs || listaMedida ? recursos.filter(r => r.s <= corte) : recursos;
+    const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
+    uxCascada({
+      pantalla: rutaInicial || 'inicio',
+      ...(nav?.type ? { nav: nav.type } : {}),
+      oculta: ultimaOculta >= 0,
+      ...conexion(),
+      hitos,
+      recursos: usar.sort((a, b) => a.s - b.s),
+    });
+  } catch { /* nada */ }
+}
+
 function enviarVentana(): void {
   try {
     const api = pendientesApi;
@@ -209,10 +300,29 @@ export function instalarPerfReal(): void {
   if (instalado || typeof window === 'undefined' || typeof performance === 'undefined') return;
   instalado = true;
   try {
-    if (document.visibilityState === 'hidden') ultimaOculta = 0;
+    if (document.visibilityState === 'hidden') {
+      ultimaOculta = 0;
+      ocultaDesde = 0;
+      ocultos.push([0, Infinity]);
+    }
     addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'hidden') ultimaOculta = performance.now();
+      const t = performance.now();
+      if (document.visibilityState === 'hidden') {
+        ultimaOculta = t;
+        ocultaDesde = Math.min(ocultaDesde, t);
+        if (ocultos.length >= 200) ocultos.shift();
+        ocultos.push([t, Infinity]);
+      } else {
+        const u = ocultos[ocultos.length - 1];
+        if (u && u[1] === Infinity) u[1] = t;
+      }
+    }, { capture: true });
+    // Si la pestaña se ocultó antes de que este bundle arrancara, solo lo
+    // dicen las entradas de visibilidad (Chrome).
+    observar('visibility-state', (l) => {
+      for (const e of l.getEntries()) if (e.name === 'hidden') ocultaDesde = Math.min(ocultaDesde, e.startTime);
     });
+    anotarDialogos();
 
     // Última interacción: un brinco 600 ms después de un clic casi siempre es
     // la respuesta tardía a ese clic, no algo que pasó solo.
@@ -223,11 +333,10 @@ export function instalarPerfReal(): void {
     observar('resource', (l) => { for (const e of l.getEntries()) alRecurso(e as PerformanceResourceTiming); });
     observar('largest-contentful-paint', (l) => {
       const es = l.getEntries();
-      const ult = es[es.length - 1];
-      if (ult) lcp = ult.startTime;
+      for (const e of es) if (e.startTime < ocultaDesde) lcp = e.startTime;
     });
     observar('paint', (l) => {
-      for (const e of l.getEntries()) if (e.name === 'first-contentful-paint') fcp = e.startTime;
+      for (const e of l.getEntries()) if (e.name === 'first-contentful-paint' && e.startTime < ocultaDesde) fcp = e.startTime;
     });
     observar('layout-shift', (l) => {
       for (const e of l.getEntries() as Array<PerformanceEntry & { value: number; hadRecentInput: boolean; sources?: FuenteBrinco[] }>) {
@@ -245,6 +354,7 @@ export function instalarPerfReal(): void {
       for (const e of l.getEntries() as Array<PerformanceEntry & { interactionId?: number }>) {
         const id = e.interactionId;
         if (!id) continue;
+        if (encima(e.startTime, e.startTime + e.duration, dialogos)) continue;
         if (interacciones.size >= 2000 && !interacciones.has(id)) continue;
         interacciones.set(id, Math.max(interacciones.get(id) ?? 0, e.duration));
       }
@@ -257,7 +367,16 @@ export function instalarPerfReal(): void {
       enviarVentana();
       setInterval(() => { if (document.visibilityState === 'visible') enviarVentana(); }, VENTANA_MS);
     }, Math.max(0, VENTANA_FRIA_MS - performance.now()));
-    alSalir(enviarVentana);
+    // La cascada espera a la primera lista (en Mérida ha tardado > 60 s):
+    // desde los 60 s revisa cada 5 s y la manda en cuanto hay lista, o a los
+    // 3 min pase lo que pase. Al salir se manda con lo que haya.
+    const revisarCascada = () => {
+      if (!cascada) return;
+      if (listaMedida || performance.now() >= CASCADA_MAX_MS) enviarCascada();
+      else setTimeout(revisarCascada, 5000);
+    };
+    setTimeout(revisarCascada, Math.max(0, VENTANA_FRIA_MS - performance.now()));
+    alSalir(() => { enviarCascada(); enviarVentana(); });
   } catch { /* la medición jamás debe tumbar el portal */ }
 }
 
@@ -279,6 +398,7 @@ export function perfListaLista(board: string, montada?: number): void {
     if (ultimaOculta >= 0) return;
     const ahora = performance.now();
     const directa = montada === undefined || location.pathname.split('/')[1] === rutaInicial;
+    if (directa) listaDirectaMs = Math.round(ahora);
     uxPerf('perf:datos:lista', {
       latencyMs: Math.round(directa ? ahora : ahora - (montada ?? 0)),
       boardSlug: board,

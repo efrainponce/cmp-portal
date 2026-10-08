@@ -7,6 +7,7 @@ import type { Hono } from 'hono';
 import type { Env } from '../env';
 import { UX_MAX_BATCH } from '../../shared/telemetry';
 import { ingestUxEvents } from '../lib/telemetry';
+import { ingestCascada } from '../lib/perfCascada';
 import { buildUxReport } from '../lib/uxMetrics';
 import { registrarError } from '../lib/errores';
 
@@ -26,7 +27,7 @@ export function telemetryRoutes(app: Hono<{ Bindings: Env }>) {
     // no trabajo real de esa persona — se tira el lote.
     if (c.get('impersonatedBy')) return c.body(null, 204);
 
-    let body: { sessionId?: unknown; events?: unknown } | null = null;
+    let body: { sessionId?: unknown; events?: unknown; cascada?: unknown } | null = null;
     try { body = await c.req.json(); } catch { /* lote ilegible — se ignora */ }
 
     const events = Array.isArray(body?.events) ? body.events : [];
@@ -36,6 +37,9 @@ export function telemetryRoutes(app: Hono<{ Bindings: Env }>) {
       // se leen: serían falsificables y además saldrían mal.
       c.executionCtx.waitUntil(ingestUxEvents(c.env, viewer, sessionId, events));
     }
+    // Cascada de una carga de página (shared/perfCascada.ts): una por carga,
+    // en su propio POST.
+    if (body?.cascada) c.executionCtx.waitUntil(ingestCascada(c.env, viewer, sessionId, body.cascada));
     return c.body(null, 204);
   });
 
