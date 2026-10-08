@@ -1,5 +1,14 @@
 # Log de commits
 
+## 2026-10-08 (Plan de Core Web Vitals para Mérida)
+
+- **Efraín**: "después de diagnosticar haz un plan para mejorar los CWV,
+  quiero que la app sea más rápida todavía". Plan en `docs/plan-performance.md`
+  (sección 2026-10-08): la precarga de la lista no le sirve a admin (se baja
+  dos veces), la lista no sobrevive a una recarga (156 KB cada vez), dos
+  rondas de JS antes de pedir datos, cada deploy tira la caché de React,
+  Clarity compite con el bundle, el drawer trae las secciones de Proyecto y
+  los brincos de CLS son del drawer. 7 pasos, medidos uno por uno.
 ## 2026-10-08 (Rendimiento real: cascada completa de cada carga + métricas sin ruido)
 
 - **Efraín**: "necesitamos cascada entera porque en Mérida el internet es

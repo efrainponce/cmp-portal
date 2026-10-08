@@ -102,6 +102,66 @@ Queda (~25 M/día): la versión de las listas (`COUNT`/`MAX(synced_at)` por
 board), los totales y la búsqueda con `json_each`. El paso 4 del plan es el
 que más los baja. Verificar mañana: `wrangler d1 info cmp-portal`.
 
+## Plan Core Web Vitals — 2026-10-08 (Mérida)
+
+Efraín: "quiero que la app sea más rápida todavía", con foco en Mérida
+(internet muy lento). Medición nueva desde hoy: la CASCADA completa de cada
+carga real (`scripts/perf-cascada.mjs`) y vitals sin ruido de pestaña oculta
+ni de `confirm()` — **los números de antes del 2026-10-08 no son comparables**.
+
+Línea base (p75 por persona, 1–8 oct, `perf-real.mjs --dias 7`): LCP 1.0–4.8 s
+(más dos de 10.7 y 29.6 s que eran pestañas en segundo plano), INP 64–656 ms,
+CLS 0.002–0.51. Metas: LCP < 2.5 s, INP < 200 ms, CLS < 0.1.
+
+Laboratorio contra producción (`prod-waterfall.mjs`, admin):
+
+| Red | Ruta | FCP | LCP | Qué se ve |
+|---|---|---|---|---|
+| 1.5 Mbps / 300 ms, sin caché | /oportunidades | 1.4 s | 4.2 s | la lista se pide DOS veces |
+| 1.5 Mbps / 300 ms, con caché | /oportunidades | 0.4 s | 3.4 s | las dos bajan completas: 131 + 156 KB |
+| 0.7 Mbps / 400 ms, sin caché | /costeo | 2.9 s | 6.4 s | la lista real sale hasta 3.8 s |
+
+Hallazgos:
+
+1. **La precarga de la lista no le sirve a admin.** `index.html` precarga las
+   8 columnas base; la vista extendida de admin agrega las fechas en cuanto
+   llega `/api/me`, la URL no coincide y la lista se baja otra vez, después
+   del bundle y de los chunks de la ruta. Admin son Efraín, el CEO, PAM y
+   webcmp: justo los LCP más altos.
+2. **La lista no sobrevive a una recarga**: 156 KB (zstd) en CADA carga, aunque
+   no haya cambiado nada. En 0.7 Mbps son ~2.2 s solo de bajada.
+3. **Dos rondas de JS antes de pedir datos**: `index.js` (86 KB gz) y luego ~15
+   chunks chiquitos de la ruta (StageBoardList, GroupCard, Button…), que el
+   navegador descubre hasta que corre `index.js`. A 400 ms de RTT es una vuelta
+   de ~0.9 s.
+4. **Cada deploy tira la caché del JS**: 42 deploys en 2 semanas, y React viaja
+   dentro de `index.js`, así que cada deploy obliga a bajar los 86 KB otra vez
+   (cache_js 38–76% por persona).
+5. **Clarity (25 KB) compite con `index.js`** en el primer segundo.
+6. **El chunk del drawer pesa 65 KB gz** (`EditableItemName-*.js`): trae TODAS
+   las secciones de Proyecto (Órdenes, Ejecución, Logística, Tallas, CrearOc)
+   aunque se abra una oportunidad.
+7. **CLS**: los brincos grandes son del drawer, no de la carga
+   (`oportunidades +drawer y≈300` ×25, 219 px que suben 319 px ~1.2 s tras el
+   clic; validación ~5 s tras el clic).
+8. **INP sin atribución**: sabemos el número (PAM 656 ms, CEO 392 ms), no qué
+   interacción.
+
+### Pasos (en este orden; medir cada uno con `perf-real.mjs --dias 3` y `perf-cascada.mjs --tipica --lentas`)
+
+| # | Cambio | Esperado | Esfuerzo |
+|---|---|---|---|
+| 1 | Precargar la URL EXACTA que pidió la última lista de ese board (guardada en localStorage al pedirla), no una fija | admin en Mérida LCP 6.4 → ~3.5 s; −130 KB por carga | ~1 h |
+| 2 | La lista se guarda en el navegador (IndexedDB, por correo) con su ETag: pinta al instante y revalida con 304 | LCP en cargas repetidas ≈ FCP; −156 KB por carga. **Decisión de Efraín**: los datos de la lista quedan en la máquina (se borran al cambiar de usuario) | ~3–4 h |
+| 3 | `modulepreload` de los chunks de la ruta de aterrizaje desde `index.html` + React en un chunk aparte que no cambia entre deploys | −1 vuelta (~0.9 s en Mérida); deploys ya no tiran 45 KB de React | ~2 h |
+| 4 | Clarity después del `load` (en idle) | FCP −0.3 s a 0.7 Mbps. **Decisión de Efraín**: la grabación arranca unos segundos tarde | 15 min |
+| 5 | Separar las secciones de Proyecto del drawer de Oportunidades | drawer de oportunidad ~65 → ~30 KB gz | ~2 h |
+| 6 | INP con atribución: la peor interacción con etiqueta, ruta y fases (espera/proceso/pintado) + el script culpable (LoAF) | saber qué arreglar | ~1 h |
+| 7 | Reproducir y arreglar los brincos del drawer (`perf-cls.mjs`, reservar alto) | CLS < 0.1 | ~2–3 h |
+
+Antes del paso 1: dejar 2–3 días de cascadas reales de Compras para confirmar
+que en Mérida pasa lo mismo que en el laboratorio.
+
 ## Medido y descartado (no volver a proponer sin datos nuevos)
 
 - **Proyectar columnas en SQL con `json_each`** para la lista: baja el peso
