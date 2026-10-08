@@ -16,10 +16,11 @@ const AC: Role[] = ['compras', 'admin'];              // internal: costs, provee
 // (Efraín). Elizabeth (compras) no podía ponerle el producto a una línea de una
 // oportunidad nueva — el candado era este grupo, igual que el 2026-08-19 con
 // Color y Cantidad. Todo lo que el vendedor escribe ahora es `w: V`. La ÚNICA
-// excepción que sigue en pie es el Precio de Venta (`numeric_mkzneg3d`, w: WA):
-// ese lo pone solo admin, y esa regla no la toca este cambio.
+// excepción que estuvo en pie fue el Precio de Venta (`numeric_mkzneg3d`): solo
+// admin hasta el 2026-10-08, cuando se abrió a Compras (w: WAC) — el vendedor
+// sigue sin escribirlo.
 const WAC: Role[] = ['compras', 'admin'];             // writable: costeo capture (compras/admin)
-const WA: Role[] = ['admin'];                         // writable: solo admin (precio de venta)
+const WA: Role[] = ['admin'];                         // writable: solo admin
 // Catálogo de Productos, columnas de pura identificación (nombre/SKU): las ve
 // TODO rol, almacén incluido — es lo que el formulario de movimientos de
 // inventario usa para elegir el producto. Nunca lleva costos ni proveedor.
@@ -92,7 +93,11 @@ export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
     // aunque la UI no pintara el campo editable; el resto del código ya asumía
     // esta regla — quoteVersions.ts restaura el precio con `trusted: true`
     // precisamente porque "no es escribible por vendedor".
-    numeric_mkzneg3d: { vis: V, w: WA },
+    // Desde 2026-10-08 también COMPRAS lo escribe, desde la grid de Costeo
+    // (Efraín): en 20 días Emily, Elizabeth, Josué y Liliana lo cambiaron 140
+    // veces directo en Monday porque el portal no los dejaba. El vendedor sigue
+    // sin escribirlo.
+    numeric_mkzneg3d: { vis: V, w: WAC },
     // Etapa Costeo — dropdown editable por compras/admin en la vista Costeo
     // (Efraín, 2026-07-16). submitVersion también la escribe directo (fuera de
     // este gate) para resetearla a "No iniciado" cuando el vendedor edita una
@@ -101,7 +106,7 @@ export const VISIBILITY: Record<BoardSlug, Record<string, ColRule>> = {
     // Producto/color/cantidad/embellecimiento de una línea — los edita Ventas y,
     // desde el 2026-08-28, también Compras (Efraín: "compras puede hacer todo lo
     // de ventas"). Nunca las columnas de costo (grupo AC/WAC abajo, esas las llena
-    // Compras aparte) ni el Precio de Venta (w: WA, solo admin).
+    // Compras aparte) ni el Precio de Venta (w: WAC, compras/admin desde Costeo).
     text_mm0bkm1j:        { vis: V, w: V },    // Producto (texto libre)
     board_relation_mkzmafgp: { vis: V, w: V },  // Producto (auto) → Productos; ya probado en createOportunidad.ts
     // Color y Cantidad — también los escribe COMPRAS, en cualquier etapa

@@ -119,14 +119,16 @@ describe('etapa y reasignación', () => {
   });
 });
 
-describe('precio de venta — solo admin escribe (Efraín, 2026-07-24)', () => {
+describe('precio de venta — admin y compras escriben, el vendedor no (Efraín, 2026-07-24 / 2026-10-08)', () => {
   // numeric_mkzneg3d = "P. venta C/U". Estuvo como `w: WV` (vendedor+admin), lo
   // que dejaba al server aceptar un PATCH directo del vendedor aunque la UI no
   // pintara el campo editable. outbox.ts gatea SOLO con canWrite(), así que este
-  // es el candado real: si alguien vuelve a agregar vendedor o compras, truena.
-  it('ningún rol salvo admin puede escribir el precio', () => {
+  // es el candado real: si alguien vuelve a agregar al vendedor, truena.
+  // Compras entró el 2026-10-08 (lo captura en Costeo; antes lo cambiaba en Monday).
+  it('solo admin y compras pueden escribir el precio', () => {
     expect(canWrite('oportunidades_sub', 'numeric_mkzneg3d', 'admin')).toBe(true);
-    for (const role of ['vendedor', 'compras', 'almacen'] as Role[]) {
+    expect(canWrite('oportunidades_sub', 'numeric_mkzneg3d', 'compras')).toBe(true);
+    for (const role of ['vendedor', 'almacen'] as Role[]) {
       expect(canWrite('oportunidades_sub', 'numeric_mkzneg3d', role)).toBe(false);
     }
   });
@@ -359,8 +361,8 @@ describe('Compras escribe TODO lo de Ventas (Efraín, 2026-08-28)', () => {
     }
   });
 
-  it('el precio de venta sigue siendo la excepción: solo admin', () => {
-    expect(canWrite('oportunidades_sub', 'numeric_mkzneg3d', 'compras')).toBe(false);
+  it('el precio de venta: compras sí (2026-10-08), el vendedor no', () => {
+    expect(canWrite('oportunidades_sub', 'numeric_mkzneg3d', 'compras')).toBe(true);
     expect(canWrite('oportunidades_sub', 'numeric_mkzneg3d', 'vendedor')).toBe(false);
   });
 });
@@ -412,9 +414,9 @@ describe('Captura en Validación de Costeo — por correo: CEO + Elisa (2026-08-
       expect(canWrite('oportunidades_sub', col, 'admin'), col).toBe(true);
       expect(canWrite('oportunidades_sub', col, 'vendedor'), col).toBe(false);
     }
-    // El Precio de Venta sigue siendo la excepción de siempre: solo admin.
+    // El Precio de Venta: admin y, desde 2026-10-08, compras.
     expect(canWrite('oportunidades_sub', 'numeric_mkzneg3d', 'admin')).toBe(true);
-    expect(canWrite('oportunidades_sub', 'numeric_mkzneg3d', 'compras')).toBe(false);
+    expect(canWrite('oportunidades_sub', 'numeric_mkzneg3d', 'compras')).toBe(true);
   });
 });
 

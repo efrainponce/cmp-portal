@@ -1,5 +1,16 @@
 # Log de commits
 
+## 2026-10-08 (Costeo: Compras ya captura el Precio de Venta)
+
+- **Efraín**: "vamos a abrirle ese field en COSTEO para que lo puedan editar".
+  En 20 días Emily, Elizabeth, Josué y Liliana cambiaron el Precio de Venta C/U
+  140 veces directo en Monday (PAM otras 15): el portal solo dejaba a admin.
+- `numeric_mkzneg3d` pasa de `w: WA` a `w: WAC` (`shared/visibility.ts`); el
+  vendedor sigue sin escribirlo. Tests de `visibility.test.ts` actualizados.
+- La grid de Costeo (`variant === 'costeo'`) pinta el precio editable
+  (`CotizacionTab` → `inlineEditableCols(..., precio)`); `writableIds` sigue
+  mandando, así que en Oportunidades/Validación no cambia nada para el vendedor.
+
 ## 2026-10-05 (OC: la vista previa respeta método y condiciones de pago)
 
 - **Elisa** (WhatsApp, OPP-1121 / GDL TACTICAL): "no salieron las condiciones

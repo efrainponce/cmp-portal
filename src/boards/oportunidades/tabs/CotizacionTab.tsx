@@ -186,8 +186,11 @@ export function CotizacionTab({
       ? (capturaEnValidacion
         ? inlineEditableCols(false, true, true)
         : new Set<string>([COL.precio]))
-      : inlineEditableCols(lineEdits, zonaPrivada, ajusteLineEdits)),
-    [precioOnly, capturaEnValidacion, lineEdits, zonaPrivada, ajusteLineEdits],
+      // Precio de Venta en la grid de Costeo: Compras lo captura ahí junto con
+      // el costeo (Efraín, 2026-10-08 — antes se iban a Monday a cambiarlo).
+      // `writableIds` sigue mandando: el vendedor no lo escribe (w: WAC).
+      : inlineEditableCols(lineEdits, zonaPrivada || variant === 'costeo', ajusteLineEdits)),
+    [precioOnly, capturaEnValidacion, lineEdits, zonaPrivada, ajusteLineEdits, variant],
   );
   const canAddLines = lineEdits && editable;
 
