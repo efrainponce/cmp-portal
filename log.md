@@ -1,5 +1,21 @@
 # Log de commits
 
+## 2026-10-08 (CWV paso 3: los chunks de la pantalla ya no esperan a index.js, y React en su propio chunk)
+
+- Medido en producción a 0.7 Mbps / 400 ms: los ~15 chunks de la pantalla
+  (StageBoard, StageBoardList, GroupCard…) salían hasta que corría index.js,
+  a los 2.9 s — una vuelta de red completa antes de poder pintar la lista.
+  - `vite.precargaRutas.ts`: al construir arma ruta → chunks (la vista lazy de
+    App.tsx + sus imports estáticos) y un script inline en index.html agrega
+    sus `modulepreload` mientras se lee el HTML; en un enlace directo a un
+    item, también los del drawer. La tabla calca App.tsx y
+    `src/lib/precargaRutas.test.ts` las amarra.
+  - React (+ react-dom, scheduler) en su chunk `react-*.js`: dentro de
+    index.js cambiaba de hash en cada deploy (42 en dos semanas) y todos
+    re-bajaban ~45 KB gz que no cambiaron.
+- Ya en prod (pasos 1-2, misma red): segunda carga de /costeo LCP 5.9 → 1.7 s,
+  la lista viaja como incremental de 9 KB en vez de 156 KB.
+
 ## 2026-10-08 (CWV pasos 1 y 2: la lista se guarda en el navegador y la precarga ya le sirve a admin)
 
 - **Efraín** aprobó el plan completo, incluido guardar la lista en el
