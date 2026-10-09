@@ -159,8 +159,27 @@ Hallazgos:
 | 6 | INP con atribución: la peor interacción con etiqueta, ruta y fases (espera/proceso/pintado) + el script culpable (LoAF) | saber qué arreglar | ~1 h |
 | 7 | Reproducir y arreglar los brincos del drawer (`perf-cls.mjs`, reservar alto) | CLS < 0.1 | ~2–3 h |
 
-Antes del paso 1: dejar 2–3 días de cascadas reales de Compras para confirmar
-que en Mérida pasa lo mismo que en el laboratorio.
+**Los 7 pasos quedaron HECHOS el mismo 2026-10-08** (Efraín aprobó el plan
+completo; PRs #48–#53, ver log.md). Laboratorio contra producción después del
+último deploy, mismo perfil admin y mismas redes que la tabla de arriba:
+
+| Caso | Antes | Después |
+|---|---|---|
+| /costeo, 0.8 Mbps / 400 ms, sin caché HTTP (= primera carga tras un deploy) | LCP 6.6 s | 3.2 s |
+| /costeo, 0.8 Mbps / 400 ms, con caché | ~6 s | 1.5 s |
+| /oportunidades, 1.5 Mbps / 300 ms, sin caché HTTP | 4.2 s | 2.6 s |
+| /oportunidades, 1.5 Mbps / 300 ms, con caché | 3.4 s | 1.4 s |
+| CLS al abrir una oportunidad (local, red lenta) | 0.036 | 0.002 |
+
+"Sin caché HTTP" conserva la lista guardada (localStorage + Cache API): es
+la carga de quien ya había entrado, justo después de un deploy. Un navegador
+nuevo sigue pagando la lista completa una vez.
+
+**Pendiente — verificar con usuarios reales** (~2026-10-11, 3 días de datos):
+`perf-real.mjs --dias 3` (LCP/INP/CLS p75 por persona, ya sin ruido de
+pestaña oculta), sección 5 (qué interacciones pasan de 200 ms y qué script)
+y `perf-cascada.mjs --tipica --lentas` (la carga típica en Mérida). Lo que
+salga ahí es el siguiente plan.
 
 ## Medido y descartado (no volver a proponer sin datos nuevos)
 
