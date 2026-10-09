@@ -1,5 +1,12 @@
 # Log de commits
 
+## 2026-10-08 (CWV: resultados en producción)
+
+- Medido después del último deploy (prod, admin, mismas redes que la línea
+  base): /costeo a 0.8 Mbps LCP 6.6 → 3.2 s (sin caché HTTP) y → 1.5 s (con
+  caché); /oportunidades a 1.5 Mbps 4.2 → 2.6 s y 3.4 → 1.4 s. Detalle y
+  pendiente de verificación con usuarios reales en `docs/plan-performance.md`.
+
 ## 2026-10-08 (CWV paso 7: el drawer ya no brinca al abrir)
 
 - Reproducido en local con red lenta (`perf-cls`-style, layout-shift con sus
