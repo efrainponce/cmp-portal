@@ -25,6 +25,7 @@ import { statusIndex } from '../../lib/statusValue';
 import { routePath } from '../../lib/routing';
 import { DEAL_STAGE_LABELS, stageAtOrAfter, type StageBoardKey } from '../../lib/dealStages';
 import { COSTEO_STAGE_BLOCKED, puedeMandarACosteo, puedeGenerarCotizacion } from '../../../shared/dealStages';
+import { avisosOportunidadCosteo } from '../../../shared/costeoAvisos';
 import { useIsMobile } from '../../lib/useIsMobile';
 import { uxAction, uxNav } from '../../lib/telemetry';
 import { BoardTabsBar, isDrawerTab, type DrawerTabKey } from './BoardTabsBar';
@@ -729,7 +730,19 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, openTab, onTabCha
   // "Institución" es un mirror de Cliente — con Cliente vacío, este es el único
   // aviso visible de que falta asignarlo (Efraín, 2026-08-10: se veía
   // deshabilitado sin ninguna pista).
-  const costeoItemErrors = costeoReady && !costeoReady.ok ? (costeoReady.errors ?? []).filter(e => !e.startsWith('#')) : [];
+  // Mientras llega `costeo-check`, el aviso se PREDICE con lo que ya está en
+  // pantalla (shared/costeoAvisos.ts, mismos textos que el server): así se
+  // pinta junto con el drawer y no empuja la cotización al llegar la respuesta
+  // (plan CWV paso 7). Mismas condiciones que el efecto que pide el chequeo.
+  const costeoAplica = !!item && boardKey !== 'validacion' && !(boardKey === 'costeo' && stage !== '4')
+    && !COSTEO_STAGE_BLOCKED[stage ?? '']
+    && (stage === '4' || (item.children ?? []).some((l) => {
+      const etapa = (l.cols[ETAPA_COSTEO_COL]?.text ?? '').trim();
+      return !etapa || etapa === 'No iniciado';
+    }));
+  const costeoItemErrors = costeoReady
+    ? (!costeoReady.ok ? (costeoReady.errors ?? []).filter(e => !e.startsWith('#')) : [])
+    : costeoAplica && item ? avisosOportunidadCosteo(item.cols[INSTITUCION_COL]?.text, (item.children ?? []).length) : [];
 
   // Borrador de versión: la vigente aún no se costea (todas las líneas con Etapa
   // Costeo vacía/"No iniciado" — recién duplicada con "+ Nueva versión" o líneas
@@ -788,7 +801,12 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, openTab, onTabCha
         flexDirection: isMobile ? 'column' : 'row', gap: isMobile ? 12 : 0,
         padding: isMobile ? '12px 14px 16px' : '10px 32px 12px', borderBottom: '1px solid var(--border)',
       }}>
-        <div>
+        {/* Escritorio: la columna de la izquierda es la que se acomoda y los
+            botones NUNCA se apilan (plan CWV paso 7, 2026-10-08): cuando algo
+            del título cambiaba de ancho al llegar el detalle, los botones se
+            partían en dos renglones y empujaban pestañas y cotización ~40 px
+            (medido en Validación con un título largo). */}
+        <div style={isMobile ? undefined : { flex: '1 1 auto', minWidth: 0, paddingRight: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <EditableItemName
               slug="oportunidades"
@@ -853,7 +871,10 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, openTab, onTabCha
             </span>
             {canEditComprador && !ajena && <ChangeIconButton label="Cambiar comprador" onClick={() => setShowEditComprador(true)} />}
             {!isMobile && (
-              <span style={{ font: 'var(--text-caption)', color: 'var(--ink-faint)' }}>
+              // Ancho fijo: "⟳ verificando…" y "sincronizado hace 22 d" miden
+              // distinto y, al final de un renglón casi lleno, el cambio lo
+              // partía en dos a los ~5 s de abrir (relectura de Monday).
+              <span style={{ font: 'var(--text-caption)', color: 'var(--ink-faint)', display: 'inline-block', minWidth: 150, whiteSpace: 'nowrap' }}>
                 {syncing
                   ? <span style={{ color: 'var(--accent)' }}>⟳ verificando…</span>
                   : <SyncIndicator syncedAt={item.syncedAt} pending={item.pendingWrite ? 1 : 0} />}
@@ -862,7 +883,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, openTab, onTabCha
           </div>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 10, flexWrap: isMobile ? 'wrap' : 'nowrap', flexShrink: 0 }}>
           {/* Ver `puedeMandarCosteo`: aparece en Nueva oportunidad y sobre un
               borrador de versión — las cotizaciones cambian mucho y desde
               cualquier etapa se puede duplicar y regresar a costeo, pero el
