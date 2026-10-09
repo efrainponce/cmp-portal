@@ -1,5 +1,16 @@
 # Log de commits
 
+## 2026-10-08 (CWV paso 6: INP con atribución)
+
+- El INP solo decía el número (PAM 656 ms, CEO 392 ms), no qué interacción.
+  Ahora, por ventana, la interacción más lenta (≥ 200 ms) se manda como
+  `perf:inp`: ruta, pestaña (o lista/drawer), tipo (clic/tecla), etiqueta +
+  rol ARIA del elemento, y sus fases (espera, proceso, pintado). Con Long
+  Animation Frames (Chrome) también `perf:inp:script`: el chunk que se comió
+  el tiempo (nombre sin hash) y quién lo invocó. Solo números y slugs.
+- `perf-real.mjs` sección 5 las agrupa por lugar y por script. Probado en
+  local con un clic que bloquea 400 ms: lo atribuye bien.
+
 ## 2026-10-08 (CWV paso 5: el drawer de Oportunidades ya no trae las secciones de Proyecto)
 
 - El chunk compartido del drawer pesaba 65 KB gz y traía Órdenes, Ejecución,

@@ -234,4 +234,38 @@ else {
   })).sort((a, b) => b.veces * b.valor_p50 - a.veces * a.valor_p50).slice(0, 15));
 }
 
+// ── 5. interacciones lentas (INP) ───────────────────────────────────────────
+// La interacción más lenta de cada ventana (≥ 200 ms), con dónde y en qué fase
+// (perf:inp, desde 2026-10-08), y el script que se la comió (perf:inp:script,
+// solo Chrome con Long Animation Frames).
+titulo('5. Interacciones lentas (la peor de cada ventana, ≥ 200 ms)');
+const inps = filas.filter(f => f.target === 'perf:inp');
+if (!inps.length) console.log('  sin datos (se mide desde 2026-10-08)');
+else {
+  const grupos = new Map();
+  for (const i of inps) {
+    const k = `${i.m.ruta} / ${i.m.tab} · ${i.m.tipo} <${i.m.tag}>`;
+    if (!grupos.has(k)) grupos.set(k, []);
+    grupos.get(k).push(i);
+  }
+  console.table([...grupos].map(([donde, is]) => ({
+    donde, veces: is.length, personas: new Set(is.map(i => i.user_id)).size,
+    ms_p50: pct(is.map(i => i.m.v), 0.5), ms_max: Math.max(...is.map(i => i.m.v)),
+    espera_p50: pct(is.map(i => i.m.espera), 0.5), proceso_p50: pct(is.map(i => i.m.proceso), 0.5), pinta_p50: pct(is.map(i => i.m.pinta), 0.5),
+  })).sort((a, b) => b.veces * b.ms_p50 - a.veces * a.ms_p50).slice(0, 15));
+  const scripts = filas.filter(f => f.target === 'perf:inp:script');
+  if (scripts.length) {
+    const g = new Map();
+    for (const s of scripts) {
+      const k = `${s.m.script} (${s.m.inv}) en ${s.m.ruta}`;
+      if (!g.has(k)) g.set(k, []);
+      g.get(k).push(s);
+    }
+    console.log('  Script culpable (Long Animation Frames):');
+    console.table([...g].map(([script, ss]) => ({
+      script, veces: ss.length, ms_script_p50: pct(ss.map(s => s.latency_ms), 0.5), ms_interaccion_p50: pct(ss.map(s => s.m.v), 0.5),
+    })).sort((a, b) => b.veces - a.veces).slice(0, 10));
+  }
+}
+
 console.log('\nDetalle crudo: SELECT created_at, target, board_slug, latency_ms, meta FROM ux_event WHERE kind = \'perf\' AND user_id = … ORDER BY id DESC LIMIT 50');
