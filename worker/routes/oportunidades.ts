@@ -20,7 +20,7 @@ import {
   AutomationError,
 } from '../lib/automations';
 import { enviarACosteo, enviarAValidacion, confirmarCosteo, checkCosteo, checkValidacion, CosteoError } from '../lib/costeo';
-import { generarCotizacionNative, generarCotizacionNativeD1, CotizacionError } from '../lib/cotizacion';
+import { generarCotizacionNative, generarCotizacionNativeD1, generarCotizacionPortal, CotizacionError } from '../lib/cotizacion';
 import { listVersions, duplicateVersion, restoreVersion, recordFirstVersion, QuoteVersionError, autoVersionSiCosteada, borrarLineaCotizacion } from '../lib/quoteVersions';
 import { ajustarLinea, restaurarLineaDividida, descartarAvisoDivision, AjusteLineaError } from '../lib/lineaAjustes';
 import { listCotizacionVirtual, ajustarLineaVirtual, restaurarLineaVirtual, descartarAvisoVirtual, ProyectoCotizacionError } from '../lib/proyectoCotizacionVirtual';
@@ -505,7 +505,12 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
     }
   });
 
-  app.post('/api/oportunidades/:id/cotizacion', async c => {
+  // Dos botones (Efraín, 2026-10-09, el día que Eledo dejó de contestar):
+  // "Generar cotización (portal)" dibuja el PDF aquí mismo
+  // (generarCotizacionPortal) y "Generar cotización (Monday)" sigue siendo el
+  // camino de siempre (cmp-tallas → Eledo). Mismo handler: mismos permisos,
+  // misma versión archivada y mismos PDFs extra de la zona.
+  const generarCotizacionHandler = (motor: 'monday' | 'portal') => async (c: Context<{ Bindings: Env }>) => {
     const itemId = Number(c.req.param('id'));
     if (!Number.isFinite(itemId)) return c.json({ error: 'not found' }, 404);
     const viewer = c.get('viewer');
@@ -546,7 +551,9 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       if (isNativeId(itemId)) await asignarFolioNativo(c.env, itemId);
       const result = isNativeId(itemId)
         ? await generarCotizacionNativeD1(c.env, c.executionCtx, itemId, viewer)
-        : c.env.COTIZACION_NATIVE === '1'
+        : motor === 'portal'
+          ? await generarCotizacionPortal(c.env, itemId, viewer)
+          : c.env.COTIZACION_NATIVE === '1'
           ? await generarCotizacionNative(c.env, itemId, viewer)
           : await generateCotizacion(c.env, itemId);
       if (result.ok) {
@@ -581,7 +588,9 @@ export function oportunidadRoutes(app: Hono<{ Bindings: Env }>) {
       if (err instanceof CotizacionError) return jsonStatus({ ok: false, reason: err.message }, err.status);
       return errorInterno(c, err, { ok: false, reason: 'internal error' });
     }
-  });
+  };
+  app.post('/api/oportunidades/:id/cotizacion', generarCotizacionHandler('monday'));
+  app.post('/api/oportunidades/:id/cotizacion-portal', generarCotizacionHandler('portal'));
 
   // Versiones de cotización — la vigente se arma del mirror; D1 archiva las
   // anteriores. [] solo cuando la oportunidad no tiene líneas todavía.

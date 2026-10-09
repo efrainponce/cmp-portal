@@ -18,13 +18,14 @@ import { EtapaAdminSelect } from './EtapaAdminSelect';
 import { chipFor } from '../../components/board/cellHelpers';
 import { useMe } from '../../lib/useMe';
 import {
-  useBoards, colForBoard, checkCosteo, checkValidacion, validarCosteo, duplicarOportunidad, duplicarVersion, enviarCosteo, enviarValidacion, ganarOportunidad, generarCotizacion, getItemDetail, getVersiones,
+  useBoards, colForBoard, checkCosteo, checkValidacion, validarCosteo, duplicarOportunidad, duplicarVersion, enviarCosteo, enviarValidacion, ganarOportunidad, generarCotizacion, generarCotizacionPortal, getItemDetail, getVersiones,
   refreshItem, restaurarVersion, patchItem, type ItemDetailDTO, type QuoteVersionDTO,
 } from '../../lib/api';
 import { statusIndex } from '../../lib/statusValue';
 import { routePath } from '../../lib/routing';
 import { DEAL_STAGE_LABELS, stageAtOrAfter, type StageBoardKey } from '../../lib/dealStages';
 import { COSTEO_STAGE_BLOCKED, puedeMandarACosteo, puedeGenerarCotizacion } from '../../../shared/dealStages';
+import { isNativeId } from '../../../shared/nativeId';
 import { avisosOportunidadCosteo } from '../../../shared/costeoAvisos';
 import { useIsMobile } from '../../lib/useIsMobile';
 import { uxAction, uxNav } from '../../lib/telemetry';
@@ -521,15 +522,16 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, openTab, onTabCha
     }
   });
 
-  const onGenerarCotizacion = async () => {
+  const onGenerarCotizacion = async (motor: 'monday' | 'portal' = 'monday') => {
     setNotice(null);
     try {
-      const res = await generarCotizacion(id);
+      const res = motor === 'portal' ? await generarCotizacionPortal(id) : await generarCotizacion(id);
       if (res.ok && !res.skipped) {
         setNotice({
           kind: 'ok', title: 'Cotización generada',
           lines: [
-            `${String(res.folio_cotizacion ?? '')} · total $${Number(res.total ?? 0).toLocaleString()} — enviada a firma del vendedor.`,
+            // cmp-tallas contesta `folio_cotizacion`; el Worker, `folio`.
+            `${String(res.folio_cotizacion ?? res.folio ?? '')} · total $${Number(res.total ?? 0).toLocaleString()} — enviada a firma del vendedor.`,
             // En la zona la cotización es el ÚNICO paso, así que de ahí salen
             // también los dos PDFs que en el pipeline normal producen "Mandar a
             // costeo" y "Validar costeo" (Efraín, 2026-08-19: "sí deja el PDF
@@ -930,16 +932,32 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, openTab, onTabCha
               onConfirm={onValidarCosteo}
             />
           )}
+          {/* Dos botones (Efraín, 2026-10-09, el día que Eledo dejó de
+              generar PDFs): "(portal)" dibuja el PDF en el Worker; "(Monday)"
+              es el de siempre (cmp-tallas → Eledo). El del portal también
+              sale en "Cotización" (6): ahí cae una oportunidad cuyo intento
+              con Eledo falló, porque Monday mueve la etapa al picar su botón. */}
+          {(puedeGenerarCotizacion(stage, zonaPrivada) || stage === '6') && !ajena && !isNativeId(Number(id)) && (
+            <ConfirmButton
+              label="Generar cotización (portal)"
+              confirmLabel="¿Generar la cotización y mandar a firma?"
+              busyLabel="Generando cotización…"
+              disabled={!hasPrecio}
+              title={!hasPrecio ? 'Ningún producto tiene Precio de Venta — captúralo antes de cotizar'
+                : 'El portal arma el PDF (con fotos), lo sube con y sin precio y lo manda a firma del vendedor'}
+              onConfirm={() => onGenerarCotizacion('portal')}
+            />
+          )}
           {puedeGenerarCotizacion(stage, zonaPrivada) && !ajena && (
             <ConfirmButton
-              label="Generar cotización"
+              label={isNativeId(Number(id)) ? 'Generar cotización' : 'Generar cotización (Monday)'}
               confirmLabel={zonaPrivada && stage !== '9' ? '¿Cotizar ya y mandar a firma?' : '¿Generar y mandar a firma?'}
               busyLabel="Generando cotización… puede tardar unos minutos, no cierres esta pantalla"
               disabled={!hasPrecio}
               title={!hasPrecio ? 'Ningún producto tiene Precio de Venta — captúralo antes de cotizar'
                 : zonaPrivada ? 'PDFs con y sin precio + firma (DocuSeal) y pasa a "Cotización" — deja también la solicitud de costeo y la hoja de validación en Documentación'
                 : 'PDFs con y sin precio + firma del vendedor (DocuSeal)'}
-              onConfirm={onGenerarCotizacion}
+              onConfirm={() => onGenerarCotizacion('monday')}
             />
           )}
           {/* Desde "Costeo Confirmado", no desde "Cotización": Monday ordena

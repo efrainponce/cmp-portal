@@ -30,6 +30,10 @@ import { putFile } from './r2';
 import { cotizacionR2Key } from './cotizacionPdfs';
 import { ordenarComoElPortal } from './itemOrder';
 import type { RawCol } from './serialize';
+import { buildCotizacionClientePdf, type CotizacionClienteInput } from './pdf/cotizacionCliente';
+import { reservarFolioCotizacion, cerrarFolioCotizacion } from './cotizacionLedger';
+import { cargarImagenesParaPdf } from './ocImagenes';
+import { llaveFotoOc } from '../../shared/ocFotoLlave';
 
 export class CotizacionError extends Error {
   status: number;
@@ -501,6 +505,141 @@ export async function generarCotizacionNative(env: Env, itemId: number, viewer: 
     await postUpdate(
       env, BOARDS.oportunidades.id, itemId,
       `**Cotización generada — ${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC**\n- ✅ ${folioCotizacion}`,
+    );
+  } catch { /* best-effort */ }
+  try {
+    await gql(
+      env,
+      `mutation($b:ID!,$i:ID!,$cv:JSON!){ change_multiple_column_values(board_id:$b,item_id:$i,column_values:$cv){ id } }`,
+      { b: String(BOARDS.oportunidades.id), i: String(itemId), cv: JSON.stringify({ deal_stage: { label: DEAL_STAGE_LABELS['6'] } }) },
+    );
+    await moveItemToGroup(env, itemId, GROUP_CON_COTIZACION);
+  } catch { /* best-effort */ }
+
+  return { ok: true, folio: folioCotizacion, total, pdfConPrecio: uploadCP.publicUrl, pdfSinPrecio: pdfSinPrecioUrl, docusealId };
+}
+
+function fechaMx(): string {
+  return new Date().toLocaleDateString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'America/Merida' });
+}
+
+/** "Generar cotización (portal)" — Efraín, 2026-10-09, el día que Eledo dejó
+ * de generar PDFs. Mismo flujo que `generarCotizacionNative` (líneas en vivo de
+ * Monday, PDF con y sin precio a sus columnas, firma DocuSeal del vendedor,
+ * etapa "Cotización" + grupo) con dos diferencias:
+ *   · el PDF lo dibuja el portal (worker/lib/pdf/cotizacionCliente.ts — formato
+ *     de la OC, foto de cada producto en un anexo, misma foto que la OC);
+ *   · el folio sale del ledger de Google Sheets de cmp-tallas, no de D1: el
+ *     botón de Monday sigue vivo y los dos cuentan sobre la misma lista.
+ * No depende de COTIZACION_NATIVE: es un botón aparte, siempre disponible. */
+export async function generarCotizacionPortal(env: Env, itemId: number, viewer: Identity): Promise<GenerarCotizacionResult> {
+  if (!(await ownsItem(env, 'oportunidades', itemId, viewer))) throw new CotizacionError(404, 'not found');
+
+  const fetched = await fetchItemWithSubitems(env, itemId);
+  if (!fetched) throw new CotizacionError(404, 'not found');
+  const { item } = fetched;
+  const subitems = await ordenarComoElPortal(env, BOARDS.oportunidades_sub.id, itemId, fetched.subitems);
+  const cols = item.column_values;
+
+  const folioOpp = cvText(cols, OPP_FOLIO) || String(itemId);
+  const dealOwnerName = cvText(cols, OPP_VENDEDOR);
+  const vendedor = await resolveVendedor(env, firstPersonId(cols, OPP_VENDEDOR), dealOwnerName);
+
+  const rawLines = buildProductLines(subitems);
+  if (rawLines.length === 0) {
+    const reason = 'No hay líneas de producto (¿todos son Embellecimiento?)';
+    await notifySkip(env, itemId, reason);
+    return { ok: true, skipped: true, reason };
+  }
+  if (rawLines.every(r => r.line.Precio === 0)) {
+    await notifyNoPrecio(env, itemId, firstPersonId(cols, OPP_COMPRAS), dealOwnerName);
+    return { ok: true, skipped: true, reason: 'Ningún producto tiene precio. Cotización no generada.' };
+  }
+
+  // La foto es la misma que usa la OC (R2, se jala de Airtable la primera vez
+  // y queda cacheada) — sin foto la ficha sale con "SIN IMAGEN", nunca truena.
+  const llaves = rawLines.map(r => llaveFotoOc(r.line.Modelo, r.line.Nombre)).filter(Boolean);
+  const imagenes = await cargarImagenesParaPdf(env, llaves).catch(() => new Map());
+  const lineas: CotizacionClienteInput['lineas'] = rawLines.map(({ line: l }) => ({
+    partida: l.NumPartida, producto: l.Nombre, marca: l.Marca, modelo: l.Modelo, color: l.Color,
+    descripcion: l.Descripcion, unidad: l.Unidad, cantidad: l.Cantidad, precio: l.Precio,
+    imagen: imagenes.get(llaveFotoOc(l.Modelo, l.Nombre).toUpperCase()) ?? null,
+  }));
+  const { subtotal, iva, total } = computeTotals(rawLines.map(r => ({ ...r.line, Url: '' })));
+
+  const base = {
+    folioOpp,
+    cliente: cvText(cols, OPP_CONTACTO),
+    cargo: cvText(cols, OPP_CARGO),
+    institucion: cvText(cols, OPP_INSTITUCION),
+    vendedor: vendedor.name,
+    fecha: fechaMx(),
+    vigencia: cvText(cols, OPP_VIGENCIA),
+    tiempoEntrega: cvText(cols, OPP_ENTREGA),
+    comentarios: cvText(cols, OPP_COMENTARIOS),
+    lineas,
+  };
+
+  let reservado: { fila: number; folio: string };
+  try {
+    reservado = await reservarFolioCotizacion(env, {
+      itemId, folioOpp, cliente: base.cliente, institucion: base.institucion,
+      vendedor: vendedor.name, subtotal, iva, total,
+    });
+  } catch (err) {
+    throw new CotizacionError(502, `No se pudo apartar el folio en el Sheet de cotizaciones: ${String(err)}`);
+  }
+  const folioCotizacion = reservado.folio;
+  const safeFolio = folioCotizacion.replace(/ /g, '_').replace(/\//g, '-');
+  const filenameCP = `cotizacion_${safeFolio}.pdf`;
+  const filenameSP = `cotizacion_${safeFolio}_sin_precio.pdf`;
+
+  let uploadCP: { publicUrl: string };
+  try {
+    const pdfCP = buildCotizacionClientePdf({ ...base, folio: folioCotizacion, conPrecio: true });
+    uploadCP = await addFileToColumn(env, itemId, OPP_FILE_CON_PRECIO, new Blob([pdfCP], { type: 'application/pdf' }), filenameCP);
+    await registrarArchivo(env, {
+      acto: 'genera', categoria: 'cotizacion', nombre: filenameCP,
+      boardId: BOARDS.oportunidades.id, itemId, colId: OPP_FILE_CON_PRECIO,
+      bytes: pdfCP.length, porEmail: viewer.email, origen: 'portal',
+    });
+  } catch (err) {
+    await cerrarFolioCotizacion(env, reservado.fila, { estado: 'Error', error: String(err) }).catch(() => {});
+    throw err;
+  }
+
+  let docusealId = '';
+  try {
+    docusealId = await createDocuSealSubmission(env, {
+      name: String(itemId),
+      pdfUrl: uploadCP.publicUrl,
+      filename: filenameCP,
+      signers: [{ role: 'Vendedor', name: vendedor.name, email: vendedor.email }],
+    });
+  } catch (err) {
+    docusealId = `ERROR: ${String(err)}`;
+  }
+
+  let pdfSinPrecioUrl = '';
+  try {
+    const pdfSP = buildCotizacionClientePdf({ ...base, folio: folioCotizacion, conPrecio: false });
+    const uploadSP = await addFileToColumn(env, itemId, OPP_FILE_SIN_PRECIO, new Blob([pdfSP], { type: 'application/pdf' }), filenameSP);
+    await registrarArchivo(env, {
+      acto: 'genera', categoria: 'solicitud-costeo', nombre: filenameSP,
+      boardId: BOARDS.oportunidades.id, itemId, colId: OPP_FILE_SIN_PRECIO,
+      bytes: pdfSP.length, porEmail: viewer.email, origen: 'portal',
+    });
+    pdfSinPrecioUrl = uploadSP.publicUrl;
+  } catch { /* non-fatal, igual que el flujo de Eledo */ }
+
+  await cerrarFolioCotizacion(env, reservado.fila, {
+    estado: 'Enviado a firma', pdfConPrecio: uploadCP.publicUrl, pdfSinPrecio: pdfSinPrecioUrl, docuseal: docusealId,
+  }).catch(() => {});
+
+  try {
+    await postUpdate(
+      env, BOARDS.oportunidades.id, itemId,
+      `**Cotización generada en el portal — ${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC**\n- ✅ ${folioCotizacion}`,
     );
   } catch { /* best-effort */ }
   try {

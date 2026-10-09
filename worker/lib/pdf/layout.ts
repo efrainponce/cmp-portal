@@ -77,6 +77,11 @@ export type Block =
       /** Etiqueta/valor cortos (SKU, color, unidad…) arriba de las tallas. */
       datos: [string, string][];
       tallas: { talla: string; cantidad: string }[];
+      /** Texto libre (la descripción del catálogo) en el lugar de las tallas —
+       * solo se dibuja cuando la ficha NO trae tallas: la cotización al cliente
+       * (worker/lib/pdf/cotizacionCliente.ts, 2026-10-09) no tiene desglose
+       * todavía y lo que el cliente necesita leer junto a la foto es qué es. */
+      descripcion?: string;
       /** Renglones de cierre (totales, precio unitario) al pie de la ficha. */
       pie: string[];
       /** Null/ausente ⇒ placeholder gris "Sin imagen" (Efraín, 2026-08-24): la
@@ -602,6 +607,18 @@ function drawProductCard(
   const tallasTop = y + 6;
   const tallasBottom = top + CARD_HEIGHT - CARD_PAD - pieHeight;
   if (block.tallas.length === 0) {
+    if (block.descripcion?.trim()) {
+      const lineH = 11;
+      const cabe = Math.max(0, Math.floor((tallasBottom - tallasTop) / lineH));
+      const lineas = wrapText(block.descripcion.trim(), colWidth, 8.5);
+      const visibles = lineas.slice(0, cabe);
+      if (lineas.length > cabe && cabe > 0) visibles[cabe - 1] = ellipsize(`${visibles[cabe - 1]} …`, colWidth, 8.5);
+      let dy = tallasTop;
+      for (const line of visibles) {
+        pdf.text(cur.page, colLeft, dy, line, { size: 8.5, color: INK_SOFT });
+        dy += lineH;
+      }
+    }
     let pyVacio = top + CARD_HEIGHT - CARD_PAD - pieHeight + 10;
     for (const line of block.pie) {
       pdf.text(cur.page, colLeft, pyVacio, ellipsize(line, colWidth, 9, 'HB'), { size: 9, font: 'HB', color: INK });
