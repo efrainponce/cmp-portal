@@ -5,7 +5,7 @@
 // (en la Zona Efrain se captura desde ahí, ver TallasSection.tsx).
 import type { ColMeta, ItemDTO } from '../../../lib/api';
 import { TallaBoxesCapture } from '../proyecto/TallaCapture';
-import { linkUrl, P_SHEET_LINK, type ProyectoState } from '../ProyectoSection';
+import { linkUrl, P_SHEET_LINK, type ProyectoState } from '../proyecto/shared';
 import { tabRoot } from './tabLayout';
 
 export function TallasTab({ products, proyecto }: { subCols: ColMeta[]; products: ItemDTO[]; proyecto?: ProyectoState }) {

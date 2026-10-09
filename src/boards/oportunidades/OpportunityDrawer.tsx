@@ -31,15 +31,12 @@ import { BoardTabsBar, isDrawerTab, type DrawerTabKey } from './BoardTabsBar';
 import { CotizacionTab } from './tabs/CotizacionTab';
 import { ETAPA_COSTEO_COL } from './tabs/cotizacion/gridMeta';
 import { Modal } from '../../components/core/Modal';
-import { EmbellecimientosTab } from './tabs/EmbellecimientosTab';
-import { ActualizacionesTab } from './tabs/ActualizacionesTab';
-import { ActividadTab } from './tabs/ActividadTab';
-import { MuestrasTab } from '../muestras/MuestrasTab';
-import { NuevosProductosTab } from './tabs/NuevosProductosTab';
-import { InventarioCotizacionTab } from './tabs/InventarioCotizacionTab';
-import { DocumentacionTab } from './tabs/DocumentacionTab';
-import { TallasTab } from './tabs/TallasTab';
-import { useProyecto, ProyectoOrdenesSection, EjecucionSection, LogisticaSection, ResumenSection } from './ProyectoSection';
+import { useProyecto } from './proyecto/shared';
+import { ResumenSection } from './proyecto/ResumenSection';
+import {
+  ActualizacionesTab, InventarioCotizacionTab, EmbellecimientosTab, NuevosProductosTab, MuestrasTab, ActividadTab,
+  DocumentacionTab, TallasTab, ProyectoOrdenesSection, EjecucionSection, LogisticaSection, TabDiferida, usePrecargarTabs,
+} from './tabsDiferidas';
 import { PaymentRequestButton } from '../../components/board/PaymentRequestButton';
 import { EditableItemName } from '../../components/board/EditableItemName';
 import { EditClienteModal } from './EditClienteModal';
@@ -348,6 +345,9 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, openTab, onTabCha
 
   const showPostventa = stageAtOrAfter(stage, '9');
   const proyecto = useProyecto(id, !!item && showPostventa);
+  // Las pestañas que no son Cotización bajan en ocioso cuando el detalle ya
+  // está en pantalla (src/boards/oportunidades/tabsDiferidas.tsx).
+  usePrecargarTabs(item?.id === id, showPostventa);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -1037,6 +1037,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, openTab, onTabCha
 
       {/* Una vez existe el Proyecto (Ganada), la conversación post-venta vive
           en su feed de Monday, no en el de la Oportunidad (Efraín, 2026-07-17). */}
+      <TabDiferida>
       {activeTab === 'actualizaciones' && (
         proyecto.proyecto
           ? <ActualizacionesTab slug="proyectos" itemId={proyecto.proyecto.id} />
@@ -1114,6 +1115,7 @@ export function OpportunityDrawer({ id, backLabel, defaultTab, openTab, onTabCha
           <LogisticaSection state={proyecto} oppId={id} />
         </div>
       )}
+      </TabDiferida>
 
       {showNuevaVersion && (
         <Modal

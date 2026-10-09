@@ -16,7 +16,7 @@ import type { ItemDetailDTO } from '../../../lib/api';
 import { uploadProyectoDocumento, borrarProyectoDocumento, useBoards, colForBoard } from '../../../lib/api';
 import { patchItem, type ProyectoArchivoCategoria } from '../../../lib/apiClient';
 import { useMe } from '../../../lib/useMe';
-import { P_OC_CLIENTE, P_OC_CLIENTE_LECTURA, P_ACTA_ENTREGA, type ProyectoState } from '../ProyectoSection';
+import { P_OC_CLIENTE, P_OC_CLIENTE_LECTURA, P_ACTA_ENTREGA, type ProyectoState } from '../proyecto/shared';
 import { DocumentsPanel } from '../../../components/documents/DocumentsPanel';
 import { DriveCarpeta } from '../../../components/documents/DriveCarpeta';
 import { tabRoot } from './tabLayout';
