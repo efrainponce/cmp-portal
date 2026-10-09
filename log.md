@@ -1,5 +1,20 @@
 # Log de commits
 
+## 2026-10-08 (CWV paso 5: el drawer de Oportunidades ya no trae las secciones de Proyecto)
+
+- El chunk compartido del drawer pesaba 65 KB gz y traía Órdenes, Ejecución,
+  Logística, CrearOcModal, Actualizaciones, Embellecimientos… aunque el drawer
+  SIEMPRE abre en Cotización. Ahora abrir una oportunidad baja ~44 KB gz
+  (chunk compartido 32 + drawer 11) en vez de ~82.
+  - `tabsDiferidas.tsx`: las 11 pestañas que no son Cotización/Resumen se
+    cargan al abrirlas (con un hueco de alto fijo mientras, para no brincar)
+    y se precargan en ocioso en cuanto el drawer pintó su detalle.
+  - `DocumentacionTab` y `TallasTab` importaban del barrel
+    `ProyectoSection.tsx`, que arrastraba TODAS las secciones: ahora de
+    `proyecto/shared` directo (eso solo bajó el chunk de 53 a 32 KB).
+  - Probado en local: las 12 pestañas de una oportunidad Ganada y el drawer
+    de Proyecto en 4 rutas, sin errores.
+
 ## 2026-10-08 (CWV paso 4: Clarity se baja después del load)
 
 - En la red de Mérida (0.7 Mbps) el script de Clarity (~25 KB + tag) le
