@@ -3,8 +3,8 @@
 // descarga completa darían un reporte que miente sin tronar nada.
 import { describe, it, expect } from 'vitest';
 import {
-  acumularCls, calcularInp, clasificarRecurso, esNoModificado, nuevoCls, percentil,
-  resumirApi, resumirAssets, type RecursoMedido,
+  acumularCls, calcularInp, clasificarRecurso, esNoModificado, fasesInteraccion, nuevoCls, percentil,
+  resumirApi, resumirAssets, scriptCulpable, slugScript, tipoInteraccion, type RecursoMedido,
 } from './perfResumen';
 import { isValidTarget, sanitizeMeta } from '../../shared/telemetry';
 
@@ -154,5 +154,32 @@ describe('acumularCls', () => {
     for (let t = 0; t <= 6000; t += 900) s = acumularCls(s, t, 0.01);
     // 0, 900 … 4500 (6 brincos) en la primera ventana; 5400 abre otra.
     expect(s.valor).toBeCloseTo(0.06);
+  });
+});
+
+describe('INP con atribución', () => {
+  it('parte la interacción en espera, proceso y pintado', () => {
+    expect(fasesInteraccion({ startTime: 100, duration: 400, processingStart: 150, processingEnd: 420, name: 'click' }))
+      .toEqual({ espera: 50, proceso: 270, pinta: 80 });
+  });
+  it('el script se nombra por su chunk sin hash, y pasa el saneador de meta', () => {
+    expect(slugScript(`${ORIGEN}/assets/OpportunityDrawer-CyWo8Hmi.js`, ORIGEN)).toBe('opportunitydrawer');
+    expect(slugScript('https://www.clarity.ms/s/0.8/clarity.js', ORIGEN)).toBe('clarity-ms');
+    expect(slugScript('', ORIGEN)).toBe('inline');
+    expect(tipoInteraccion('keydown')).toBe('tecla');
+    expect(tipoInteraccion('pointerup')).toBe('clic');
+    const meta = sanitizeMeta({ script: slugScript(`${ORIGEN}/assets/index-D1BmnRqb.js`, ORIGEN), inv: 'event-listener', tag: 'button-tab' });
+    expect(meta).toBe('{"script":"index","inv":"event-listener","tag":"button-tab"}');
+  });
+  it('culpa al script más largo de los frames que se enciman con la interacción', () => {
+    const frames = [
+      { startTime: 0, duration: 80, scripts: [{ sourceURL: `${ORIGEN}/assets/a-AAAAAAAA.js`, invokerType: 'user-callback', duration: 70 }] },
+      { startTime: 1000, duration: 300, scripts: [
+        { sourceURL: `${ORIGEN}/assets/CotizacionTab-BBBBBBBB.js`, invokerType: 'event-listener', duration: 250 },
+        { sourceURL: `${ORIGEN}/assets/index-CCCCCCCC.js`, invokerType: 'event-listener', duration: 20 },
+      ] },
+    ];
+    expect(scriptCulpable(frames, 1010, 1300, ORIGEN)).toEqual({ script: 'cotizaciontab', inv: 'event-listener', dur: 250 });
+    expect(scriptCulpable(frames, 500, 600, ORIGEN)).toBeNull();
   });
 });

@@ -22,8 +22,9 @@
 import { useEffect, useRef } from 'react';
 import { alSalir, uxCascada, uxPerf } from './telemetry';
 import {
-  acumularCls, calcularInp, clasificarRecurso, nuevoCls, resumirApi, resumirAssets,
-  type ClaseAsset, type RecursoMedido,
+  acumularCls, calcularInp, clasificarRecurso, fasesInteraccion, nuevoCls, resumirApi, resumirAssets,
+  scriptCulpable, tipoInteraccion,
+  type ClaseAsset, type EventoInteraccion, type FrameLargo, type RecursoMedido,
 } from './perfResumen';
 import {
   CASCADA_MAX_MS, CASCADA_MAX_RECURSOS, encima, nombreRecurso, type HitosCarga, type RecursoCascada,
@@ -57,6 +58,34 @@ let vitalsEnviados = '';
 let peorBrinco: { v: number; desdeInput: number; meta: Record<string, number | boolean | string> } | null = null;
 let ultimoInput = -1;
 const UMBRAL_BRINCO = 0.05;
+/** La interacción más lenta de la ventana (≥ UMBRAL_INP), con DÓNDE y en qué
+ * fase (plan CWV paso 6). Se describe al observarla: después el elemento
+ * puede ya no existir. */
+let peorInteraccion: { v: number; inicio: number; fin: number; meta: Record<string, number | string> } | null = null;
+const UMBRAL_INP = 200;
+/** Frames largos recientes (Long Animation Frames, Chrome ≥ 123): de ahí sale
+ * qué script se comió la interacción. */
+const framesLargos: FrameLargo[] = [];
+
+function describirInteraccion(e: PerformanceEntry & EventoInteraccion & { target?: Node | null }): typeof peorInteraccion {
+  const seg = location.pathname.split('/');
+  const t = e.target && e.target.nodeType === 1 ? (e.target as Element) : null;
+  const tag = t ? t.tagName.toLowerCase() : 'nada';
+  return {
+    v: e.duration,
+    inicio: e.startTime,
+    fin: e.startTime + e.duration,
+    meta: {
+      v: Math.round(e.duration),
+      tipo: tipoInteraccion(e.name),
+      // Etiqueta y, si lo tiene, su rol ARIA (botón, pestaña, celda…).
+      tag: t?.getAttribute('role') ? `${tag}-${t.getAttribute('role')!.toLowerCase().replace(/[^a-z]/g, '')}`.slice(0, 40) : tag,
+      ruta: (seg[1] || 'inicio').toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 40) || 'inicio',
+      tab: seg[3] ? seg[3].toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 40) || 'drawer' : seg[2] ? 'drawer' : 'lista',
+      ...fasesInteraccion(e),
+    },
+  };
+}
 
 interface FuenteBrinco { node?: Node | null; previousRect: DOMRectReadOnly; currentRect: DOMRectReadOnly }
 
@@ -275,6 +304,14 @@ function enviarVentana(): void {
     const a = resumirAssets(assets, esFria);
     if (a) uxPerf('perf:assets', { meta: { ...a } });
 
+    if (peorInteraccion) {
+      uxPerf('perf:inp', { latencyMs: Math.round(peorInteraccion.v), meta: peorInteraccion.meta });
+      const s = scriptCulpable(framesLargos, peorInteraccion.inicio, peorInteraccion.fin, location.origin);
+      if (s) uxPerf('perf:inp:script', { latencyMs: s.dur, meta: { script: s.script, inv: s.inv, v: Math.round(peorInteraccion.v), ruta: peorInteraccion.meta.ruta } });
+      peorInteraccion = null;
+    }
+    framesLargos.length = 0;
+
     if (peorBrinco) {
       uxPerf('perf:brinco', { latencyMs: peorBrinco.desdeInput >= 0 ? peorBrinco.desdeInput : undefined, meta: peorBrinco.meta });
       peorBrinco = null;
@@ -357,8 +394,20 @@ export function instalarPerfReal(): void {
         if (encima(e.startTime, e.startTime + e.duration, dialogos)) continue;
         if (interacciones.size >= 2000 && !interacciones.has(id)) continue;
         interacciones.set(id, Math.max(interacciones.get(id) ?? 0, e.duration));
+        if (e.duration >= UMBRAL_INP && (!peorInteraccion || e.duration > peorInteraccion.v)) {
+          try { peorInteraccion = describirInteraccion(e as PerformanceEntry & EventoInteraccion & { target?: Node | null }); } catch { /* nada */ }
+        }
       }
     }, { durationThreshold: 40 });
+    observar('long-animation-frame', (l) => {
+      for (const e of l.getEntries() as unknown as FrameLargo[]) {
+        if (framesLargos.length >= 100) framesLargos.shift();
+        framesLargos.push({
+          startTime: e.startTime, duration: e.duration,
+          scripts: (e.scripts ?? []).map(s => ({ sourceURL: s.sourceURL, invokerType: s.invokerType, duration: s.duration })),
+        });
+      }
+    });
 
     const alCargar = () => setTimeout(enviarCarga, 0);
     if (document.readyState === 'complete') alCargar(); else addEventListener('load', alCargar, { once: true });

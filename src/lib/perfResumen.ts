@@ -175,3 +175,72 @@ export function acumularCls(s: EstadoCls, t: number, valor: number): EstadoCls {
   const inicio = continua ? s.inicio : t;
   return { valor: Math.max(s.valor, ventana), ventana, inicio, ultimo: t };
 }
+
+/** INP con atribución (2026-10-08, plan CWV paso 6). El número solo decía
+ * "PAM 656 ms"; esto dice en qué pantalla, sobre qué elemento y en qué fase
+ * se fue el tiempo. Solo geometría de tiempos, nombres de etiqueta y slugs:
+ * ningún texto. */
+export interface EventoInteraccion {
+  startTime: number;
+  duration: number;
+  processingStart: number;
+  processingEnd: number;
+  name: string;
+}
+
+/** Las tres fases de una interacción, en ms: espera (el hilo estaba ocupado
+ * antes de atender el evento), proceso (los handlers) y pintado (lo que tardó
+ * el navegador en mostrar el resultado). */
+export function fasesInteraccion(e: EventoInteraccion): { espera: number; proceso: number; pinta: number } {
+  const espera = Math.max(0, e.processingStart - e.startTime);
+  const proceso = Math.max(0, e.processingEnd - e.processingStart);
+  const pinta = Math.max(0, e.startTime + e.duration - e.processingEnd);
+  return { espera: Math.round(espera), proceso: Math.round(proceso), pinta: Math.round(pinta) };
+}
+
+/** Tipo de interacción como slug corto. */
+export function tipoInteraccion(nombre: string): string {
+  if (nombre.startsWith('key')) return 'tecla';
+  if (nombre === 'click' || nombre.startsWith('pointer') || nombre.startsWith('mouse')) return 'clic';
+  return 'otro';
+}
+
+/** Script de Long Animation Frames → slug: el nombre del chunk sin su hash
+ * (`/assets/OpportunityDrawer-CyWo8Hmi.js` → `opportunitydrawer`), solo el
+ * host si es de otro origen (`clarity-ms`), `inline` si no hay URL. */
+export function slugScript(url: string, origen: string): string {
+  if (!url) return 'inline';
+  try {
+    const u = new URL(url, origen);
+    if (u.origin !== origen) return u.host.replace(/^www\./, '').replace(/[^a-z0-9]+/g, '-').slice(0, 40) || 'externo';
+    const archivo = u.pathname.split('/').pop() ?? '';
+    const base = archivo.replace(/\.m?js$/, '').replace(/-[A-Za-z0-9_]{6,12}$/, '');
+    return base.toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+/, '').slice(0, 40) || 'inline';
+  } catch { return 'inline'; }
+}
+
+export interface FrameLargo {
+  startTime: number;
+  duration: number;
+  scripts: Array<{ sourceURL?: string; invokerType?: string; duration: number }>;
+}
+
+/** El script que más tiempo se comió en los frames largos que se enciman con
+ * la interacción [inicio, fin]. */
+export function scriptCulpable(frames: readonly FrameLargo[], inicio: number, fin: number, origen: string):
+  { script: string; inv: string; dur: number } | null {
+  let mejor: { script: string; inv: string; dur: number } | null = null;
+  for (const f of frames) {
+    if (f.startTime > fin || f.startTime + f.duration < inicio) continue;
+    for (const s of f.scripts) {
+      if (!mejor || s.duration > mejor.dur) {
+        mejor = {
+          script: slugScript(s.sourceURL ?? '', origen),
+          inv: (s.invokerType ?? 'otro').toLowerCase().replace(/[^a-z0-9_-]+/g, '-').slice(0, 30) || 'otro',
+          dur: Math.round(s.duration),
+        };
+      }
+    }
+  }
+  return mejor;
+}
