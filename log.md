@@ -1,5 +1,22 @@
 # Log de commits
 
+## 2026-10-08 (CWV paso 7: el drawer ya no brinca al abrir)
+
+- Reproducido en local con red lenta (`perf-cls`-style, layout-shift con sus
+  nodos): tres mecanismos, los tres arreglados en `OpportunityDrawer`:
+  - El aviso "Falta esto para Mandar a costeo" llegaba ~1 s después de
+    abrir (con `costeo-check`) y empujaba pestañas y cotización 72 px. Ahora
+    se PREDICE con el detalle (`shared/costeoAvisos.ts`, mismos textos que
+    usa `checkCosteo` en el worker) y el server solo lo confirma.
+  - Con un título largo, cuando el encabezado cambiaba de ancho los botones
+    ("Validar costeo ⋯") se partían en dos renglones y empujaban todo ~40 px.
+    En escritorio la columna del título es la que se acomoda y los botones ya
+    no se apilan.
+  - "⟳ verificando…" ↔ "sincronizado hace X" (a los ~5 s, relectura de
+    Monday) medían distinto al final del renglón: ancho fijo.
+- Medido en local: abrir una oportunidad 0.036 → 0.002; validación y costeo
+  ≤ 0.004; Reporte de Proyectos 0.
+
 ## 2026-10-08 (CWV paso 6: INP con atribución)
 
 - El INP solo decía el número (PAM 656 ms, CEO 392 ms), no qué interacción.

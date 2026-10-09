@@ -6,6 +6,7 @@
 // automático). El portal ya no cambia el stage por su cuenta — es 100% el mismo
 // flujo que el botón "Solicitar costeo" de Monday.
 import type { ExecutionContext } from 'hono';
+import { avisosOportunidadCosteo } from '../../shared/costeoAvisos';
 import type { Env } from '../env';
 import type { Identity, MirrorItem } from '../../shared/types';
 import { COSTEO_STAGE_BLOCKED } from '../../shared/dealStages';
@@ -225,13 +226,9 @@ export async function checkCosteo(env: Env, itemId: number, viewer: Identity): P
 
   const errors: string[] = [];
 
-  if (!(cols.get(OPP_INSTITUCION)?.text ?? '').trim()) {
-    errors.push('Asigna una institución a la oportunidad.');
-  }
-
-  if (lineas.length === 0) {
-    errors.push('La oportunidad no tiene líneas de producto. Agrega al menos una.');
-  } else {
+  // Mismos textos que predice el drawer (shared/costeoAvisos.ts).
+  errors.push(...avisosOportunidadCosteo(cols.get(OPP_INSTITUCION)?.text, lineas.length));
+  if (lineas.length > 0) {
     errors.push(...lineas.flatMap((l, i) => validateLinea(l.name, colsOf(l), i + 1)));
   }
 
