@@ -38,12 +38,16 @@
         } catch (e) { return; }
 
         var P = Object.create(null);
-        function pedir(url) {
+        var E = Object.create(null);
+        function pedir(url, etag) {
           // Se probó `priority: 'low'` aquí para que el bundle ganara la carrera
           // de ancho de banda: no movió la aguja (FCP 1532 → 1560 ms, ruido),
           // así que no se deja complejidad sin ganancia medida.
           try {
-            var f = fetch(url, { credentials: 'same-origin' });
+            var f = fetch(url, etag
+              ? { credentials: 'same-origin', headers: { 'If-None-Match': etag } }
+              : { credentials: 'same-origin' });
+            if (etag) E[url] = etag;
             // Si la API está caída, esta promesa se rechaza. Puede que nadie la
             // consuma nunca (apiFetch sólo toma las que coinciden), y un rechazo
             // sin handler sale como "Unhandled promise rejection" en consola.
@@ -67,12 +71,27 @@
         var seg = location.pathname.split('/');
         var board = seg[1] || '';
         var itemId = seg[2] || '';
+
+        // Lista guardada en el navegador (src/lib/listaGuardada.ts): si esta
+        // ruta ya tiene copia, se precarga EXACTAMENTE el request que hará la
+        // app — incremental, con su ETag: casi siempre un 304 sin cuerpo — y
+        // con las columnas de quien la guardó (la vista extendida de admin
+        // incluida). Si la persona cambió, la app no la toma (no manda ese
+        // ETag) y pide la suya.
+        var guardada = null;
+        try {
+          var idx = JSON.parse(localStorage.getItem('cmp:precarga') || 'null');
+          var baseRuta = idx && idx.rutas && idx.rutas[board];
+          guardada = baseRuta && idx.urls && idx.urls[baseRuta];
+        } catch (e) { guardada = null; }
         // Los 5 boards de etapa leen el MISMO slug (oportunidades), solo
         // cambia el filtro de etapa, que es client-side.
         var esOportunidad = /^(oportunidades|oportunidades_web|costeo|validacion|zona_efrain)$/.test(board);
         var esProyecto = /^(doctallas|ordenescompra|ejecucion|logistica)$/.test(board);
 
-        if (itemId) {
+        if (guardada && !itemId && guardada.url && guardada.etag) {
+          pedir(guardada.url, guardada.etag);
+        } else if (itemId) {
           // Deep link a un item: la lista NI SE PINTA (el wrapper muestra solo
           // el drawer), así que precargar la lista sería tirar bytes. Se
           // precarga el detalle, que es lo que se va a ver.
@@ -96,6 +115,7 @@
         }
 
         window.__cmpPrecarga = P;
+        window.__cmpPrecargaEtag = E;
       })();
     </script>
 

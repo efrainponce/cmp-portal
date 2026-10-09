@@ -5,9 +5,11 @@
 // el request normal — nunca se sirve algo distinto de lo que se pidió):
 //  - mismo path exacto, incluida la query;
 //  - método GET;
-//  - sin headers que cambien la respuesta (If-None-Match sobre todo: la
-//    precarga no lo mandó, así que su respuesta es un 200 completo y no puede
-//    hacer las veces de un 304 condicional);
+//  - sin headers que cambien la respuesta, salvo If-None-Match IDÉNTICO al que
+//    mandó la precarga (desde 2026-10-08 index.html precarga el request
+//    incremental de la lista guardada, src/lib/listaGuardada.ts, con su ETag:
+//    un 304 de esa precarga sí es la respuesta a lo que pide la app). Un
+//    If-None-Match distinto, o sin él cuando la precarga lo llevó, no sirve;
 //  - una sola vez: el body de una Response se consume, así que en cuanto se
 //    entrega se saca del mapa.
 
@@ -18,15 +20,27 @@ function mapa(): MapaPrecarga | null {
   return w.__cmpPrecarga ?? null;
 }
 
-/** Headers que hacen que la respuesta NO sea intercambiable con la precargada. */
-function tieneHeadersQueImportan(init?: RequestInit): boolean {
-  if (!init?.headers) return false;
-  const h = new Headers(init.headers);
-  // Content-Type en un GET no cambia la respuesta; el resto sí puede.
-  for (const [k] of h.entries()) {
-    if (k.toLowerCase() !== 'content-type') return true;
+/** If-None-Match con que salió cada precarga (index.html), por URL. */
+function etagsPrecarga(): Record<string, string> {
+  const w = window as unknown as { __cmpPrecargaEtag?: Record<string, string> };
+  return w.__cmpPrecargaEtag ?? {};
+}
+
+/** ¿La respuesta precargada es intercambiable con la que pide `init`? Content-Type
+ * en un GET no cambia nada; If-None-Match tiene que ser el mismo que llevó la
+ * precarga; cualquier otro header la descarta. */
+export function headersCompatibles(init: RequestInit | undefined, etagPrecarga: string | undefined): boolean {
+  let inm: string | undefined;
+  if (init?.headers) {
+    const h = new Headers(init.headers);
+    for (const [k, v] of h.entries()) {
+      const kl = k.toLowerCase();
+      if (kl === 'content-type') continue;
+      if (kl === 'if-none-match') { inm = v; continue; }
+      return false;
+    }
   }
-  return false;
+  return inm === etagPrecarga;
 }
 
 /** Devuelve la respuesta precargada para `url` si sirve, y la consume. */
@@ -35,9 +49,9 @@ export function tomarPrecarga(url: string, init?: RequestInit): Promise<Response
   if (!m) return null;
   const metodo = (init?.method ?? 'GET').toUpperCase();
   if (metodo !== 'GET') return null;
-  if (tieneHeadersQueImportan(init)) return null;
   const p = m[url];
   if (!p) return null;
+  if (!headersCompatibles(init, etagsPrecarga()[url])) return null;
   delete m[url];
   // Si la precarga falló (red, 401 de Access…), se descarta y el llamador
   // hace el request normal por su cuenta.
