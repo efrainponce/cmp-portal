@@ -525,6 +525,15 @@ export async function generarCotizacion(id: string): Promise<ProyectoActionRespo
   return body;
 }
 
+/** Generar cotización (portal) — el PDF lo dibuja el Worker (sin Eledo), folio
+ * del mismo ledger de Sheets; firma, columnas y etapa igual que la de Monday. */
+export async function generarCotizacionPortal(id: string): Promise<ProyectoActionResponse> {
+  const res = await apiFetch(`/oportunidades/${id}/cotizacion-portal`, { method: 'POST' });
+  const body: ProyectoActionResponse = await res.json();
+  if (!res.ok && !body.reason) throw new Error('generar cotización portal failed: ' + res.status);
+  return body;
+}
+
 /** Historial de versiones de cotización; [] cuando aún no se generó ninguna. */
 export async function getVersiones(id: string): Promise<QuoteVersionDTO[]> {
   const res = await apiFetch(`/oportunidades/${id}/versiones`);

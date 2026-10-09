@@ -180,7 +180,9 @@ con el Worker (`/api/*`). Bot de WhatsApp + chat del portal comparten agente Cla
 - Writes: front → `PATCH /api/boards/:slug/items/:id` → outbox D1 → Monday → echo/refetch.
   El mirror tarda: usa previews locales en la UI (patrón ya en CotizacionTab).
 - Documentos del portal (`docs/documentos-firma.md`): la **cotización al cliente
-  sigue en Eledo** — el portal NO la genera. Sí genera la solicitud de costeo
+  sale por DOS botones** (2026-10-09): "Generar cotización (Monday)" = cmp-tallas
+  → Eledo, y "Generar cotización (portal)" = PDF propio (`pdf/cotizacionCliente.ts`),
+  folio del mismo Sheet de cmp-tallas (`cotizacionLedger.ts`). Sí genera la solicitud de costeo
   (líneas sin precios, sale sola al "Mandar a costeo") y, pendiente, la OC a
   proveedor. Sin imágenes de producto: el motor solo embebe JPEG.
 - Firma electrónica (`docs/documentos-firma.md`): el PDF se

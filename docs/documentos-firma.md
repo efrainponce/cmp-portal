@@ -89,7 +89,11 @@ que sí revisa la fuente.
 ## Qué NO genera el portal
 
 Las **cotizaciones al cliente siguen saliendo de Eledo** (decisión de Efraín,
-2026-07-26). Lo que el portal genera para saltarse Eledo es la **solicitud de
+2026-07-26) — **actualizado 2026-10-09**: Eledo dejó de generar PDFs y ahora hay
+un segundo botón, "Generar cotización (portal)", que dibuja la cotización con el
+motor propio (`worker/lib/pdf/cotizacionCliente.ts`, formato de la OC con anexo de
+fotos) y toma el folio del mismo Sheet de cmp-tallas; el botón "(Monday)" sigue
+yendo a Eledo. Lo que el portal genera para saltarse Eledo es la **solicitud de
 costeo** y —pendiente— la **OC a proveedor**. Diseño: formato propio del portal,
 fondo blanco, sin imágenes de producto (el motor solo embebe JPEG y el catálogo
 las tiene en PNG; SKU + marca identifican la partida).

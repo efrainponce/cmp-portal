@@ -1,5 +1,33 @@
 # Log de commits
 
+## 2026-10-09 (Cotización generada por el portal, sin Eledo)
+
+- Eledo dejó de generar PDFs (toda plantilla —cotización y OC— se cuelga
+  >90 s; su API sí contesta errores al instante). OPP-1189 (Lili): un clic en
+  "Generar Cotización" de Monday, Make 102 reintentando solo cada ~2 min, 9
+  folios quemados en el Sheet (`1189 - 1…9`, "read operation timed out") y un
+  ❌ en Monday por intento.
+- Efraín: "formato simple de la OC … si incluye la foto como en OC", botón
+  nuevo del portal súper simple y el otro como "Generar cotización Monday".
+- Nuevo botón **"Generar cotización (portal)"** en el drawer
+  (`POST /api/oportunidades/:id/cotizacion-portal`,
+  `generarCotizacionPortal` en `worker/lib/cotizacion.ts`): mismo flujo que
+  la de Eledo —líneas en vivo de Monday, PDF con y sin precio a sus columnas,
+  firma DocuSeal del vendedor, etapa "Cotización" + grupo, versión archivada—
+  pero el PDF lo dibuja el Worker (`worker/lib/pdf/cotizacionCliente.ts`):
+  formato de la OC (datos, tabla de partidas, totales, importe en letras,
+  condiciones, firma) + anexo con una ficha por partida con la MISMA foto que
+  la OC (R2/Airtable vía `cargarImagenesParaPdf`) y la descripción del
+  catálogo (`productCard.descripcion`, nuevo en `layout.ts`).
+- El folio sale del MISMO Sheet de cmp-tallas (`worker/lib/cotizacionLedger.ts`,
+  fila "Generando" antes del PDF y se cierra "Enviado a firma"/"Error"): el
+  botón de Monday sigue vivo y los dos cuentan sobre la misma lista. Para
+  OPP-1189 el siguiente es `1189 - 10`.
+- El del portal también aparece en etapa "Cotización" (6): ahí queda una
+  oportunidad cuyo intento con Eledo falló, porque Monday mueve la etapa al
+  picar su botón. El botón de siempre ahora dice "Generar cotización
+  (Monday)" (en items nativos de Zona Efrain sigue "Generar cotización").
+
 ## 2026-10-08 (CWV: resultados en producción)
 
 - Medido después del último deploy (prod, admin, mismas redes que la línea
