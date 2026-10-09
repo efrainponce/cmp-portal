@@ -166,7 +166,9 @@ export function ProyectoBoardList({ config, q, onSearch, onOpen, onReady, header
   // que el cliente pudiera empatar nada. Los filtros NO se guardan entre
   // sesiones, igual que en Lista de OC: uno recordado deja la lista en 0.
   const conFiltros = config.key === 'ejecucion';
-  const { status, data } = usePoll('proyectos', conFiltros ? '' : q, undefined, conTotales);
+  // En el Reporte, `conTotales` depende del rol: sin esperar a /me, admin
+  // pedía la lista sin totales y luego con totales (dos bajadas completas).
+  const { status, data } = usePoll('proyectos', conFiltros ? '' : q, undefined, conTotales, !conFiltros || me !== null);
   const [extras, setExtras] = useState<Record<string, ProyectoFiltrosDTO>>({});
   useEffect(() => {
     if (!conFiltros) return;

@@ -161,7 +161,10 @@ export function StageBoardList({ config, groupColId = 'deal_stage', q, onSearch,
   // `true` = pide también las métricas de la cotización por oportunidad
   // (?totales=1). Van en TODOS los boards de etapa (Efraín, 2026-08-20): el
   // worker recorta por rol, así que un vendedor solo recibe Subtotal y Total.
-  const { status, data, refrescar, refrescando } = usePoll('oportunidades', q, pollCols, true);
+  // Admin en escritorio espera a /me para saber si pide la vista extendida:
+  // sin esto pedía la base y luego la extendida (dos bajadas completas).
+  const colsListas = !config.columnasAdmin || isMobile || me !== null;
+  const { status, data, refrescar, refrescando } = usePoll('oportunidades', q, pollCols, true, colsListas);
 
   // Avisa UNA vez que ya hay datos en pantalla. El wrapper lo usa para
   // precargar el drawer: antes de esto la lista no compite con nada.

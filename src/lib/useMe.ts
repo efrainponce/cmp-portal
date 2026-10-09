@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { getMe, type MeDTO } from './api';
 import { canReadActivity } from '../../shared/visibility';
 import { identificarEnClarity } from './clarity';
+import { fijarCorreo } from './listaGuardada';
 
 let cached: MeDTO | null = null;
 let inflight: Promise<MeDTO> | null = null;
@@ -17,7 +18,7 @@ function loadMe(): Promise<MeDTO> {
   if (cached) return Promise.resolve(cached);
   if (!inflight) {
     inflight = getMe()
-      .then((me) => { cached = me; identificarEnClarity(me); return me; })
+      .then((me) => { cached = me; fijarCorreo(me.email); identificarEnClarity(me); return me; })
       .catch((e) => { inflight = null; throw e; });
   }
   return inflight;

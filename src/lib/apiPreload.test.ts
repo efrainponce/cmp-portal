@@ -8,6 +8,8 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { queryLista } from './api';
+import { headersCompatibles } from './apiPreload';
+import { PRECARGA_KEY } from './listaGuardada';
 import { join } from 'node:path';
 
 const RAIZ = join(import.meta.dirname, '..', '..');
@@ -52,7 +54,7 @@ describe('precarga de index.html', () => {
     // `totales = true`: StageBoardList llama usePoll(..., true) en TODOS los
     // boards de etapa. El test armaba la URL sin él y por eso no vio que la
     // precarga llevaba un mes sin coincidir (2026-08-20 → 2026-09-23).
-    expect(stageBoardList).toMatch(/usePoll\('oportunidades', q, pollCols, true\)/);
+    expect(stageBoardList).toMatch(/usePoll\('oportunidades', q, pollCols, true[,)]/);
     const urlApp = '/api/boards/oportunidades/items'
       + queryLista('', colsDelComponente().join(','), true);
     const pedido = html.match(/pedir\('(\/api\/boards\/oportunidades\/items\?cols=)' \+ COLS \+ '([^']*)'\)/);
@@ -82,5 +84,29 @@ describe('precarga de index.html', () => {
     // Con /oportunidades/123 el wrapper no monta la lista, así que precargarla
     // sería tirar ~65 KB por el caño.
     expect(html).toMatch(/if \(itemId\)[\s\S]*items\/' \+ encodeURIComponent\(itemId\)/);
+  });
+
+  it('lee la lista guardada con la MISMA llave que escribe listaGuardada.ts', () => {
+    // Si la llave se separa, index.html deja de precargar la copia y nadie se
+    // entera: la lista vuelve a bajar entera en cada recarga.
+    expect(html).toContain(`localStorage.getItem('${PRECARGA_KEY}')`);
+    expect(html).toContain("headers: { 'If-None-Match': etag }");
+    expect(html).toContain('window.__cmpPrecargaEtag = E;');
+  });
+});
+
+describe('headersCompatibles', () => {
+  it('sin headers solo sirve una precarga sin ETag', () => {
+    expect(headersCompatibles(undefined, undefined)).toBe(true);
+    expect(headersCompatibles(undefined, '"x"')).toBe(false);
+  });
+  it('If-None-Match tiene que ser el mismo que llevó la precarga', () => {
+    expect(headersCompatibles({ headers: { 'If-None-Match': '"x"' } }, '"x"')).toBe(true);
+    expect(headersCompatibles({ headers: { 'If-None-Match': '"y"' } }, '"x"')).toBe(false);
+    expect(headersCompatibles({ headers: { 'If-None-Match': '"x"' } }, undefined)).toBe(false);
+  });
+  it('cualquier otro header la descarta; Content-Type no', () => {
+    expect(headersCompatibles({ headers: { 'Content-Type': 'application/json' } }, undefined)).toBe(true);
+    expect(headersCompatibles({ headers: { 'X-Impersonate-Email': 'a@b.c' } }, undefined)).toBe(false);
   });
 });

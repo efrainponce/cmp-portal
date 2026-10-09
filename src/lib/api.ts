@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ItemDTO, ListResponse } from '../../shared/dto';
 import { mockList } from './mockFallback';
+import { guardarLista, hayListaGuardada, leerListaGuardada } from './listaGuardada';
 import { toast } from '../components/core/Toaster';
 import {
   AccessError, apiFetch, getBoards, mockBoardMeta, type BoardMeta, type BoardSlug,
@@ -149,8 +150,16 @@ export interface PollResult {
  * (ver ?cols= en la ruta GET /items) — Oportunidades trae ~34 por item y la
  * lista usa 8, lo que hacía que cada refresco bajara 2.15 MB. Omitirlo trae
  * todas las columnas legibles, que es lo que necesitan las vistas genéricas.
- * Nunca amplía permisos: el server intersecta contra shared/visibility.ts. */
-export function usePoll(slug: BoardSlug, q = '', cols?: readonly string[], totales = false): PollResult {
+ * Nunca amplía permisos: el server intersecta contra shared/visibility.ts.
+ *
+ * `listo = false`: todavía no se sabe qué pedir (p. ej. admin espera a /me para
+ * saber si pide la vista extendida) — no sale ningún request. Sin esto, admin
+ * pedía la lista base y luego la extendida: dos bajadas completas.
+ *
+ * La lista sin búsqueda se guarda en el navegador (src/lib/listaGuardada.ts):
+ * al volver a montar —o al recargar— el primer request ya sale incremental
+ * con su ETag, y en una recarga index.html lo precarga tal cual. */
+export function usePoll(slug: BoardSlug, q = '', cols?: readonly string[], totales = false, listo = true): PollResult {
   const [status, setStatus] = useState<PollStatus>('loading');
   const [data, setData] = useState<ListResponse | null>(null);
   const [offlineMock, setOfflineMock] = useState(false);
@@ -172,12 +181,19 @@ export function usePoll(slug: BoardSlug, q = '', cols?: readonly string[], total
   // Booleano y no `cols` en las deps de abajo: un array literal en un call
   // site cambiaría de identidad en cada render y reiniciaría el polling.
   const esPicker = cols === SOLO_NOMBRE;
+  // Solo la lista de trabajo sin búsqueda se guarda (los pickers son baratos
+  // y una búsqueda es efímera).
+  const guardable = !esPicker && q === '';
+  const base = `/boards/${slug}/items${queryLista('', colsParam, totales)}`;
+  // Mientras se lee la copia guardada no sale el poll: iría completo.
+  const arrancandoRef = useRef(false);
 
   const load = useCallback(async (fresh = false, completa = false) => {
     // Pestaña oculta: no gastes requests — al volver, el listener de
     // visibilitychange de abajo recarga de inmediato. Un "Actualizar" explícito
     // sí pasa: lo pidió alguien que está mirando.
     if (document.hidden && !fresh) return;
+    if (arrancandoRef.current) return;
     try {
       // Incremental solo cuando ya hay lista con ETag: el primer request va
       // completo (y calca la URL de la precarga de index.html).
@@ -186,7 +202,16 @@ export function usePoll(slug: BoardSlug, q = '', cols?: readonly string[], total
       const headers: Record<string, string> = {};
       if (etagRef.current) headers['If-None-Match'] = etagRef.current;
       const res = await apiFetch(`/boards/${slug}/items${params}`, { headers });
-      if (res.status === 304) { setStatus('ready'); return; }
+      if (res.status === 304) {
+        // Primera respuesta sobre una copia guardada: el worker la confirmó.
+        if (!hasDataRef.current && dataRef.current) {
+          hasDataRef.current = true;
+          setData(dataRef.current);
+          setOfflineMock(false);
+        }
+        setStatus('ready');
+        return;
+      }
       if (!res.ok) throw new Error('list failed: ' + res.status);
       let json: ListResponse = await res.json();
       if (json.incremental) {
@@ -200,6 +225,13 @@ export function usePoll(slug: BoardSlug, q = '', cols?: readonly string[], total
       dataRef.current = json;
       hasDataRef.current = true;
       setData(json);
+      if (guardable) {
+        guardarLista(
+          { base, etag: json.etag, since: sinceRef.current, tv: json.totalesVersion, json },
+          (s, tv) => `/boards/${slug}/items${queryLista('', colsParam, totales, false, s, s ? tv : undefined)}`,
+          location.pathname.split('/')[1] ?? null,
+        );
+      }
       setOfflineMock(false);
       setStatus('ready');
     } catch (e) {
@@ -221,25 +253,51 @@ export function usePoll(slug: BoardSlug, q = '', cols?: readonly string[], total
         setStatus('offline');
       }
     }
-  }, [slug, q, colsParam, totales]);
+  }, [slug, q, colsParam, totales, guardable, base]);
 
   useEffect(() => {
     etagRef.current = undefined;
     dataRef.current = null;
     sinceRef.current = undefined;
+    arrancandoRef.current = false;
     // Solo el primer load (sin nada que pintar) muestra "loading"; los cambios
     // de búsqueda mantienen la lista y llegan con debounce de 300 ms.
     if (!hasDataRef.current) setStatus('loading');
-    const debounce = window.setTimeout(() => { void load(); }, hasDataRef.current ? 300 : 0);
+    if (!listo) return;
+    let vivo = true;
+    // Con copia guardada: el primer request sale incremental sobre ella. La de
+    // memoria (ya confirmada en esta pestaña) se pinta al instante; la de una
+    // recarga espera el 304 (o la fusión) del worker.
+    const arrancar = async () => {
+      if (!guardable || !hayListaGuardada(base)) { void load(); return; }
+      arrancandoRef.current = true;
+      const g = await leerListaGuardada(base).catch(() => null);
+      if (!vivo) return;
+      arrancandoRef.current = false;
+      if (g) {
+        etagRef.current = g.lista.etag;
+        dataRef.current = g.lista.json;
+        sinceRef.current = g.lista.since;
+        if (g.enMemoria) {
+          hasDataRef.current = true;
+          setData(g.lista.json);
+          setStatus('ready');
+        }
+      }
+      void load();
+    };
+    const debounce = window.setTimeout(() => { void arrancar(); }, hasDataRef.current ? 300 : 0);
     const timer = window.setInterval(() => { void load(); }, esPicker ? PICKER_POLL_MS : LIST_POLL_MS);
     const onVisible = () => { if (!document.hidden) void load(); };
     document.addEventListener('visibilitychange', onVisible);
     return () => {
+      vivo = false;
+      arrancandoRef.current = false;
       window.clearTimeout(debounce);
       window.clearInterval(timer);
       document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [load, esPicker]);
+  }, [load, esPicker, listo, guardable, base]);
 
   const refrescar = useCallback(async () => {
     setRefrescando(true);

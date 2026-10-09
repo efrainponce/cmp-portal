@@ -1,5 +1,25 @@
 # Log de commits
 
+## 2026-10-08 (CWV pasos 1 y 2: la lista se guarda en el navegador y la precarga ya le sirve a admin)
+
+- **Efraín** aprobó el plan completo, incluido guardar la lista en el
+  navegador. Medido en local con la red de Mérida (0.8 Mbps / 400 ms), admin
+  en /oportunidades: primera carga 6.2 s → recargas 1.4 s, con UN request
+  incremental que contesta 304 (0 KB) en vez de bajar la lista entera.
+  - `src/lib/listaGuardada.ts`: cada lista sin búsqueda se guarda (Cache API)
+    con su ETag y marca de agua; al montar o recargar, el primer request ya
+    sale incremental. La de memoria (misma pestaña) se pinta al instante; la
+    de una recarga espera la confirmación del worker.
+  - `index.html` precarga EXACTAMENTE ese request (URL + If-None-Match, índice
+    `cmp:precarga` por ruta → base), así que admin ya precarga su vista
+    extendida; `tomarPrecarga` acepta un If-None-Match idéntico al precargado.
+  - Admin ya no pide dos veces: `usePoll(..., listo)` espera a /me en
+    StageBoardList (vista extendida) y en el Reporte de Proyectos (totales).
+  - Seguridad: la copia solo se usa cuando /me confirma el MISMO correo
+    (probado: compras en el navegador de admin ve sus 342 filas, no las 1,259
+    de admin); otro correo o cerrar sesión borra todo; con "ver como" ni se
+    lee ni se guarda.
+
 ## 2026-10-08 (Plan de Core Web Vitals para Mérida)
 
 - **Efraín**: "después de diagnosticar haz un plan para mejorar los CWV,

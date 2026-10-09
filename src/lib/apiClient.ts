@@ -24,6 +24,7 @@ import { tomarPrecarga } from './apiPreload';
 import { markSessionExpired } from './sessionState';
 import { uxApiLatency, uxEdit } from './telemetry';
 import { perfNotarMetodo } from './perfReal';
+import { borrarListasGuardadas } from './listaGuardada';
 import { beginWrite } from './readConsistency';
 import { esEscrituraDeFondo, inicioEscritura, marcarRed } from './syncEstado';
 import { CATALOGO_COLS } from './productSearch';
@@ -87,7 +88,7 @@ export function logout() {
   const returnTo = encodeURIComponent(window.location.origin);
   // El catálogo guardado en el navegador trae costos: no se queda en una
   // máquina de la que alguien cerró sesión.
-  void borrarCatalogoGuardado().finally(() => {
+  void Promise.all([borrarCatalogoGuardado(), borrarListasGuardadas()]).finally(() => {
     window.location.href = `https://${ACCESS_TEAM_DOMAIN}/cdn-cgi/access/logout?returnTo=${returnTo}`;
   });
 }
