@@ -119,14 +119,28 @@
       })();
     </script>
 
-    <!-- Microsoft Clarity (grabación de sesiones / mapas de calor). async: no
-         compite con la precarga de arriba. El correo del usuario se manda
-         desde src/lib/clarity.ts cuando /api/me resuelve. -->
+    <!-- Microsoft Clarity (grabación de sesiones / mapas de calor). El correo
+         del usuario se manda desde src/lib/clarity.ts cuando /api/me resuelve.
+         La cola `clarity(...)` existe desde ya (nada se pierde), pero el
+         script (~25 KB + su tag) se baja DESPUÉS del load, en ocioso
+         (2026-10-08, plan CWV paso 4): `async` no bastaba — en la red de
+         Mérida (0.7 Mbps) le peleaba el ancho de banda a index.js y a la
+         lista en el primer segundo. Clarity reconstruye la página al
+         arrancar, así que la grabación sigue completa; solo empieza unos
+         segundos después (Efraín lo aprobó). -->
     <script type="text/javascript">
-      (function(c,l,a,r,i,t,y){
+      (function(c,l,a,r,i){
         c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
-        t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
-        y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+        function cargar(){
+          var t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+          var y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+        }
+        function ocioso(){
+          if (c.requestIdleCallback) c.requestIdleCallback(cargar, { timeout: 4000 });
+          else setTimeout(cargar, 1500);
+        }
+        if (l.readyState === 'complete') ocioso();
+        else c.addEventListener('load', ocioso, { once: true });
       })(window, document, "clarity", "script", "yjksmrghhn");
     </script>
 

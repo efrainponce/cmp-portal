@@ -1,5 +1,14 @@
 # Log de commits
 
+## 2026-10-08 (CWV paso 4: Clarity se baja después del load)
+
+- En la red de Mérida (0.7 Mbps) el script de Clarity (~25 KB + tag) le
+  peleaba el ancho de banda a index.js y a la lista en el primer segundo
+  aunque fuera `async`. Ahora la cola `clarity(...)` existe desde el inicio
+  (el `identify` de src/lib/clarity.ts no se pierde) y el script se inserta
+  después del `load`, en ocioso. La grabación sigue completa, solo empieza
+  unos segundos después (Efraín lo aprobó con el plan).
+
 ## 2026-10-08 (CWV paso 3: los chunks de la pantalla ya no esperan a index.js, y React en su propio chunk)
 
 - Medido en producción a 0.7 Mbps / 400 ms: los ~15 chunks de la pantalla
